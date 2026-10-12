@@ -148,12 +148,7 @@ func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 		r.log.Info("spec fuera de orden ignorada", "server", sp.Slug, "version", sp.Version, "guardada", stored.Version)
 		return nil
 	}
-	if stored == nil {
-		if err := r.dropTombstone(sp.ServerId); err != nil { // el panel lo revive: se anula
-			return err
-		}
-	}
-	if err := r.st.PutSpec(sp); err != nil {
+	if err := r.st.PutSpec(sp); err != nil { // anula la lápida del id, si la hay
 		return err
 	}
 	return r.reconcileLocked(ctx, sp.ServerId)
@@ -166,10 +161,7 @@ func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 func (r *Reconciler) StoreForce(sp *mcsmv1.ServerSpec) error {
 	unlock := r.lock(sp.ServerId)
 	defer unlock()
-	if err := r.dropTombstone(sp.ServerId); err != nil { // el panel lo revive: se anula
-		return err
-	}
-	if err := r.st.PutSpec(sp); err != nil {
+	if err := r.st.PutSpec(sp); err != nil { // anula la lápida del id, si la hay
 		return err
 	}
 	r.clearFailure(sp.ServerId)
@@ -183,12 +175,9 @@ func (r *Reconciler) StoreForce(sp *mcsmv1.ServerSpec) error {
 func (r *Reconciler) Forget(serverID string) error {
 	unlock := r.lock(serverID)
 	defer unlock()
-	if err := r.st.DeleteSpec(serverID); err != nil {
-		return err
-	}
-	// Dos transacciones: una caída justo entre ambas deja el contenedor sin lápida (el
-	// fallo de antes), en una ventana mínima; el store no ofrece hacerlo atómico.
-	if err := r.putTombstone(serverID); err != nil {
+	// Spec fuera y lápida dentro en una sola transacción: nunca queda un contenedor sin
+	// spec ni lápida.
+	if err := r.st.ForgetWithTombstone(serverID, r.now()); err != nil {
 		return err
 	}
 	r.clearFailure(serverID)
@@ -306,7 +295,7 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 		slug = c.Labels[spec.LabelSlug]
 	}
 	if sp == nil && c == nil {
-		if err := r.dropTombstone(serverID); err != nil { // nada que borrar
+		if err := r.st.DeleteTombstone(serverID); err != nil { // nada que borrar
 			return err
 		}
 		if deleteData {
@@ -322,12 +311,8 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 			return err
 		}
 	}
-	// Sin spec no hay nada que borrar del store, y DeleteSpec se llevaría la lápida
-	// (versión aplicada) antes de que el contenedor haya desaparecido.
-	if sp != nil {
-		if err := r.st.DeleteSpec(serverID); err != nil {
-			return err
-		}
+	if err := r.st.DeleteSpec(serverID); err != nil {
+		return err
 	}
 	r.clearFailure(serverID)
 	if c != nil {
@@ -344,7 +329,7 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 		}
 	}
 	if sp == nil {
-		return r.dropTombstone(serverID)
+		return r.st.DeleteTombstone(serverID) // el borrado pendiente terminó
 	}
 	return nil
 }
@@ -484,9 +469,6 @@ func (r *Reconciler) ContainerID(ctx context.Context, serverID string) string {
 func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1.Observed {
 	obs := &mcsmv1.Observed{State: "missing", Mc: &mcsmv1.McStatus{}}
 	obs.AppliedVersion, _ = r.st.Applied(serverID)
-	if obs.AppliedVersion == tombstone {
-		obs.AppliedVersion = 0 // una lápida no es una versión aplicada
-	}
 	r.mu.Lock()
 	obs.Error = r.lastErr[serverID]
 	r.mu.Unlock()

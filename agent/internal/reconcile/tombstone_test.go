@@ -5,14 +5,18 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/store"
+
+	"github.com/moby/moby/api/types/container"
 )
 
 // flakyRemove envuelve el fake de Docker para que Remove falle mientras err no sea nil.
@@ -84,7 +88,7 @@ func TestForgetThenFailedRemoveIsRetriedByTick(t *testing.T) {
 	if containers(t, fake) != 1 {
 		t.Fatal("no puede borrarse mientras Docker falla")
 	}
-	if tomb, _ := r.tombstoned("a"); !tomb {
+	if tomb, _ := st.HasTombstone("a"); !tomb {
 		t.Fatal("la lápida debe sobrevivir a un reintento fallido")
 	}
 	eng.setErr(nil)
@@ -92,7 +96,7 @@ func TestForgetThenFailedRemoveIsRetriedByTick(t *testing.T) {
 	if containers(t, fake) != 0 {
 		t.Fatalf("el tick debe reintentar el borrado: %v", fake.Calls)
 	}
-	if tomb, _ := r.tombstoned("a"); tomb {
+	if tomb, _ := st.HasTombstone("a"); tomb {
 		t.Fatal("la lápida se borra cuando la eliminación termina bien")
 	}
 	if calls(fake, "Create") != 1 {
@@ -114,6 +118,9 @@ func TestTombstoneIsNotADesiredServer(t *testing.T) {
 	}
 	if vers, _ := st.SpecVersions(); len(vers) != 0 {
 		t.Fatalf("una lápida no va en el Hello: %v", vers)
+	}
+	if list, _ := st.ListTombstones(); len(list) != 1 || list[0].ServerID != "a" {
+		t.Fatalf("Forget deja una lápida explícita: %+v", list)
 	}
 	if calls(fake, "Start") != 0 || calls(fake, "Create") != 1 {
 		t.Fatalf("una lápida no se reconcilia: %v", fake.Calls)
@@ -204,6 +211,9 @@ func TestApplyCancelsTombstone(t *testing.T) {
 	if v, _ := st.Applied("a"); v != 2 {
 		t.Fatalf("applied = %d, want 2", v)
 	}
+	if has, _ := st.HasTombstone("a"); has {
+		t.Fatal("Apply debe borrar la lápida")
+	}
 }
 
 func TestStoreForceCancelsTombstone(t *testing.T) {
@@ -227,6 +237,9 @@ func TestStoreForceCancelsTombstone(t *testing.T) {
 	}
 	if v, _ := st.Applied("a"); v != 1 {
 		t.Fatalf("applied = %d, want 1", v)
+	}
+	if has, _ := st.HasTombstone("a"); has {
+		t.Fatal("StoreForce debe borrar la lápida")
 	}
 }
 
@@ -285,7 +298,7 @@ func TestRetryRemovalsNeverDeletesARevivedSpec(t *testing.T) {
 		if sp, _ := st.GetSpec("a"); sp == nil || sp.Version != 3 {
 			t.Fatalf("iteración %d: el reintento borró una spec revivida: %+v", i, sp)
 		}
-		if tomb, _ := r.tombstoned("a"); tomb {
+		if tomb, _ := st.HasTombstone("a"); tomb {
 			t.Fatalf("iteración %d: con spec no hay lápida", i)
 		}
 	}
@@ -311,5 +324,65 @@ func TestRemoveServerFailureLeavesNoTombstone(t *testing.T) {
 	}
 	if err := r.Remove(ctx, "a", false); err != nil || containers(t, fake) != 0 {
 		t.Fatalf("el reintento del panel sí lo borra: err=%v", err)
+	}
+}
+
+// managedContainer crea un contenedor mcsm.* ajeno a cualquier spec del store.
+func managedContainer(t *testing.T, fake *docker.Fake, id string) {
+	t.Helper()
+	cfg := &container.Config{Image: "x", Labels: map[string]string{"mcsm.managed": "true", "mcsm.server_id": id, "mcsm.slug": id}}
+	if _, err := fake.Create(context.Background(), "mcsm-"+id, cfg, &container.HostConfig{}, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// RetryRemovals solo borra contenedores con lápida explícita. Un contenedor mcsm.* sin spec
+// ni lápida no se toca, aunque su versión aplicada tenga cualquier valor (el centinela de
+// la versión anterior ya no significa nada).
+func TestRetryRemovalsOnlyTouchesTombstonedContainers(t *testing.T) {
+	r, st, fake, eng := setupFlaky(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	managedContainer(t, fake, "ghost")
+	managedContainer(t, fake, "legacy")
+	if err := st.SetApplied("legacy", math.MaxUint64); err != nil {
+		t.Fatal(err)
+	}
+	forgetWithFailedRemove(t, r, eng, "a")
+	eng.setErr(nil)
+	got := r.RetryRemovals(ctx)
+	if len(got) != 1 || got[0] != "a" {
+		t.Fatalf("RetryRemovals = %v, want [a]", got)
+	}
+	list, _ := fake.ListManaged(ctx)
+	if len(list) != 2 {
+		t.Fatalf("los contenedores sin lápida siguen: %+v", list)
+	}
+	for _, c := range list {
+		if id := c.Labels["mcsm.server_id"]; id != "ghost" && id != "legacy" {
+			t.Fatalf("contenedor inesperado: %s", id)
+		}
+	}
+}
+
+// Una lápida cuyo contenedor ya no existe se limpia sin tocar Docker.
+func TestRetryRemovalsDropsTombstoneWithoutContainer(t *testing.T) {
+	r, st, fake, _ := setupFlaky(t)
+	ctx := context.Background()
+	if err := st.ForgetWithTombstone("gone", time.UnixMilli(1)); err != nil {
+		t.Fatal(err)
+	}
+	got := r.RetryRemovals(ctx)
+	if len(got) != 1 || got[0] != "gone" {
+		t.Fatalf("RetryRemovals = %v, want [gone]", got)
+	}
+	if has, _ := st.HasTombstone("gone"); has {
+		t.Fatal("la lápida sin contenedor debe borrarse")
+	}
+	if calls(fake, "Remove") != 0 || calls(fake, "Stop") != 0 {
+		t.Fatalf("no hay nada que borrar en Docker: %v", fake.Calls)
 	}
 }

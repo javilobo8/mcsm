@@ -87,7 +87,10 @@ func (s *Store) PutSpec(sp *mcsmv1.ServerSpec) error {
 		return err
 	}
 	return s.db.Update(func(tx *bbolt.Tx) error {
-		return tx.Bucket(bSpecs).Put([]byte(sp.ServerId), raw)
+		if err := tx.Bucket(bSpecs).Put([]byte(sp.ServerId), raw); err != nil {
+			return err
+		}
+		return deleteTombstone(tx, sp.ServerId) // spec y lápida del mismo id no conviven
 	})
 }
 
