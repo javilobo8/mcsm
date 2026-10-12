@@ -5,16 +5,58 @@ Panel self-hosted para gestionar servidores de Minecraft (imagen `itzg/minecraft
 ## Puesta en marcha (máquina principal)
 
 1. `docker network create mcsm 2>/dev/null || true` (red compartida por el agente y los servidores; los compose la declaran como externa).
-2. `cp deploy/.env.example deploy/.env` y edita `PANEL_PUBLIC_URL` (IP de esta máquina; si lo dejas vacío, el panel usa la dirección con la que lo abres en el navegador) y `DATA_ROOT` (ruta absoluta).
+2. `cp deploy/.env.example deploy/.env` y edita `PANEL_PUBLIC_URL` (`http://<ip-de-esta-máquina>:8080`, con el puerto: es la dirección que se pone en el `docker run` de los demás nodos; si lo dejas vacío, el panel usa la dirección con la que lo abres en el navegador) y `DATA_ROOT` (ruta absoluta).
 3. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build panel`
-4. Abre `http://<ip>:8080` **en cuanto arranque** y crea la contraseña: el primer visitante la fija. Ve a **Nodos → Añadir nodo** y copia el token en `ENROLL_TOKEN` del `.env`.
-5. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build agent`. El nodo aparece como conectado.
+4. Abre `http://<ip>:8080` **en cuanto arranque** y crea la contraseña (mínimo 8 caracteres): el primer visitante la fija. Ve a **Nodos → Añadir nodo**, pon en «Directorio de datos» el mismo `DATA_ROOT` del `.env` y copia el token en `ENROLL_TOKEN` del `.env`. El token caduca a los 15 minutos y sirve una sola vez.
+5. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build agent`. El nodo aparece como conectado. Este agente llega al panel por la red interna del compose (`http://panel:8080`). El alta queda guardada en el volumen `mcsm_agent-data`: a partir de ahí `ENROLL_TOKEN` se ignora.
 
 ## Añadir otra máquina
 
-Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → Añadir nodo** copia el `docker run` que se muestra y ejecútalo allí (necesita la imagen `mcsm-agent`: constrúyela con `docker build -t mcsm-agent:latest agent/` o usa `deploy/docker-compose.node.yml` con `PANEL_URL` y `ENROLL_TOKEN`).
+Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → Añadir nodo** copia el `docker run` que se muestra y ejecútalo allí antes de 15 minutos (necesita la imagen `mcsm-agent`: constrúyela con `docker build -t mcsm-agent:latest agent/` con el repositorio clonado allí, o cópiala desde la principal con `docker save mcsm-agent:latest | ssh <usuario>@<nodo> docker load`; o usa `deploy/docker-compose.node.yml` con `PANEL_URL` y `ENROLL_TOKEN`).
 
 `DATA_ROOT` se monta en el agente **con la misma ruta dentro y fuera** (`-v /srv/minecraft:/srv/minecraft`): el agente lo comprueba al arrancar y no arranca si no está montado desde el host.
+
+## Puertos y cortafuegos
+
+| Máquina | Abre (entrada) | Para qué |
+|---|---|---|
+| Panel | `8080/tcp` desde la LAN | La web y los agentes de las otras máquinas (HTTP y WebSocket). No lo abras a Internet. |
+| Cada nodo | El puerto de juego de cada servidor (`tcp`; el panel los reparte desde el 25565 hasta el 25600), sus puertos extra (p. ej. `19132/udp` de Geyser) y el del router si lo activas | Los jugadores |
+
+- El agente no escucha en ningún puerto: solo **sale** hacia `PANEL_URL` (el 8080 del panel). RCON (25575) va por la red Docker `mcsm` y no se publica.
+- Los nodos necesitan salida a Internet: las imágenes de Docker Hub y las descargas de itzg (Paper, mods, modpacks).
+- Para jugar desde fuera de casa, redirige en el router de casa el puerto del servidor (o el del mc-router) a la IP del nodo. El 8080, nunca.
+- **El 25565.** El primer servidor de cada nodo se queda el 25565 (el primer puerto libre), que es también el puerto por defecto del mc-router. Si vas a usar el router, actívalo antes de crear servidores en ese nodo. Si ya hay un servidor en el 25565, activarlo falla con «El puerto 25565 lo usa el servidor «…» de este nodo»: pon otro puerto al router o cambia el del servidor (Configuración → Red). Si otro programa de la máquina ya ocupa el puerto (p. ej. un servidor de Minecraft que no gestiona el panel), el servidor no arranca y su cabecera muestra el error de Docker: cámbiale el puerto.
+
+## Actualizar
+
+**Primero los agentes y luego el panel.** Un agente antiguo rechaza lo que no conoce, pero un panel nuevo puede pedirle cosas que todavía no sabe hacer. En cada máquina, `git pull` y:
+
+1. Agentes.
+   - En la máquina principal: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --no-deps agent` (`--no-deps`: sin él, Compose también reconstruiría y reiniciaría el panel).
+   - En los nodos con compose: `docker compose -f deploy/docker-compose.node.yml --env-file deploy/.env up -d --build`.
+   - En los nodos con `docker run`: `docker build -t mcsm-agent:latest agent/`, luego `docker stop mcsm-agent && docker rm mcsm-agent` (con `stop` tiene sus 30 s para terminar; `rm -f` lo mata en el acto) y vuelve a lanzar el mismo `docker run`. El volumen `mcsm-agent-data` conserva el alta, así que el `ENROLL_TOKEN` caducado da igual.
+2. Panel: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --no-deps panel`.
+
+Los servidores de Minecraft siguen en marcha mientras se actualizan el agente y el panel. Algunas actualizaciones del agente cambian cómo construye los contenedores y los recrean (cada servidor se reinicia) al volver a arrancar.
+
+## Copia de la base de datos del panel
+
+Todo lo del panel (servidores, nodos, plantillas, historial, contraseña) está en `panel.db`, en el volumen `mcsm_panel-data`. Los mundos y sus copias no: están en el `DATA_ROOT` de cada nodo. Cópiala con el panel parado: los servidores siguen funcionando, pero espera a que no haya copias, restauraciones ni migraciones en curso. Copia el volumen entero: el panel usa WAL y los ficheros `panel.db-wal` y `panel.db-shm` forman parte de la base de datos.
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env stop panel
+docker run --rm -v mcsm_panel-data:/data:ro -v "$PWD":/backup alpine tar czf /backup/mcsm-panel-$(date +%F).tgz -C /data .
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env start panel
+```
+
+Guárdala en un sitio privado: contiene las contraseñas RCON de los servidores y el secreto de las sesiones. Para restaurarla, con el panel parado:
+
+```bash
+docker run --rm -v mcsm_panel-data:/data -v "$PWD":/backup alpine sh -c 'rm -f /data/panel.db* && tar xzf /backup/mcsm-panel-<fecha>.tgz -C /data'
+```
+
+Antes, lee el aviso de [Migración entre nodos](#migración-entre-nodos) sobre restaurar una copia anterior a una migración.
 
 ## Archivos
 
