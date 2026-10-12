@@ -44,14 +44,29 @@ export function upsertJob(list: JobDto[], job: JobDto, f: NormalizedFilter): Job
   return [...rest, job].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).slice(0, MAX_LIST);
 }
 
+/** Mismo tope y marca que `capLog` del panel (jobs/service.ts). */
+export const MAX_JOB_LOG = 256 * 1024;
+export function capLog(log: string): string {
+  if (log.length <= MAX_JOB_LOG) return log;
+  const mark = "…(recortado)\n";
+  return mark + log.slice(log.length - MAX_JOB_LOG + mark.length);
+}
+
 export function applyJobEvent(qc: QueryClient, msg: JobMsg): void {
   for (const [key, data] of qc.getQueriesData<JobDto[]>({ queryKey: ["jobs"] })) {
     if (!data) continue;
     const f = (key[1] ?? {}) as Partial<NormalizedFilter>;
-    mergeIntoCached<JobDto[]>(qc, key, (old) => upsertJob(old, msg.job, { serverId: f.serverId ?? null, status: f.status ?? null }));
+    const filter = { serverId: f.serverId ?? null, status: f.status ?? null };
+    if (upsertJob(data, msg.job, filter) === data) continue; // no le afecta: no cancelar su refetch
+    mergeIntoCached<JobDto[]>(qc, key, (old) => upsertJob(old, msg.job, filter));
   }
-  mergeIntoCached<JobDetailDto>(qc, jobKey(msg.job.id), (old) =>
-    supersedes(old, msg.job) ? { ...old, ...msg.job, log: old.log + msg.logChunk } : old);
+  const detail = qc.getQueryData<JobDetailDto>(jobKey(msg.job.id));
+  if (detail && supersedes(detail, msg.job)) {
+    mergeIntoCached<JobDetailDto>(qc, jobKey(msg.job.id), (old) =>
+      supersedes(old, msg.job)
+        ? { ...old, ...msg.job, log: capLog(msg.log !== undefined ? msg.log : old.log + msg.logChunk) }
+        : old);
+  }
   if (!isActive(msg.job)) {
     void qc.invalidateQueries({ queryKey: jobKey(msg.job.id) }); // log final completo
     if (msg.job.serverId) void qc.invalidateQueries({ queryKey: backupsKey(msg.job.serverId) });

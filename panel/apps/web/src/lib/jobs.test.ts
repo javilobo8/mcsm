@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { applyJobEvent, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, retainJobsLive, upsertJob, type JobsLiveSource } from "./jobs";
+import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, retainJobsLive, upsertJob, type JobsLiveSource } from "./jobs";
 import { topicOf } from "./ws";
 import type { JobDetailDto, JobDto, ServerMessage } from "./api";
 
@@ -65,6 +65,27 @@ describe("applyJobEvent", () => {
     const qc = new QueryClient();
     applyJobEvent(qc, { type: "job", job: job("a", "2026-10-12T04:00:00.000Z"), logChunk: "x" });
     expect(qc.getQueryData(jobKey("a"))).toBeUndefined();
+  });
+  it("un log completo reemplaza al acumulado y se acota como en el panel", () => {
+    const qc = new QueryClient();
+    const a = job("a", "2026-10-12T04:00:00.000Z");
+    qc.setQueryData<JobDetailDto>(jobKey("a"), { ...a, log: "viejo\n" });
+    applyJobEvent(qc, { type: "job", job: a, logChunk: "", log: "nuevo\n" });
+    expect(qc.getQueryData<JobDetailDto>(jobKey("a"))!.log).toBe("nuevo\n");
+    const big = capLog("x".repeat(MAX_JOB_LOG + 10));
+    expect(big.length).toBe(MAX_JOB_LOG);
+    expect(big.startsWith("…(recortado)\n")).toBe(true);
+  });
+  it("no cancela refetch de listas a las que el evento no afecta ni del detalle terminal", () => {
+    const qc = new QueryClient();
+    const cancel = vi.spyOn(qc, "cancelQueries");
+    const other = job("x", "2026-10-12T03:00:00.000Z", { serverId: "s2" });
+    qc.setQueryData(jobsKey({ serverId: "s2" }), [other]);
+    const done = job("a", "2026-10-12T04:00:00.000Z", { status: "ok", updatedAt: "2026-10-12T04:05:00.000Z" });
+    qc.setQueryData<JobDetailDto>(jobKey("a"), { ...done, log: "fin\n" });
+    vi.spyOn(qc, "isFetching").mockReturnValue(1);
+    applyJobEvent(qc, { type: "job", job: { ...done, status: "running", updatedAt: "2026-10-12T04:06:00.000Z" }, logChunk: "t" });
+    expect(cancel).not.toHaveBeenCalled();
   });
   it("al terminar un job recarga las copias de su servidor y su detalle", () => {
     const qc = new QueryClient();

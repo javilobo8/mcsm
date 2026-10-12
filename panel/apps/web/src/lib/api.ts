@@ -83,7 +83,7 @@ export interface BackupDto {
 }
 
 export type ServerMessage =
-  | { type: "job"; job: JobDto; logChunk: string }
+  | { type: "job"; job: JobDto; logChunk: string; /** Log completo (reemplaza al acumulado); el panel hoy no lo envía. */ log?: string }
   | { type: "backups"; serverId: string }
   | { type: "observed"; serverId: string; observed: ObservedDto; observedAt: string }
   | { type: "node"; node: NodeDto }
