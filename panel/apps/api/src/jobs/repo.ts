@@ -17,7 +17,7 @@ export interface JobDto {
 /** Detalle con el log (los listados no lo llevan: puede ocupar 256 KiB). */
 export interface JobDetailDto extends JobDto { log: string }
 
-export interface JobListFilter { serverId?: string; status?: JobState; limit?: number; before?: string }
+export interface JobListFilter { serverId?: string; status?: JobState | JobState[]; limit?: number; before?: string }
 
 export function toJobDto(r: JobRow): JobDto {
   return {
@@ -55,7 +55,8 @@ export class JobsRepo {
     const where: string[] = [];
     const args: (string | number)[] = [];
     if (f.serverId) { where.push("server_id = ?"); args.push(f.serverId); }
-    if (f.status) { where.push("status = ?"); args.push(f.status); }
+    const statuses = f.status === undefined ? [] : Array.isArray(f.status) ? f.status : [f.status];
+    if (statuses.length > 0) { where.push(`status IN (${statuses.map(() => "?").join(", ")})`); args.push(...statuses); }
     if (f.before) { where.push("created_at < ?"); args.push(f.before); }
     args.push(Math.min(Math.max(f.limit ?? 50, 1), 200));
     const sql = `SELECT * FROM jobs ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC, id DESC LIMIT ?`;

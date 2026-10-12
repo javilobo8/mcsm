@@ -145,6 +145,12 @@ describe("/api/jobs", () => {
     res = await get("/api/jobs?status=failed");
     expect(res.json().map((j: any) => j.id)).toEqual([other.id]);
     expect((await get("/api/jobs?status=raro")).statusCode).toBe(400);
+    res = await get("/api/jobs?status=queued,running");
+    expect(res.json().map((j: any) => j.id)).toEqual([mine.id]);
+    res = await get("/api/jobs?status=running,failed");
+    expect(res.json().map((j: any) => j.id).sort()).toEqual([mine.id, other.id].sort());
+    expect((await get("/api/jobs?status=running,raro")).statusCode).toBe(400);
+    expect((await get("/api/jobs?status=")).statusCode).toBe(400);
     res = await get(`/api/jobs/${mine.id}`);
     expect(res.json()).toMatchObject({ id: mine.id, type: "backup", serverId: s.id, status: "running", log: "save-off\n" });
     expect((await get("/api/jobs/no-existe")).statusCode).toBe(404);

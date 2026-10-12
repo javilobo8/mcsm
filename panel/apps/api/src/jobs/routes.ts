@@ -7,9 +7,12 @@ import { JobService } from "./service.js";
 const PURGE_AFTER_DAYS = 30;
 const PURGE_EVERY_MS = 60 * 60 * 1000;
 
+const JOB_STATE = z.enum(["queued", "running", "ok", "failed", "cancelled"]);
+
 const listQuery = z.object({
   serverId: z.string().min(1).optional(),
-  status: z.enum(["queued", "running", "ok", "failed", "cancelled"]).optional(),
+  // Un estado o una lista separada por comas (`queued,running`).
+  status: z.string().transform((s) => s.split(",")).pipe(z.array(JOB_STATE).min(1).max(5)).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   before: z.string().min(1).optional(),
 });
