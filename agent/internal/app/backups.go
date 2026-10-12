@@ -272,6 +272,11 @@ func dataMissingMsg(dataDir string, err error) string {
 // arrancaría: Docker crearía un data vacío y el servidor generaría un mundo nuevo.
 func (b *backupService) block(serverID string, release func(context.Context), msg string) {
 	b.a.rec.HoldError(serverID, msg)
+	// plan-8: mc-router arrancaría un servidor bajo demanda aunque esté reservado, y Docker le crearía
+	// un data vacío: se aparca (sin contenedor) hasta que vuelvan los datos.
+	if _, err := b.a.rec.Park(b.a.life, serverID); err != nil {
+		b.a.log.Error("no se pudo aparcar un servidor sin datos", "server", serverID, "err", err)
+	}
 	b.mu.Lock()
 	b.blocked[serverID] = release
 	b.mu.Unlock()
@@ -650,6 +655,12 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 		}
 	} else {
 		j.Log("servidor parado: copia directa")
+		// plan-8: sin contenedor, mc-router no puede despertarlo a mitad de una copia en frío.
+		if parked, err := b.a.rec.Park(ctx, serverID); err != nil {
+			return backup.Meta{}, err
+		} else if parked {
+			j.Log("servidor bajo demanda aparcado: su contenedor se recrea al terminar")
+		}
 	}
 	meta, err := backup.Create(ctx, req)
 	if meta.Filename != "" { // también con ErrResume: la copia está escrita
@@ -810,7 +821,15 @@ func (b *backupService) runRestore(ctx context.Context, serverID, filename strin
 	}
 	if c != nil {
 		j.Progress(1, "Parando el servidor")
-		if err := b.a.eng.Stop(ctx, c.ID, reconcile.StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
+		// plan-8: un servidor bajo demanda se aparca (se borra su contenedor) para que mc-router no lo
+		// arranque sobre el mundo viejo si alguien intenta entrar durante la restauración.
+		parked, err := b.a.rec.Park(ctx, serverID)
+		if err != nil {
+			return fmt.Errorf("parar el servidor: %w", err)
+		}
+		if parked {
+			j.Log("servidor bajo demanda aparcado: su contenedor se recrea al terminar")
+		} else if err := b.a.eng.Stop(ctx, c.ID, reconcile.StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			return fmt.Errorf("parar el servidor: %w", err)
 		}
 		running, err := b.isRunning(ctx, serverID)

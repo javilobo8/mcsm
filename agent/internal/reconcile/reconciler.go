@@ -41,6 +41,7 @@ type Reconciler struct {
 	observer Observer
 	log      *slog.Logger
 	onDemand func(spec.Spec) bool // plan-8: servidores que arranca y para mc-router (SetOnDemand)
+	parked   map[string]bool      // plan-8: aparcados por Park (bajo r.mu); true = estaba dormido
 
 	mu      sync.Mutex
 	locks   map[string]*sync.Mutex
@@ -255,7 +256,8 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 	}
 	// plan-8: con el autoscale del router, mc-router arranca y para los servidores con hostname; el
 	// estado deseado no se impone a un contenedor que ya existía (uno recién creado sí lo sigue).
-	if existing.State != "created" && r.onDemand != nil && r.onDemand(parsed) {
+	asleep := r.takeParkedAsleep(serverID) // aparcado dormido (Park): al recrearlo sigue dormido
+	if (existing.State != "created" || asleep) && r.onDemand != nil && r.onDemand(parsed) {
 		return r.st.SetApplied(serverID, sp.Version)
 	}
 	switch {
