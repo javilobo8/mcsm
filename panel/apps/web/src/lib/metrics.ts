@@ -40,6 +40,13 @@ export const isFresh = (s: NodeLiveSample | null | undefined, nowMs: number): s 
 /** Porcentaje acotado a 0–100; `null` con total 0 ("sin límite conocido"): la UI no debe pintar %. */
 export const percent = (used: number, total: number): number | null => (total > 0 ? Math.min(100, Math.max(0, (used / total) * 100)) : null);
 
+/** Acota a 0–100 (no finito → 0). */
+export const clampPct = (v: number): number => (Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0);
+
+/** "usado / total", o solo lo usado si el total es desconocido (0). */
+export const totalText = (used: number, total: number): string =>
+  total > 0 ? `${formatBytes(used)} / ${formatBytes(total)}` : `${formatBytes(used)} (total desconocido)`;
+
 export const usageTone = (pct: number | null): "ok" | "warn" | "bad" => (pct === null ? "ok" : pct >= 90 ? "bad" : pct >= 70 ? "warn" : "ok");
 
 export const formatCpu = (v: number): string => `${Math.round(v)} %`;

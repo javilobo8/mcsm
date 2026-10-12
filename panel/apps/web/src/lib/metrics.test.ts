@@ -5,7 +5,7 @@ import type { ServerMessage } from "./api";
 import type { LiveSource } from "./live";
 import { topicOf } from "./ws";
 import {
-  aligned, applyNodeMetricsEvent, bindNodeMetrics, formatCpu, formatTps, hasData, isFresh, latestNodeSample, percent, usageTone,
+  aligned, applyNodeMetricsEvent, bindNodeMetrics, formatCpu, formatTps, clampPct, hasData, isFresh, latestNodeSample, percent, totalText, usageTone,
 } from "./metrics";
 
 const series = (over: Partial<MetricSeries> = {}): MetricSeries => {
@@ -124,5 +124,25 @@ describe("node_metrics en vivo", () => {
     off();
     expect(offSub).toHaveBeenCalled();
     expect(offRec).toHaveBeenCalled();
+  });
+});
+
+describe("uso de nodo", () => {
+  it("isFresh: muestra posterior al último tick y anterior al render es fresca; con el reloj del tick no", () => {
+    const tickMs = 1_000_000; // último tick
+    const renderMs = 1_010_000; // render al llegar la muestra WS
+    const s = sample(1008); // ts entre el tick y el render
+    expect(isFresh(s, renderMs)).toBe(true);
+    expect(isFresh(s, tickMs)).toBe(false); // el bug: reloj desfasado > 5 s
+  });
+  it("clampPct acota a 0-100 y tolera no finitos", () => {
+    expect(clampPct(-3)).toBe(0);
+    expect(clampPct(42.5)).toBe(42.5);
+    expect(clampPct(250)).toBe(100);
+    expect(clampPct(Number.NaN)).toBe(0);
+  });
+  it("totalText: usado / total, o usado con total desconocido", () => {
+    expect(totalText(1024, 2048)).toBe("1.0 KiB / 2.0 KiB");
+    expect(totalText(1024, 0)).toBe("1.0 KiB (total desconocido)");
   });
 });

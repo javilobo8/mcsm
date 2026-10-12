@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { cn } from "@/lib/utils";
-import { formatBytes } from "@/lib/format";
-import { formatCpu, isFresh, percent, usageTone } from "@/lib/metrics";
+import { clampPct, formatCpu, isFresh, percent, totalText, usageTone } from "@/lib/metrics";
 import { useNodeLive } from "@/hooks/use-metrics";
 
 const TONE = { ok: "bg-emerald-500", warn: "bg-amber-500", bad: "bg-red-500" } as const;
@@ -27,24 +26,26 @@ function UsageBar({ label, pct, text }: { label: string; pct: number | null; tex
   );
 }
 
-const totalText = (used: number, total: number) => (total > 0 ? `${formatBytes(used)} / ${formatBytes(total)}` : `${formatBytes(used)} (total desconocido)`);
+/** Fuerza un re-render cada `ms` (la frescura caduca sin eventos); el reloj se lee con `Date.now()` en cada render. */
+function useTick(ms: number): void {
+  const [, tick] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => {
+    const t = setInterval(tick, ms);
+    return () => clearInterval(t);
+  }, [ms]);
+}
 
 /** CPU, RAM y disco de DATA_ROOT de un nodo, en vivo (spec §8: tarjetas de nodo). */
 export function NodeUsage({ nodeId }: { nodeId: string }) {
   const q = useNodeLive(nodeId);
-  // La frescura caduca sin eventos: se reevalúa cada 10 s.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 10_000);
-    return () => clearInterval(t);
-  }, []);
+  useTick(10_000);
   const s = q.data;
   if (q.isPending) return <p className="text-xs text-muted-foreground">Cargando uso…</p>;
-  if (q.isError && !s) return <p role="alert" className="text-xs text-red-400">No se pudo cargar el uso del nodo</p>;
-  if (!isFresh(s, now)) return <p className="text-xs text-muted-foreground">Sin datos recientes del nodo</p>;
+  if (q.isError && !s && q.dataUpdatedAt === 0) return <p role="alert" className="text-xs text-red-400">No se pudo cargar el uso del nodo</p>;
+  if (!isFresh(s, Date.now())) return <p className="text-xs text-muted-foreground">Sin datos recientes del nodo</p>;
   return (
     <div className="flex flex-col gap-1.5" role="group" aria-label="Uso del nodo">
-      <UsageBar label="CPU" pct={Math.min(100, Math.max(0, s.cpuPct))} text={formatCpu(s.cpuPct)} />
+      <UsageBar label="CPU" pct={clampPct(s.cpuPct)} text={formatCpu(s.cpuPct)} />
       <UsageBar label="RAM" pct={percent(s.memBytes, s.memTotalBytes)} text={totalText(s.memBytes, s.memTotalBytes)} />
       <UsageBar label="Disco" pct={percent(s.diskBytes, s.diskTotalBytes)} text={totalText(s.diskBytes, s.diskTotalBytes)} />
     </div>
