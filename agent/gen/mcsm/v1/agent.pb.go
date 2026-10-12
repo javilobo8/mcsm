@@ -148,6 +148,18 @@ type Envelope struct {
 	//	*Envelope_Ack
 	//	*Envelope_Error
 	//	*Envelope_MetricBatch
+	//	*Envelope_FilesList
+	//	*Envelope_FilesListResult
+	//	*Envelope_FilesStat
+	//	*Envelope_FilesStatResult
+	//	*Envelope_FilesRead
+	//	*Envelope_FilesReadResult
+	//	*Envelope_FilesWrite
+	//	*Envelope_FilesMkdir
+	//	*Envelope_FilesRename
+	//	*Envelope_FilesDelete
+	//	*Envelope_FilesDownload
+	//	*Envelope_FilesUpload
 	Body          isEnvelope_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -339,6 +351,114 @@ func (x *Envelope) GetMetricBatch() *MetricBatch {
 	return nil
 }
 
+func (x *Envelope) GetFilesList() *FilesList {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesList); ok {
+			return x.FilesList
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesListResult() *FilesListResult {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesListResult); ok {
+			return x.FilesListResult
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesStat() *FilesStat {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesStat); ok {
+			return x.FilesStat
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesStatResult() *FilesStatResult {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesStatResult); ok {
+			return x.FilesStatResult
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesRead() *FilesRead {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesRead); ok {
+			return x.FilesRead
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesReadResult() *FilesReadResult {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesReadResult); ok {
+			return x.FilesReadResult
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesWrite() *FilesWrite {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesWrite); ok {
+			return x.FilesWrite
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesMkdir() *FilesMkdir {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesMkdir); ok {
+			return x.FilesMkdir
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesRename() *FilesRename {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesRename); ok {
+			return x.FilesRename
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesDelete() *FilesDelete {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesDelete); ok {
+			return x.FilesDelete
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesDownload() *FilesDownload {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesDownload); ok {
+			return x.FilesDownload
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetFilesUpload() *FilesUpload {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_FilesUpload); ok {
+			return x.FilesUpload
+		}
+	}
+	return nil
+}
+
 type isEnvelope_Body interface {
 	isEnvelope_Body()
 }
@@ -404,6 +524,57 @@ type Envelope_MetricBatch struct {
 	MetricBatch *MetricBatch `protobuf:"bytes,30,opt,name=metric_batch,json=metricBatch,proto3,oneof"`
 }
 
+type Envelope_FilesList struct {
+	// ── plan-3 ──
+	// ── plan-4 ──
+	// ── plan-5 ──
+	FilesList *FilesList `protobuf:"bytes,70,opt,name=files_list,json=filesList,proto3,oneof"`
+}
+
+type Envelope_FilesListResult struct {
+	FilesListResult *FilesListResult `protobuf:"bytes,71,opt,name=files_list_result,json=filesListResult,proto3,oneof"`
+}
+
+type Envelope_FilesStat struct {
+	FilesStat *FilesStat `protobuf:"bytes,72,opt,name=files_stat,json=filesStat,proto3,oneof"`
+}
+
+type Envelope_FilesStatResult struct {
+	FilesStatResult *FilesStatResult `protobuf:"bytes,73,opt,name=files_stat_result,json=filesStatResult,proto3,oneof"`
+}
+
+type Envelope_FilesRead struct {
+	FilesRead *FilesRead `protobuf:"bytes,74,opt,name=files_read,json=filesRead,proto3,oneof"`
+}
+
+type Envelope_FilesReadResult struct {
+	FilesReadResult *FilesReadResult `protobuf:"bytes,75,opt,name=files_read_result,json=filesReadResult,proto3,oneof"`
+}
+
+type Envelope_FilesWrite struct {
+	FilesWrite *FilesWrite `protobuf:"bytes,76,opt,name=files_write,json=filesWrite,proto3,oneof"`
+}
+
+type Envelope_FilesMkdir struct {
+	FilesMkdir *FilesMkdir `protobuf:"bytes,77,opt,name=files_mkdir,json=filesMkdir,proto3,oneof"`
+}
+
+type Envelope_FilesRename struct {
+	FilesRename *FilesRename `protobuf:"bytes,78,opt,name=files_rename,json=filesRename,proto3,oneof"`
+}
+
+type Envelope_FilesDelete struct {
+	FilesDelete *FilesDelete `protobuf:"bytes,79,opt,name=files_delete,json=filesDelete,proto3,oneof"`
+}
+
+type Envelope_FilesDownload struct {
+	FilesDownload *FilesDownload `protobuf:"bytes,80,opt,name=files_download,json=filesDownload,proto3,oneof"`
+}
+
+type Envelope_FilesUpload struct {
+	FilesUpload *FilesUpload `protobuf:"bytes,81,opt,name=files_upload,json=filesUpload,proto3,oneof"`
+}
+
 func (*Envelope_Hello) isEnvelope_Body() {}
 
 func (*Envelope_HelloAck) isEnvelope_Body() {}
@@ -433,6 +604,30 @@ func (*Envelope_Ack) isEnvelope_Body() {}
 func (*Envelope_Error) isEnvelope_Body() {}
 
 func (*Envelope_MetricBatch) isEnvelope_Body() {}
+
+func (*Envelope_FilesList) isEnvelope_Body() {}
+
+func (*Envelope_FilesListResult) isEnvelope_Body() {}
+
+func (*Envelope_FilesStat) isEnvelope_Body() {}
+
+func (*Envelope_FilesStatResult) isEnvelope_Body() {}
+
+func (*Envelope_FilesRead) isEnvelope_Body() {}
+
+func (*Envelope_FilesReadResult) isEnvelope_Body() {}
+
+func (*Envelope_FilesWrite) isEnvelope_Body() {}
+
+func (*Envelope_FilesMkdir) isEnvelope_Body() {}
+
+func (*Envelope_FilesRename) isEnvelope_Body() {}
+
+func (*Envelope_FilesDelete) isEnvelope_Body() {}
+
+func (*Envelope_FilesDownload) isEnvelope_Body() {}
+
+func (*Envelope_FilesUpload) isEnvelope_Body() {}
 
 type HostInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1446,6 +1641,13 @@ func (*Ack) Descriptor() ([]byte, []int) {
 //	exists           ya existe                                         409
 //	unsupported      el agente no entiende el cuerpo: desactualizado   409
 //	too_large        demasiado grande                                  413
+//	invalid_path     ruta con «..», caracteres de control o fichero no regular   400
+//	path_outside     la ruta resuelta sale de /data del servidor        400
+//	root             operación no permitida sobre la raíz               400
+//	is_dir           era un fichero y es una carpeta                    400
+//	not_dir          era una carpeta y es un fichero                    400
+//	transfer_failed  subida/descarga fallida                            502
+//	io_error         error de E/S del host                              502
 //	apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
 //	                 del agente o de Docker (spec §10)
 //
@@ -1777,11 +1979,767 @@ func (x *ServerMetricSample) GetTps() float64 {
 	return 0
 }
 
+type FileEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Dir           bool                   `protobuf:"varint,2,opt,name=dir,proto3" json:"dir,omitempty"`
+	Symlink       bool                   `protobuf:"varint,3,opt,name=symlink,proto3" json:"symlink,omitempty"`
+	Size          uint64                 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
+	ModTimeUnixMs int64                  `protobuf:"varint,5,opt,name=mod_time_unix_ms,json=modTimeUnixMs,proto3" json:"mod_time_unix_ms,omitempty"`
+	Mode          uint32                 `protobuf:"varint,6,opt,name=mode,proto3" json:"mode,omitempty"` // bits de permisos (0o755…)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileEntry) Reset() {
+	*x = FileEntry{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileEntry) ProtoMessage() {}
+
+func (x *FileEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileEntry.ProtoReflect.Descriptor instead.
+func (*FileEntry) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *FileEntry) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *FileEntry) GetDir() bool {
+	if x != nil {
+		return x.Dir
+	}
+	return false
+}
+
+func (x *FileEntry) GetSymlink() bool {
+	if x != nil {
+		return x.Symlink
+	}
+	return false
+}
+
+func (x *FileEntry) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *FileEntry) GetModTimeUnixMs() int64 {
+	if x != nil {
+		return x.ModTimeUnixMs
+	}
+	return 0
+}
+
+func (x *FileEntry) GetMode() uint32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
+}
+
+type FilesList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesList) Reset() {
+	*x = FilesList{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesList) ProtoMessage() {}
+
+func (x *FilesList) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesList.ProtoReflect.Descriptor instead.
+func (*FilesList) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *FilesList) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesList) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type FilesListResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*FileEntry           `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`      // carpetas primero, luego por nombre
+	Truncated     bool                   `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"` // la carpeta tiene más entradas de las devueltas
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesListResult) Reset() {
+	*x = FilesListResult{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesListResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesListResult) ProtoMessage() {}
+
+func (x *FilesListResult) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesListResult.ProtoReflect.Descriptor instead.
+func (*FilesListResult) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *FilesListResult) GetEntries() []*FileEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+func (x *FilesListResult) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+type FilesStat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesStat) Reset() {
+	*x = FilesStat{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesStat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesStat) ProtoMessage() {}
+
+func (x *FilesStat) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesStat.ProtoReflect.Descriptor instead.
+func (*FilesStat) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *FilesStat) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesStat) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type FilesStatResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entry         *FileEntry             `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesStatResult) Reset() {
+	*x = FilesStatResult{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesStatResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesStatResult) ProtoMessage() {}
+
+func (x *FilesStatResult) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesStatResult.ProtoReflect.Descriptor instead.
+func (*FilesStatResult) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *FilesStatResult) GetEntry() *FileEntry {
+	if x != nil {
+		return x.Entry
+	}
+	return nil
+}
+
+// Lectura inline: como máximo 2 MiB (o max_bytes si es menor); si no, too_large.
+type FilesRead struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	MaxBytes      uint32                 `protobuf:"varint,3,opt,name=max_bytes,json=maxBytes,proto3" json:"max_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesRead) Reset() {
+	*x = FilesRead{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesRead) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesRead) ProtoMessage() {}
+
+func (x *FilesRead) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesRead.ProtoReflect.Descriptor instead.
+func (*FilesRead) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *FilesRead) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesRead) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FilesRead) GetMaxBytes() uint32 {
+	if x != nil {
+		return x.MaxBytes
+	}
+	return 0
+}
+
+type FilesReadResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       []byte                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
+	Size          uint64                 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesReadResult) Reset() {
+	*x = FilesReadResult{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesReadResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesReadResult) ProtoMessage() {}
+
+func (x *FilesReadResult) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesReadResult.ProtoReflect.Descriptor instead.
+func (*FilesReadResult) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *FilesReadResult) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+func (x *FilesReadResult) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+// Escritura inline atómica (temporal + rename), como máximo 2 MiB. Respuesta: Ack.
+type FilesWrite struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Content       []byte                 `protobuf:"bytes,3,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesWrite) Reset() {
+	*x = FilesWrite{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesWrite) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesWrite) ProtoMessage() {}
+
+func (x *FilesWrite) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesWrite.ProtoReflect.Descriptor instead.
+func (*FilesWrite) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *FilesWrite) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesWrite) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FilesWrite) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+type FilesMkdir struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesMkdir) Reset() {
+	*x = FilesMkdir{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesMkdir) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesMkdir) ProtoMessage() {}
+
+func (x *FilesMkdir) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesMkdir.ProtoReflect.Descriptor instead.
+func (*FilesMkdir) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *FilesMkdir) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesMkdir) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+// No sobrescribe: si `to` existe responde exists.
+type FilesRename struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	From          string                 `protobuf:"bytes,2,opt,name=from,proto3" json:"from,omitempty"`
+	To            string                 `protobuf:"bytes,3,opt,name=to,proto3" json:"to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesRename) Reset() {
+	*x = FilesRename{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesRename) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesRename) ProtoMessage() {}
+
+func (x *FilesRename) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesRename.ProtoReflect.Descriptor instead.
+func (*FilesRename) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *FilesRename) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesRename) GetFrom() string {
+	if x != nil {
+		return x.From
+	}
+	return ""
+}
+
+func (x *FilesRename) GetTo() string {
+	if x != nil {
+		return x.To
+	}
+	return ""
+}
+
+// Una carpeta se borra con todo su contenido; un enlace se borra a sí mismo.
+type FilesDelete struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesDelete) Reset() {
+	*x = FilesDelete{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesDelete) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesDelete) ProtoMessage() {}
+
+func (x *FilesDelete) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesDelete.ProtoReflect.Descriptor instead.
+func (*FilesDelete) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *FilesDelete) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesDelete) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+// El agente sube el fichero con PUT /agent/transfer/{transfer_id} y responde Ack
+// cuando el panel lo ha recibido entero.
+type FilesDownload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	TransferId    string                 `protobuf:"bytes,3,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesDownload) Reset() {
+	*x = FilesDownload{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesDownload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesDownload) ProtoMessage() {}
+
+func (x *FilesDownload) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesDownload.ProtoReflect.Descriptor instead.
+func (*FilesDownload) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *FilesDownload) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesDownload) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FilesDownload) GetTransferId() string {
+	if x != nil {
+		return x.TransferId
+	}
+	return ""
+}
+
+// El agente descarga el contenido con GET /agent/transfer/{transfer_id}, lo escribe
+// de forma atómica y responde Ack. size = -1 si el panel no conoce el tamaño.
+type FilesUpload struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	TransferId    string                 `protobuf:"bytes,3,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
+	Size          int64                  `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FilesUpload) Reset() {
+	*x = FilesUpload{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FilesUpload) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FilesUpload) ProtoMessage() {}
+
+func (x *FilesUpload) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FilesUpload.ProtoReflect.Descriptor instead.
+func (*FilesUpload) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *FilesUpload) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *FilesUpload) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FilesUpload) GetTransferId() string {
+	if x != nil {
+		return x.TransferId
+	}
+	return ""
+}
+
+func (x *FilesUpload) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
 var File_mcsm_v1_agent_proto protoreflect.FileDescriptor
 
 const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xec\x06\n" +
+	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xc5\f\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tstream_id\x18\x02 \x01(\x04R\bstreamId\x12&\n" +
@@ -1802,7 +2760,24 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x0fserver_observed\x18\x15 \x01(\v2\x17.mcsm.v1.ServerObservedH\x00R\x0eserverObserved\x12 \n" +
 	"\x03ack\x18\x16 \x01(\v2\f.mcsm.v1.AckH\x00R\x03ack\x12&\n" +
 	"\x05error\x18\x17 \x01(\v2\x0e.mcsm.v1.ErrorH\x00R\x05error\x129\n" +
-	"\fmetric_batch\x18\x1e \x01(\v2\x14.mcsm.v1.MetricBatchH\x00R\vmetricBatchB\x06\n" +
+	"\fmetric_batch\x18\x1e \x01(\v2\x14.mcsm.v1.MetricBatchH\x00R\vmetricBatch\x123\n" +
+	"\n" +
+	"files_list\x18F \x01(\v2\x12.mcsm.v1.FilesListH\x00R\tfilesList\x12F\n" +
+	"\x11files_list_result\x18G \x01(\v2\x18.mcsm.v1.FilesListResultH\x00R\x0ffilesListResult\x123\n" +
+	"\n" +
+	"files_stat\x18H \x01(\v2\x12.mcsm.v1.FilesStatH\x00R\tfilesStat\x12F\n" +
+	"\x11files_stat_result\x18I \x01(\v2\x18.mcsm.v1.FilesStatResultH\x00R\x0ffilesStatResult\x123\n" +
+	"\n" +
+	"files_read\x18J \x01(\v2\x12.mcsm.v1.FilesReadH\x00R\tfilesRead\x12F\n" +
+	"\x11files_read_result\x18K \x01(\v2\x18.mcsm.v1.FilesReadResultH\x00R\x0ffilesReadResult\x126\n" +
+	"\vfiles_write\x18L \x01(\v2\x13.mcsm.v1.FilesWriteH\x00R\n" +
+	"filesWrite\x126\n" +
+	"\vfiles_mkdir\x18M \x01(\v2\x13.mcsm.v1.FilesMkdirH\x00R\n" +
+	"filesMkdir\x129\n" +
+	"\ffiles_rename\x18N \x01(\v2\x14.mcsm.v1.FilesRenameH\x00R\vfilesRename\x129\n" +
+	"\ffiles_delete\x18O \x01(\v2\x14.mcsm.v1.FilesDeleteH\x00R\vfilesDelete\x12?\n" +
+	"\x0efiles_download\x18P \x01(\v2\x16.mcsm.v1.FilesDownloadH\x00R\rfilesDownload\x129\n" +
+	"\ffiles_upload\x18Q \x01(\v2\x14.mcsm.v1.FilesUploadH\x00R\vfilesUploadB\x06\n" +
 	"\x04body\"\x86\x01\n" +
 	"\bHostInfo\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x12\n" +
@@ -1911,7 +2886,59 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\aping_ms\x18\n" +
 	" \x01(\rR\x06pingMs\x12\x15\n" +
 	"\x03tps\x18\v \x01(\x01H\x00R\x03tps\x88\x01\x01B\x06\n" +
-	"\x04_tps*c\n" +
+	"\x04_tps\"\x9c\x01\n" +
+	"\tFileEntry\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
+	"\x03dir\x18\x02 \x01(\bR\x03dir\x12\x18\n" +
+	"\asymlink\x18\x03 \x01(\bR\asymlink\x12\x12\n" +
+	"\x04size\x18\x04 \x01(\x04R\x04size\x12'\n" +
+	"\x10mod_time_unix_ms\x18\x05 \x01(\x03R\rmodTimeUnixMs\x12\x12\n" +
+	"\x04mode\x18\x06 \x01(\rR\x04mode\"<\n" +
+	"\tFilesList\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"]\n" +
+	"\x0fFilesListResult\x12,\n" +
+	"\aentries\x18\x01 \x03(\v2\x12.mcsm.v1.FileEntryR\aentries\x12\x1c\n" +
+	"\ttruncated\x18\x02 \x01(\bR\ttruncated\"<\n" +
+	"\tFilesStat\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\";\n" +
+	"\x0fFilesStatResult\x12(\n" +
+	"\x05entry\x18\x01 \x01(\v2\x12.mcsm.v1.FileEntryR\x05entry\"Y\n" +
+	"\tFilesRead\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1b\n" +
+	"\tmax_bytes\x18\x03 \x01(\rR\bmaxBytes\"?\n" +
+	"\x0fFilesReadResult\x12\x18\n" +
+	"\acontent\x18\x01 \x01(\fR\acontent\x12\x12\n" +
+	"\x04size\x18\x02 \x01(\x04R\x04size\"W\n" +
+	"\n" +
+	"FilesWrite\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x18\n" +
+	"\acontent\x18\x03 \x01(\fR\acontent\"=\n" +
+	"\n" +
+	"FilesMkdir\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"N\n" +
+	"\vFilesRename\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04from\x18\x02 \x01(\tR\x04from\x12\x0e\n" +
+	"\x02to\x18\x03 \x01(\tR\x02to\">\n" +
+	"\vFilesDelete\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"a\n" +
+	"\rFilesDownload\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1f\n" +
+	"\vtransfer_id\x18\x03 \x01(\tR\n" +
+	"transferId\"s\n" +
+	"\vFilesUpload\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1f\n" +
+	"\vtransfer_id\x18\x03 \x01(\tR\n" +
+	"transferId\x12\x12\n" +
+	"\x04size\x18\x04 \x01(\x03R\x04size*c\n" +
 	"\fDesiredState\x12\x1d\n" +
 	"\x19DESIRED_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15DESIRED_STATE_RUNNING\x10\x01\x12\x19\n" +
@@ -1938,7 +2965,7 @@ func file_mcsm_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
+var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_mcsm_v1_agent_proto_goTypes = []any{
 	(DesiredState)(0),          // 0: mcsm.v1.DesiredState
 	(PowerActionType)(0),       // 1: mcsm.v1.PowerActionType
@@ -1964,8 +2991,21 @@ var file_mcsm_v1_agent_proto_goTypes = []any{
 	(*MetricBatch)(nil),        // 21: mcsm.v1.MetricBatch
 	(*HostMetricSample)(nil),   // 22: mcsm.v1.HostMetricSample
 	(*ServerMetricSample)(nil), // 23: mcsm.v1.ServerMetricSample
-	nil,                        // 24: mcsm.v1.Hello.SpecVersionsEntry
-	nil,                        // 25: mcsm.v1.Hello.DesiredStatesEntry
+	(*FileEntry)(nil),          // 24: mcsm.v1.FileEntry
+	(*FilesList)(nil),          // 25: mcsm.v1.FilesList
+	(*FilesListResult)(nil),    // 26: mcsm.v1.FilesListResult
+	(*FilesStat)(nil),          // 27: mcsm.v1.FilesStat
+	(*FilesStatResult)(nil),    // 28: mcsm.v1.FilesStatResult
+	(*FilesRead)(nil),          // 29: mcsm.v1.FilesRead
+	(*FilesReadResult)(nil),    // 30: mcsm.v1.FilesReadResult
+	(*FilesWrite)(nil),         // 31: mcsm.v1.FilesWrite
+	(*FilesMkdir)(nil),         // 32: mcsm.v1.FilesMkdir
+	(*FilesRename)(nil),        // 33: mcsm.v1.FilesRename
+	(*FilesDelete)(nil),        // 34: mcsm.v1.FilesDelete
+	(*FilesDownload)(nil),      // 35: mcsm.v1.FilesDownload
+	(*FilesUpload)(nil),        // 36: mcsm.v1.FilesUpload
+	nil,                        // 37: mcsm.v1.Hello.SpecVersionsEntry
+	nil,                        // 38: mcsm.v1.Hello.DesiredStatesEntry
 }
 var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	4,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
@@ -1983,23 +3023,37 @@ var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	19, // 12: mcsm.v1.Envelope.ack:type_name -> mcsm.v1.Ack
 	20, // 13: mcsm.v1.Envelope.error:type_name -> mcsm.v1.Error
 	21, // 14: mcsm.v1.Envelope.metric_batch:type_name -> mcsm.v1.MetricBatch
-	3,  // 15: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
-	24, // 16: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
-	25, // 17: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
-	0,  // 18: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
-	6,  // 19: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
-	6,  // 20: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
-	1,  // 21: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
-	16, // 22: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
-	17, // 23: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
-	22, // 24: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
-	23, // 25: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
-	0,  // 26: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
-	27, // [27:27] is the sub-list for method output_type
-	27, // [27:27] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	25, // 15: mcsm.v1.Envelope.files_list:type_name -> mcsm.v1.FilesList
+	26, // 16: mcsm.v1.Envelope.files_list_result:type_name -> mcsm.v1.FilesListResult
+	27, // 17: mcsm.v1.Envelope.files_stat:type_name -> mcsm.v1.FilesStat
+	28, // 18: mcsm.v1.Envelope.files_stat_result:type_name -> mcsm.v1.FilesStatResult
+	29, // 19: mcsm.v1.Envelope.files_read:type_name -> mcsm.v1.FilesRead
+	30, // 20: mcsm.v1.Envelope.files_read_result:type_name -> mcsm.v1.FilesReadResult
+	31, // 21: mcsm.v1.Envelope.files_write:type_name -> mcsm.v1.FilesWrite
+	32, // 22: mcsm.v1.Envelope.files_mkdir:type_name -> mcsm.v1.FilesMkdir
+	33, // 23: mcsm.v1.Envelope.files_rename:type_name -> mcsm.v1.FilesRename
+	34, // 24: mcsm.v1.Envelope.files_delete:type_name -> mcsm.v1.FilesDelete
+	35, // 25: mcsm.v1.Envelope.files_download:type_name -> mcsm.v1.FilesDownload
+	36, // 26: mcsm.v1.Envelope.files_upload:type_name -> mcsm.v1.FilesUpload
+	3,  // 27: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
+	37, // 28: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
+	38, // 29: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
+	0,  // 30: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
+	6,  // 31: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
+	6,  // 32: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
+	1,  // 33: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
+	16, // 34: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
+	17, // 35: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
+	22, // 36: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
+	23, // 37: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
+	24, // 38: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
+	24, // 39: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
+	0,  // 40: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	41, // [41:41] is the sub-list for method output_type
+	41, // [41:41] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }
@@ -2023,6 +3077,18 @@ func file_mcsm_v1_agent_proto_init() {
 		(*Envelope_Ack)(nil),
 		(*Envelope_Error)(nil),
 		(*Envelope_MetricBatch)(nil),
+		(*Envelope_FilesList)(nil),
+		(*Envelope_FilesListResult)(nil),
+		(*Envelope_FilesStat)(nil),
+		(*Envelope_FilesStatResult)(nil),
+		(*Envelope_FilesRead)(nil),
+		(*Envelope_FilesReadResult)(nil),
+		(*Envelope_FilesWrite)(nil),
+		(*Envelope_FilesMkdir)(nil),
+		(*Envelope_FilesRename)(nil),
+		(*Envelope_FilesDelete)(nil),
+		(*Envelope_FilesDownload)(nil),
+		(*Envelope_FilesUpload)(nil),
 	}
 	file_mcsm_v1_agent_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
@@ -2031,7 +3097,7 @@ func file_mcsm_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mcsm_v1_agent_proto_rawDesc), len(file_mcsm_v1_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   24,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

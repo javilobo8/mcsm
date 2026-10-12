@@ -15,7 +15,8 @@ export const shellArg = (v: string): string => (SHELL_SAFE.test(v) ? v : `'${v.r
 export function dockerRunSnippet(publicUrl: string, token: string, dataRoot = "/srv/minecraft"): string {
   return [
     "docker network create mcsm 2>/dev/null || true",
-    "docker run -d --name mcsm-agent --restart unless-stopped \\",
+    // --stop-timeout: docker stop mata a los 10 s; el agente espera hasta 20 s a sus operaciones de archivos.
+    "docker run -d --name mcsm-agent --restart unless-stopped --stop-timeout 30 \\",
     "  --network mcsm \\",
     "  -v /var/run/docker.sock:/var/run/docker.sock \\",
     `  -v ${shellArg(dataRoot)}:${shellArg(dataRoot)} \\`,

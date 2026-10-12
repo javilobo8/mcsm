@@ -72,6 +72,8 @@ type App struct {
 	forced  map[string]bool // reconciliaciones pedidas sin backoff (SyncSpecs), pendientes de ejecutar
 	sem     chan struct{}
 	bg      sync.WaitGroup // tareas de fondo (sincronización y despachos)
+
+	xfer transferGate // transferencias de archivos en curso (files.go)
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
@@ -153,11 +155,16 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-3 ──
 	// ── plan-4 ──
 	// ── plan-5 ──
+	go a.sweepTemps(ctx) // temporales huérfanos de subidas cortadas (kill -9, corte de luz)
 	// ── plan-6 ──
 	// ── plan-7 ──
 	// ── plan-8 ──
 	// ── plan-9 ──
 	client.Run(ctx)
+	// Cierre: los Files* en curso (ya cortados por ctx) terminan de limpiar sus temporales.
+	if !a.xfer.wait(filesShutdownWait) {
+		log.Warn("cierre sin esperar a las operaciones de archivos en curso: venció el plazo", "plazo", filesShutdownWait)
+	}
 	return nil
 }
 
@@ -358,6 +365,11 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	// ── plan-3 ──
 	// ── plan-4 ──
 	// ── plan-5 ──
+	case *mcsmv1.Envelope_FilesList, *mcsmv1.Envelope_FilesStat, *mcsmv1.Envelope_FilesRead,
+		*mcsmv1.Envelope_FilesWrite, *mcsmv1.Envelope_FilesMkdir, *mcsmv1.Envelope_FilesRename,
+		*mcsmv1.Envelope_FilesDelete, *mcsmv1.Envelope_FilesDownload, *mcsmv1.Envelope_FilesUpload:
+		// Disco y transferencias con el contexto de vida: un corte del WS no los aborta.
+		a.handleFiles(life, env, send)
 	// ── plan-6 ──
 	// ── plan-7 ──
 	// ── plan-8 ──

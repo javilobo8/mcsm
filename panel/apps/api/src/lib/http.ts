@@ -25,7 +25,13 @@ const STATUS_BY_CODE: Record<string, number> = {
   [AgentErrorCode.TooLarge]: 413,
   [AgentErrorCode.Timeout]: 504,
   // Archivos (Plan 5): rutas inválidas o del tipo equivocado.
-  invalid_path: 400, path_outside: 400, root: 400, is_dir: 400, not_dir: 400,
+  [AgentErrorCode.InvalidPath]: 400,
+  [AgentErrorCode.PathOutside]: 400,
+  [AgentErrorCode.Root]: 400,
+  [AgentErrorCode.IsDir]: 400,
+  [AgentErrorCode.NotDir]: 400,
+  [AgentErrorCode.TransferFailed]: 502,
+  [AgentErrorCode.IoError]: 502,
 };
 
 /**

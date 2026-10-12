@@ -6,7 +6,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 )
+
+// defaultUploadMax es el tamaño máximo por defecto de una subida de archivo (UPLOAD_MAX_BYTES).
+const defaultUploadMax = 4 << 30
 
 // Config es la configuración del agente, leída del entorno.
 type Config struct {
@@ -17,6 +21,8 @@ type Config struct {
 	AgentData   string
 	Network     string
 	Version     string
+	// UploadMax es el tope duro de una subida de archivo, con o sin tamaño anunciado.
+	UploadMax int64
 }
 
 func getenv(k, def string) string {
@@ -37,6 +43,7 @@ func LoadConfig(version string) (Config, error) {
 		AgentData:   getenv("AGENT_DATA", "/var/lib/mcsm-agent"),
 		Network:     getenv("MCSM_NETWORK", "mcsm"),
 		Version:     version,
+		UploadMax:   defaultUploadMax,
 	}
 	if cfg.PanelURL == "" {
 		return cfg, errors.New("PANEL_URL es obligatoria")
@@ -47,6 +54,13 @@ func LoadConfig(version string) (Config, error) {
 	}
 	if !filepath.IsAbs(cfg.DataRoot) {
 		return cfg, fmt.Errorf("DATA_ROOT debe ser una ruta absoluta (recibido %q)", cfg.DataRoot)
+	}
+	if v := os.Getenv("UPLOAD_MAX_BYTES"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			return cfg, fmt.Errorf("UPLOAD_MAX_BYTES debe ser un número de bytes mayor que 0 (recibido %q)", v)
+		}
+		cfg.UploadMax = n
 	}
 	return cfg, nil
 }

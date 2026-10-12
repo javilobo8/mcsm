@@ -19,3 +19,14 @@ const (
 	BadSpec        = "bad_spec"        // la spec guardada no se puede leer
 	RconFailed     = "rcon_failed"     // fallo de RCON
 )
+
+// Archivos (Plan 5). unknown_server, not_found, exists y too_large están arriba.
+const (
+	InvalidPath    = "invalid_path"    // ruta con «..», caracteres de control o fichero no regular
+	PathOutside    = "path_outside"    // la ruta resuelta sale de /data del servidor
+	IsDir          = "is_dir"          // era un fichero y es una carpeta
+	NotDir         = "not_dir"         // era una carpeta y es un fichero
+	Root           = "root"            // operación no permitida sobre la raíz
+	TransferFailed = "transfer_failed" // subida/descarga fallida
+	IOError        = "io_error"        // error de E/S del host
+)

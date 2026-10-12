@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Trash2 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,6 +11,8 @@ import { PowerButtons } from "@/components/power-buttons";
 import { Console } from "@/components/console";
 import { ServerCharts } from "@/components/server-charts";
 import { ServerConfigForm } from "@/components/server-config-form";
+import { FileBrowser } from "@/components/files/file-browser";
+import { GuardedTabs } from "@/components/guarded-tabs";
 import { useServer } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
 import { api, apiPath, ApiError } from "@/lib/api";
@@ -74,12 +76,13 @@ export function ServerPage() {
         </div>
       </header>
 
-      <Tabs defaultValue="overview">
+      <GuardedTabs defaultValue="overview">
         <TabsList><TabsTrigger value="overview">Resumen</TabsTrigger><TabsTrigger value="console">Consola</TabsTrigger><TabsTrigger value="config">Configuración</TabsTrigger>
           {/* ── plan-2 ── */}
           {/* ── plan-3 ── */}
           {/* ── plan-4 ── */}
           {/* ── plan-5 ── */}
+          <TabsTrigger value="files">Archivos</TabsTrigger>
           {/* ── plan-6 ── */}
           {/* ── plan-7 ── */}
           {/* ── plan-8 ── */}
@@ -102,11 +105,12 @@ export function ServerPage() {
         {/* ── plan-3 ── */}
         {/* ── plan-4 ── */}
         {/* ── plan-5 ── */}
+        <TabsContent value="files"><FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
         {/* ── plan-6 ── */}
         {/* ── plan-7 ── */}
         {/* ── plan-8 ── */}
         {/* ── plan-9 ── */}
-      </Tabs>
+      </GuardedTabs>
 
       <Dialog open={confirmDel} onOpenChange={(o) => { if (!del.isPending) setConfirmDel(o); }}>
         <DialogContent>

@@ -16,6 +16,22 @@ Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → A
 
 `DATA_ROOT` se monta en el agente **con la misma ruta dentro y fuera** (`-v /srv/minecraft:/srv/minecraft`): el agente lo comprueba al arrancar y no arranca si no está montado desde el host.
 
+## Archivos
+
+La pestaña **Archivos** de cada servidor navega por su carpeta `data`, edita ficheros de texto (hasta 2 MiB) y sube y descarga ficheros. Las subidas y descargas van en streaming navegador ↔ panel ↔ agente, sin pasar por el disco del panel.
+
+Configuración del agente (por nodo, variable de entorno):
+
+| Variable | Por defecto | Qué hace |
+|---|---|---|
+| `UPLOAD_MAX_BYTES` | `4294967296` (4 GiB) | Tamaño máximo de una subida, en bytes. Por encima, el nodo la rechaza con «la subida supera el máximo… (UPLOAD_MAX_BYTES)». Ejemplo para 10 GiB: `UPLOAD_MAX_BYTES=10737418240`. |
+
+Límites fijos, para saber qué esperar:
+
+- Como mucho **4 subidas o descargas a la vez por nodo**; la quinta recibe «el nodo ya tiene 4 transferencias de archivos en curso».
+- Una transferencia se corta si pasa **60 s sin moverse un byte** (el agente) o 120 s (el panel); mientras avance, no tiene plazo total.
+- Las escrituras son atómicas: un temporal oculto `.mcsm-tmp-…` en la misma carpeta y un `rename` al terminar. Si el agente muere a mitad (corte de luz, `kill -9`), el temporal se borra al volver a arrancar (si lleva más de 1 h sin tocarse). Al pararlo (`docker stop`, actualización), el agente espera hasta 20 s a que las operaciones de archivos en curso terminen o limpien.
+
 ## Desarrollo
 
 ```bash

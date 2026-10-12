@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mcsm/v1/agent.proto.
  */
 export const file_mcsm_v1_agent: GenFile = /*@__PURE__*/
-  fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIrIFCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAEiwKDG1ldHJpY19iYXRjaBgeIAEoCzIULm1jc20udjEuTWV0cmljQmF0Y2hIAEIGCgRib2R5Il0KCEhvc3RJbmZvEhAKCGhvc3RuYW1lGAEgASgJEgwKBGNwdXMYAiABKA0SFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEgoKAm9zGAQgASgJEgwKBGFyY2gYBSABKAkizQIKBUhlbGxvEhUKDWFnZW50X3ZlcnNpb24YASABKAkSFgoOZG9ja2VyX3ZlcnNpb24YAiABKAkSHwoEaG9zdBgDIAEoCzIRLm1jc20udjEuSG9zdEluZm8SNwoNc3BlY192ZXJzaW9ucxgEIAMoCzIgLm1jc20udjEuSGVsbG8uU3BlY1ZlcnNpb25zRW50cnkSOQoOZGVzaXJlZF9zdGF0ZXMYBSADKAsyIS5tY3NtLnYxLkhlbGxvLkRlc2lyZWRTdGF0ZXNFbnRyeRozChFTcGVjVmVyc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBGksKEkRlc2lyZWRTdGF0ZXNFbnRyeRILCgNrZXkYASABKAkSJAoFdmFsdWUYAiABKA4yFS5tY3NtLnYxLkRlc2lyZWRTdGF0ZToCOAEiGwoISGVsbG9BY2sSDwoHbm9kZV9pZBgBIAEoCSJ/CgpTZXJ2ZXJTcGVjEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEg8KB3ZlcnNpb24YAyABKAQSLAoNZGVzaXJlZF9zdGF0ZRgEIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlEhEKCXNwZWNfanNvbhgFIAEoDCJGCglTeW5jU3BlY3MSJAoHc2VydmVycxgBIAMoCzITLm1jc20udjEuU2VydmVyU3BlYxITCgtyZW1vdmVkX2lkcxgCIAMoCSIwCglBcHBseVNwZWMSIwoGc2VydmVyGAEgASgLMhMubWNzbS52MS5TZXJ2ZXJTcGVjIjYKDFJlbW92ZVNlcnZlchIRCglzZXJ2ZXJfaWQYASABKAkSEwoLZGVsZXRlX2RhdGEYAiABKAgiSgoLUG93ZXJBY3Rpb24SEQoJc2VydmVyX2lkGAEgASgJEigKBmFjdGlvbhgCIAEoDjIYLm1jc20udjEuUG93ZXJBY3Rpb25UeXBlIjEKC1NlbmRDb21tYW5kEhEKCXNlcnZlcl9pZBgBIAEoCRIPCgdjb21tYW5kGAIgASgJIh8KDUNvbW1hbmRSZXN1bHQSDgoGb3V0cHV0GAEgASgJIjAKDVN1YnNjcmliZUxvZ3MSEQoJc2VydmVyX2lkGAEgASgJEgwKBHRhaWwYAiABKA0iPgoHTG9nTGluZRIRCglzZXJ2ZXJfaWQYASABKAkSEgoKdHNfdW5peF9tcxgCIAEoAxIMCgRsaW5lGAMgASgJIh0KC1N0cmVhbUNsb3NlEg4KBnJlYXNvbhgBIAEoCSJsCghNY1N0YXR1cxIOCgZvbmxpbmUYASABKAgSFgoOcGxheWVyc19vbmxpbmUYAiABKA0SEwoLcGxheWVyc19tYXgYAyABKA0SDwoHdmVyc2lvbhgEIAEoCRISCgpsYXRlbmN5X21zGAUgASgNIrIBCghPYnNlcnZlZBIUCgxjb250YWluZXJfaWQYASABKAkSDQoFc3RhdGUYAiABKAkSDgoGaGVhbHRoGAMgASgJEhcKD3N0YXJ0ZWRfYXRfdW5peBgEIAEoAxIRCglleGl0X2NvZGUYBSABKAUSFwoPYXBwbGllZF92ZXJzaW9uGAYgASgEEg0KBWVycm9yGAcgASgJEh0KAm1jGAggASgLMhEubWNzbS52MS5NY1N0YXR1cyJcCg5TZXJ2ZXJPYnNlcnZlZBIRCglzZXJ2ZXJfaWQYASABKAkSIwoIb2JzZXJ2ZWQYAiABKAsyES5tY3NtLnYxLk9ic2VydmVkEhIKCnRzX3VuaXhfbXMYAyABKAMiBQoDQWNrIiYKBUVycm9yEgwKBGNvZGUYASABKAkSDwoHbWVzc2FnZRgCIAEoCSJ1CgtNZXRyaWNCYXRjaBIPCgd0c191bml4GAEgASgDEicKBGhvc3QYAiABKAsyGS5tY3NtLnYxLkhvc3RNZXRyaWNTYW1wbGUSLAoHc2VydmVycxgDIAMoCzIbLm1jc20udjEuU2VydmVyTWV0cmljU2FtcGxlIocBChBIb3N0TWV0cmljU2FtcGxlEg8KB2NwdV9wY3QYASABKAESFgoObWVtX3VzZWRfYnl0ZXMYAiABKAQSFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEhcKD2Rpc2tfdXNlZF9ieXRlcxgEIAEoBBIYChBkaXNrX3RvdGFsX2J5dGVzGAUgASgEIvsBChJTZXJ2ZXJNZXRyaWNTYW1wbGUSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NwdV9wY3QYAiABKAESEQoJbWVtX2J5dGVzGAMgASgEEhcKD21lbV9saW1pdF9ieXRlcxgEIAEoBBIUCgxuZXRfcnhfYnl0ZXMYBSABKAQSFAoMbmV0X3R4X2J5dGVzGAYgASgEEhEKCW1jX29ubGluZRgHIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgIIAEoDRITCgtwbGF5ZXJzX21heBgJIAEoDRIPCgdwaW5nX21zGAogASgNEhAKA3RwcxgLIAEoAUgAiAEBQgYKBF90cHMqYwoMRGVzaXJlZFN0YXRlEh0KGURFU0lSRURfU1RBVEVfVU5TUEVDSUZJRUQQABIZChVERVNJUkVEX1NUQVRFX1JVTk5JTkcQARIZChVERVNJUkVEX1NUQVRFX1NUT1BQRUQQAiqoAQoPUG93ZXJBY3Rpb25UeXBlEiEKHVBPV0VSX0FDVElPTl9UWVBFX1VOU1BFQ0lGSUVEEAASGwoXUE9XRVJfQUNUSU9OX1RZUEVfU1RBUlQQARIaChZQT1dFUl9BQ1RJT05fVFlQRV9TVE9QEAISHQoZUE9XRVJfQUNUSU9OX1RZUEVfUkVTVEFSVBADEhoKFlBPV0VSX0FDVElPTl9UWVBFX0tJTEwQBEJ1Cgtjb20ubWNzbS52MUIKQWdlbnRQcm90b1ABWh1tY3NtL2FnZW50L2dlbi9tY3NtL3YxO21jc212MaICA01YWKoCB01jc20uVjHKAgdNY3NtXFYx4gITTWNzbVxWMVxHUEJNZXRhZGF0YeoCCE1jc206OlYxYgZwcm90bzM");
+  fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIukJCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAEiwKDG1ldHJpY19iYXRjaBgeIAEoCzIULm1jc20udjEuTWV0cmljQmF0Y2hIABIoCgpmaWxlc19saXN0GEYgASgLMhIubWNzbS52MS5GaWxlc0xpc3RIABI1ChFmaWxlc19saXN0X3Jlc3VsdBhHIAEoCzIYLm1jc20udjEuRmlsZXNMaXN0UmVzdWx0SAASKAoKZmlsZXNfc3RhdBhIIAEoCzISLm1jc20udjEuRmlsZXNTdGF0SAASNQoRZmlsZXNfc3RhdF9yZXN1bHQYSSABKAsyGC5tY3NtLnYxLkZpbGVzU3RhdFJlc3VsdEgAEigKCmZpbGVzX3JlYWQYSiABKAsyEi5tY3NtLnYxLkZpbGVzUmVhZEgAEjUKEWZpbGVzX3JlYWRfcmVzdWx0GEsgASgLMhgubWNzbS52MS5GaWxlc1JlYWRSZXN1bHRIABIqCgtmaWxlc193cml0ZRhMIAEoCzITLm1jc20udjEuRmlsZXNXcml0ZUgAEioKC2ZpbGVzX21rZGlyGE0gASgLMhMubWNzbS52MS5GaWxlc01rZGlySAASLAoMZmlsZXNfcmVuYW1lGE4gASgLMhQubWNzbS52MS5GaWxlc1JlbmFtZUgAEiwKDGZpbGVzX2RlbGV0ZRhPIAEoCzIULm1jc20udjEuRmlsZXNEZWxldGVIABIwCg5maWxlc19kb3dubG9hZBhQIAEoCzIWLm1jc20udjEuRmlsZXNEb3dubG9hZEgAEiwKDGZpbGVzX3VwbG9hZBhRIAEoCzIULm1jc20udjEuRmlsZXNVcGxvYWRIAEIGCgRib2R5Il0KCEhvc3RJbmZvEhAKCGhvc3RuYW1lGAEgASgJEgwKBGNwdXMYAiABKA0SFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEgoKAm9zGAQgASgJEgwKBGFyY2gYBSABKAkizQIKBUhlbGxvEhUKDWFnZW50X3ZlcnNpb24YASABKAkSFgoOZG9ja2VyX3ZlcnNpb24YAiABKAkSHwoEaG9zdBgDIAEoCzIRLm1jc20udjEuSG9zdEluZm8SNwoNc3BlY192ZXJzaW9ucxgEIAMoCzIgLm1jc20udjEuSGVsbG8uU3BlY1ZlcnNpb25zRW50cnkSOQoOZGVzaXJlZF9zdGF0ZXMYBSADKAsyIS5tY3NtLnYxLkhlbGxvLkRlc2lyZWRTdGF0ZXNFbnRyeRozChFTcGVjVmVyc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBGksKEkRlc2lyZWRTdGF0ZXNFbnRyeRILCgNrZXkYASABKAkSJAoFdmFsdWUYAiABKA4yFS5tY3NtLnYxLkRlc2lyZWRTdGF0ZToCOAEiGwoISGVsbG9BY2sSDwoHbm9kZV9pZBgBIAEoCSJ/CgpTZXJ2ZXJTcGVjEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEg8KB3ZlcnNpb24YAyABKAQSLAoNZGVzaXJlZF9zdGF0ZRgEIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlEhEKCXNwZWNfanNvbhgFIAEoDCJGCglTeW5jU3BlY3MSJAoHc2VydmVycxgBIAMoCzITLm1jc20udjEuU2VydmVyU3BlYxITCgtyZW1vdmVkX2lkcxgCIAMoCSIwCglBcHBseVNwZWMSIwoGc2VydmVyGAEgASgLMhMubWNzbS52MS5TZXJ2ZXJTcGVjIjYKDFJlbW92ZVNlcnZlchIRCglzZXJ2ZXJfaWQYASABKAkSEwoLZGVsZXRlX2RhdGEYAiABKAgiSgoLUG93ZXJBY3Rpb24SEQoJc2VydmVyX2lkGAEgASgJEigKBmFjdGlvbhgCIAEoDjIYLm1jc20udjEuUG93ZXJBY3Rpb25UeXBlIjEKC1NlbmRDb21tYW5kEhEKCXNlcnZlcl9pZBgBIAEoCRIPCgdjb21tYW5kGAIgASgJIh8KDUNvbW1hbmRSZXN1bHQSDgoGb3V0cHV0GAEgASgJIjAKDVN1YnNjcmliZUxvZ3MSEQoJc2VydmVyX2lkGAEgASgJEgwKBHRhaWwYAiABKA0iPgoHTG9nTGluZRIRCglzZXJ2ZXJfaWQYASABKAkSEgoKdHNfdW5peF9tcxgCIAEoAxIMCgRsaW5lGAMgASgJIh0KC1N0cmVhbUNsb3NlEg4KBnJlYXNvbhgBIAEoCSJsCghNY1N0YXR1cxIOCgZvbmxpbmUYASABKAgSFgoOcGxheWVyc19vbmxpbmUYAiABKA0SEwoLcGxheWVyc19tYXgYAyABKA0SDwoHdmVyc2lvbhgEIAEoCRISCgpsYXRlbmN5X21zGAUgASgNIrIBCghPYnNlcnZlZBIUCgxjb250YWluZXJfaWQYASABKAkSDQoFc3RhdGUYAiABKAkSDgoGaGVhbHRoGAMgASgJEhcKD3N0YXJ0ZWRfYXRfdW5peBgEIAEoAxIRCglleGl0X2NvZGUYBSABKAUSFwoPYXBwbGllZF92ZXJzaW9uGAYgASgEEg0KBWVycm9yGAcgASgJEh0KAm1jGAggASgLMhEubWNzbS52MS5NY1N0YXR1cyJcCg5TZXJ2ZXJPYnNlcnZlZBIRCglzZXJ2ZXJfaWQYASABKAkSIwoIb2JzZXJ2ZWQYAiABKAsyES5tY3NtLnYxLk9ic2VydmVkEhIKCnRzX3VuaXhfbXMYAyABKAMiBQoDQWNrIiYKBUVycm9yEgwKBGNvZGUYASABKAkSDwoHbWVzc2FnZRgCIAEoCSJ1CgtNZXRyaWNCYXRjaBIPCgd0c191bml4GAEgASgDEicKBGhvc3QYAiABKAsyGS5tY3NtLnYxLkhvc3RNZXRyaWNTYW1wbGUSLAoHc2VydmVycxgDIAMoCzIbLm1jc20udjEuU2VydmVyTWV0cmljU2FtcGxlIocBChBIb3N0TWV0cmljU2FtcGxlEg8KB2NwdV9wY3QYASABKAESFgoObWVtX3VzZWRfYnl0ZXMYAiABKAQSFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEhcKD2Rpc2tfdXNlZF9ieXRlcxgEIAEoBBIYChBkaXNrX3RvdGFsX2J5dGVzGAUgASgEIvsBChJTZXJ2ZXJNZXRyaWNTYW1wbGUSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NwdV9wY3QYAiABKAESEQoJbWVtX2J5dGVzGAMgASgEEhcKD21lbV9saW1pdF9ieXRlcxgEIAEoBBIUCgxuZXRfcnhfYnl0ZXMYBSABKAQSFAoMbmV0X3R4X2J5dGVzGAYgASgEEhEKCW1jX29ubGluZRgHIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgIIAEoDRITCgtwbGF5ZXJzX21heBgJIAEoDRIPCgdwaW5nX21zGAogASgNEhAKA3RwcxgLIAEoAUgAiAEBQgYKBF90cHMibQoJRmlsZUVudHJ5EgwKBG5hbWUYASABKAkSCwoDZGlyGAIgASgIEg8KB3N5bWxpbmsYAyABKAgSDAoEc2l6ZRgEIAEoBBIYChBtb2RfdGltZV91bml4X21zGAUgASgDEgwKBG1vZGUYBiABKA0iLAoJRmlsZXNMaXN0EhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJIkkKD0ZpbGVzTGlzdFJlc3VsdBIjCgdlbnRyaWVzGAEgAygLMhIubWNzbS52MS5GaWxlRW50cnkSEQoJdHJ1bmNhdGVkGAIgASgIIiwKCUZpbGVzU3RhdBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCSI0Cg9GaWxlc1N0YXRSZXN1bHQSIQoFZW50cnkYASABKAsyEi5tY3NtLnYxLkZpbGVFbnRyeSI/CglGaWxlc1JlYWQSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkSEQoJbWF4X2J5dGVzGAMgASgNIjAKD0ZpbGVzUmVhZFJlc3VsdBIPCgdjb250ZW50GAEgASgMEgwKBHNpemUYAiABKAQiPgoKRmlsZXNXcml0ZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIPCgdjb250ZW50GAMgASgMIi0KCkZpbGVzTWtkaXISEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiOgoLRmlsZXNSZW5hbWUSEQoJc2VydmVyX2lkGAEgASgJEgwKBGZyb20YAiABKAkSCgoCdG8YAyABKAkiLgoLRmlsZXNEZWxldGUSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiRQoNRmlsZXNEb3dubG9hZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCSJRCgtGaWxlc1VwbG9hZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCRIMCgRzaXplGAQgASgDKmMKDERlc2lyZWRTdGF0ZRIdChlERVNJUkVEX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVREVTSVJFRF9TVEFURV9SVU5OSU5HEAESGQoVREVTSVJFRF9TVEFURV9TVE9QUEVEEAIqqAEKD1Bvd2VyQWN0aW9uVHlwZRIhCh1QT1dFUl9BQ1RJT05fVFlQRV9VTlNQRUNJRklFRBAAEhsKF1BPV0VSX0FDVElPTl9UWVBFX1NUQVJUEAESGgoWUE9XRVJfQUNUSU9OX1RZUEVfU1RPUBACEh0KGVBPV0VSX0FDVElPTl9UWVBFX1JFU1RBUlQQAxIaChZQT1dFUl9BQ1RJT05fVFlQRV9LSUxMEARCdQoLY29tLm1jc20udjFCCkFnZW50UHJvdG9QAVodbWNzbS9hZ2VudC9nZW4vbWNzbS92MTttY3NtdjGiAgNNWFiqAgdNY3NtLlYxygIHTWNzbVxWMeICE01jc21cVjFcR1BCTWV0YWRhdGHqAghNY3NtOjpWMWIGcHJvdG8z");
 
 /**
  * Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
@@ -120,18 +120,91 @@ export type Envelope = Message<"mcsm.v1.Envelope"> & {
     /**
      * ── plan-2 ──
      *
+     * @generated from field: mcsm.v1.MetricBatch metric_batch = 30;
+     */
+    value: MetricBatch;
+    case: "metricBatch";
+  } | {
+    /**
      * ── plan-3 ──
      * ── plan-4 ──
      * ── plan-5 ──
+     *
+     * @generated from field: mcsm.v1.FilesList files_list = 70;
+     */
+    value: FilesList;
+    case: "filesList";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesListResult files_list_result = 71;
+     */
+    value: FilesListResult;
+    case: "filesListResult";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesStat files_stat = 72;
+     */
+    value: FilesStat;
+    case: "filesStat";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesStatResult files_stat_result = 73;
+     */
+    value: FilesStatResult;
+    case: "filesStatResult";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesRead files_read = 74;
+     */
+    value: FilesRead;
+    case: "filesRead";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesReadResult files_read_result = 75;
+     */
+    value: FilesReadResult;
+    case: "filesReadResult";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesWrite files_write = 76;
+     */
+    value: FilesWrite;
+    case: "filesWrite";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesMkdir files_mkdir = 77;
+     */
+    value: FilesMkdir;
+    case: "filesMkdir";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesRename files_rename = 78;
+     */
+    value: FilesRename;
+    case: "filesRename";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesDelete files_delete = 79;
+     */
+    value: FilesDelete;
+    case: "filesDelete";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.FilesDownload files_download = 80;
+     */
+    value: FilesDownload;
+    case: "filesDownload";
+  } | {
+    /**
      * ── plan-6 ──
      * ── plan-7 ──
      * ── plan-8 ──
      * ── plan-9 ──
      *
-     * @generated from field: mcsm.v1.MetricBatch metric_batch = 30;
+     * @generated from field: mcsm.v1.FilesUpload files_upload = 81;
      */
-    value: MetricBatch;
-    case: "metricBatch";
+    value: FilesUpload;
+    case: "filesUpload";
   } | { case: undefined; value?: undefined };
 };
 
@@ -609,6 +682,13 @@ export const AckSchema: GenMessage<Ack> = /*@__PURE__*/
  *   exists           ya existe                                         409
  *   unsupported      el agente no entiende el cuerpo: desactualizado   409
  *   too_large        demasiado grande                                  413
+ *   invalid_path     ruta con «..», caracteres de control o fichero no regular   400
+ *   path_outside     la ruta resuelta sale de /data del servidor        400
+ *   root             operación no permitida sobre la raíz               400
+ *   is_dir           era un fichero y es una carpeta                    400
+ *   not_dir          era una carpeta y es un fichero                    400
+ *   transfer_failed  subida/descarga fallida                            502
+ *   io_error         error de E/S del host                              502
  *   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
  *                    del agente o de Docker (spec §10)
  * Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
@@ -790,6 +870,357 @@ export type ServerMetricSample = Message<"mcsm.v1.ServerMetricSample"> & {
  */
 export const ServerMetricSampleSchema: GenMessage<ServerMetricSample> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 21);
+
+/**
+ * @generated from message mcsm.v1.FileEntry
+ */
+export type FileEntry = Message<"mcsm.v1.FileEntry"> & {
+  /**
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: bool dir = 2;
+   */
+  dir: boolean;
+
+  /**
+   * @generated from field: bool symlink = 3;
+   */
+  symlink: boolean;
+
+  /**
+   * @generated from field: uint64 size = 4;
+   */
+  size: bigint;
+
+  /**
+   * @generated from field: int64 mod_time_unix_ms = 5;
+   */
+  modTimeUnixMs: bigint;
+
+  /**
+   * bits de permisos (0o755…)
+   *
+   * @generated from field: uint32 mode = 6;
+   */
+  mode: number;
+};
+
+/**
+ * Describes the message mcsm.v1.FileEntry.
+ * Use `create(FileEntrySchema)` to create a new message.
+ */
+export const FileEntrySchema: GenMessage<FileEntry> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 22);
+
+/**
+ * @generated from message mcsm.v1.FilesList
+ */
+export type FilesList = Message<"mcsm.v1.FilesList"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesList.
+ * Use `create(FilesListSchema)` to create a new message.
+ */
+export const FilesListSchema: GenMessage<FilesList> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 23);
+
+/**
+ * @generated from message mcsm.v1.FilesListResult
+ */
+export type FilesListResult = Message<"mcsm.v1.FilesListResult"> & {
+  /**
+   * carpetas primero, luego por nombre
+   *
+   * @generated from field: repeated mcsm.v1.FileEntry entries = 1;
+   */
+  entries: FileEntry[];
+
+  /**
+   * la carpeta tiene más entradas de las devueltas
+   *
+   * @generated from field: bool truncated = 2;
+   */
+  truncated: boolean;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesListResult.
+ * Use `create(FilesListResultSchema)` to create a new message.
+ */
+export const FilesListResultSchema: GenMessage<FilesListResult> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 24);
+
+/**
+ * @generated from message mcsm.v1.FilesStat
+ */
+export type FilesStat = Message<"mcsm.v1.FilesStat"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesStat.
+ * Use `create(FilesStatSchema)` to create a new message.
+ */
+export const FilesStatSchema: GenMessage<FilesStat> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 25);
+
+/**
+ * @generated from message mcsm.v1.FilesStatResult
+ */
+export type FilesStatResult = Message<"mcsm.v1.FilesStatResult"> & {
+  /**
+   * @generated from field: mcsm.v1.FileEntry entry = 1;
+   */
+  entry?: FileEntry | undefined;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesStatResult.
+ * Use `create(FilesStatResultSchema)` to create a new message.
+ */
+export const FilesStatResultSchema: GenMessage<FilesStatResult> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 26);
+
+/**
+ * Lectura inline: como máximo 2 MiB (o max_bytes si es menor); si no, too_large.
+ *
+ * @generated from message mcsm.v1.FilesRead
+ */
+export type FilesRead = Message<"mcsm.v1.FilesRead"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+
+  /**
+   * @generated from field: uint32 max_bytes = 3;
+   */
+  maxBytes: number;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesRead.
+ * Use `create(FilesReadSchema)` to create a new message.
+ */
+export const FilesReadSchema: GenMessage<FilesRead> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 27);
+
+/**
+ * @generated from message mcsm.v1.FilesReadResult
+ */
+export type FilesReadResult = Message<"mcsm.v1.FilesReadResult"> & {
+  /**
+   * @generated from field: bytes content = 1;
+   */
+  content: Uint8Array;
+
+  /**
+   * @generated from field: uint64 size = 2;
+   */
+  size: bigint;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesReadResult.
+ * Use `create(FilesReadResultSchema)` to create a new message.
+ */
+export const FilesReadResultSchema: GenMessage<FilesReadResult> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 28);
+
+/**
+ * Escritura inline atómica (temporal + rename), como máximo 2 MiB. Respuesta: Ack.
+ *
+ * @generated from message mcsm.v1.FilesWrite
+ */
+export type FilesWrite = Message<"mcsm.v1.FilesWrite"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+
+  /**
+   * @generated from field: bytes content = 3;
+   */
+  content: Uint8Array;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesWrite.
+ * Use `create(FilesWriteSchema)` to create a new message.
+ */
+export const FilesWriteSchema: GenMessage<FilesWrite> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 29);
+
+/**
+ * @generated from message mcsm.v1.FilesMkdir
+ */
+export type FilesMkdir = Message<"mcsm.v1.FilesMkdir"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesMkdir.
+ * Use `create(FilesMkdirSchema)` to create a new message.
+ */
+export const FilesMkdirSchema: GenMessage<FilesMkdir> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 30);
+
+/**
+ * No sobrescribe: si `to` existe responde exists.
+ *
+ * @generated from message mcsm.v1.FilesRename
+ */
+export type FilesRename = Message<"mcsm.v1.FilesRename"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string from = 2;
+   */
+  from: string;
+
+  /**
+   * @generated from field: string to = 3;
+   */
+  to: string;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesRename.
+ * Use `create(FilesRenameSchema)` to create a new message.
+ */
+export const FilesRenameSchema: GenMessage<FilesRename> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 31);
+
+/**
+ * Una carpeta se borra con todo su contenido; un enlace se borra a sí mismo.
+ *
+ * @generated from message mcsm.v1.FilesDelete
+ */
+export type FilesDelete = Message<"mcsm.v1.FilesDelete"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesDelete.
+ * Use `create(FilesDeleteSchema)` to create a new message.
+ */
+export const FilesDeleteSchema: GenMessage<FilesDelete> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 32);
+
+/**
+ * El agente sube el fichero con PUT /agent/transfer/{transfer_id} y responde Ack
+ * cuando el panel lo ha recibido entero.
+ *
+ * @generated from message mcsm.v1.FilesDownload
+ */
+export type FilesDownload = Message<"mcsm.v1.FilesDownload"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+
+  /**
+   * @generated from field: string transfer_id = 3;
+   */
+  transferId: string;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesDownload.
+ * Use `create(FilesDownloadSchema)` to create a new message.
+ */
+export const FilesDownloadSchema: GenMessage<FilesDownload> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 33);
+
+/**
+ * El agente descarga el contenido con GET /agent/transfer/{transfer_id}, lo escribe
+ * de forma atómica y responde Ack. size = -1 si el panel no conoce el tamaño.
+ *
+ * @generated from message mcsm.v1.FilesUpload
+ */
+export type FilesUpload = Message<"mcsm.v1.FilesUpload"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string path = 2;
+   */
+  path: string;
+
+  /**
+   * @generated from field: string transfer_id = 3;
+   */
+  transferId: string;
+
+  /**
+   * @generated from field: int64 size = 4;
+   */
+  size: bigint;
+};
+
+/**
+ * Describes the message mcsm.v1.FilesUpload.
+ * Use `create(FilesUploadSchema)` to create a new message.
+ */
+export const FilesUploadSchema: GenMessage<FilesUpload> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 34);
 
 /**
  * @generated from enum mcsm.v1.DesiredState

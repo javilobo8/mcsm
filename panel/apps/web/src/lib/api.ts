@@ -8,6 +8,9 @@ let unauthorizedHandler: (() => void) | null = null;
 /** Registra qué hacer cuando la API responde 401 con la sesión caducada. */
 export function setUnauthorizedHandler(h: (() => void) | null) { unauthorizedHandler = h; }
 
+/** Para peticiones que no pasan por `request` (subidas con XHR): mismo tratamiento del 401. */
+export function reportStatus(status: number, path: string) { if (isSessionExpired(status, path)) unauthorizedHandler?.(); }
+
 export function errorMessage(status: number, statusText: string, data: unknown): string {
   const msg = (data as { error?: unknown } | null)?.error;
   if (typeof msg === "string" && msg) return msg;

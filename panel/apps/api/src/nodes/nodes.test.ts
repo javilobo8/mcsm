@@ -24,6 +24,8 @@ describe("nodos y alta", () => {
     expect(dockerRun).toContain("ENROLL_TOKEN=" + token);
     expect(dockerRun).toContain("PANEL_URL=http://panel.lan:8080");
     expect(dockerRun).toContain("/var/run/docker.sock");
+    // docker stop mata a los 10 s; el agente necesita hasta 20 s para cerrar sus operaciones de archivos.
+    expect(dockerRun).toContain("--stop-timeout 30");
     expect(new Date(expiresAt).getTime()).toBeGreaterThan(Date.now());
 
     res = await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: token, nameHint: "nas", agentVersion: "0.1.0" } });

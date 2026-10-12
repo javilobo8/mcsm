@@ -12,6 +12,8 @@ import { nodeRoutes } from "./nodes/routes.js";
 import { NodesRepo } from "./nodes/repo.js";
 import { AgentHub } from "./agents/hub.js";
 import { agentRoutes } from "./agents/routes.js";
+import { transfersPlugin } from "./transfers/plugin.js";
+import { fileRoutes } from "./files/routes.js";
 import { AgentService } from "./agents/service.js";
 import { ServersRepo } from "./servers/repo.js";
 import { serverRoutes } from "./servers/routes.js";
@@ -57,6 +59,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(templateRoutes);
   // ── plan-4 ──
   // ── plan-5 ──
+  await app.register(transfersPlugin);
+  await app.register(fileRoutes);
   // ── plan-6 ──
   // ── plan-7 ──
   // ── plan-8 ──
