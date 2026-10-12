@@ -8,6 +8,7 @@ const OPTIONAL_LABELS = new Set(["Operadores", "Whitelist"]);
 const TOP_LABELS: Record<string, string> = {
   type: "Tipo", version: "Versión de Minecraft", imageTag: "Java (imagen)", memory: "Memoria JVM",
   restartPolicy: "Política de reinicio", modpack: "Modpack", whitelist: "Whitelist", ops: "Operadores",
+  router: "Router (mc-router)",
 };
 const NESTED_LABELS: Record<string, string> = {
   "resources.cpus": "Límite de CPUs", "resources.memLimit": "Límite de RAM del contenedor",
@@ -46,6 +47,13 @@ function showPorts(v: unknown): string {
   return v.map((p: Obj) => `${String(p.host)}→${String(p.container)}/${String(p.proto)}${p.label ? ` (${String(p.label)})` : ""}`).join(", ");
 }
 
+function showRouter(v: unknown): string {
+  if (!isObj(v)) return NONE;
+  const host = v.hostname ? String(v.hostname) : "";
+  if (v.enabled) return `entrada por ${host}`;
+  return host ? `desactivado (${host})` : NONE;
+}
+
 /** Aplana una spec a `etiqueta → texto` para compararla línea a línea. */
 function flatten(spec: Obj): Map<string, string> {
   const out = new Map<string, string>();
@@ -56,6 +64,7 @@ function flatten(spec: Obj): Map<string, string> {
     else if (k === "modpack") out.set(TOP_LABELS.modpack!, showModpack(v));
     else if (k === "ops") out.set(TOP_LABELS.ops!, Array.isArray(v) && v.length === 0 ? "vacía — se revocarán todos" : show(v));
     else if (k === "whitelist") out.set(TOP_LABELS.whitelist!, showWhitelist(v));
+    else if (k === "router") out.set(TOP_LABELS.router!, showRouter(v));
     else if ((k === "resources" || k === "ports" || k === "mods" || k === "plugins") && isObj(v)) {
       for (const [sk, sv] of Object.entries(v)) {
         const path = `${k}.${sk}`;

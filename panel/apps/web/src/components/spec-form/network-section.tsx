@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { validateExtraPorts, type EditableSpec } from "@/lib/spec-edit";
 import { NumberField, RequiredSelect, describedBy, errId, type ReportError } from "./fields";
+import { RouterSection } from "./router-section";
 
 type Extra = EditableSpec["ports"]["extra"][number];
 const PROTOS = [{ value: "tcp", label: "TCP" }, { value: "udp", label: "UDP" }] as const;
@@ -93,6 +94,7 @@ export function NetworkSection({ spec, onChange, onError }: { spec: EditableSpec
           </Button>
         </div>
       </div>
+      <RouterSection spec={spec} onChange={onChange} onError={onError} />
     </div>
   );
 }

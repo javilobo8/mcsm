@@ -1,8 +1,8 @@
 import type { SpecPatch } from "@mcsm/shared";
 import { FORM_KEYS, buildSpecPatch, type EditableSpec } from "./spec-edit";
 
-/** Secciones que edita una plantilla: todas las del formulario salvo `ports`. */
-export const TEMPLATE_KEYS = FORM_KEYS.filter((k) => k !== "ports");
+/** Secciones que edita una plantilla: todas las del formulario salvo `ports` y `router` (del servidor concreto). */
+export const TEMPLATE_KEYS = FORM_KEYS.filter((k) => k !== "ports" && k !== "router");
 
 /** Por qué no se puede guardar la plantilla (nombre vacío o errores de campo vigentes); null si se puede. */
 export function templateSaveBlock(name: string, errors: Readonly<Record<string, string>>): string | null {
@@ -12,9 +12,9 @@ export function templateSaveBlock(name: string, errors: Readonly<Record<string, 
   return null;
 }
 
-/** Cuerpo del POST: una plantilla nunca lleva `ports`. */
+/** Cuerpo del POST: una plantilla nunca lleva `ports` ni `router`. */
 export function templateCreateBody(name: string, description: string, spec: EditableSpec) {
-  const { ports: _ports, ...rest } = spec;
+  const { ports: _ports, router: _router, ...rest } = spec;
   return { name: name.trim(), description: description.trim(), spec: rest };
 }
 
