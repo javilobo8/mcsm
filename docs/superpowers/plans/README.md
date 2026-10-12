@@ -18,6 +18,8 @@ sus criterios de aceptación para que no haya que volver a diseñar.
 | 8 | mc-router | §4 `router_deployments`, §7 `RouterService` | pendiente |
 | 9 | Pruebas de interfaz y pulido | §11 (Playwright), §8 (Ajustes) | pendiente |
 
+Ejecución en oleadas paralelas: ver [COORDINATION.md](COORDINATION.md).
+
 ## Plan 2 — Métricas
 
 Alcance: el agente añade `MetricSample` (CPU %, memoria, red, jugadores, ping, TPS en Paper/Purpur
