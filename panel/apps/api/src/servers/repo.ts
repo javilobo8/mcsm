@@ -1,6 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import { DesiredState, ServerSpecSchema, type ServerSpec } from "@mcsm/proto";
-import type { Spec } from "@mcsm/shared";
+import { usesCurseForge, type Spec } from "@mcsm/shared";
 import type { Db } from "../db/db.js";
 import { newId } from "../lib/ids.js";
 import { nowIso } from "../lib/time.js";
@@ -36,11 +36,23 @@ export function toServerDto(r: ServerRow, opts: { includeSecrets: boolean } = { 
   };
 }
 
-export function toServerSpecMessage(r: ServerRow): ServerSpec {
+/**
+ * Mensaje ServerSpec para el agente. La API key global de CurseForge se añade aquí, solo a las
+ * specs que usan CurseForge: no está en servers.spec ni en los DTO del navegador.
+ * `curseforgeApiKey` es obligatorio (`app.curseforge.get()`, null si no hay): un emisor que la
+ * olvidara alternaría «con key» y «sin key» frente a SyncSpecs, cambiando el hash y recreando
+ * el contenedor en cada envío.
+ */
+export function toServerSpecMessage(r: ServerRow, curseforgeApiKey: string | null): ServerSpec {
+  let json = r.spec;
+  if (curseforgeApiKey) {
+    const spec = JSON.parse(r.spec) as Spec;
+    if (usesCurseForge(spec)) json = JSON.stringify({ ...spec, curseforgeApiKey });
+  }
   return create(ServerSpecSchema, {
     serverId: r.id, slug: r.slug, version: BigInt(r.spec_version),
     desiredState: r.desired_state === "running" ? DesiredState.RUNNING : DesiredState.STOPPED,
-    specJson: new TextEncoder().encode(r.spec),
+    specJson: new TextEncoder().encode(json),
   });
 }
 
@@ -74,6 +86,11 @@ export class ServersRepo {
   /** Solo cambia el nombre: no toca spec_version (no hay nada que enviar al agente). */
   rename(id: string, name: string): ServerRow {
     this.db.prepare("UPDATE servers SET name = ?, updated_at = ? WHERE id = ?").run(name, nowIso(), id);
+    return this.get(id)!;
+  }
+  /** Nueva versión con la misma spec (p. ej. cambió la API key de CurseForge): el agente la reaplica. */
+  bumpVersion(id: string): ServerRow {
+    this.db.prepare("UPDATE servers SET spec_version = spec_version + 1, updated_at = ? WHERE id = ?").run(nowIso(), id);
     return this.get(id)!;
   }
   setDesiredState(id: string, state: "running" | "stopped"): void {

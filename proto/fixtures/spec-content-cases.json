@@ -1,0 +1,580 @@
+[
+ {
+  "name": "modpack de Modrinth con type MODRINTH",
+  "ok": true,
+  "merge": {
+   "type": "MODRINTH",
+   "modpack": {
+    "platform": "MODRINTH",
+    "slugOrUrl": "cobblemon-fabric"
+   }
+  }
+ },
+ {
+  "name": "modpack con type PAPER",
+  "ok": false,
+  "merge": {
+   "modpack": {
+    "platform": "MODRINTH",
+    "slugOrUrl": "cobblemon-fabric"
+   }
+  }
+ },
+ {
+  "name": "type MODRINTH sin modpack",
+  "ok": false,
+  "merge": {
+   "type": "MODRINTH"
+  }
+ },
+ {
+  "name": "type AUTO_CURSEFORGE con modpack de Modrinth",
+  "ok": false,
+  "merge": {
+   "type": "AUTO_CURSEFORGE",
+   "modpack": {
+    "platform": "MODRINTH",
+    "slugOrUrl": "x"
+   }
+  }
+ },
+ {
+  "name": "plataforma de modpack desconocida",
+  "ok": false,
+  "merge": {
+   "type": "CURSEFORGE",
+   "modpack": {
+    "platform": "CURSEFORGE",
+    "slugOrUrl": "x"
+   }
+  }
+ },
+ {
+  "name": "slugOrUrl vacío",
+  "ok": false,
+  "merge": {
+   "type": "MODRINTH",
+   "modpack": {
+    "platform": "MODRINTH",
+    "slugOrUrl": ""
+   }
+  }
+ },
+ {
+  "name": "slugOrUrl con espacio",
+  "ok": false,
+  "merge": {
+   "type": "MODRINTH",
+   "modpack": {
+    "platform": "MODRINTH",
+    "slugOrUrl": "mi pack"
+   }
+  }
+ },
+ {
+  "name": "loader neoforge en Modrinth",
+  "ok": true,
+  "merge": {
+   "type": "MODRINTH",
+   "modpack": {
+    "platform": "MODRINTH",
+    "slugOrUrl": "x",
+    "versionId": "abc123",
+    "loader": "neoforge"
+   }
+  }
+ },
+ {
+  "name": "loader desconocido en Modrinth",
+  "ok": false,
+  "merge": {
+   "type": "MODRINTH",
+   "modpack": {
+    "platform": "MODRINTH",
+    "slugOrUrl": "x",
+    "loader": "liteloader"
+   }
+  }
+ },
+ {
+  "name": "loader en un modpack de CurseForge",
+  "ok": false,
+  "merge": {
+   "type": "AUTO_CURSEFORGE",
+   "modpack": {
+    "platform": "AUTO_CURSEFORGE",
+    "slugOrUrl": "all-the-mods-10",
+    "loader": "forge"
+   }
+  }
+ },
+ {
+  "name": "CurseForge por URL con fileId numérico",
+  "ok": true,
+  "merge": {
+   "type": "AUTO_CURSEFORGE",
+   "modpack": {
+    "platform": "AUTO_CURSEFORGE",
+    "slugOrUrl": "https://www.curseforge.com/minecraft/modpacks/all-the-mods-10",
+    "versionId": "6013341"
+   }
+  }
+ },
+ {
+  "name": "CurseForge con fileId no numérico",
+  "ok": false,
+  "merge": {
+   "type": "AUTO_CURSEFORGE",
+   "modpack": {
+    "platform": "AUTO_CURSEFORGE",
+    "slugOrUrl": "all-the-mods-10",
+    "versionId": "v1.2"
+   }
+  }
+ },
+ {
+  "name": "FTBA con ids numéricos",
+  "ok": true,
+  "merge": {
+   "type": "FTBA",
+   "modpack": {
+    "platform": "FTBA",
+    "slugOrUrl": "126",
+    "versionId": "100"
+   }
+  }
+ },
+ {
+  "name": "FTBA con slug en vez de id",
+  "ok": false,
+  "merge": {
+   "type": "FTBA",
+   "modpack": {
+    "platform": "FTBA",
+    "slugOrUrl": "ftb-skies"
+   }
+  }
+ },
+ {
+  "name": "mods válidos",
+  "ok": true,
+  "merge": {
+   "mods": {
+    "modrinthProjects": [
+     "lithium",
+     "fabric:sodium",
+     "ferritecore:beta"
+    ],
+    "curseforgeFiles": [
+     "jei:4593548"
+    ],
+    "urls": [
+     "https://example.com/mods/a.jar"
+    ]
+   }
+  }
+ },
+ {
+  "name": "mods vacío",
+  "ok": true,
+  "merge": {
+   "mods": {}
+  }
+ },
+ {
+  "name": "proyecto de Modrinth con coma",
+  "ok": false,
+  "merge": {
+   "mods": {
+    "modrinthProjects": [
+     "lithium,sodium"
+    ]
+   }
+  }
+ },
+ {
+  "name": "proyecto de Modrinth con espacio",
+  "ok": false,
+  "merge": {
+   "mods": {
+    "modrinthProjects": [
+     "lithium sodium"
+    ]
+   }
+  }
+ },
+ {
+  "name": "proyecto de Modrinth vacío",
+  "ok": false,
+  "merge": {
+   "mods": {
+    "modrinthProjects": [
+     ""
+    ]
+   }
+  }
+ },
+ {
+  "name": "URL de mod que no es http",
+  "ok": false,
+  "merge": {
+   "mods": {
+    "urls": [
+     "ftp://example.com/a.jar"
+    ]
+   }
+  }
+ },
+ {
+  "name": "URL de plugin con espacio no ASCII",
+  "ok": false,
+  "merge": {
+   "plugins": {
+    "urls": [
+     "https://example.com/a b.jar"
+    ]
+   }
+  }
+ },
+ {
+  "name": "recursos de Spiget numéricos",
+  "ok": true,
+  "merge": {
+   "plugins": {
+    "spigetResources": [
+     "28140",
+     "34315"
+    ],
+    "modrinthProjects": [
+     "luckperms"
+    ]
+   }
+  }
+ },
+ {
+  "name": "recurso de Spiget no numérico",
+  "ok": false,
+  "merge": {
+   "plugins": {
+    "spigetResources": [
+     "essentials"
+    ]
+   }
+  }
+ },
+ {
+  "name": "whitelist con nombre y UUID",
+  "ok": true,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": [
+     "Lobo",
+     "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+    ]
+   }
+  }
+ },
+ {
+  "name": "whitelist sin enabled (vale false)",
+  "ok": true,
+  "merge": {
+   "whitelist": {
+    "players": [
+     "Lobo"
+    ]
+   }
+  }
+ },
+ {
+  "name": "whitelist desactivada con jugadores",
+  "ok": true,
+  "merge": {
+   "whitelist": {
+    "enabled": false,
+    "players": [
+     "Lobo"
+    ]
+   }
+  }
+ },
+ {
+  "name": "jugador con espacio",
+  "ok": false,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": [
+     "Lo bo"
+    ]
+   }
+  }
+ },
+ {
+  "name": "jugador de 17 caracteres",
+  "ok": false,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": [
+     "abcdefghijklmnopq"
+    ]
+   }
+  }
+ },
+ {
+  "name": "ops válidos",
+  "ok": true,
+  "merge": {
+   "ops": [
+    "Lobo",
+    "Steve"
+   ]
+  }
+ },
+ {
+  "name": "op con coma",
+  "ok": false,
+  "merge": {
+   "ops": [
+    "Lobo,Steve"
+   ]
+  }
+ },
+ {
+  "name": "sección whitelist y propiedad white-list a la vez",
+  "ok": false,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": []
+   },
+   "properties": {
+    "white-list": "true"
+   }
+  }
+ },
+ {
+  "name": "sección whitelist y propiedad enforce-whitelist a la vez",
+  "ok": false,
+  "merge": {
+   "whitelist": {
+    "enabled": false,
+    "players": []
+   },
+   "properties": {
+    "enforce-whitelist": "true"
+   }
+  }
+ },
+ {
+  "name": "propiedad white-list sin sección whitelist (compatibilidad)",
+  "ok": true,
+  "merge": {
+   "properties": {
+    "white-list": "true"
+   }
+  }
+ },
+ {
+  "name": "CF_API_KEY en env libre",
+  "ok": false,
+  "merge": {
+   "env": {
+    "CF_API_KEY": "x"
+   }
+  }
+ },
+ {
+  "name": "ops presente y vacío (sincroniza)",
+  "ok": true,
+  "merge": {
+   "ops": []
+  }
+ },
+ {
+  "name": "whitelist activada con lista vacía",
+  "ok": true,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": []
+   }
+  }
+ },
+ {
+  "name": "env OPS con la sección ops",
+  "ok": false,
+  "merge": {
+   "ops": [
+    "Lobo"
+   ],
+   "env": {
+    "OPS": "Lobo,Pepe"
+   }
+  }
+ },
+ {
+  "name": "env OPS_FILE con la sección ops vacía",
+  "ok": false,
+  "merge": {
+   "ops": [],
+   "env": {
+    "OPS_FILE": "https://example.com/ops.json"
+   }
+  }
+ },
+ {
+  "name": "env OPS sin sección ops (compatibilidad)",
+  "ok": true,
+  "merge": {
+   "env": {
+    "OPS": "Lobo"
+   }
+  }
+ },
+ {
+  "name": "env EXISTING_OPS_FILE=MERGE con la sección ops",
+  "ok": true,
+  "merge": {
+   "ops": [
+    "Lobo"
+   ],
+   "env": {
+    "EXISTING_OPS_FILE": "MERGE"
+   }
+  }
+ },
+ {
+  "name": "env ENABLE_WHITELIST con la sección whitelist",
+  "ok": false,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": [
+     "Lobo"
+    ]
+   },
+   "env": {
+    "ENABLE_WHITELIST": "false"
+   }
+  }
+ },
+ {
+  "name": "env WHITELIST con la sección whitelist desactivada",
+  "ok": false,
+  "merge": {
+   "whitelist": {
+    "enabled": false
+   },
+   "env": {
+    "WHITELIST": "Pepe"
+   }
+  }
+ },
+ {
+  "name": "env WHITELIST_FILE con la sección whitelist",
+  "ok": false,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": [
+     "Lobo"
+    ]
+   },
+   "env": {
+    "WHITELIST_FILE": "https://example.com/wl.json"
+   }
+  }
+ },
+ {
+  "name": "env WHITELIST sin sección whitelist (compatibilidad)",
+  "ok": true,
+  "merge": {
+   "env": {
+    "WHITELIST": "Lobo",
+    "ENABLE_WHITELIST": "true"
+   }
+  }
+ },
+ {
+  "name": "env EXISTING_WHITELIST_FILE=MERGE con la sección whitelist",
+  "ok": true,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": [
+     "Lobo"
+    ]
+   },
+   "env": {
+    "EXISTING_WHITELIST_FILE": "MERGE"
+   }
+  }
+ },
+ {
+  "name": "env OPS con la sección whitelist (no choca)",
+  "ok": true,
+  "merge": {
+   "whitelist": {
+    "enabled": true,
+    "players": [
+     "Lobo"
+    ]
+   },
+   "env": {
+    "OPS": "Lobo"
+   }
+  }
+ },
+ {
+  "name": "level-name normal",
+  "ok": true,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": "mundo_2 nuevo"
+   }
+  }
+ },
+ {
+  "name": "level-name con barra",
+  "ok": false,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": "mundos/uno"
+   }
+  }
+ },
+ {
+  "name": "level-name con barra invertida",
+  "ok": false,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": "mundos\\uno"
+   }
+  }
+ },
+ {
+  "name": "level-name que sube de carpeta",
+  "ok": false,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": ".."
+   }
+  }
+ },
+ {
+  "name": "level-name con .. dentro",
+  "ok": false,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": "mundo..viejo"
+   }
+  }
+ }
+]

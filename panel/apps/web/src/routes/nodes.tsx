@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { api, apiPath } from "@/lib/api";
+import { dialogSubmit } from "@/lib/dialog-form";
 import { validateDataRoot } from "@/lib/nodes";
 import { useNodes } from "@/hooks/use-nodes";
 
@@ -50,7 +51,7 @@ export function NodesPage() {
               <DialogDescription>Genera un comando de alta de un solo uso para la máquina nueva.</DialogDescription>
             </DialogHeader>
             {!result ? (
-              <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (!rootError) gen.mutate(); }}>
+              <form className="flex flex-col gap-3" onSubmit={dialogSubmit(() => { if (!rootError) gen.mutate(); })}>
                 <div className="flex flex-col gap-1.5"><Label htmlFor="node-name">Nombre</Label><Input id="node-name" value={nameHint} onChange={(e) => setNameHint(e.target.value)} placeholder="nas, salon, torre…" maxLength={40} />{!nameHint.trim() && <p className="text-xs text-amber-400">Sin nombre se usará «nodo»; elige uno distinto si ya tienes otros nodos.</p>}</div>
                 <div className="flex flex-col gap-1.5"><Label htmlFor="node-root">Directorio de datos en esa máquina</Label><Input id="node-root" value={dataRoot} onChange={(e) => setDataRoot(e.target.value)} className="font-mono" aria-invalid={!!rootError} />{rootError ? <p role="alert" className="text-xs text-red-400">{rootError}</p> : <p className="text-xs text-muted-foreground">Ruta absoluta; se monta con la misma ruta dentro del agente.</p>}</div>
                 <Button type="submit" disabled={gen.isPending || !!rootError}>{gen.isPending ? "Generando…" : "Generar comando"}</Button>

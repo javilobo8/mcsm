@@ -49,6 +49,7 @@ export const api = {
   get: <T>(p: string) => request<T>("GET", p),
   post: <T>(p: string, b?: unknown) => request<T>("POST", p, b),
   patch: <T>(p: string, b?: unknown) => request<T>("PATCH", p, b),
+  put: <T>(p: string, b?: unknown) => request<T>("PUT", p, b),
   del: <T>(p: string) => request<T>("DELETE", p),
 };
 
@@ -77,3 +78,8 @@ export type ServerMessage =
   | { type: "stream_closed"; serverId: string; reason: string }
   | { type: "node_metrics"; nodeId: string; sample: import("@mcsm/shared").NodeLiveSample }
   | { type: "error"; message: string };
+
+export interface TemplateDto {
+  id: string; name: string; description: string; spec: import("@mcsm/shared").TemplateSpec; sourceServerId: string | null;
+  createdAt: string; updatedAt: string;
+}

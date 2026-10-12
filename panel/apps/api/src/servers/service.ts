@@ -1,6 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { PowerActionType } from "@mcsm/proto";
-import { specSchema, slugify, type ServerCreateInput, type Spec, type SpecInput, type PowerActionName } from "@mcsm/shared";
+import {
+  canonicalJson, formatZodError, mergeSpecPatch, specInputSchema, specPatchNullError, specSizeError, usesCurseForge, specSchema, slugify,
+  type ServerCreateInput, type Spec, type SpecInput, type SpecPatch, type PowerActionName,
+} from "@mcsm/shared";
 import type { z } from "zod";
 import { randomToken } from "../lib/tokens.js";
 import { HttpError, agentErrorToHttp } from "../lib/http.js";
@@ -68,7 +71,11 @@ export class ServersService {
     const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId, new Set(input.ports.extra.map((e) => e.host)));
     const candidate = { ...input, ports: { game, extra: input.ports.extra }, rconPassword: previous?.rconPassword ?? randomToken() };
     const parsed = specSchema.safeParse(candidate);
-    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Spec inválida");
+    if (!parsed.success) throw new HttpError(400, formatZodError(parsed.error));
+    // Tope de la spec ya fusionada (crear, PATCH, instanciar plantilla): cada PATCH cabe en el bodyLimit
+    // pero varias secciones grandes acumuladas no; un SyncSpecs de más de 4 MiB desconectaría el nodo en bucle.
+    const tooBig = specSizeError(parsed.data);
+    if (tooBig) throw new HttpError(400, tooBig);
     return parsed.data;
   }
 
@@ -76,10 +83,21 @@ export class ServersService {
     const conn = this.app.agents.get(row.node_id);
     if (!conn) return; // se entregará en el próximo SyncSpecs
     try {
-      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row) } }, 120_000);
+      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row, this.app.curseforge.get()) } }, 120_000);
     } catch (e) {
       this.app.log.warn({ serverId: row.id, err: e }, "ApplySpec sin éxito; el agente lo reintentará");
     }
+  }
+
+  /** Reaplica (versión +1, misma spec) los servidores que usan CurseForge. Devuelve cuántos. */
+  reapplyCurseForge(): number {
+    let n = 0;
+    for (const row of this.app.servers.list()) {
+      if (!usesCurseForge(JSON.parse(row.spec) as Spec)) continue;
+      void this.push(this.app.servers.bumpVersion(row.id));
+      n++;
+    }
+    return n;
   }
 
   async create(input: ServerCreateInput) {
@@ -95,15 +113,27 @@ export class ServersService {
     return toServerDto(row, { includeSecrets: true });
   }
 
-  async patch(id: string, input: { name?: string; spec?: SpecInput }) {
+  /** `input.spec` es un merge de primer nivel sobre la spec guardada: ausente = no tocar, `null` = borrar la sección, `[]` = presente vacía. */
+  async patch(id: string, input: { name?: string; spec?: SpecPatch }) {
     const row = this.requireServer(id);
     let updated = row;
+    let spec: Spec | null = null;
     if (input.spec) {
-      const spec = this.completeSpec(row.node_id, input.spec, JSON.parse(row.spec) as Spec);
+      const nullErr = specPatchNullError(input.spec);
+      if (nullErr) throw new HttpError(400, nullErr);
+      const previous = JSON.parse(row.spec) as Spec;
+      const { rconPassword: _secret, ...previousInput } = previous;
+      const merged = specInputSchema.safeParse(mergeSpecPatch(previousInput, input.spec));
+      if (!merged.success) throw new HttpError(400, formatZodError(merged.error));
+      const candidate = this.completeSpec(row.node_id, merged.data, previous);
+      // Sin cambios reales no se versiona: el agente no tendría nada que aplicar.
+      if (canonicalJson(candidate) !== canonicalJson(previous)) spec = candidate;
+    }
+    if (spec) {
       this.checkPorts(row.node_id, spec, row.id);
       updated = this.app.servers.updateSpec(id, spec, input.name);
       void this.push(updated);
-    } else if (input.name) {
+    } else if (input.name && input.name !== row.name) {
       updated = this.app.servers.rename(id, input.name); // sin cambio de spec: no se versiona
     }
     return toServerDto(updated, { includeSecrets: true });

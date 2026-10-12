@@ -86,6 +86,36 @@ CREATE TABLE metric_samples (
     sql: `CREATE INDEX metric_samples_ts ON metric_samples (ts);`,
   },
   // ── plan-3 ──
+  {
+    // CF_API_KEY pasa a ser reservada: la key que alguien hubiera puesto en el env libre de un
+    // servidor se mueve a Ajustes (si no había ya una) y se quita de la spec (versión +1).
+    name: "020_cf_api_key_env_to_settings",
+    sql: `
+INSERT OR IGNORE INTO settings (key, value)
+  SELECT 'curseforge_api_key', json_extract(spec, '$.env.CF_API_KEY') FROM servers
+  WHERE json_type(spec, '$.env.CF_API_KEY') = 'text' AND json_extract(spec, '$.env.CF_API_KEY') <> ''
+  ORDER BY created_at LIMIT 1;
+UPDATE servers
+  SET spec = json_remove(spec, '$.env.CF_API_KEY'),
+      spec_version = spec_version + 1,
+      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+  WHERE json_type(spec, '$.env.CF_API_KEY') IS NOT NULL;
+`,
+  },
+  {
+    name: "021_templates",
+    sql: `
+CREATE TABLE templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  spec TEXT NOT NULL,
+  source_server_id TEXT REFERENCES servers(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`,
+  },
   // ── plan-4 ──
   // ── plan-5 ──
   // ── plan-6 ──

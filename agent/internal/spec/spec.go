@@ -51,6 +51,7 @@ var (
 var ReservedEnv = map[string]bool{
 	"EULA": true, "TYPE": true, "VERSION": true, "MEMORY": true, "ENABLE_RCON": true,
 	"RCON_PASSWORD": true, "RCON_PORT": true, "SERVER_PORT": true, "CUSTOM_SERVER_PROPERTIES": true,
+	"CF_API_KEY": true,
 }
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
@@ -96,6 +97,16 @@ type Spec struct {
 	RconPassword  string            `json:"rconPassword"`
 	// ── plan-2 ──
 	// ── plan-3 ──
+	// Secciones de contenido: nil = ausente (no se emite nada y el hash no cambia).
+	Modpack   *Modpack       `json:"modpack,omitempty"`
+	Mods      *ModSources    `json:"mods,omitempty"`
+	Plugins   *PluginSources `json:"plugins,omitempty"`
+	Whitelist *Whitelist     `json:"whitelist,omitempty"`
+	// nil = ausente; [] = presente y vacío (omitzero conserva la diferencia al serializar).
+	Ops []string `json:"ops,omitzero"`
+	// CurseForgeAPIKey la añade el panel al enviar la spec al agente. Nunca se guarda en la
+	// spec del panel ni viaja al navegador.
+	CurseForgeAPIKey string `json:"curseforgeApiKey,omitempty"`
 	// ── plan-4 ──
 	// ── plan-5 ──
 	// ── plan-6 ──
@@ -217,6 +228,12 @@ func (s Spec) Validate() error {
 	}
 	// ── plan-2 ──
 	// ── plan-3 ──
+	if err := s.validateContent(); err != nil {
+		return err
+	}
+	if err := s.validateLimits(); err != nil {
+		return err
+	}
 	// ── plan-4 ──
 	// ── plan-5 ──
 	// ── plan-6 ──
@@ -329,6 +346,7 @@ func (s Spec) envList() []string {
 	}
 	// ── plan-2 ──
 	// ── plan-3 ──
+	s.contentEnv(m)
 	// ── plan-4 ──
 	// ── plan-5 ──
 	// ── plan-6 ──
