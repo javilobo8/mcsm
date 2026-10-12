@@ -16,6 +16,8 @@ import { AgentService } from "./agents/service.js";
 import { ServersRepo } from "./servers/repo.js";
 import { serverRoutes } from "./servers/routes.js";
 import { realtimeRoutes } from "./realtime/routes.js";
+import { TemplatesRepo } from "./templates/repo.js";
+import { templateRoutes } from "./templates/routes.js";
 import { errorHandler } from "./lib/http.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
@@ -49,6 +51,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // ── plan-3 ──
   app.decorate("curseforge", new CurseForgeKeyRepo(opts.db));
   await app.register(curseforgeRoutes);
+  app.decorate("templates", new TemplatesRepo(opts.db));
+  await app.register(templateRoutes);
   // ── plan-4 ──
   // ── plan-5 ──
   // ── plan-6 ──

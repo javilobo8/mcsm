@@ -72,6 +72,20 @@ UPDATE servers
   WHERE json_type(spec, '$.env.CF_API_KEY') IS NOT NULL;
 `,
   },
+  {
+    name: "021_templates",
+    sql: `
+CREATE TABLE templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  spec TEXT NOT NULL,
+  source_server_id TEXT REFERENCES servers(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`,
+  },
   // ── plan-4 ──
   // ── plan-5 ──
   // ── plan-6 ──

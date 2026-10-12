@@ -123,6 +123,13 @@ export type PowerActionName = z.infer<typeof powerActionSchema>["action"];
 
 // ── plan-2 ──
 // ── plan-3 ──
+/**
+ * Spec de plantilla: la de servidor sin `ports` ni `rconPassword`. Al parsear, zod descarta esas
+ * claves (y cualquier otra desconocida), así que guardar una spec de servidor como plantilla
+ * nunca arrastra puertos ni secretos. (No `.omit()`: zod 4 lo rechaza con refinamientos.)
+ */
+export const templateSpecSchema = z.object({ ...baseFields }).superRefine(specChecks);
+export type TemplateSpec = z.infer<typeof templateSpecSchema>;
 // ── plan-4 ──
 // ── plan-5 ──
 // ── plan-6 ──
