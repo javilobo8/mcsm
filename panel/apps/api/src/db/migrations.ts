@@ -57,6 +57,45 @@ CREATE INDEX servers_node_idx ON servers(node_id);
   // ── plan-2 ──
   // ── plan-3 ──
   // ── plan-4 ──
+  {
+    name: "030_jobs_backups",
+    sql: `
+CREATE TABLE jobs (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  server_id TEXT REFERENCES servers(id) ON DELETE SET NULL,
+  node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
+  status TEXT NOT NULL CHECK (status IN ('queued','running','ok','failed','cancelled')),
+  progress INTEGER NOT NULL DEFAULT 0,
+  message TEXT NOT NULL DEFAULT '',
+  log TEXT NOT NULL DEFAULT '',
+  payload TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  started_at TEXT,
+  finished_at TEXT
+);
+CREATE INDEX jobs_server_idx ON jobs(server_id, created_at);
+CREATE INDEX jobs_status_idx ON jobs(status, node_id);
+CREATE TABLE backups (
+  id TEXT PRIMARY KEY,
+  server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+  node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  sha256 TEXT NOT NULL DEFAULT '',
+  spec_version INTEGER NOT NULL DEFAULT 0,
+  trigger TEXT NOT NULL CHECK (trigger IN ('manual','scheduled','pre_migration','pre_restore')),
+  status TEXT NOT NULL CHECK (status IN ('running','ok','failed','deleted')),
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(server_id, filename)
+);
+CREATE INDEX backups_server_idx ON backups(server_id, started_at);
+`,
+  },
   // ── plan-5 ──
   // ── plan-6 ──
   // ── plan-7 ──

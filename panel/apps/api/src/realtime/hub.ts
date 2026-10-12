@@ -25,7 +25,7 @@ const defaultSchedule = (fn: () => void, ms: number): Cancel => {
   return () => clearTimeout(t);
 };
 
-const TOPIC = /^(servers|nodes|server:[^:\s]{1,64}:logs)$/;
+const TOPIC = /^(servers|nodes|jobs|server:[^:\s]{1,64}:logs)$/;
 const LOG_TOPIC = /^server:([^:]+):logs$/;
 const clientMessage = z.object({ type: z.enum(["subscribe", "unsubscribe"]), topic: z.string().max(100).regex(TOPIC) });
 
@@ -48,6 +48,13 @@ export class BrowserHub {
     app.events.on("observed", onObserved);
     app.events.on("node", onNode);
     this.offs.push(() => app.events.off("observed", onObserved), () => app.events.off("node", onNode));
+    // plan-4: jobs y copias en el topic "jobs"
+    const onJob = (job: unknown, logChunk: unknown) =>
+      this.publish("jobs", { type: "job", job, logChunk: typeof logChunk === "string" ? logChunk : "" });
+    const onBackups = (serverId: unknown) => this.publish("jobs", { type: "backups", serverId });
+    app.events.on("job", onJob);
+    app.events.on("backups", onBackups);
+    this.offs.push(() => app.events.off("job", onJob), () => app.events.off("backups", onBackups));
   }
 
   dispose() {
