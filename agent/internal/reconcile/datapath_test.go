@@ -163,3 +163,49 @@ func dataSource(t *testing.T, fake *docker.Fake, id string) string {
 	}
 	return ""
 }
+
+// M2: el original desapareció porque Compose lo recreó con otro id sobre la misma carpeta: no se crea
+// mcsm-<slug> encima del mismo mundo.
+func TestOriginalGoneButAnotherContainerUsesData(t *testing.T) {
+	r, _, fake, rec, root := setup(t)
+	ctx := context.Background()
+	dataDir := filepath.Join(root, "alpha", "data")
+	id := external(t, fake, "mc", dataDir, true)
+	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
+		t.Fatal(err)
+	}
+	if err := fake.Remove(ctx, id); err != nil { // docker compose up -d
+		t.Fatal(err)
+	}
+	external(t, fake, "casa-survival-1", dataDir, false)
+	fake.Calls = nil
+	if err := r.Reconcile(ctx, "a"); !errors.Is(err, ErrDataInUse) {
+		t.Fatalf("err = %v", err)
+	}
+	if calls(fake, "Create")+calls(fake, "Start") != 0 {
+		t.Fatalf("no se crea nada: %v", fake.Calls)
+	}
+	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "casa-survival-1") {
+		t.Fatalf("observed = %+v", o)
+	}
+}
+
+// M2 con dataPath, y en la recreación: el original adoptado no se para si otro contenedor itzg monta
+// la misma carpeta (se crearía un segundo servidor sobre el mismo mundo).
+func TestRecreateRefusedWhileAnotherContainerUsesData(t *testing.T) {
+	r, _, fake, _, _ := setup(t)
+	ctx := context.Background()
+	id := external(t, fake, "mc", extDataPath, true)
+	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{dataPath: extDataPath}))); err != nil {
+		t.Fatal(err)
+	}
+	external(t, fake, "copia-manual", extDataPath, false)
+	fake.Calls = nil
+	err := r.Apply(ctx, importMsg("a", "alpha", 2, importedSpec(id, impOpts{dataPath: extDataPath, memory: "3G"})))
+	if !errors.Is(err, ErrDataInUse) {
+		t.Fatalf("err = %v", err)
+	}
+	if _, ok := fake.Containers[id]; !ok || calls(fake, "Stop")+calls(fake, "Remove")+calls(fake, "Create") != 0 {
+		t.Fatalf("el original sigue intacto: %v", fake.Calls)
+	}
+}

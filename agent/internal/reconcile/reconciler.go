@@ -241,6 +241,7 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 	if err := r.checkDataPath(ctx, serverID, parsed, existing); err != nil {
 		return err
 	}
+	recreate := false
 	switch {
 	case existing != nil && existing.Adopted:
 		// plan-6: el original sigue mientras la spec no supere la versión de la adopción.
@@ -250,13 +251,24 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 		}
 		if ad != nil && sp.Version > ad.Version {
 			r.log.Info("primer cambio de spec de un importado: se recrea con etiquetas mcsm", "server", sp.Slug, "original", existing.Name)
-			if err := r.replace(ctx, existing); err != nil {
-				return err
-			}
-			existing = nil
+			recreate = true
 		}
 	case existing != nil && existing.Labels[spec.LabelHash] != build.Hash:
 		r.log.Info("spec cambiada, recreando contenedor", "server", sp.Slug)
+		recreate = true
+	}
+	// plan-6 (M2): antes de crear el gestionado de un importado (y antes de parar el que se sustituye),
+	// ningún otro contenedor itzg puede montar ya su carpeta de datos.
+	if (existing == nil || recreate) && (parsed.Adopt != nil || parsed.DataPath != "") {
+		exclude := ""
+		if existing != nil {
+			exclude = existing.ID
+		}
+		if err := r.checkDataFree(ctx, build.DataDir, exclude); err != nil {
+			return err
+		}
+	}
+	if recreate {
 		if err := r.replace(ctx, existing); err != nil {
 			return err
 		}

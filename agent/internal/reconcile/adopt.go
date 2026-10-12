@@ -37,6 +37,8 @@ var (
 	ErrAdoptSpec     = errors.New("spec de adopción inválida")
 	// ErrDataPathUnverified: la spec trae un dataPath que el agente no verificó para ese servidor (H1).
 	ErrDataPathUnverified = errors.New("carpeta de datos sin verificar")
+	// ErrDataInUse: otro contenedor itzg no gestionado monta ya la carpeta de datos (M2).
+	ErrDataInUse = errors.New("carpeta de datos en uso por otro contenedor")
 )
 
 // Adopt establece la adopción que pide el panel (ImportAdopt): comprueba el contenedor, lo conecta a
@@ -213,6 +215,35 @@ func (r *Reconciler) checkDataPath(ctx context.Context, serverID string, parsed 
 		}
 	}
 	return fmt.Errorf("%w: no se puede comprobar que %s sea la carpeta del contenedor importado (este agente no la verificó: ¿se perdió su store?). No se crea nada: elimina el servidor sin borrar datos y vuelve a importarlo", ErrDataPathUnverified, parsed.DataPath)
+}
+
+// checkDataFree (M2) falla si algún contenedor itzg no gestionado, salvo exclude (el que se va a
+// sustituir), monta dataDir en /data. Es para importados antes de crear su gestionado: si el original
+// desapareció porque Compose lo recreó con otro id, crear mcsm-<slug> pondría dos servidores sobre el
+// mismo mundo. Requiere el lock del servidor.
+func (r *Reconciler) checkDataFree(ctx context.Context, dataDir, exclude string) error {
+	all, err := r.eng.ListAll(ctx)
+	if err != nil {
+		return fmt.Errorf("listar contenedores: %w", err)
+	}
+	want := filepath.Clean(dataDir)
+	for _, c := range all {
+		if c.ID == exclude || c.Labels[spec.LabelManaged] == "true" {
+			continue
+		}
+		info, err := r.eng.InspectImport(ctx, c.ID)
+		if errors.Is(err, docker.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("inspeccionar %s: %w", c.Name, err)
+		}
+		if spec.IsItzgImage(info.Image) && dataBind(info) == want {
+			return fmt.Errorf("%w: %s (no es de MC Server Manager) ya monta %s en /data: no se crea otro contenedor sobre el mismo mundo. "+
+				"Quítalo, o elimina este servidor sin borrar datos y vuelve a importarlo desde %s", ErrDataInUse, info.Name, dataDir, info.Name)
+		}
+	}
+	return nil
 }
 
 // connectAlias conecta el contenedor a la red del agente con el alias mcsm-<slug> (RCON, ping y
