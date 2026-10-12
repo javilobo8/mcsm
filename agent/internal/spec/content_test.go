@@ -378,3 +378,14 @@ func TestPlayersSectionsRejectOverridingEnv(t *testing.T) {
 		t.Fatalf("err = %v, want %q", err, want)
 	}
 }
+
+// level-name es la carpeta del mundo dentro de /data: sin separadores ni "..", para que ningún
+// código que construya rutas del host con ella pueda salirse (auditoría L6).
+func TestLevelNameIsAPlainFolder(t *testing.T) {
+	s := loadFixture(t)
+	s.Properties = map[string]string{"level-name": "../../etc"}
+	want := "spec: La propiedad level-name es la carpeta del mundo: no puede contener «/», «\\» ni «..»"
+	if err := s.Validate(); err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}

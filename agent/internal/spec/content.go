@@ -104,6 +104,15 @@ func (s Spec) UsesCurseForge() bool {
 		(s.Mods != nil && len(s.Mods.CurseforgeFiles) > 0)
 }
 
+// levelNameErr: level-name es la carpeta del mundo dentro de /data. Sin separadores ni "..": hoy
+// solo afecta al contenedor, pero un plan que construya rutas del host con ella (reset o subida
+// de mundo, backups) no debe poder salirse. Mismo mensaje que en zod (contentCheck).
+const levelNameErr = "La propiedad level-name es la carpeta del mundo: no puede contener «/», «\\» ni «..»"
+
+func validLevelName(v string) bool {
+	return !strings.ContainsAny(v, `/\`) && !strings.Contains(v, "..")
+}
+
 func (s Spec) validateContent() error {
 	// Sin repetir el valor: el error acaba en observed.error, que ve el navegador.
 	if s.CurseForgeAPIKey != "" && !cfAPIKeyRe.MatchString(s.CurseForgeAPIKey) {
@@ -111,6 +120,9 @@ func (s Spec) validateContent() error {
 	}
 	if err := s.validateModpack(); err != nil {
 		return err
+	}
+	if v, ok := s.Properties["level-name"]; ok && !validLevelName(v) {
+		return fmt.Errorf("spec: %s", levelNameErr)
 	}
 	var rules []listRule
 	if s.Mods != nil {

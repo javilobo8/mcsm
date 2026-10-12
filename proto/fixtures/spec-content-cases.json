@@ -526,5 +526,55 @@
     "OPS": "Lobo"
    }
   }
+ },
+ {
+  "name": "level-name normal",
+  "ok": true,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": "mundo_2 nuevo"
+   }
+  }
+ },
+ {
+  "name": "level-name con barra",
+  "ok": false,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": "mundos/uno"
+   }
+  }
+ },
+ {
+  "name": "level-name con barra invertida",
+  "ok": false,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": "mundos\\uno"
+   }
+  }
+ },
+ {
+  "name": "level-name que sube de carpeta",
+  "ok": false,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": ".."
+   }
+  }
+ },
+ {
+  "name": "level-name con .. dentro",
+  "ok": false,
+  "merge": {
+   "properties": {
+    "motd": "Hola",
+    "level-name": "mundo..viejo"
+   }
+  }
  }
 ]

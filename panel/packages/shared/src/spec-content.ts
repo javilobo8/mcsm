@@ -109,7 +109,15 @@ type ContentShape = {
   ops?: unknown;
 };
 
-/** Validación cruzada (tipo ↔ modpack, whitelist ↔ properties). */
+/**
+ * level-name es la carpeta del mundo dentro de /data: sin separadores ni "..". Hoy solo afecta al
+ * contenedor, pero un plan que construya rutas del host con ella no debe poder salirse. Mismo mensaje
+ * que el agente (validLevelName).
+ */
+export const LEVEL_NAME_MESSAGE = "La propiedad level-name es la carpeta del mundo: no puede contener «/», «\\» ni «..»";
+export const validLevelName = (v: string) => !/[/\\]/.test(v) && !v.includes("..");
+
+/** Validación cruzada (tipo ↔ modpack, whitelist ↔ properties, env ↔ Jugadores, level-name). */
 export function contentCheck(s: ContentShape, ctx: z.RefinementCtx) {
   const typeIsPlatform = (MODPACK_PLATFORMS as readonly string[]).includes(s.type);
   if (s.modpack && s.type !== s.modpack.platform) {
@@ -126,6 +134,8 @@ export function contentCheck(s: ContentShape, ctx: z.RefinementCtx) {
     }
   }
   for (const c of envSectionConflicts(s)) ctx.addIssue({ code: "custom", path: ["env", c.key], message: c.message });
+  const level = s.properties["level-name"];
+  if (level !== undefined && !validLevelName(level)) ctx.addIssue({ code: "custom", path: ["properties", "level-name"], message: LEVEL_NAME_MESSAGE });
 }
 
 /** ¿La spec descarga algo de CurseForge? Solo entonces el panel le envía CF_API_KEY. */
