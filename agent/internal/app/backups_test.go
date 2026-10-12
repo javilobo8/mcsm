@@ -1058,3 +1058,89 @@ func TestBlockedServerRemovedByPanelIsReleased(t *testing.T) {
 		t.Fatalf("la liberación completa el borrado: %+v", list)
 	}
 }
+
+// listFailEngine hace fallar ListManaged mientras fail esté activo (Docker cargado o caído).
+type listFailEngine struct {
+	*docker.Fake
+	mu   sync.Mutex
+	fail bool
+}
+
+func (e *listFailEngine) setFail(v bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.fail = v
+}
+
+func (e *listFailEngine) ListManaged(ctx context.Context) ([]docker.Container, error) {
+	e.mu.Lock()
+	fail := e.fail
+	e.mu.Unlock()
+	if fail {
+		return nil, fmt.Errorf("docker no responde")
+	}
+	return e.Fake.ListManaged(ctx)
+}
+
+func newListFailEnv(t *testing.T) (*backupEnv, *listFailEngine) {
+	fake := docker.NewFake()
+	eng := &listFailEngine{Fake: fake}
+	return newBackupEnvEngine(t, eng, fake, specJSON), eng
+}
+
+// Si no se puede comprobar si el servidor está en marcha, la copia falla: copiar «en frío» un
+// servidor que sí está en marcha (sin save-off) daría una copia corrupta con sha256 válido.
+func TestBackupFailsWhenDockerCannotBeQueried(t *testing.T) {
+	e, eng := newListFailEnv(t)
+	eng.setFail(true)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	fin := e.col.final("job-1")
+	if fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "no se pudo comprobar") {
+		t.Fatalf("final = %+v", fin)
+	}
+	if cmds := e.rc.list(); len(cmds) != 0 || len(e.col.created()) != 0 {
+		t.Fatalf("ni RCON ni copia: %v, %+v", cmds, e.col.created())
+	}
+	if metas, _ := backup.List(e.backupsDir(), "alpha"); len(metas) != 0 {
+		t.Fatalf("no debe quedar copia: %+v", metas)
+	}
+}
+
+// Si no se puede comprobar el contenedor, la restauración no intercambia data: con el
+// servidor en marcha, seguiría escribiendo en el que pasaría a ser el pre-restore.
+func TestRestoreFailsWhenDockerCannotBeQueried(t *testing.T) {
+	e, eng := newListFailEnv(t)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	name := e.col.created()[0].Filename
+	e.writeLevel(t, "LEVEL-2")
+	e.clk.Advance(time.Hour)
+	stops := fakeCalls(e.fake, "Stop")
+	eng.setFail(true)
+	e.handle(20, &mcsmv1.BackupRestore{ServerId: "a", Filename: name, JobId: "job-r"})
+	e.settle(t)
+	if fin := e.col.final("job-r"); fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "no se pudo comprobar") {
+		t.Fatalf("final = %+v", fin)
+	}
+	if readLevel(t, e.dataDir()) != "LEVEL-2" || fakeCalls(e.fake, "Stop") != stops {
+		t.Fatal("data intacto y el servidor sin tocar")
+	}
+	if pre, _ := backup.ListPreRestore(e.dataDir()); len(pre) != 0 {
+		t.Fatalf("sin pre-restore: %+v", pre)
+	}
+}
+
+// Al arrancar, si Docker no responde, save-on se envía igualmente (es idempotente): si no,
+// FailInterrupted olvidaría el job y el mundo seguiría en save-off.
+func TestRecoverSendsSaveOnWhenDockerCannotBeQueried(t *testing.T) {
+	e, eng := newListFailEnv(t)
+	if err := e.st.PutJob(&mcsmv1.JobRecord{JobId: "copia", ServerId: "a", Type: jobs.TypeBackup, Status: mcsmv1.JobStatus_JOB_STATUS_RUNNING, StartedUnixMs: 1}); err != nil {
+		t.Fatal(err)
+	}
+	eng.setFail(true)
+	e.a.bk.recoverAtStart(context.Background())
+	if got := strings.Join(e.rc.list(), ","); got != "save-on" {
+		t.Fatalf("RCON = %q", got)
+	}
+}

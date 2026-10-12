@@ -9,6 +9,7 @@ import (
 	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
+	"mcsm/agent/internal/docker"
 )
 
 const specJSON3G = `{"imageTag":"java21","type":"PAPER","version":"1.21.4","memory":"3G","ports":{"game":25565},"restartPolicy":"unless-stopped","rconPassword":"abcdefgh"}`
@@ -259,5 +260,52 @@ func TestHoldErrorIsObservedUntilRelease(t *testing.T) {
 	defer again(ctx)
 	if obs := r.Observe(ctx, "a"); obs.Error != "" {
 		t.Fatalf("una reserva nueva no hereda el error: %q", obs.Error)
+	}
+}
+
+// listFailEngine hace fallar ListManaged mientras fail esté activo.
+type listFailEngine struct {
+	*docker.Fake
+	mu   sync.Mutex
+	fail bool
+}
+
+func (e *listFailEngine) setFail(v bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.fail = v
+}
+
+func (e *listFailEngine) ListManaged(ctx context.Context) ([]docker.Container, error) {
+	e.mu.Lock()
+	fail := e.fail
+	e.mu.Unlock()
+	if fail {
+		return nil, errors.New("docker no responde")
+	}
+	return e.Fake.ListManaged(ctx)
+}
+
+// plan-4: Container distingue «no hay contenedor» (nil, nil) de «no se pudo comprobar»
+// (error): una copia o una restauración no pueden tomar lo segundo por lo primero.
+func TestContainerReportsDockerErrors(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	eng := &listFailEngine{Fake: fake}
+	r.eng = eng
+	ctx := context.Background()
+	if c, err := r.Container(ctx, "a"); c != nil || err != nil {
+		t.Fatalf("sin contenedor: %+v, %v", c, err)
+	}
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := r.Container(ctx, "a")
+	if err != nil || c == nil || c.ID != r.ContainerID(ctx, "a") || c.State != "running" {
+		t.Fatalf("Container = %+v, %v", c, err)
+	}
+	eng.setFail(true)
+	if c, err := r.Container(ctx, "a"); c != nil || err == nil || !strings.Contains(err.Error(), "docker no responde") {
+		t.Fatalf("con Docker fallando: %+v, %v", c, err)
 	}
 }

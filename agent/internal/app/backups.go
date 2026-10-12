@@ -196,9 +196,12 @@ func (b *backupService) resumeSaves(ctx context.Context, serverID string) {
 	if err != nil {
 		return // retirado o ilegible: no hay a quién enviar save-on
 	}
-	if running, err := b.isRunning(ctx, serverID); err != nil || !running {
+	running, err := b.isRunning(ctx, serverID)
+	if err == nil && !running {
 		return // parado: al arrancar, el servidor vuelve a guardar solo
 	}
+	// En marcha, o sin poder comprobarlo (Docker no responde): save-on es idempotente y contra
+	// un servidor parado falla enseguida. Sin él, FailInterrupted olvidaría el job.
 	cctx, cancel := context.WithTimeout(ctx, resumeOnStartTimeout)
 	defer cancel()
 	if _, err := b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on"); err != nil {
@@ -568,19 +571,29 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 	return meta, err
 }
 
+// isRunning dice si el contenedor del servidor está en marcha. Si Docker no deja comprobarlo
+// devuelve error, nunca «parado»: una copia lo tomaría por fría (sin save-off) y una
+// restauración intercambiaría data con el servidor escribiendo.
 func (b *backupService) isRunning(ctx context.Context, serverID string) (bool, error) {
-	cid := b.a.rec.ContainerID(ctx, serverID)
-	if cid == "" {
+	c, err := b.a.rec.Container(ctx, serverID)
+	if err != nil {
+		return false, errCheckContainer(err)
+	}
+	if c == nil {
 		return false, nil
 	}
-	ins, err := b.a.eng.Inspect(ctx, cid)
+	ins, err := b.a.eng.Inspect(ctx, c.ID)
 	if errors.Is(err, docker.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, errCheckContainer(err)
 	}
 	return ins.Running, nil
+}
+
+func errCheckContainer(err error) error {
+	return fmt.Errorf("no se pudo comprobar si el servidor está en marcha (Docker: %w); no se hace nada", err)
 }
 
 // announce avisa al panel de una copia nueva (también de los datos pre-restore).
@@ -665,9 +678,13 @@ func (b *backupService) runRestore(ctx context.Context, serverID, filename strin
 	if err != nil {
 		return err
 	}
-	if cid := b.a.rec.ContainerID(ctx, serverID); cid != "" {
+	c, err := b.a.rec.Container(ctx, serverID)
+	if err != nil {
+		return errCheckContainer(err)
+	}
+	if c != nil {
 		j.Progress(1, "Parando el servidor")
-		if err := b.a.eng.Stop(ctx, cid, reconcile.StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
+		if err := b.a.eng.Stop(ctx, c.ID, reconcile.StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			return fmt.Errorf("parar el servidor: %w", err)
 		}
 		running, err := b.isRunning(ctx, serverID)

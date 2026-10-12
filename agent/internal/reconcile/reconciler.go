@@ -465,6 +465,14 @@ func (r *Reconciler) Observe(ctx context.Context, serverID string) *mcsmv1.Obser
 	return obs
 }
 
+// Container devuelve el contenedor del servidor: nil sin error si no existe, y el error de
+// Docker si no se pudo comprobar. plan-4: las copias y restauraciones lo necesitan para no
+// tomar un fallo de Docker por «no hay contenedor» (copia en caliente sin save-off,
+// restauración con el servidor en marcha).
+func (r *Reconciler) Container(ctx context.Context, serverID string) (*docker.Container, error) {
+	return r.find(ctx, serverID)
+}
+
 // ContainerID devuelve el id del contenedor del servidor, o "" si no existe.
 func (r *Reconciler) ContainerID(ctx context.Context, serverID string) string {
 	c, err := r.find(ctx, serverID)
