@@ -1822,9 +1822,10 @@ export const MigrateReceiveSchema: GenMessage<MigrateReceive> = /*@__PURE__*/
 
 /**
  * Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
- * olvida la spec del servidor (si la tiene) y borra su contenedor, y borra <DATA_ROOT>/<slug>
- * solo si lleva el marcador de migration_id. Idempotente. Respuesta: Ack o Error (busy: hay una
- * recepción en curso o el contenedor aún no se pudo borrar; el panel reintenta).
+ * olvida la spec del servidor (si la tiene) y borra su contenedor y, ya sin él, borra
+ * <DATA_ROOT>/<slug> solo si lleva el marcador de migration_id y ningún otro servidor del nodo usa
+ * ese slug. Idempotente. Respuesta: Ack o Error (busy: hay una recepción en curso o el contenedor
+ * aún no se pudo borrar; el panel reintenta. invalid_request: otro slug u otro servidor lo usa).
  *
  * @generated from message mcsm.v1.MigrateAbort
  */
@@ -1854,10 +1855,10 @@ export const MigrateAbortSchema: GenMessage<MigrateAbort> = /*@__PURE__*/
 
 /**
  * Panel → agente (origen), tras confirmar la migración. Para el contenedor si sigue en marcha,
- * aparta <DATA_ROOT>/<slug> (datos y copias) a <DATA_ROOT>/<slug>.migrated-<ts> (con
- * delete_data, lo borra una vez borrado el contenedor), olvida la spec y borra el contenedor.
- * Idempotente.
- * Respuesta: Ack o Error (invalid_request: el servidor tiene otro slug aquí; busy: reintentar).
+ * olvida la spec y borra el contenedor y, solo entonces, aparta <DATA_ROOT>/<slug> (datos y
+ * copias) a <DATA_ROOT>/<slug>.migrated-<ts> o, con delete_data, lo borra. Idempotente.
+ * Respuesta: Ack o Error (invalid_request: el servidor tiene otro slug aquí u otro servidor del
+ * nodo usa ese slug; busy: reintentar, p. ej. el contenedor aún no se pudo borrar).
  *
  * @generated from message mcsm.v1.MigrateRetire
  */

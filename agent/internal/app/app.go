@@ -417,6 +417,10 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		a.handleBackupPush(life, env.Id, b.BackupPush, send)
 	case *mcsmv1.Envelope_MigrateReceive:
 		a.bk.handleMigrateReceive(env.Id, b.MigrateReceive, send)
+	case *mcsmv1.Envelope_MigrateAbort:
+		a.bk.handleMigrateAbort(env.Id, b.MigrateAbort, send)
+	case *mcsmv1.Envelope_MigrateRetire:
+		a.bk.handleMigrateRetire(env.Id, b.MigrateRetire, send)
 	// ── plan-8 ──
 	// ── plan-9 ──
 

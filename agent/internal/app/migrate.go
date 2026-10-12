@@ -9,9 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/backup"
+	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/files"
 	"mcsm/agent/internal/jobs"
@@ -268,4 +270,244 @@ func (b *backupService) receive(ctx context.Context, m *mcsmv1.MigrateReceive, d
 		Progress: func(pct uint32, msg string) { j.Progress(50+pct/2, msg) }, Log: j.Log,
 	})
 	return err
+}
+
+// ── Deshacer en el destino y retirar el origen ──
+
+func (b *backupService) handleMigrateAbort(id uint64, m *mcsmv1.MigrateAbort, send func(*mcsmv1.Envelope) error) {
+	b.respondAsync(id, send, func() error { return b.abortMigration(m) })
+}
+
+func (b *backupService) handleMigrateRetire(id uint64, m *mcsmv1.MigrateRetire, send func(*mcsmv1.Envelope) error) {
+	b.respondAsync(id, send, func() error { return b.retireMigration(m) })
+}
+
+// respondAsync ejecuta fn en segundo plano, contada en wg como las copias (el cierre la espera), y
+// responde Ack o Error al terminar. Si el agente se está cerrando, busy.
+func (b *backupService) respondAsync(id uint64, send func(*mcsmv1.Envelope) error, fn func() error) {
+	if !b.spawn(func() {
+		if err := fn(); err != nil {
+			_ = send(errMsg(id, migrateErrCode(err), err))
+			return
+		}
+		_ = send(ack(id))
+	}) {
+		_ = send(errMsg(id, errcode.Busy, errClosing))
+	}
+}
+
+func checkMigrationMsg(serverID, slug, migrationID string) error {
+	if serverID == "" || migrationID == "" || !spec.ValidSlug(slug) {
+		return fmt.Errorf("%w: faltan server_id o migration_id, o el slug no es válido", errBadRequest)
+	}
+	return nil
+}
+
+// abortMigration deshace en el destino lo que dejó una migración no confirmada: la spec y el
+// contenedor (Forget y liberar la reserva, que lo para y lo borra por su lápida) y el directorio,
+// solo si lleva el marcador de esta migración, ningún otro servidor del nodo lo usa y ya no hay
+// contenedor que lo monte. Repetirlo no hace nada.
+func (b *backupService) abortMigration(m *mcsmv1.MigrateAbort) error {
+	if err := checkMigrationMsg(m.GetServerId(), m.GetSlug(), m.GetMigrationId()); err != nil {
+		return err
+	}
+	id := m.GetServerId()
+	sp, err := b.a.st.GetSpec(id)
+	if err != nil {
+		return err
+	}
+	switch {
+	case sp != nil && sp.Slug != m.GetSlug():
+		return fmt.Errorf("%w: el servidor tiene otro slug en este nodo (%s)", errBadRequest, sp.Slug)
+	case sp != nil:
+		if err := b.forgetHeld(id, nil); err != nil {
+			return err
+		}
+	default:
+		if reason := b.a.rec.HeldReason(id); reason != "" {
+			return fmt.Errorf("%w: se reintentará al terminar", reconcile.Busy(reason))
+		}
+	}
+	if err := b.removalDone(id); err != nil {
+		return err
+	}
+	b.a.hub.Reset(id)
+	dir := filepath.Join(b.a.cfg.DataRoot, m.GetSlug())
+	mark, err := os.ReadFile(filepath.Join(dir, migrationMarker))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil // nada de esta migración en el disco (o ya borrado)
+	case err != nil:
+		return err
+	case strings.TrimSpace(string(mark)) != m.GetMigrationId():
+		b.a.log.Warn("deshacer migración: el directorio es de otra migración; no se toca", "dir", dir)
+		return nil
+	}
+	if err := b.dirFree(id, m.GetSlug()); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return fmt.Errorf("borrar %s: %w", dir, err)
+	}
+	return nil
+}
+
+// retireMigration retira el servidor del origen tras confirmar la migración: con la reserva
+// tomada, para el contenedor si alguien lo arrancó y comprueba que se ha parado, olvida la spec y
+// libera la reserva (lo que borra el contenedor por su lápida). Solo entonces, sin contenedor que
+// lo monte, aparta <DATA_ROOT>/<slug> (datos y copias) a <DATA_ROOT>/<slug>.migrated-<ts> o, con
+// delete_data, lo borra. Repetirlo (tras un corte, un borrado del contenedor pendiente o una
+// respuesta perdida) completa lo que falte y nada más.
+func (b *backupService) retireMigration(m *mcsmv1.MigrateRetire) error {
+	if err := checkMigrationMsg(m.GetServerId(), m.GetSlug(), m.GetMigrationId()); err != nil {
+		return err
+	}
+	id := m.GetServerId()
+	sp, err := b.a.st.GetSpec(id)
+	if err != nil {
+		return err
+	}
+	if sp != nil && sp.Slug != m.GetSlug() {
+		return fmt.Errorf("%w: el servidor tiene otro slug en este nodo (%s)", errBadRequest, sp.Slug)
+	}
+	if sp != nil {
+		if err := b.forgetHeld(id, func() error { return b.stopForRetire(id) }); err != nil {
+			return err
+		}
+	}
+	if err := b.removalDone(id); err != nil {
+		return err
+	}
+	b.a.hub.Reset(id)
+	// Sin spec (reintento): si <slug> sigue ahí, es el de este servidor (el panel no deja crear
+	// otro en el nodo mientras la retirada esté pendiente, y dirFree lo comprueba).
+	dir := filepath.Join(b.a.cfg.DataRoot, m.GetSlug())
+	if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	if err := b.dirFree(id, m.GetSlug()); err != nil {
+		return err
+	}
+	if m.GetDeleteData() {
+		if err := os.RemoveAll(dir); err != nil {
+			return fmt.Errorf("borrar %s: %w", dir, err)
+		}
+		b.a.log.Info("migración confirmada: datos del origen borrados", "server", id, "dir", dir)
+		return nil
+	}
+	to := filepath.Join(b.a.cfg.DataRoot, backup.MigratedName(dir, b.clock.Now()))
+	// rename(2) sustituiría en silencio un directorio vacío con ese nombre.
+	if _, err := os.Lstat(to); err == nil {
+		return fmt.Errorf("%w: %s ya existe; se reintentará", reconcile.Busy(holdMigration), to)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if err := os.Rename(dir, to); err != nil {
+		return fmt.Errorf("apartar %s: %w", dir, err)
+	}
+	b.a.log.Info("migración confirmada: los datos del origen se conservan", "server", id, "en", to)
+	return nil
+}
+
+// dirFree comprueba, antes de borrar o apartar <DATA_ROOT>/<slug>, que ningún otro servidor del
+// nodo usa ese slug (invalid_request: no se toca) y que el servidor ya no tiene contenedor que lo
+// monte (busy: se reintentará). Docker sin responder también impide tocarlo.
+func (b *backupService) dirFree(serverID, slug string) error {
+	specs, err := b.a.st.ListSpecs()
+	if err != nil {
+		return err
+	}
+	for _, sp := range specs {
+		if sp.Slug == slug && sp.ServerId != serverID {
+			return fmt.Errorf("%w: %s es el directorio de otro servidor de este nodo (%s); no se toca", errBadRequest, slug, sp.ServerId)
+		}
+	}
+	c, err := b.a.rec.Container(b.a.life, serverID)
+	if err != nil {
+		return errCheckContainer(err)
+	}
+	if c != nil {
+		return fmt.Errorf("%w: el contenedor del servidor sigue existiendo; se reintentará", reconcile.Busy(holdMigration))
+	}
+	return nil
+}
+
+// forgetHeld reserva el servidor, espera a las escrituras de archivos en curso, ejecuta before (si
+// hay) con la reserva tomada, olvida la spec (deja lápida) y libera la reserva, lo que para y borra
+// su contenedor. Si algo falla antes de olvidar, libera sin más: el servidor sigue como estaba.
+func (b *backupService) forgetHeld(id string, before func() error) error {
+	ctx := b.a.life
+	release, err := b.a.rec.Hold(id, holdMigration)
+	if err != nil {
+		return err
+	}
+	if err := b.waitFileWrites(id); err != nil {
+		release(ctx)
+		return err
+	}
+	if before != nil {
+		if err := before(); err != nil {
+			release(ctx)
+			return err
+		}
+	}
+	if err := b.a.rec.Forget(id); err != nil {
+		release(ctx)
+		return err
+	}
+	release(ctx) // con lápida: completa el borrado del contenedor (o lo deja al reintento de lápidas)
+	return nil
+}
+
+// waitFileWrites espera, como mucho drainWait, a que terminen las escrituras de archivos que ya
+// estaban en curso en el servidor al reservarlo (las nuevas ya responden busy). Ver fileWrites.
+func (b *backupService) waitFileWrites(id string) error {
+	select {
+	case <-b.a.fileWrites.drained(id):
+		return nil
+	case <-b.clock.Until(b.clock.Now().Add(b.drainWait)):
+		return fmt.Errorf("%w: hay operaciones de archivos en curso en el servidor; se reintentará", reconcile.Busy(holdMigration))
+	case <-b.a.life.Done():
+		return errClosing
+	}
+}
+
+// removalDone falla con busy si el borrado del contenedor quedó pendiente (lápida): la pasada de
+// lápidas lo reintenta y el panel repite la orden.
+func (b *backupService) removalDone(id string) error {
+	tomb, err := b.a.st.HasTombstone(id)
+	if err != nil {
+		return err
+	}
+	if tomb {
+		return fmt.Errorf("%w: el contenedor del servidor aún no se ha podido borrar; se reintentará", reconcile.Busy(holdMigration))
+	}
+	return nil
+}
+
+// stopForRetire para el contenedor si sigue en marcha (el panel lo paró en el paso 1, pero alguien
+// pudo arrancarlo a mano) y comprueba que se ha parado: nunca se retira un servidor en marcha.
+func (b *backupService) stopForRetire(id string) error {
+	ctx := b.a.life
+	running, err := b.isRunning(ctx, id)
+	if err != nil || !running {
+		return err
+	}
+	c, err := b.a.rec.Container(ctx, id)
+	if err != nil {
+		return errCheckContainer(err)
+	}
+	if c != nil {
+		if err := b.a.eng.Stop(ctx, c.ID, reconcile.StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
+			return fmt.Errorf("parar el servidor en el origen: %w", err)
+		}
+	}
+	if running, err := b.isRunning(ctx, id); err != nil {
+		return err
+	} else if running {
+		return errors.New("el servidor sigue en marcha en el origen: no se retira")
+	}
+	return nil
 }

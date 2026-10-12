@@ -19,6 +19,7 @@ import (
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/backup"
+	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/store"
 )
@@ -333,5 +334,239 @@ func TestMigrateReceiveInterruptedByShutdown(t *testing.T) {
 	}
 	if e.a.rec.Held("m") {
 		t.Fatal("la reserva debe liberarse")
+	}
+}
+
+func TestMigrateAbortRemovesGhostAndMarkedDir(t *testing.T) {
+	e := newMigrateEnv(t)
+	arch, sum, data := worldArchive(t, "LEVEL-MIG")
+	servePanel(t, e, arch)
+	e.call(t, 30, receiveMsg("rx-1", arch, sum, data))
+	e.settle(t)
+	ghost := &mcsmv1.ServerSpec{ServerId: "m", Slug: "mig", Version: 4, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_STOPPED, SpecJson: []byte(specJSON)}
+	if r := e.handle(31, &mcsmv1.ApplySpec{Server: ghost}); r.GetAck() == nil {
+		t.Fatalf("ApplySpec = %+v", r)
+	}
+	if c, _ := e.a.rec.Container(context.Background(), "m"); c == nil {
+		t.Fatal("el servidor del destino debe tener contenedor")
+	}
+	abort := &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}
+	if r := e.call(t, 32, abort); r.GetAck() == nil {
+		t.Fatalf("abort = %+v", r)
+	}
+	if c, _ := e.a.rec.Container(context.Background(), "m"); c != nil {
+		t.Fatal("el contenedor del destino debe borrarse")
+	}
+	if sp, _ := e.st.GetSpec("m"); sp != nil {
+		t.Fatal("la spec del destino debe olvidarse")
+	}
+	if tomb, _ := e.st.HasTombstone("m"); tomb {
+		t.Fatal("sin borrado pendiente")
+	}
+	if _, err := os.Stat(e.migDir()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("el directorio con el marcador de esta migración debe borrarse")
+	}
+	if r := e.call(t, 33, abort); r.GetAck() == nil {
+		t.Fatalf("repetirlo no hace nada: %+v", r)
+	}
+}
+
+func TestMigrateAbortKeepsForeignDirAndWaitsForReceive(t *testing.T) {
+	e := newMigrateEnv(t)
+	if err := os.MkdirAll(e.migDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(e.migDir(), migrationMarker), []byte("otra\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.call(t, 40, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}); r.GetAck() == nil {
+		t.Fatalf("abort = %+v", r)
+	}
+	if _, err := os.Stat(e.migDir()); err != nil {
+		t.Fatal("el directorio de otra migración se conserva")
+	}
+	// Recepción en curso (reserva sin spec): busy, el panel reintenta.
+	release, err := e.a.rec.Hold("m", holdMigration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := e.call(t, 41, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "otra"}); errCode(r) != errcode.Busy {
+		t.Fatalf("en curso = %+v", r)
+	}
+	release(context.Background())
+	if r := e.call(t, 42, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "../x", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("slug = %+v", r)
+	}
+}
+
+func TestMigrateRetireStopsAndSetsAsideData(t *testing.T) {
+	e := newMigrateEnv(t)
+	if !e.running(t) {
+		t.Fatal("precondición: el servidor está en marcha")
+	}
+	retire := &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1"}
+	if r := e.call(t, 50, retire); r.GetAck() == nil {
+		t.Fatalf("retire = %+v", r)
+	}
+	if c, _ := e.a.rec.Container(context.Background(), "a"); c != nil {
+		t.Fatal("el contenedor del origen debe borrarse")
+	}
+	if sp, _ := e.st.GetSpec("a"); sp != nil {
+		t.Fatal("la spec del origen debe olvidarse")
+	}
+	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("el directorio del servidor debe apartarse entero (el slug queda libre)")
+	}
+	aside := filepath.Join(e.a.cfg.DataRoot, "alpha.migrated-20261012T040000.000Z", "data")
+	if got := readLevel(t, aside); got != "LEVEL-1" {
+		t.Fatalf("apartado = %q", got)
+	}
+	if r := e.call(t, 51, retire); r.GetAck() == nil {
+		t.Fatalf("repetirlo no hace nada: %+v", r)
+	}
+	if got := readLevel(t, aside); got != "LEVEL-1" {
+		t.Fatal("el apartado sigue igual")
+	}
+}
+
+func TestMigrateRetireDeleteData(t *testing.T) {
+	e := newMigrateEnv(t)
+	if r := e.call(t, 50, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", DeleteData: true}); r.GetAck() == nil {
+		t.Fatalf("retire = %+v", r)
+	}
+	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("con «borrar origen», <DATA_ROOT>/alpha desaparece entero")
+	}
+	if c, _ := e.a.rec.Container(context.Background(), "a"); c != nil {
+		t.Fatal("el contenedor del origen debe borrarse")
+	}
+}
+
+func TestMigrateRetireRefusals(t *testing.T) {
+	e := newMigrateEnv(t)
+	if r := e.call(t, 60, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "otro", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("otro slug = %+v", r)
+	}
+	release, err := e.a.rec.Hold("a", holdBackup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := e.call(t, 61, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1"})
+	if errCode(r) != errcode.Busy || !strings.Contains(r.GetError().GetMessage(), holdBackup) {
+		t.Fatalf("reservado = %+v", r)
+	}
+	release(context.Background())
+	if _, err := os.Stat(e.dataDir()); err != nil {
+		t.Fatal("rechazado: data sigue en su sitio")
+	}
+	if !e.running(t) {
+		t.Fatal("rechazado: el servidor sigue como estaba")
+	}
+}
+
+// MigrateAbort de un destino que llegó a arrancar (target_started): para y borra el contenedor
+// antes de borrar el directorio.
+func TestMigrateAbortRemovesRunningGhost(t *testing.T) {
+	e := newMigrateEnv(t)
+	arch, sum, data := worldArchive(t, "LEVEL-MIG")
+	servePanel(t, e, arch)
+	e.call(t, 30, receiveMsg("rx-1", arch, sum, data))
+	e.settle(t)
+	other := strings.Replace(specJSON, "25565", "25566", 1) // otro puerto: el de a está ocupado
+	ghost := &mcsmv1.ServerSpec{ServerId: "m", Slug: "mig", Version: 4, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(other)}
+	if r := e.handle(31, &mcsmv1.ApplySpec{Server: ghost}); r.GetAck() == nil {
+		t.Fatalf("ApplySpec = %+v", r)
+	}
+	ins, err := e.fake.Inspect(context.Background(), e.a.rec.ContainerID(context.Background(), "m"))
+	if err != nil || !ins.Running {
+		t.Fatalf("precondición: la copia del destino está en marcha: %+v, %v", ins, err)
+	}
+	if r := e.call(t, 32, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}); r.GetAck() == nil {
+		t.Fatalf("abort = %+v", r)
+	}
+	if list, _ := e.fake.ListManaged(context.Background()); len(list) != 1 || list[0].Labels["mcsm.server_id"] != "a" {
+		t.Fatalf("solo queda el contenedor de a: %+v", list)
+	}
+	if _, err := os.Stat(e.migDir()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("el directorio de la migración debe borrarse")
+	}
+}
+
+// Mientras el contenedor del origen no se haya podido borrar, sus datos no se apartan ni se
+// borran: busy, y el panel repite la orden. Cuando el borrado termina, el reintento los aparta.
+func TestMigrateRetireKeepsDataWhileContainerExists(t *testing.T) {
+	for _, del := range []bool{false, true} {
+		t.Run(fmt.Sprintf("delete_data=%v", del), func(t *testing.T) {
+			fake := docker.NewFake()
+			eng := &failRemoveEngine{Fake: fake}
+			e := newBackupEnvEngine(t, eng, fake, specJSON)
+			eng.setFail(true)
+			retire := &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", DeleteData: del}
+			if r := e.call(t, 50, retire); errCode(r) != errcode.Busy {
+				t.Fatalf("retire = %+v", r)
+			}
+			if got := readLevel(t, e.dataDir()); got != "LEVEL-1" {
+				t.Fatalf("data = %q", got)
+			}
+			if m, _ := filepath.Glob(filepath.Join(e.a.cfg.DataRoot, "alpha.migrated-*")); len(m) != 0 {
+				t.Fatalf("no se aparta nada: %v", m)
+			}
+			if running := e.running(t); running {
+				t.Fatal("el origen queda parado")
+			}
+			// El tick de lápidas acaba borrando el contenedor; el reintento del panel completa la retirada.
+			eng.setFail(false)
+			if err := e.a.rec.Remove(context.Background(), "a", false); err != nil {
+				t.Fatal(err)
+			}
+			if r := e.call(t, 51, retire); r.GetAck() == nil {
+				t.Fatalf("reintento = %+v", r)
+			}
+			if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("el slug queda libre")
+			}
+			m, _ := filepath.Glob(filepath.Join(e.a.cfg.DataRoot, "alpha.migrated-*"))
+			if del != (len(m) == 0) {
+				t.Fatalf("apartados = %v", m)
+			}
+		})
+	}
+}
+
+// Ni MigrateAbort ni MigrateRetire tocan un directorio que usa otro servidor de este nodo.
+func TestMigrateNeverTouchesAnotherServersDir(t *testing.T) {
+	e := newMigrateEnv(t)
+	if err := os.WriteFile(filepath.Join(e.a.cfg.DataRoot, "alpha", migrationMarker), []byte("mig-1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.call(t, 70, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "alpha", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("abort = %+v", r)
+	}
+	for i, del := range []bool{false, true} {
+		r := e.call(t, uint64(71+i), &mcsmv1.MigrateRetire{ServerId: "zz", Slug: "alpha", MigrationId: "mig-1", DeleteData: del})
+		if errCode(r) != errcode.InvalidRequest {
+			t.Fatalf("retire = %+v", r)
+		}
+	}
+	if got := readLevel(t, e.dataDir()); got != "LEVEL-1" || !e.running(t) {
+		t.Fatalf("el servidor a sigue intacto: %q", got)
+	}
+}
+
+// Con el agente cerrándose no se empieza nada: busy.
+func TestMigrateAbortAndRetireWhileClosing(t *testing.T) {
+	e := newMigrateEnv(t)
+	e.cancel()
+	if !e.a.bk.wait(5 * time.Second) {
+		t.Fatal("wait")
+	}
+	if r := e.call(t, 80, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}); errCode(r) != errcode.Busy {
+		t.Fatalf("abort = %+v", r)
+	}
+	if r := e.call(t, 81, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1"}); errCode(r) != errcode.Busy {
+		t.Fatalf("retire = %+v", r)
+	}
+	if got := readLevel(t, e.dataDir()); got != "LEVEL-1" {
+		t.Fatalf("data = %q", got)
 	}
 }
