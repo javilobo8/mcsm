@@ -80,6 +80,36 @@ El agente lo revisa cada 15 s: en cuanto hay `data`, libera el servidor y lo dev
 
 Al parar el agente (`docker stop`, actualizarlo), espera **a la vez** hasta 20 s a las operaciones de archivos y hasta 25 s a las copias y restauraciones en curso: una copia en caliente se cancela y envía su `save-on`. Docker lo mataría a los 10 s, así que los compose le dan `stop_grace_period: 30s` y el `docker run` de **Añadir nodo** lleva `--stop-timeout 30`. Si arrancas el agente de otra forma, dale al menos 30 s. Si aun así muere a mitad, al volver a arrancar borra los restos (copias `.partial`, `data.restoring-*`) y, si una restauración se quedó a medias, devuelve los datos originales a `data` o bloquea el servidor (ver arriba).
 
+## Migración entre nodos
+
+La pestaña **Migrar** de cada servidor lo mueve (mundo, configuración, copias e historial) a otro nodo con un trabajo de 7 pasos visibles:
+
+1. parar en el origen;
+2. copia previa (`pre_migration`);
+3. subirla al panel, comprobando tamaño y sha256;
+4. enviarla al destino, que la vuelve a comprobar y la restaura;
+5. crear allí el servidor (versión de la spec +1 y, si el suyo choca, otro puerto);
+6. arrancarlo y esperar a que quede sano (como mucho 5 min). Si estaba parado, se vuelve a parar;
+7. confirmar el cambio de nodo y retirar el origen.
+
+**Datos y copias.**
+- Al retirarlo, el origen conserva sus datos y copias en `DATA_ROOT/<slug>.migrated-<fecha>` (o los borra, con «Borrar el origen al terminar»). Bórralos a mano cuando ya no los necesites.
+- La copia previa queda en el destino, en la lista de copias del servidor.
+
+**Si algo falla antes de confirmar.** El servidor sigue en su nodo con el mundo intacto, y se vuelve a arrancar si estaba en marcha. Si la copia del destino llegó a arrancar, el origen no arranca hasta haberla borrado: nunca hay dos servidores vivos con el mismo mundo. Mientras tanto la cabecera avisa y las acciones sobre el servidor esperan.
+
+**Lo pendiente.** Si un nodo no responde, la limpieza del destino, el arranque del origen, la confirmación en el destino o la retirada del origen se reintentan cada 30 s y cada vez que el nodo vuelve a conectar. La pestaña dice qué falta y por qué. Si el agente rechaza algo que no se arregla reintentando (por ejemplo, el directorio del destino ya no es el de esta migración), deja de reintentarse y queda anotado para resolverlo a mano. Si un nodo no va a volver, **Cerrar la migración a mano…** deja de reintentar y dice qué queda sin hacer.
+
+**Avisos:**
+
+- **Nodo destino aislado, no muerto.** Si borras el nodo destino, o cierras a mano una migración cuya copia llegó a arrancar allí, y ese nodo solo está aislado de la red, su contenedor puede seguir en marcha. Compruébalo antes de arrancar el servidor en el origen.
+- **No restaures la base de datos del panel** a una copia anterior a una migración sin revisar los nodos.
+  - El panel creería el servidor en su nodo anterior y le volvería a dar su spec, que arrancaría con lo que quede allí (o con un mundo vacío).
+  - El destino ya está protegido: tras confirmar, el agente no borra el servidor aunque se lo pida un panel restaurado.
+- **`restartPolicy: always`.** Si el daemon de Docker del origen se reinicia entre el paso 1 y la retirada, arranca el contenedor parado hasta la siguiente reconciliación del agente (≤ 30 s), que lo vuelve a parar. Evita reiniciar Docker en el origen durante una migración, o usa `unless-stopped` (el valor por defecto).
+- **Spec tardía.** Si una migración falla justo al crear el servidor en el destino, este puede quedarse sin borrar `DATA_ROOT/<slug>`, vacío. Sería por una orden que el agente ejecutó tarde y es casi imposible. Una migración posterior con ese slug responderá «ya existe»: bórralo a mano.
+- **Servidores con `dataPath`** (datos fuera de `DATA_ROOT`): no se migran. Muévelos antes a `DATA_ROOT/<slug>/data`.
+
 ## Desarrollo
 
 ```bash
@@ -103,4 +133,5 @@ Pensado para una LAN doméstica y un único administrador. El agente monta el so
 
 - **El primer visitante fija la contraseña.** Hasta que la crees, cualquiera que llegue al panel (incluida una web de Internet que visite alguien de tu LAN, por DNS rebinding) puede fijarla él. Configúrala nada más arrancar el panel.
 - **Sin TLS.** El tráfico entre navegador, panel y agentes va en claro, y el agente no autentica al panel: un equipo de la LAN que suplante al panel (p. ej. con ARP spoofing) puede capturar la contraseña, la cookie y los tokens de nodo, y dar órdenes a los agentes (borrar mundos, lanzar servidores con código propio). Usa una red de confianza.
+- **Migrar ejecuta en el destino el mundo del origen.** Plugins, mods y jars incluidos, dentro del contenedor endurecido. Un nodo origen comprometido puede así hacer que el destino ejecute su código. El sha256 protege la copia en el transporte, no frente a un origen malicioso: migra solo desde nodos de confianza. La copia viaja sin cifrar por la LAN, `server.properties` (con la contraseña RCON) incluido.
 - Los servidores corren sin privilegios extra: sin capacidades salvo las que necesita la imagen para arrancar (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`), con `no-new-privileges`, límite de procesos y límite de memoria (por defecto, memoria de la JVM + 1G). Las funciones de itzg que necesitan más capacidades (autopausa/autostop con knockd) no están soportadas.
