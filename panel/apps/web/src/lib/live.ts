@@ -31,24 +31,31 @@ function invalidateServersThrottled(qc: QueryClient) {
   if (!st.timer) st.timer = setTimeout(fire, wait);
 }
 
+/**
+ * Fusiona `update` en la query `queryKey` si ya tiene datos. Sin datos (carga inicial) no hace
+ * nada: cancelarla la dejaría pending para siempre y la propia carga traerá el estado. Si la query
+ * está en REFETCH se cancela (para que la respuesta vieja no pise el evento) y se escribe cuando la
+ * cancelación, que revierte de forma asíncrona, ha terminado.
+ */
+function mergeIntoCached<T>(qc: QueryClient, queryKey: readonly unknown[], update: (old: T) => T): void {
+  if (qc.getQueryData<T>(queryKey) === undefined) return;
+  const write = () => qc.setQueryData<T>(queryKey, (old) => (old === undefined ? old : update(old)));
+  if (qc.isFetching({ queryKey, exact: true }) === 0) return void write();
+  void qc.cancelQueries({ queryKey, exact: true }).then(write, write);
+}
+
 export function applyObservedEvent(qc: QueryClient, msg: ObservedMsg): void {
+  // Lista ["servers"].
   const list = qc.getQueryData<ServerDto[]>(["servers"]);
   if (list && !list.some((s) => s.id === msg.serverId)) {
     // Servidor creado desde otra pestaña/cliente: no hay datos para construirlo, se recarga (con límite).
-    // Nada que fusionar ni cancelar: cancelar aquí abortaría el propio refetch recién lanzado.
+    // Sin cancelar: abortaría el propio refetch recién lanzado.
     invalidateServersThrottled(qc);
-    return;
+  } else {
+    mergeIntoCached<ServerDto[]>(qc, ["servers"], (old) => old.map((s) => (s.id === msg.serverId ? withObserved(s, msg) : s)));
   }
-  const write = () => {
-    qc.setQueryData<ServerDto[]>(["servers"], (old) => old?.map((s) => (s.id === msg.serverId ? withObserved(s, msg) : s)));
-    qc.setQueryData<ServerDto>(["server", msg.serverId], (old) => (old ? withObserved(old, msg) : old));
-  };
-  // Solo se cancela un REFETCH (la query ya tiene datos): cancelar una carga inicial la dejaría
-  // pending para siempre. Sin datos no hay nada que fusionar: la carga inicial traerá el estado.
-  const keys = [["servers"], ["server", msg.serverId]].filter((k) => qc.getQueryData(k) !== undefined && qc.isFetching({ queryKey: k, exact: true }) > 0);
-  if (keys.length === 0) return write();
-  // La cancelación revierte la query de forma asíncrona: escribimos cuando ha terminado.
-  void Promise.all(keys.map((queryKey) => qc.cancelQueries({ queryKey, exact: true }))).then(write, write);
+  // Detalle ["server", id]: independiente de la lista (puede estar en caché aunque la lista no lo conozca).
+  mergeIntoCached<ServerDto>(qc, ["server", msg.serverId], (old) => withObserved(old, msg));
 }
 
 export function applyNodeEvent(qc: QueryClient, msg: NodeMsg): void {
