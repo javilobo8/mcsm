@@ -108,9 +108,7 @@ function connOf(app: FastifyInstance, nodeId: string): AgentConn {
  * `imported_from` (Plan 6): un servidor migrado ya no sigue a ningún contenedor original (sin `adopt`).
  */
 export function targetRow(row: ServerRow, m: MigrationRow, desired: "running" | "stopped"): ServerRow {
-  const out = { ...row, node_id: m.target_node_id, slug: m.target_slug, spec: m.target_spec, spec_version: m.target_version, desired_state: desired } as ServerRow & { imported_from?: unknown };
-  if ("imported_from" in out) out.imported_from = null;
-  return out;
+  return { ...row, node_id: m.target_node_id, slug: m.target_slug, spec: m.target_spec, spec_version: m.target_version, desired_state: desired, imported_from: null };
 }
 
 /** Paso 1. Para el servidor en el origen y deja `stopped` como estado deseado en el agente y en la fila. */

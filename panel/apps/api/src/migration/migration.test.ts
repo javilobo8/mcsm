@@ -96,7 +96,9 @@ async function targetApplyAndStart(b: FakeNode, serverId: string, port: number) 
   if (apply.body.case !== "applySpec") throw new Error();
   const sp = apply.body.value.server!;
   expect(sp).toMatchObject({ serverId, slug: "survival", version: 2n, desiredState: DesiredState.STOPPED });
-  expect((JSON.parse(new TextDecoder().decode(sp.specJson)) as Spec).ports.game).toBe(port);
+  const sent = JSON.parse(new TextDecoder().decode(sp.specJson)) as Spec & { adopt?: unknown };
+  expect(sent.ports.game).toBe(port);
+  expect(sent).not.toHaveProperty("adopt"); // Plan 6: el destino nunca sigue a un contenedor original del origen
   b.ack(apply);
   const start = await b.next("powerAction");
   if (start.body.case !== "powerAction") throw new Error();
@@ -270,6 +272,27 @@ describe("migración", () => {
     a.ack(await a.next("powerAction"));
     await vi.waitFor(() => expect(app.migrations.get(id)!.phase).toBe("failed"));
     expect(app.servers.get(s.id)).toMatchObject({ node_id: a.id, desired_state: "running" });
+  });
+
+  it("un servidor importado (Plan 6): el destino no recibe adopt y el commit deja de seguir al contenedor original", async () => {
+    const { a, b, s } = await setup();
+    app.servers.setImportedFrom(s.id, {
+      containerId: "c".repeat(64), containerName: "mc-viejo", specVersion: 1, importedAt: "2026-10-12T00:00:00.000Z",
+      composeProject: "casa", composeService: "survival",
+    });
+    const payload = randomBytes(1000);
+    const job = (await begin(s.id, { targetNodeId: b.id })).json() as JobDto;
+    await sourceBackup(a, s.id, payload);
+    await sourcePush(a, payload);
+    await targetReceive(b, s.id, payload);
+    b.ack(await targetApplyAndStart(b, s.id, 25565)); // comprueba que la spec del destino no lleva adopt
+    b.observed(s.id, { state: "running", health: "healthy", online: true, appliedVersion: 2n });
+    b.ack(await b.next("migrateConfirm"));
+    a.ack(await a.next("migrateRetire"));
+    expect((await finished(job.id)).status).toBe("ok");
+    expect(app.servers.get(s.id)).toMatchObject({ node_id: b.id, imported_from: null });
+    const dto = await app.inject({ method: "GET", url: `/api/servers/${s.id}`, headers: { cookie } });
+    expect(dto.json().importedFrom).toBeNull();
   });
 
   it("valida antes de empezar", async () => {

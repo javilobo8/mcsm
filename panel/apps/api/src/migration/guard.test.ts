@@ -86,17 +86,30 @@ describe("MigrationsRepo", () => {
     expect(app.migrations.get(m2.id)).toMatchObject({ phase: "committed", source_pending: 1 });
   });
 
-  it("commit: un servidor importado (columna imported_from del Plan 6) deja de seguir a su contenedor original", async () => {
-    app.db.exec("ALTER TABLE servers ADD COLUMN imported_from TEXT");
+  it("commit: un servidor importado (imported_from, Plan 6) deja de seguir a su contenedor original", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
-    app.db.prepare("UPDATE servers SET imported_from = ? WHERE id = ?").run("contenedor-original", s.id);
+    app.servers.setImportedFrom(s.id, {
+      containerId: "c".repeat(64), containerName: "mc-viejo", specVersion: 1, importedAt: "2026-10-12T00:00:00.000Z", composeProject: "", composeService: "",
+    });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
-    const row = { ...app.servers.get(s.id)! } as Record<string, unknown>;
-    expect(row.imported_from).toBe("contenedor-original");
-    expect((targetRow(app.servers.get(s.id)!, m, "stopped") as unknown as Record<string, unknown>).imported_from).toBeNull();
+    expect(app.servers.get(s.id)!.imported_from).toMatch(/mc-viejo/);
+    expect(targetRow(app.servers.get(s.id)!, m, "stopped").imported_from).toBeNull();
     expect(app.migrations.commit(m, "running", null)).toBe(true);
-    expect((app.servers.get(s.id) as unknown as Record<string, unknown>).imported_from).toBeNull();
+    expect(app.servers.get(s.id)!.imported_from).toBeNull();
+  });
+
+  it("commit fallido: un importado sigue con su imported_from en el origen", async () => {
+    const a = await enroll("a"); const b = await enroll("b");
+    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    app.servers.setImportedFrom(s.id, {
+      containerId: "c".repeat(64), containerName: "mc-viejo", specVersion: 1, importedAt: "2026-10-12T00:00:00.000Z", composeProject: "", composeService: "",
+    });
+    const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
+    app.servers.bumpVersion(s.id); // la spec cambió durante la migración: el commit no mueve nada
+    expect(app.migrations.commit(m, "running", null)).toBe(false);
+    expect(app.servers.get(s.id)).toMatchObject({ node_id: a.nodeId });
+    expect(app.servers.get(s.id)!.imported_from).toMatch(/mc-viejo/);
   });
 
   it("commit: falla si otro servidor del destino ya usa el puerto de juego o un puerto extra (M1)", async () => {

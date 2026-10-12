@@ -175,9 +175,6 @@ export class MigrationsRepo {
    */
   commit(m: MigrationRow, desired: "running" | "stopped", observed: ObservedDto | null): boolean {
     const now = nowIso();
-    // El Plan 6 (en paralelo) añade servers.imported_from: un servidor migrado ya no sigue a su contenedor original.
-    const cols = this.db.prepare("PRAGMA table_info(servers)").all() as unknown as { name: string }[];
-    const clearImport = cols.some((c) => c.name === "imported_from") ? ", imported_from = NULL" : "";
     this.db.exec("BEGIN IMMEDIATE");
     try {
       // Los puertos del servidor en el destino siguen libres allí (otro servidor de ese nodo pudo cambiar los suyos).
@@ -187,8 +184,9 @@ export class MigrationsRepo {
         this.db.exec("ROLLBACK");
         return false;
       }
+      // imported_from = NULL (Plan 6): en el destino el servidor ya no sigue a ningún contenedor original (sin `adopt`).
       const moved = this.db.prepare(`UPDATE servers SET node_id = ?, slug = ?, spec = ?, spec_version = ?, desired_state = ?,
-          observed = ?, observed_spec_version = ?, observed_at = ?, updated_at = ?${clearImport}
+          observed = ?, observed_spec_version = ?, observed_at = ?, updated_at = ?, imported_from = NULL
         WHERE id = ? AND node_id = ? AND spec_version = ?`)
         .run(m.target_node_id, m.target_slug, m.target_spec, m.target_version, desired,
           observed ? JSON.stringify(observed) : null, m.target_version, observed ? now : null, now,
