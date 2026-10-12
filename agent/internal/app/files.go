@@ -82,6 +82,7 @@ func (p progressReader) Read(b []byte) (int, error) {
 func (a *App) withIdleGuard(ctx context.Context, fn func(ctx context.Context, track func(io.Reader) io.Reader) error) error {
 	after := a.xfer.clock()
 	gctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil) // también si fn entra en pánico: el vigilante termina
 	var moved atomic.Bool
 	done := make(chan struct{})
 	go func() {

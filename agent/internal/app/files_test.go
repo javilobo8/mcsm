@@ -616,3 +616,21 @@ func (p *pattern) Read(b []byte) (int, error) {
 	p.off += n
 	return n, nil
 }
+
+// Si fn entra en pánico, su contexto queda cancelado: el vigilante de inactividad no se queda
+// vivo esperando un periodo que, con este reloj, no vence nunca.
+func TestWithIdleGuardCancelsOnPanic(t *testing.T) {
+	a, _ := filesApp(t)
+	fakeIdle(a)
+	var got context.Context
+	func() {
+		defer func() { _ = recover() }()
+		_ = a.withIdleGuard(context.Background(), func(ctx context.Context, _ func(io.Reader) io.Reader) error {
+			got = ctx
+			panic("boom")
+		})
+	}()
+	if got == nil || got.Err() == nil {
+		t.Fatal("el contexto del vigilante sigue vivo tras el pánico")
+	}
+}
