@@ -481,3 +481,23 @@ func TestRemoveInvalidSlugTouchesNothing(t *testing.T) {
 		t.Fatalf("no debe borrar el contenedor: %v", fake.Calls)
 	}
 }
+
+func TestApplyForceAcceptsOlderSpec(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	ctx := context.Background()
+	mk := func(v uint64) *mcsmv1.ServerSpec {
+		return &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: v, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(specJSON)}
+	}
+	if err := r.Apply(ctx, mk(5)); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ApplyForce(ctx, mk(2)); err != nil {
+		t.Fatal(err)
+	}
+	if sp, _ := st.GetSpec("a"); sp.Version != 2 {
+		t.Fatalf("version = %d, ApplyForce debe sobreescribir", sp.Version)
+	}
+	if v, _ := st.Applied("a"); v != 2 {
+		t.Fatalf("applied = %d", v)
+	}
+}

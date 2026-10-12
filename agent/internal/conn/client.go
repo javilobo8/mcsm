@@ -164,7 +164,7 @@ func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 	if err != nil {
 		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
 			res.authRejected = true
-			c.log.Error("el panel rechazó el token del nodo (401): el nodo pudo ser borrado o su token rotado; vuelve a darlo de alta con un token nuevo")
+			c.log.Warn("el panel rechazó el token del nodo", "status", resp.StatusCode) // el Error con instrucciones lo emite OnAuthRejected
 			if c.opts.OnAuthRejected != nil {
 				c.opts.OnAuthRejected()
 			}

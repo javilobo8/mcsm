@@ -2,7 +2,10 @@ package app
 
 import (
 	"errors"
+	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 )
 
 // Config es la configuración del agente, leída del entorno.
@@ -37,6 +40,13 @@ func LoadConfig(version string) (Config, error) {
 	}
 	if cfg.PanelURL == "" {
 		return cfg, errors.New("PANEL_URL es obligatoria")
+	}
+	u, err := url.Parse(cfg.PanelURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return cfg, fmt.Errorf("PANEL_URL debe ser una URL http:// o https:// (recibido %q)", cfg.PanelURL)
+	}
+	if !filepath.IsAbs(cfg.DataRoot) {
+		return cfg, fmt.Errorf("DATA_ROOT debe ser una ruta absoluta (recibido %q)", cfg.DataRoot)
 	}
 	return cfg, nil
 }

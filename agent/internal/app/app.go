@@ -29,10 +29,19 @@ const (
 	reconcileEvery = 30 * time.Second
 	retryEvery     = 2 * time.Second
 	droppedEvery   = 5 * time.Second
+	helloDockerTTL = 5 * time.Second
+	maxConcurrent  = 16 // operaciones de fondo simultáneas (observar/reconciliar) en todo el nodo
 )
 
 // logStream es un stream de logs abierto por el panel.
-type logStream struct{ cancel context.CancelFunc }
+type logStream struct {
+	cancel context.CancelFunc
+	done   chan struct{} // se cierra cuando la goroutine del stream termina
+}
+
+// flight es el estado de una tarea de fondo por servidor: en curso y, si llegó otra
+// petición mientras tanto, pendiente de repetir una sola vez (coalescida).
+type flight struct{ pending bool }
 
 // App es el agente completo: reconciliador, hub de logs y mensajes del panel.
 type App struct {
@@ -45,14 +54,22 @@ type App struct {
 	status mc.StatusFunc
 	rcon   func(ctx context.Context, host string, port uint16, password, command string) (string, error)
 
-	mu      sync.Mutex
-	send    func(*mcsmv1.Envelope) error
+	// send debe fijarse antes de lanzar goroutines (Run) o antes de usar la App (tests);
+	// después es de solo lectura. Por eso se lee sin lock.
+	send func(*mcsmv1.Envelope) error
+
+	mu      sync.Mutex // protege streams
 	streams map[uint64]*logStream
+
+	fmu     sync.Mutex // protege flights
+	flights map[string]*flight
+	sem     chan struct{}
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
 func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App {
-	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{}}
+	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{},
+		flights: map[string]*flight{}, sem: make(chan struct{}, maxConcurrent)}
 	a.send = func(*mcsmv1.Envelope) error { return conn.ErrNotConnected }
 	a.rec = reconcile.New(st, eng, cfg.DataRoot, cfg.Network, func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		return a.status(ctx, host, port)
@@ -108,21 +125,24 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		PanelURL: cfg.PanelURL, Token: creds.Token, Hello: a.hello, Handler: a, Log: log,
 		OnDisconnect: a.cancelAllStreams,
 		OnAuthRejected: func() {
-			log.Error("el panel rechazó las credenciales del nodo; revisa que el nodo no haya sido eliminado")
+			log.Error("el panel rechazó el token del nodo (401): el nodo pudo ser borrado o su token rotado; borra el volumen de AGENT_DATA y vuelve a darlo de alta con un token nuevo (ENROLL_TOKEN se ignora mientras haya credenciales guardadas)")
 		},
 	})
 	a.send = func(e *mcsmv1.Envelope) error { return client.Send(ctx, e) }
 
 	go a.eventLoop(ctx)
 	go a.tickers(ctx)
-	a.rec.ReconcileAll(ctx)
+	// §6.1: primero el WS; la primera pasada de reconciliación va en segundo plano.
+	go a.reconcileAll(ctx)
 	client.Run(ctx)
 	return nil
 }
 
 func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 	vers, _ := a.st.SpecVersions()
-	dv, _ := a.eng.Version(ctx)
+	vctx, cancel := context.WithTimeout(ctx, helloDockerTTL)
+	dv, _ := a.eng.Version(vctx)
+	cancel()
 	host, _ := os.Hostname()
 	info := &mcsmv1.HostInfo{Hostname: host, Cpus: uint32(runtime.NumCPU()), Os: runtime.GOOS, Arch: runtime.GOARCH}
 	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
@@ -147,11 +167,15 @@ func errMsg(id uint64, code string, err error) *mcsmv1.Envelope {
 }
 
 // applySpec valida y aplica una spec del panel (guarda de versión incluida en el reconciliador).
-func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string, err error) {
+func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec, force bool) (code string, err error) {
 	if sp == nil || sp.ServerId == "" || !spec.ValidSlug(sp.Slug) {
 		return "invalid_spec", errors.New("spec inválida: server_id o slug no válido")
 	}
-	if err := a.rec.Apply(ctx, sp); err != nil {
+	apply := a.rec.Apply
+	if force {
+		apply = a.rec.ApplyForce
+	}
+	if err := apply(ctx, sp); err != nil {
 		return "apply_failed", err
 	}
 	return "", nil
@@ -165,21 +189,22 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	case *mcsmv1.Envelope_SyncSpecs:
 		for _, sp := range b.SyncSpecs.Servers {
-			if _, err := a.applySpec(ctx, sp); err != nil {
+			if _, err := a.applySpec(ctx, sp, true); err != nil { // el panel es la verdad al reconectar
 				a.log.Warn("aplicar spec de la sincronización", "id", sp.GetServerId(), "err", err)
 			}
 		}
 		for _, id := range b.SyncSpecs.RemovedIds {
 			if err := a.rec.Remove(ctx, id, false); err != nil {
 				a.log.Warn("eliminar servidor retirado", "id", id, "err", err)
+				continue
 			}
 			a.hub.Reset(id)
 		}
-		a.rec.ReconcileAll(ctx)
+		a.reconcileAll(ctx)
 		_ = send(ack(env.Id))
 
 	case *mcsmv1.Envelope_ApplySpec:
-		if code, err := a.applySpec(ctx, b.ApplySpec.Server); err != nil {
+		if code, err := a.applySpec(ctx, b.ApplySpec.Server, false); err != nil {
 			_ = send(errMsg(env.Id, code, err))
 			return
 		}
@@ -221,6 +246,10 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		_ = send(&mcsmv1.Envelope{Id: env.Id, Body: &mcsmv1.Envelope_CommandResult{CommandResult: &mcsmv1.CommandResult{Output: out}}})
 
 	case *mcsmv1.Envelope_SubscribeLogs:
+		if sp, err := a.st.GetSpec(b.SubscribeLogs.ServerId); err != nil || sp == nil {
+			_ = send(errMsg(env.Id, "unknown_server", errors.New("servidor desconocido")))
+			return
+		}
 		a.startLogStream(ctx, env.Id, b.SubscribeLogs, send)
 
 	case *mcsmv1.Envelope_StreamClose:
@@ -233,12 +262,15 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	default:
 		a.log.Warn("mensaje no soportado", "type", fmt.Sprintf("%T", env.Body))
+		if env.Id != 0 {
+			_ = send(errMsg(env.Id, "unsupported", fmt.Errorf("mensaje no soportado: %T", env.Body)))
+		}
 	}
 }
 
 func (a *App) startLogStream(parent context.Context, streamID uint64, req *mcsmv1.SubscribeLogs, send func(*mcsmv1.Envelope) error) {
 	ctx, cancel := context.WithCancel(parent)
-	me := &logStream{cancel: cancel}
+	me := &logStream{cancel: cancel, done: make(chan struct{})}
 	a.mu.Lock()
 	if old, ok := a.streams[streamID]; ok {
 		old.cancel()
@@ -250,6 +282,7 @@ func (a *App) startLogStream(parent context.Context, streamID uint64, req *mcsmv
 	go func() {
 		defer func() {
 			cancel()
+			defer close(me.done)
 			a.mu.Lock()
 			if a.streams[streamID] == me { // no borrar un stream que lo reemplazó
 				delete(a.streams, streamID)
@@ -335,7 +368,7 @@ func (a *App) eventLoop(ctx context.Context) {
 				}
 				switch ev.Action {
 				case "start", "die", "stop", "kill", "destroy", "oom", "health_status: healthy", "health_status: unhealthy", "restart":
-					a.rec.Observe(ctx, id)
+					a.observeAsync(ctx, id)
 				}
 			}
 		}
@@ -359,10 +392,66 @@ func (a *App) tickers(ctx context.Context) {
 		case <-observe.C:
 			specs, _ := a.st.ListSpecs()
 			for _, sp := range specs {
-				a.rec.Observe(ctx, sp.ServerId)
+				a.observeAsync(ctx, sp.ServerId)
 			}
 		case <-reconcileT.C:
-			a.rec.ReconcileAll(ctx)
+			a.reconcileAll(ctx)
 		}
 	}
+}
+
+// observeAsync observa un servidor sin bloquear al llamador: un servidor en una
+// operación larga (pull, stop de 60 s) solo retiene su propia tarea.
+func (a *App) observeAsync(ctx context.Context, id string) {
+	a.dispatch(ctx, "obs:"+id, func() { a.rec.Observe(ctx, id) })
+}
+
+// reconcileAll reconcilia cada servidor por separado y sin esperar a ninguno.
+func (a *App) reconcileAll(ctx context.Context) {
+	specs, err := a.st.ListSpecs()
+	if err != nil {
+		a.log.Error("listar specs", "err", err)
+		return
+	}
+	for _, sp := range specs {
+		id, slug := sp.ServerId, sp.Slug
+		a.dispatch(ctx, "rec:"+id, func() {
+			if err := a.rec.ReconcileTick(ctx, id); err != nil {
+				a.log.Warn("reconciliar", "server", slug, "err", err)
+			}
+		})
+	}
+}
+
+// dispatch ejecuta fn en una goroutine con concurrencia acotada. Si ya hay una tarea
+// con la misma clave en curso no se apila otra: se anota una repetición pendiente.
+func (a *App) dispatch(ctx context.Context, key string, fn func()) {
+	a.fmu.Lock()
+	if f, ok := a.flights[key]; ok {
+		f.pending = true
+		a.fmu.Unlock()
+		return
+	}
+	f := &flight{}
+	a.flights[key] = f
+	a.fmu.Unlock()
+	go func() {
+		for {
+			select {
+			case a.sem <- struct{}{}:
+				fn()
+				<-a.sem
+			case <-ctx.Done():
+			}
+			a.fmu.Lock()
+			if f.pending && ctx.Err() == nil {
+				f.pending = false
+				a.fmu.Unlock()
+				continue
+			}
+			delete(a.flights, key)
+			a.fmu.Unlock()
+			return
+		}
+	}()
 }

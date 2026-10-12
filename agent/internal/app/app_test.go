@@ -174,60 +174,226 @@ func TestSendCommandUsesRcon(t *testing.T) {
 	}
 }
 
+// startStream abre un stream de logs y espera a que el follower esté suscrito
+// reescribiendo una línea hasta que llega (el fake descarta líneas sin lector).
+func startStream(t *testing.T, a *App, fake *docker.Fake, s *sink, ctx context.Context, id uint64, serverID string) *logStream {
+	t.Helper()
+	a.Handle(ctx, &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_SubscribeLogs{SubscribeLogs: &mcsmv1.SubscribeLogs{ServerId: serverID, Tail: 50}}}, s.send)
+	ack := s.next(t)
+	if ack.Id != id || ack.StreamId != id || ack.GetAck() == nil {
+		t.Fatalf("ack = %+v", ack)
+	}
+	a.mu.Lock()
+	ls := a.streams[id]
+	a.mu.Unlock()
+	if ls == nil {
+		t.Fatal("stream no registrado")
+	}
+	cid := a.rec.ContainerID(ctx, serverID)
+	deadline := time.After(3 * time.Second)
+	for {
+		fake.WriteLog(cid, "2026-10-12T10:00:00Z Done!\n")
+		select {
+		case e := <-s.ch:
+			if e.GetLogLine() != nil {
+				if e.StreamId != id || e.GetLogLine().Line != "Done!" || e.GetLogLine().ServerId != serverID {
+					t.Fatalf("line = %+v", e)
+				}
+				return ls
+			}
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("el stream no entregó líneas")
+		}
+	}
+}
+
+func waitDone(t *testing.T, ls *logStream) {
+	t.Helper()
+	select {
+	case <-ls.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("la goroutine del stream no terminó")
+	}
+}
+
+// noMoreLogLines vacía lo ya enviado y comprueba que una línea nueva no llega.
+func noMoreLogLines(t *testing.T, s *sink, fake *docker.Fake, cid string) {
+	t.Helper()
+	for len(s.ch) > 0 {
+		<-s.ch
+	}
+	fake.WriteLog(cid, "2026-10-12T10:00:01Z Tarde\n")
+	select {
+	case e := <-s.ch:
+		if e.GetLogLine() != nil {
+			t.Fatalf("no deben salir LogLine tras cerrar: %+v", e)
+		}
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func applyAndWait(t *testing.T, a *App, s *sink, id, slug string) {
+	t.Helper()
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: specMsg(id, slug, 1)}}}, s.send)
+	s.waitID(t, 1)
+}
+
 func TestSubscribeLogsStream(t *testing.T) {
 	a, fake, _ := newApp(t)
 	s := newSink()
 	a.send = s.send
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	a.Handle(ctx, &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: specMsg("a", "alpha", 1)}}}, s.send)
-	s.waitID(t, 1)
-	a.Handle(ctx, &mcsmv1.Envelope{Id: 5, Body: &mcsmv1.Envelope_SubscribeLogs{SubscribeLogs: &mcsmv1.SubscribeLogs{ServerId: "a", Tail: 50}}}, s.send)
-	ack := s.next(t)
-	if ack.Id != 5 || ack.StreamId != 5 || ack.GetAck() == nil {
-		t.Fatalf("ack = %+v", ack)
-	}
-	time.Sleep(30 * time.Millisecond)
-	id := a.rec.ContainerID(ctx, "a")
-	fake.WriteLog(id, "2026-10-12T10:00:00Z Done!\n")
-	for {
-		e := s.next(t)
-		if e.GetLogLine() != nil {
-			if e.StreamId != 5 || e.GetLogLine().Line != "Done!" || e.GetLogLine().ServerId != "a" {
-				t.Fatalf("line = %+v", e)
-			}
-			break
-		}
-	}
+	applyAndWait(t, a, s, "a", "alpha")
+	ls := startStream(t, a, fake, s, ctx, 5, "a")
 	a.Handle(ctx, &mcsmv1.Envelope{StreamId: 5, Body: &mcsmv1.Envelope_StreamClose{StreamClose: &mcsmv1.StreamClose{}}}, s.send)
-	time.Sleep(20 * time.Millisecond)
+	waitDone(t, ls)
 	a.mu.Lock()
 	_, open := a.streams[5]
 	a.mu.Unlock()
 	if open {
 		t.Fatal("StreamClose debe cancelar el stream")
 	}
+	noMoreLogLines(t, s, fake, a.rec.ContainerID(ctx, "a"))
 }
 
-func TestCancelAllStreams(t *testing.T) {
+func TestCancelAllStreamsStopsGoroutinesAndLines(t *testing.T) {
+	a, fake, _ := newApp(t)
+	s := newSink()
+	a.send = s.send
+	ctx := context.Background()
+	applyAndWait(t, a, s, "a", "alpha")
+	ls := startStream(t, a, fake, s, ctx, 5, "a")
+	a.cancelAllStreams()
+	waitDone(t, ls)
+	noMoreLogLines(t, s, fake, a.rec.ContainerID(ctx, "a"))
+}
+
+func TestSubscribeLogsUnknownServer(t *testing.T) {
+	a, _, _ := newApp(t)
+	s := newSink()
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 5, Body: &mcsmv1.Envelope_SubscribeLogs{SubscribeLogs: &mcsmv1.SubscribeLogs{ServerId: "nope"}}}, s.send)
+	e := s.next(t)
+	if e.Id != 5 || e.GetError() == nil || e.GetError().Code != "unknown_server" {
+		t.Fatalf("resp = %+v", e)
+	}
+	a.mu.Lock()
+	n := len(a.streams)
+	a.mu.Unlock()
+	if n != 0 {
+		t.Fatal("no debe abrir stream")
+	}
+}
+
+func TestUnsupportedMessageWithIDGetsError(t *testing.T) {
+	a, _, _ := newApp(t)
+	s := newSink()
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 12, Body: &mcsmv1.Envelope_Ack{Ack: &mcsmv1.Ack{}}}, s.send)
+	e := s.next(t)
+	if e.Id != 12 || e.GetError() == nil || e.GetError().Code != "unsupported" {
+		t.Fatalf("resp = %+v", e)
+	}
+}
+
+func TestApplySpecKeepsNewerButSyncSpecsOverrides(t *testing.T) {
+	a, _, st := newApp(t)
+	s := newSink()
+	ctx := context.Background()
+	apply := func(id uint64, v uint64) {
+		a.Handle(ctx, &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: specMsg("a", "alpha", v)}}}, s.send)
+		s.waitID(t, id)
+	}
+	apply(1, 2)
+	apply(2, 1)
+	if sp, _ := st.GetSpec("a"); sp.Version != 2 {
+		t.Fatalf("ApplySpec v1 tras v2 debe ignorarse, version=%d", sp.Version)
+	}
+	a.Handle(ctx, &mcsmv1.Envelope{Id: 3, Body: &mcsmv1.Envelope_SyncSpecs{SyncSpecs: &mcsmv1.SyncSpecs{Servers: []*mcsmv1.ServerSpec{specMsg("a", "alpha", 1)}}}}, s.send)
+	s.waitID(t, 3)
+	if sp, _ := st.GetSpec("a"); sp.Version != 1 {
+		t.Fatalf("SyncSpecs es la verdad del panel, version=%d", sp.Version)
+	}
+}
+
+func TestPowerAction(t *testing.T) {
 	a, _, _ := newApp(t)
 	s := newSink()
 	ctx := context.Background()
-	a.Handle(ctx, &mcsmv1.Envelope{Id: 5, Body: &mcsmv1.Envelope_SubscribeLogs{SubscribeLogs: &mcsmv1.SubscribeLogs{ServerId: "x"}}}, s.send)
-	s.next(t)
-	a.cancelAllStreams()
-	deadline := time.Now().Add(2 * time.Second)
+	a.Handle(ctx, &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "nope", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP}}}, s.send)
+	if e := s.next(t); e.GetError() == nil || e.GetError().Code != "power_failed" {
+		t.Fatalf("resp = %+v", e)
+	}
+	applyAndWait(t, a, s, "a", "alpha")
+	a.Handle(ctx, &mcsmv1.Envelope{Id: 2, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP}}}, s.send)
+	if e := s.waitID(t, 2); e.GetAck() == nil {
+		t.Fatalf("resp = %+v", e)
+	}
+}
+
+func TestSendCommandErrors(t *testing.T) {
+	a, _, st := newApp(t)
+	s := newSink()
+	ctx := context.Background()
+	a.Handle(ctx, &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_SendCommand{SendCommand: &mcsmv1.SendCommand{ServerId: "nope", Command: "x"}}}, s.send)
+	if e := s.next(t); e.GetError() == nil || e.GetError().Code != "unknown_server" {
+		t.Fatalf("resp = %+v", e)
+	}
+	_ = st.PutSpec(specMsg("a", "alpha", 1))
+	a.rcon = func(context.Context, string, uint16, string, string) (string, error) {
+		return "", context.DeadlineExceeded
+	}
+	a.Handle(ctx, &mcsmv1.Envelope{Id: 2, Body: &mcsmv1.Envelope_SendCommand{SendCommand: &mcsmv1.SendCommand{ServerId: "a", Command: "x"}}}, s.send)
+	if e := s.next(t); e.GetError() == nil || e.GetError().Code != "rcon_failed" {
+		t.Fatalf("resp = %+v", e)
+	}
+}
+
+// Un servidor bloqueado en una operación larga no debe frenar la observación de los demás.
+func TestBlockedServerDoesNotStallOthers(t *testing.T) {
+	a, fake, _ := newApp(t)
+	s := newSink()
+	a.send = s.send
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	slowSpec := specMsg("slow", "slow", 1)
+	fastSpec := specMsg("fast", "fast", 1)
+	for i, sp := range []*mcsmv1.ServerSpec{slowSpec, fastSpec} {
+		a.Handle(ctx, &mcsmv1.Envelope{Id: uint64(i + 1), Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: sp}}}, s.send)
+		s.waitID(t, uint64(i+1))
+	}
+	// Ports distintos no importan: el fake solo choca al arrancar y ambos ya están en marcha o fallaron.
+	release := make(chan struct{})
+	entered := make(chan struct{}, 8)
+	a.status = func(_ context.Context, host string, _ uint16) *mcsmv1.McStatus {
+		if host == "mcsm-slow" {
+			entered <- struct{}{}
+			<-release
+		}
+		return &mcsmv1.McStatus{Online: true}
+	}
+	defer close(release)
+	go a.eventLoop(ctx)
+	slowEv := docker.Event{Action: "die", Labels: map[string]string{"mcsm.server_id": "slow"}}
+	fastEv := docker.Event{Action: "die", Labels: map[string]string{"mcsm.server_id": "fast"}}
+	deadline := time.After(3 * time.Second)
+	slowIn := false
 	for {
-		a.mu.Lock()
-		n := len(a.streams)
-		a.mu.Unlock()
-		if n == 0 {
-			return
+		fake.EmitEvent(slowEv)
+		if slowIn {
+			fake.EmitEvent(fastEv)
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("streams sin cancelar")
+		select {
+		case <-entered:
+			slowIn = true
+		case e := <-s.ch:
+			if o := e.GetServerObserved(); o != nil && o.ServerId == "fast" && slowIn {
+				return
+			}
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatalf("slowIn=%v: el servidor lento bloquea al resto", slowIn)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -237,14 +403,19 @@ func TestEventTriggersObserve(t *testing.T) {
 	a.send = s.send
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	a.Handle(ctx, &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: specMsg("a", "alpha", 1)}}}, s.send)
-	s.waitID(t, 1)
+	applyAndWait(t, a, s, "a", "alpha")
 	go a.eventLoop(ctx)
-	time.Sleep(50 * time.Millisecond)
-	fake.EmitEvent(docker.Event{Action: "die", Labels: map[string]string{"mcsm.server_id": "a"}})
+	deadline := time.After(3 * time.Second)
 	for {
-		if s.next(t).GetServerObserved() != nil {
-			return
+		fake.EmitEvent(docker.Event{Action: "die", Labels: map[string]string{"mcsm.server_id": "a"}})
+		select {
+		case e := <-s.ch:
+			if e.GetServerObserved() != nil {
+				return
+			}
+		case <-time.After(10 * time.Millisecond):
+		case <-deadline:
+			t.Fatal("el evento no provocó Observe")
 		}
 	}
 }
@@ -255,6 +426,18 @@ func TestHelloCarriesVersions(t *testing.T) {
 	h := a.hello(context.Background())
 	if h.SpecVersions["a"] != 4 || h.AgentVersion != "test" {
 		t.Fatalf("hello = %+v", h)
+	}
+}
+
+func TestLoadConfigValidation(t *testing.T) {
+	t.Setenv("PANEL_URL", "panel:3000")
+	if _, err := LoadConfig("x"); err == nil {
+		t.Fatal("PANEL_URL sin esquema http/https debe fallar")
+	}
+	t.Setenv("PANEL_URL", "http://p")
+	t.Setenv("DATA_ROOT", "relativa/ruta")
+	if _, err := LoadConfig("x"); err == nil {
+		t.Fatal("DATA_ROOT relativa debe fallar")
 	}
 }
 

@@ -116,6 +116,12 @@ func (r *Reconciler) reconcileTick(ctx context.Context, serverID string) error {
 	return r.reconcileLocked(ctx, serverID)
 }
 
+// ReconcileTick reconcilia un solo servidor desde un tick periódico, respetando el
+// backoff de fallos. Permite al llamador procesar cada servidor por separado.
+func (r *Reconciler) ReconcileTick(ctx context.Context, serverID string) error {
+	return r.reconcileTick(ctx, serverID)
+}
+
 // Reconcile aplica la spec de un servidor y siempre publica el estado observado.
 // Un fallo queda en Observed.Error y programa un reintento con backoff.
 func (r *Reconciler) Reconcile(ctx context.Context, serverID string) error {
@@ -127,13 +133,24 @@ func (r *Reconciler) Reconcile(ctx context.Context, serverID string) error {
 // Apply guarda la spec y la reconcilia, todo bajo el lock del servidor. Una spec con
 // versión menor que la guardada (fuera de orden) se ignora y devuelve nil.
 func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
+	return r.apply(ctx, sp, false)
+}
+
+// ApplyForce es Apply sin la guarda de versión: la spec se acepta aunque sea más
+// antigua que la guardada. Es para SyncSpecs, donde el panel es la verdad al
+// reconectar (p. ej. tras restaurar su base de datos).
+func (r *Reconciler) ApplyForce(ctx context.Context, sp *mcsmv1.ServerSpec) error {
+	return r.apply(ctx, sp, true)
+}
+
+func (r *Reconciler) apply(ctx context.Context, sp *mcsmv1.ServerSpec, force bool) error {
 	unlock := r.lock(sp.ServerId)
 	defer unlock()
 	stored, err := r.st.GetSpec(sp.ServerId)
 	if err != nil {
 		return err
 	}
-	if stored != nil && sp.Version < stored.Version {
+	if !force && stored != nil && sp.Version < stored.Version {
 		r.log.Info("spec fuera de orden ignorada", "server", sp.Slug, "version", sp.Version, "guardada", stored.Version)
 		return nil
 	}

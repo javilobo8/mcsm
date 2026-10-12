@@ -440,7 +440,7 @@ func TestAuthRejected(t *testing.T) {
 		t.Fatal("OnAuthRejected no se llamó")
 	}
 	out := buf.String()
-	if !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "rechazó el token") {
+	if !strings.Contains(out, "level=WARN") || !strings.Contains(out, "rechazó el token") || strings.Contains(out, "level=ERROR") {
 		t.Fatalf("log sin error claro: %s", out)
 	}
 	if strings.Contains(out, "SECRETO") {
