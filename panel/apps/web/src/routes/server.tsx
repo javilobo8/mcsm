@@ -1,3 +1,4 @@
+import { BackupsTab } from "@/components/backups-tab";
 import { useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -78,6 +79,8 @@ export function ServerPage() {
           {/* ── plan-2 ── */}
           {/* ── plan-3 ── */}
           {/* ── plan-4 ── */}
+        <TabsContent value="backups"><BackupsTab server={s} nodeOnline={nodeOnline} /></TabsContent>
+          <TabsTrigger value="backups">Backups</TabsTrigger>
           {/* ── plan-5 ── */}
           {/* ── plan-6 ── */}
           {/* ── plan-7 ── */}
