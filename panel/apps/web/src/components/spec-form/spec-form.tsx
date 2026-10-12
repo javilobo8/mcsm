@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { applyError, pruneErrors } from "@/lib/form-errors";
 import type { EditableSpec } from "@/lib/spec-edit";
 import type { ReportError } from "./fields";
 import { VersionSection } from "./version-section";
@@ -58,15 +59,10 @@ export function SpecForm({ value, onChange, onError, mode, general }: {
   const [tab, setTab] = useState<TabValue>("general");
   // Estable: las secciones lo usan como dependencia de efectos.
   const report = useCallback<ReportError>((field, message) => {
-    setErrors((prev) => {
-      if (message === null) {
-        if (!(field in prev)) return prev;
-        const { [field]: _gone, ...rest } = prev;
-        return rest;
-      }
-      return prev[field] === message ? prev : { ...prev, [field]: message };
-    });
+    setErrors((prev) => applyError(prev, field, message));
   }, []);
+  // Doble seguro: tras cada render, fuera los errores de campos que ya no están en el DOM.
+  useEffect(() => { setErrors((prev) => pruneErrors(prev, (f) => document.getElementById(f) !== null)); });
   const notify = useRef(onError);
   notify.current = onError;
   useEffect(() => { notify.current(errors); }, [errors]);

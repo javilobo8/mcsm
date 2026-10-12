@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,6 +33,7 @@ export function ListField({ id, label, value, onChange, onError, kind = "entry",
 }) {
   const [text, setText] = useState(() => listToText(value));
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => () => onError?.(id, null), [id, onError]);
   const update = (t: string) => {
     setText(t);
     const items = parseLines(t);
@@ -58,12 +59,21 @@ export function KvField({ id, label, value, onChange, onError, placeholder, hint
 }) {
   const [text, setText] = useState(() => kvToText(value));
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => () => onError(id, null), [id, onError]);
+  // Resincroniza si el padre reemplaza el valor (recarga, descartar cambios); no si es eco de lo que escribimos.
+  const emitted = useRef(kvToText(value));
+  useEffect(() => {
+    const incoming = kvToText(value);
+    if (incoming === emitted.current) return;
+    emitted.current = incoming; setText(incoming); setError(null); onError(id, null);
+  }, [value, id, onError]);
   const update = (t: string) => {
     setText(t);
     try {
       const kv = parseKv(t);
       const bad = validate?.(kv);
       if (bad) throw new Error(bad);
+      emitted.current = kvToText(kv);
       setError(null); onError(id, null); onChange(kv);
     } catch (e) {
       const msg = `${label}: ${(e as Error).message}`;
@@ -85,6 +95,7 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
 }) {
   const [text, setText] = useState(() => (value === undefined ? "" : String(value)));
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => () => onError(id, null), [id, onError]);
   const update = (t: string) => {
     setText(t);
     const trimmed = t.trim();
@@ -149,13 +160,19 @@ export function ValidatedInput({ id, label, value, onChange, onError, validate, 
 }) {
   const [text, setText] = useState(value);
   const [own, setOwn] = useState<string | null>(null);
+  useEffect(() => () => onError(id, null), [id, onError]);
+  const emitted = useRef(value);
+  useEffect(() => {
+    if (value === emitted.current) return;
+    emitted.current = value; setText(value); setOwn(null); onError(id, null);
+  }, [value, id, onError]);
   const update = (raw: string) => {
     const t = raw.trim();
     setText(raw);
     const bad = validate(t);
     const msg = bad ? `${label}: ${bad}` : null;
     setOwn(msg); onError(id, msg);
-    if (!bad) onChange(t);
+    if (!bad) { emitted.current = t; onChange(t); }
   };
   const error = own ?? externalError ?? null;
   return (

@@ -53,3 +53,13 @@ describe("SpecForm (render en servidor, sin DOM)", () => {
     expect(sectionOfField("otro")).toBe("General");
   });
 });
+
+import { duplicateHostPorts } from "./network-section";
+describe("puertos de host duplicados", () => {
+  it("detecta juego vs extra y entre extras, por protocolo", () => {
+    const x = (host: number, proto: "tcp" | "udp") => ({ host, container: 1, proto, label: "" });
+    expect(duplicateHostPorts(25565, [x(25565, "tcp")])).toEqual(["25565/tcp"]);
+    expect(duplicateHostPorts(25565, [x(25565, "udp")])).toEqual([]);
+    expect(duplicateHostPorts(undefined, [x(8100, "tcp"), x(8100, "tcp"), x(0, "tcp"), x(0, "tcp")])).toEqual(["8100/tcp"]);
+  });
+});
