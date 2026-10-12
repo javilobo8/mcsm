@@ -14,7 +14,7 @@ sus criterios de aceptación para que no haya que volver a diseñar.
 | 4 | [Backups](2026-10-12-04-backups.md) | §4 `backups`/`jobs`, §6.5, §7 `JobService`/`BackupService`, §8 (pestañas Backups e Historial) | hecho (rama `feat/wave-a`) |
 | 5 | [Archivos](2026-10-12-05-archivos.md) | §6.6, transferencias HTTP §5.1, §8 (pestaña Archivos) | hecho (rama `feat/wave-a`) |
 | 6 | [Importación de servidores existentes](2026-10-12-06-importacion.md) | §6.7, §7 `ImportService`, §8 (Nodos → Importar) | escrito |
-| 7 | Migración entre nodos | §7 `MigrationService` | pendiente |
+| 7 | [Migración entre nodos](2026-10-12-07-migracion.md) | §7 `MigrationService` | escrito |
 | 8 | mc-router | §4 `router_deployments`, §7 `RouterService` | pendiente |
 | 9 | Pruebas de interfaz y pulido | §11 (Playwright), §8 (Ajustes) | pendiente |
 
