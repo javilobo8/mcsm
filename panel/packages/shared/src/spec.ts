@@ -1,7 +1,10 @@
 import { z } from "zod";
+import "./zod-locale.js";
+import { contentCheck, contentFields } from "./spec-content.js";
 
 export const RESERVED_ENV = new Set([
   "EULA", "TYPE", "VERSION", "MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "RCON_PORT", "SERVER_PORT", "CUSTOM_SERVER_PROPERTIES",
+  "CF_API_KEY",
 ]);
 
 const memory = z.string().regex(/^[1-9]\d*[MmGg]$/, "Formato de memoria inválido (ej. 4G, 512M; sin ceros)");
@@ -28,7 +31,7 @@ export const portMappingSchema = z.object({
 const envSchema = z
   .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Nombre de variable inválido"), z.string())
   .refine((env) => !Object.keys(env).some((k) => RESERVED_ENV.has(k)), {
-    message: "Contiene una variable reservada (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES)",
+    message: "Contiene una variable reservada (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES, CF_API_KEY)",
   });
 
 const resourcesSchema = z.object({
@@ -54,6 +57,7 @@ const baseFields = {
   restartPolicy: z.enum(["no", "always", "unless-stopped", "on-failure"]).default("unless-stopped"),
   // ── plan-2 ──
   // ── plan-3 ──
+  ...contentFields,
   // ── plan-4 ──
   // ── plan-5 ──
   // ── plan-6 ──
@@ -68,6 +72,13 @@ function memLimitCheck(s: { memory: string; resources: { memLimit: string } }, c
   }
 }
 
+/** Validaciones de objeto completo: memoria y, debajo de las anclas, las de cada plan. */
+function specChecks(s: Parameters<typeof memLimitCheck>[0] & Parameters<typeof contentCheck>[0], ctx: z.RefinementCtx) {
+  memLimitCheck(s, ctx);
+  // ── plan-3 ──
+  contentCheck(s, ctx);
+}
+
 /** Spec completa, tal y como se persiste y se envía al agente. */
 export const specSchema = z
   .object({
@@ -75,7 +86,7 @@ export const specSchema = z
     ports: z.object({ game: port, extra: z.array(portMappingSchema).default([]) }),
     rconPassword: z.string().min(8),
   })
-  .superRefine(memLimitCheck);
+  .superRefine(specChecks);
 
 /** Lo que envía la UI al crear/editar: el panel añade puerto y rconPassword. */
 export const specInputSchema = z
@@ -83,7 +94,7 @@ export const specInputSchema = z
     ...baseFields,
     ports: z.object({ game: port.optional(), extra: z.array(portMappingSchema).default([]) }).prefault({}),
   })
-  .superRefine(memLimitCheck);
+  .superRefine(specChecks);
 
 export type Spec = z.infer<typeof specSchema>;
 export type SpecInput = z.infer<typeof specInputSchema>;
