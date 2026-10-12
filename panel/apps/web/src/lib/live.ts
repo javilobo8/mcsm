@@ -18,24 +18,35 @@ const isStale = (s: ServerDto, m: ObservedMsg) => ts(m.observedAt) < ts(s.observ
 const withObserved = (s: ServerDto, m: ObservedMsg): ServerDto =>
   isStale(s, m) ? s : { ...s, observed: m.observed, observedSpecVersion: m.observed.appliedVersion, observedAt: m.observedAt };
 
-const lastUnknownInvalidate = new WeakMap<QueryClient, number>();
 const UNKNOWN_THROTTLE_MS = 1000;
+const unknownThrottle = new WeakMap<QueryClient, { last: number; timer: ReturnType<typeof setTimeout> | null }>();
+
+/** Invalida ["servers"] como mucho una vez por segundo, con llamada final (trailing) para no perder el último. */
+function invalidateServersThrottled(qc: QueryClient) {
+  const st = unknownThrottle.get(qc) ?? { last: 0, timer: null };
+  unknownThrottle.set(qc, st);
+  const fire = () => { st.last = Date.now(); st.timer = null; void qc.invalidateQueries({ queryKey: ["servers"] }); };
+  const wait = UNKNOWN_THROTTLE_MS - (Date.now() - st.last);
+  if (wait <= 0) return fire();
+  if (!st.timer) st.timer = setTimeout(fire, wait);
+}
 
 export function applyObservedEvent(qc: QueryClient, msg: ObservedMsg): void {
   const list = qc.getQueryData<ServerDto[]>(["servers"]);
   if (list && !list.some((s) => s.id === msg.serverId)) {
     // Servidor creado desde otra pestaña/cliente: no hay datos para construirlo, se recarga (con límite).
-    const now = Date.now();
-    if (now - (lastUnknownInvalidate.get(qc) ?? 0) >= UNKNOWN_THROTTLE_MS) {
-      lastUnknownInvalidate.set(qc, now);
-      void qc.invalidateQueries({ queryKey: ["servers"] });
-    }
+    invalidateServersThrottled(qc);
   }
-  // Un refetch en vuelo podría resolver después y restaurar datos más viejos que el evento.
-  void qc.cancelQueries({ queryKey: ["servers"] });
-  void qc.cancelQueries({ queryKey: ["server", msg.serverId] });
-  qc.setQueryData<ServerDto[]>(["servers"], (old) => old?.map((s) => (s.id === msg.serverId ? withObserved(s, msg) : s)));
-  qc.setQueryData<ServerDto>(["server", msg.serverId], (old) => (old ? withObserved(old, msg) : old));
+  const write = () => {
+    qc.setQueryData<ServerDto[]>(["servers"], (old) => old?.map((s) => (s.id === msg.serverId ? withObserved(s, msg) : s)));
+    qc.setQueryData<ServerDto>(["server", msg.serverId], (old) => (old ? withObserved(old, msg) : old));
+  };
+  // Solo se cancela un REFETCH (la query ya tiene datos): cancelar una carga inicial la dejaría
+  // pending para siempre. Sin datos no hay nada que fusionar: la carga inicial traerá el estado.
+  const keys = [["servers"], ["server", msg.serverId]].filter((k) => qc.getQueryData(k) !== undefined && qc.isFetching({ queryKey: k, exact: true }) > 0);
+  if (keys.length === 0) return write();
+  // La cancelación revierte la query de forma asíncrona: escribimos cuando ha terminado.
+  void Promise.all(keys.map((queryKey) => qc.cancelQueries({ queryKey, exact: true }))).then(write, write);
 }
 
 export function applyNodeEvent(qc: QueryClient, msg: NodeMsg): void {

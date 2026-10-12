@@ -43,15 +43,28 @@ describe("applyObservedEvent", () => {
     applyObservedEvent(qc, observedMsg("a"));
     expect(qc.getQueryData<ServerDto[]>(["servers"])![0]!.observed?.state).toBe("running");
   });
-  it("cancela refetches en vuelo antes de escribir", () => {
+  it("evento durante la carga inicial: no la rompe y al resolver se muestra la lista", async () => {
+    const qc = new QueryClient();
+    let resolve!: (v: ServerDto[]) => void;
+    const p = qc.fetchQuery({ queryKey: ["servers"], queryFn: () => new Promise<ServerDto[]>((r) => { resolve = r; }) });
+    applyObservedEvent(qc, observedMsg("a"));
+    resolve([server("a")]);
+    await p;
+    expect(qc.getQueryData<ServerDto[]>(["servers"])).toHaveLength(1);
+    expect(qc.getQueryState(["servers"])?.status).toBe("success");
+  });
+  it("evento durante un refetch con datos: el evento nuevo prevalece sobre la respuesta vieja", async () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);
-    const spy = vi.spyOn(qc, "cancelQueries");
+    let resolve!: (v: ServerDto[]) => void;
+    const p = qc.fetchQuery({ queryKey: ["servers"], queryFn: () => new Promise<ServerDto[]>((r) => { resolve = r; }), staleTime: 0 }).catch(() => undefined);
     applyObservedEvent(qc, observedMsg("a"));
-    expect(spy).toHaveBeenCalledWith({ queryKey: ["servers"] });
-    expect(spy).toHaveBeenCalledWith({ queryKey: ["server", "a"] });
+    resolve([server("a")]); // respuesta vieja, sin observed
+    await p;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(qc.getQueryData<ServerDto[]>(["servers"])![0]!.observed?.state).toBe("running");
   });
-  it("limita la invalidación por servidor desconocido a una por segundo", () => {
+  it("limita la invalidación por servidor desconocido y conserva una llamada final", () => {
     vi.useFakeTimers();
     try {
       const qc = new QueryClient();
@@ -59,9 +72,11 @@ describe("applyObservedEvent", () => {
       const spy = vi.spyOn(qc, "invalidateQueries");
       applyObservedEvent(qc, observedMsg("x"));
       applyObservedEvent(qc, observedMsg("y"));
+      applyObservedEvent(qc, observedMsg("z"));
       expect(spy).toHaveBeenCalledTimes(1);
       vi.advanceTimersByTime(1100);
-      applyObservedEvent(qc, observedMsg("z"));
+      expect(spy).toHaveBeenCalledTimes(2); // trailing: no se pierde el último
+      vi.advanceTimersByTime(5000);
       expect(spy).toHaveBeenCalledTimes(2);
     } finally { vi.useRealTimers(); }
   });
