@@ -77,6 +77,13 @@ export function deleteDialogText(b: Pick<BackupDto, "kind" | "filename">): { tit
     : { title: "¿Borrar esta copia?", description: `Se borrará del nodo el fichero ${b.filename}. No se puede deshacer.` };
 }
 
+/** Texto del diálogo de restaurar. El agente vuelve a arrancar el servidor según su estado deseado, no según cómo estaba. */
+export function restoreDialogText(serverName: string, startedAt: string): string {
+  return `Restaurar sustituye el mundo actual de «${serverName}» por el de la copia del ${formatBackupDate(startedAt)}. ` +
+    "Se parará el servidor, los datos actuales se apartarán en un directorio data.pre-restore-… (no se borran, aparecerá en esta lista) y se extraerá la copia. " +
+    "Después, si el servidor debe estar en marcha (su estado deseado), se volverá a arrancar; si no, se quedará parado.";
+}
+
 export function formatBackupDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("es-ES");

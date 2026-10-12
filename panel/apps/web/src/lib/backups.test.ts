@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError, type BackupDto, type JobDto } from "./api";
-import { backupActions, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, scheduleToForm, toggleBusyReason } from "./backups";
+import { backupActions, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, restoreDialogText, scheduleToForm, toggleBusyReason } from "./backups";
 
 const base: BackupDto = {
   id: "b1", serverId: "s1", nodeId: "n1", filename: "x.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
@@ -101,5 +101,16 @@ describe("clave de idempotencia", () => {
     expect(keepIdempotencyKey(new ApiError(409, "busy"))).toBe(false);
     expect(keepIdempotencyKey(new ApiError(502, "agente"))).toBe(false);
     expect(keepIdempotencyKey(null)).toBe(false);
+  });
+});
+
+describe("diálogo de restaurar", () => {
+  it("habla del estado deseado, no de si el servidor estaba en marcha (el agente arranca según el deseado)", () => {
+    const t = restoreDialogText("Survival", "2026-10-12T10:00:00Z");
+    expect(t).toContain("«Survival»");
+    expect(t).toContain(formatBackupDate("2026-10-12T10:00:00Z"));
+    expect(t).toContain("data.pre-restore-");
+    expect(t).toMatch(/si el servidor debe estar en marcha.*se volverá a arrancar/);
+    expect(t).not.toMatch(/si estaba en marcha/);
   });
 });

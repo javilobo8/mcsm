@@ -10,7 +10,7 @@ import { JobProgress } from "@/components/job-progress";
 import { createBackup, newIdempotencyKey, useBackups } from "@/hooks/use-backups";
 import { useJobs, useJobsLive } from "@/hooks/use-jobs";
 import { api, apiPath, type BackupDto, type JobDto, type ServerDto } from "@/lib/api";
-import { backupActions, keepIdempotencyKey, deleteDialogText, formatBackupDate, toggleBusyReason } from "@/lib/backups";
+import { backupActions, keepIdempotencyKey, deleteDialogText, formatBackupDate, restoreDialogText, toggleBusyReason } from "@/lib/backups";
 import { formatBytes } from "@/lib/format";
 import { backupsKey, isActive, TRIGGER_LABEL } from "@/lib/jobs";
 
@@ -106,7 +106,7 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
           <AlertDialogHeader>
             <AlertDialogTitle>¿Restaurar esta copia?</AlertDialogTitle>
             <AlertDialogDescription>
-              Restaurar sustituye el mundo actual de «{server.name}» por el de la copia del {restoring ? formatBackupDate(restoring.startedAt) : ""}. Se parará el servidor, los datos actuales se apartarán en un directorio data.pre-restore-… (no se borran, aparecerá en esta lista) y se extraerá la copia. Después el servidor volverá a arrancar si estaba en marcha.
+              {restoring ? restoreDialogText(server.name, restoring.startedAt) : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {restore.error && <p role="alert" className="text-sm text-red-400">{restore.error.message}</p>}
