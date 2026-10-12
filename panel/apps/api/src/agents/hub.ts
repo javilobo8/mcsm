@@ -27,8 +27,13 @@ export interface HubOptions {
 
 type ResolvedOptions = Required<Omit<HubOptions, "log">> & { log: HubLogger };
 
-/** Cuerpos que son respuesta a una petición del panel: solo estos resuelven `pending`. */
-const RESPONSE_CASES = new Set(["ack", "error", "commandResult"]);
+/**
+ * Cuerpos que son respuesta a una petición del panel: solo estos resuelven `pending`.
+ * Convención del protocolo: toda respuesta con datos se llama `*Result` (CommandResult,
+ * FilesListResult…), así cada área añade respuestas sin tocar esta función.
+ */
+export const isResponseCase = (c: string | undefined): boolean =>
+  c === "ack" || c === "error" || (c?.endsWith("Result") ?? false);
 
 interface Pending { resolve: (e: Envelope) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
 interface Stream { onFrame: (e: Envelope) => void; onClose: (reason: string) => void }
@@ -171,7 +176,7 @@ export class AgentConn {
   private dispatch(env: Envelope) {
     // Solo las respuestas (con id != 0) resuelven peticiones; un mensaje no solicitado
     // con el mismo id (hello, serverObserved, logLine...) nunca las consume.
-    if (env.id !== 0n && RESPONSE_CASES.has(env.body.case ?? "")) {
+    if (env.id !== 0n && isResponseCase(env.body.case)) {
       const p = this.pending.get(env.id);
       if (p) {
         this.pending.delete(env.id);
