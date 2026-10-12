@@ -539,3 +539,67 @@ func TestForgetDeletesSpecButKeepsContainer(t *testing.T) {
 		t.Fatal("Remove tras Forget debe borrar el contenedor huérfano")
 	}
 }
+
+func desired(t *testing.T, st *store.Store, id string) mcsmv1.DesiredState {
+	t.Helper()
+	sp, err := st.GetSpec(id)
+	if err != nil || sp == nil {
+		t.Fatalf("spec %s: %v", id, err)
+	}
+	return sp.DesiredState
+}
+
+// Si la acción Docker falla, el estado deseado no cambia (el panel tampoco lo cambia
+// sin Ack) y el error queda en Observed hasta la siguiente reconciliación con éxito.
+func TestPowerFailureKeepsDesiredState(t *testing.T) {
+	r, st, fake, rec, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
+	_ = r.Reconcile(ctx, "a")
+	fake.StartErr = errors.New("port is already allocated")
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err == nil {
+		t.Fatal("esperaba error")
+	}
+	if d := desired(t, st, "a"); d != mcsmv1.DesiredState_DESIRED_STATE_STOPPED {
+		t.Fatalf("desired = %v: un START fallido no debe persistir running", d)
+	}
+	if obs := r.Observe(ctx, "a"); !strings.Contains(obs.Error, "already allocated") {
+		t.Fatalf("el fallo debe verse en Observed: %+v", obs)
+	}
+	fake.StartErr = nil
+	n := calls(fake, "Start")
+	r.now = func() time.Time { return time.Unix(1_000_000+3600, 0) }
+	r.ReconcileAll(ctx) // el tick no arranca lo que el panel cree parado
+	if calls(fake, "Start") != n || rec.get("a").Error != "" {
+		t.Fatalf("calls=%v obs=%+v", fake.Calls, rec.get("a"))
+	}
+}
+
+// Sin contenedor, Power fija el estado deseado y reconcilia (crea y arranca o para).
+func TestPowerWithoutContainerReconciles(t *testing.T) {
+	r, st, fake, rec, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err != nil {
+		t.Fatal(err)
+	}
+	if d := desired(t, st, "a"); d != mcsmv1.DesiredState_DESIRED_STATE_RUNNING {
+		t.Fatalf("desired = %v", d)
+	}
+	if list, _ := fake.ListManaged(ctx); len(list) != 1 || list[0].State != "running" || rec.get("a").Error != "" {
+		t.Fatalf("list=%+v obs=%+v", list, rec.get("a"))
+	}
+}
+
+func TestPowerWithoutContainerFailureRevertsDesired(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
+	fake.CreateErr = errors.New("sin disco")
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err == nil {
+		t.Fatal("esperaba error")
+	}
+	if d := desired(t, st, "a"); d != mcsmv1.DesiredState_DESIRED_STATE_STOPPED {
+		t.Fatalf("desired = %v: el fallo no debe dejar running guardado", d)
+	}
+}

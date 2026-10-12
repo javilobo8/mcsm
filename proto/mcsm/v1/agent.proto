@@ -46,6 +46,9 @@ message Hello {
   string docker_version = 2;
   HostInfo host = 3;
   map<string, uint64> spec_versions = 4;
+  // Estado deseado que el agente tiene guardado por servidor. El panel reenvía en
+  // SyncSpecs las specs cuya versión o estado deseado difieren de los suyos.
+  map<string, DesiredState> desired_states = 5;
 }
 
 message HelloAck {

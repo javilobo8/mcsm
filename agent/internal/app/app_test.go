@@ -593,12 +593,18 @@ func TestEventTriggersObserve(t *testing.T) {
 	}
 }
 
-func TestHelloCarriesVersions(t *testing.T) {
+func TestHelloCarriesVersionsAndDesiredStates(t *testing.T) {
 	a, _, st := newApp(t)
 	_ = st.PutSpec(specMsg("a", "alpha", 4))
+	b := specMsg("b", "beta", 2)
+	b.DesiredState = mcsmv1.DesiredState_DESIRED_STATE_STOPPED
+	_ = st.PutSpec(b)
 	h := a.hello(context.Background())
-	if h.SpecVersions["a"] != 4 || h.AgentVersion != "test" {
+	if h.SpecVersions["a"] != 4 || h.SpecVersions["b"] != 2 || h.AgentVersion != "test" {
 		t.Fatalf("hello = %+v", h)
+	}
+	if h.DesiredStates["a"] != mcsmv1.DesiredState_DESIRED_STATE_RUNNING || h.DesiredStates["b"] != mcsmv1.DesiredState_DESIRED_STATE_STOPPED {
+		t.Fatalf("desired_states = %v", h.DesiredStates)
 	}
 }
 

@@ -318,11 +318,19 @@ func (r *Reconciler) dataPath(slug string) (string, error) {
 	return target, nil
 }
 
-// Power actualiza el estado deseado en el store y ejecuta la acción.
+// Power ejecuta una acción de encendido. El estado deseado solo se persiste si la
+// acción Docker tiene éxito (el panel tampoco lo cambia sin Ack): un fallo lo deja como
+// estaba y el error queda en Observed hasta la siguiente reconciliación con éxito.
+// Sin contenedor, fija el deseado y reconcilia (crea y arranca, o lo deja parado); si
+// eso falla, restaura el deseado anterior.
 func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.PowerActionType) (err error) {
 	unlock := r.lock(serverID)
 	defer unlock()
+	published := false
 	defer func() {
+		if published {
+			return
+		}
 		obs := r.observeLocked(ctx, serverID)
 		if err != nil {
 			obs.Error = err.Error()
@@ -345,19 +353,33 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	default:
 		return fmt.Errorf("acción desconocida %v", action)
 	}
-	if desired != sp.DesiredState {
-		sp.DesiredState = desired
-		if err := r.st.PutSpec(sp); err != nil {
-			return err
-		}
-	}
 	c, err := r.find(ctx, serverID)
 	if err != nil {
 		return err
 	}
 	if c == nil {
-		return fmt.Errorf("el contenedor no existe todavía; aplica la spec primero")
+		prev := sp.DesiredState
+		if err := r.putDesired(sp, desired); err != nil {
+			return err
+		}
+		published = true // reconcileLocked publica el estado observado
+		if err := r.reconcileLocked(ctx, serverID); err != nil {
+			if rerr := r.putDesired(sp, prev); rerr != nil {
+				r.log.Error("restaurar el estado deseado", "server", sp.Slug, "err", rerr)
+			}
+			return err
+		}
+		return nil
 	}
+	if err := r.powerContainer(ctx, c, action); err != nil {
+		r.setLastErr(serverID, err.Error())
+		return err
+	}
+	return r.putDesired(sp, desired)
+}
+
+// powerContainer ejecuta la acción sobre un contenedor existente.
+func (r *Reconciler) powerContainer(ctx context.Context, c *docker.Container, action mcsmv1.PowerActionType) error {
 	switch action {
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_START:
 		if c.State != "running" {
@@ -381,6 +403,15 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 		}
 	}
 	return nil
+}
+
+// putDesired persiste el estado deseado si cambia.
+func (r *Reconciler) putDesired(sp *mcsmv1.ServerSpec, d mcsmv1.DesiredState) error {
+	if sp.DesiredState == d {
+		return nil
+	}
+	sp.DesiredState = d
+	return r.st.PutSpec(sp)
 }
 
 // Observe calcula el estado real y lo publica.
@@ -468,6 +499,14 @@ func (r *Reconciler) markFailure(id string, ver uint64, msg string) {
 	r.failVer[id] = ver
 	r.lastErr[id] = msg
 	r.retryAt[id] = r.now().Add(wait)
+}
+
+// setLastErr deja un error visible en Observed sin programar backoff (fallo de una
+// acción manual): lo limpia la siguiente reconciliación con éxito.
+func (r *Reconciler) setLastErr(id, msg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lastErr[id] = msg
 }
 
 func (r *Reconciler) clearFailure(id string) {

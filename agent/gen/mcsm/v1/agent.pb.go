@@ -499,6 +499,9 @@ type Hello struct {
 	DockerVersion string                 `protobuf:"bytes,2,opt,name=docker_version,json=dockerVersion,proto3" json:"docker_version,omitempty"`
 	Host          *HostInfo              `protobuf:"bytes,3,opt,name=host,proto3" json:"host,omitempty"`
 	SpecVersions  map[string]uint64      `protobuf:"bytes,4,rep,name=spec_versions,json=specVersions,proto3" json:"spec_versions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
+	// Estado deseado que el agente tiene guardado por servidor. El panel reenvía en
+	// SyncSpecs las specs cuya versión o estado deseado difieren de los suyos.
+	DesiredStates map[string]DesiredState `protobuf:"bytes,5,rep,name=desired_states,json=desiredStates,proto3" json:"desired_states,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value,enum=mcsm.v1.DesiredState"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -557,6 +560,13 @@ func (x *Hello) GetHost() *HostInfo {
 func (x *Hello) GetSpecVersions() map[string]uint64 {
 	if x != nil {
 		return x.SpecVersions
+	}
+	return nil
+}
+
+func (x *Hello) GetDesiredStates() map[string]DesiredState {
+	if x != nil {
+		return x.DesiredStates
 	}
 	return nil
 }
@@ -1489,15 +1499,19 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x04cpus\x18\x02 \x01(\rR\x04cpus\x12&\n" +
 	"\x0fmem_total_bytes\x18\x03 \x01(\x04R\rmemTotalBytes\x12\x0e\n" +
 	"\x02os\x18\x04 \x01(\tR\x02os\x12\x12\n" +
-	"\x04arch\x18\x05 \x01(\tR\x04arch\"\x82\x02\n" +
+	"\x04arch\x18\x05 \x01(\tR\x04arch\"\xa5\x03\n" +
 	"\x05Hello\x12#\n" +
 	"\ragent_version\x18\x01 \x01(\tR\fagentVersion\x12%\n" +
 	"\x0edocker_version\x18\x02 \x01(\tR\rdockerVersion\x12%\n" +
 	"\x04host\x18\x03 \x01(\v2\x11.mcsm.v1.HostInfoR\x04host\x12E\n" +
-	"\rspec_versions\x18\x04 \x03(\v2 .mcsm.v1.Hello.SpecVersionsEntryR\fspecVersions\x1a?\n" +
+	"\rspec_versions\x18\x04 \x03(\v2 .mcsm.v1.Hello.SpecVersionsEntryR\fspecVersions\x12H\n" +
+	"\x0edesired_states\x18\x05 \x03(\v2!.mcsm.v1.Hello.DesiredStatesEntryR\rdesiredStates\x1a?\n" +
 	"\x11SpecVersionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\"#\n" +
+	"\x05value\x18\x02 \x01(\x04R\x05value:\x028\x01\x1aW\n" +
+	"\x12DesiredStatesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12+\n" +
+	"\x05value\x18\x02 \x01(\x0e2\x15.mcsm.v1.DesiredStateR\x05value:\x028\x01\"#\n" +
 	"\bHelloAck\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"\xb0\x01\n" +
 	"\n" +
@@ -1587,7 +1601,7 @@ func file_mcsm_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_mcsm_v1_agent_proto_goTypes = []any{
 	(DesiredState)(0),      // 0: mcsm.v1.DesiredState
 	(PowerActionType)(0),   // 1: mcsm.v1.PowerActionType
@@ -1611,6 +1625,7 @@ var file_mcsm_v1_agent_proto_goTypes = []any{
 	(*Ack)(nil),            // 19: mcsm.v1.Ack
 	(*Error)(nil),          // 20: mcsm.v1.Error
 	nil,                    // 21: mcsm.v1.Hello.SpecVersionsEntry
+	nil,                    // 22: mcsm.v1.Hello.DesiredStatesEntry
 }
 var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	4,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
@@ -1629,17 +1644,19 @@ var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	20, // 13: mcsm.v1.Envelope.error:type_name -> mcsm.v1.Error
 	3,  // 14: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
 	21, // 15: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
-	0,  // 16: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
-	6,  // 17: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
-	6,  // 18: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
-	1,  // 19: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
-	16, // 20: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
-	17, // 21: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
-	22, // [22:22] is the sub-list for method output_type
-	22, // [22:22] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	22, // 16: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
+	0,  // 17: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
+	6,  // 18: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
+	6,  // 19: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
+	1,  // 20: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
+	16, // 21: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
+	17, // 22: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
+	0,  // 23: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	24, // [24:24] is the sub-list for method output_type
+	24, // [24:24] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }
@@ -1669,7 +1686,7 @@ func file_mcsm_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mcsm_v1_agent_proto_rawDesc), len(file_mcsm_v1_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   20,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

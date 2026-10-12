@@ -154,7 +154,16 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 }
 
 func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
-	vers, _ := a.st.SpecVersions()
+	specs, err := a.st.ListSpecs()
+	if err != nil {
+		a.log.Error("listar specs para el Hello", "err", err)
+	}
+	vers := make(map[string]uint64, len(specs))
+	desired := make(map[string]mcsmv1.DesiredState, len(specs))
+	for _, sp := range specs {
+		vers[sp.ServerId] = sp.Version
+		desired[sp.ServerId] = sp.DesiredState
+	}
 	vctx, cancel := context.WithTimeout(ctx, helloDockerTTL)
 	dv, _ := a.eng.Version(vctx)
 	cancel()
@@ -163,7 +172,7 @@ func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
 		info.MemTotalBytes = vm.Total
 	}
-	return &mcsmv1.Hello{AgentVersion: a.cfg.Version, DockerVersion: dv, Host: info, SpecVersions: vers}
+	return &mcsmv1.Hello{AgentVersion: a.cfg.Version, DockerVersion: dv, Host: info, SpecVersions: vers, DesiredStates: desired}
 }
 
 // onObserved se invoca con el lock por servidor tomado: no puede llamar al reconciliador.
