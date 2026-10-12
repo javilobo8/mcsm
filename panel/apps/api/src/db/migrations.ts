@@ -159,6 +159,37 @@ CREATE INDEX backups_server_idx ON backups(server_id, started_at);
   // ── plan-5 ──
   // ── plan-6 ──
   // ── plan-7 ──
+  {
+    // Migraciones entre nodos (spec §7). Las abiertas (running, rolling_back, committed) protegen al
+    // servidor en SyncSpecs y bloquean acciones; borrar un nodo borra las suyas (escapatoria si no vuelve).
+    name: "060_migrations",
+    sql: `
+CREATE TABLE migrations (
+  id TEXT PRIMARY KEY,
+  server_id TEXT NOT NULL,
+  source_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  target_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  source_slug TEXT NOT NULL,
+  target_slug TEXT NOT NULL,
+  source_version INTEGER NOT NULL,
+  target_version INTEGER NOT NULL,
+  target_port INTEGER NOT NULL,
+  target_spec TEXT NOT NULL,
+  was_running INTEGER NOT NULL,
+  delete_source INTEGER NOT NULL,
+  phase TEXT NOT NULL,
+  target_touched INTEGER NOT NULL DEFAULT 0,
+  target_started INTEGER NOT NULL DEFAULT 0,
+  source_pending INTEGER NOT NULL DEFAULT 0,
+  target_pending INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX migrations_server_idx ON migrations(server_id, created_at);
+CREATE INDEX migrations_phase_idx ON migrations(phase);
+`,
+  },
   // ── plan-8 ──
   // ── plan-9 ──
 ];

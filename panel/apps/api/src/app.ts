@@ -24,6 +24,7 @@ import { templateRoutes } from "./templates/routes.js";
 import { errorHandler } from "./lib/http.js";
 import { backupRoutes } from "./backups/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
+import { migrationGuard } from "./migration/guard.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
 
@@ -43,6 +44,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(websocket, { options: { maxPayload: 4 * 1024 * 1024 } });
   await app.register(authPlugin);
   await app.register(authRoutes);
+  await app.register(migrationGuard); // plan-7 (fuera de ancla): guarda de migraciones ANTES de las rutas que protege
   await app.register(nodeRoutes);
   app.decorate("events", new EventEmitter());
   app.decorate("agents", new AgentHub({ log: app.log }));
