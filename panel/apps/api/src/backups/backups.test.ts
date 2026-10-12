@@ -249,6 +249,25 @@ describe("acciones sobre copias", () => {
     return { nodeId, nodeToken, s };
   }
 
+  it("sin sesión: crear, restaurar, borrar y programar responden 401 y no tocan nada", async () => {
+    const { s } = await setup();
+    const b = app.backupsService["repo"].upsertOk(s.node_id, {
+      serverId: s.id, filename: "uno-20261012T040000.000Z-1.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
+      trigger: "manual", startedAt: new Date().toISOString(), finishedAt: null,
+    });
+    const reqs = [
+      { method: "POST" as const, url: `/api/servers/${s.id}/backups` },
+      { method: "POST" as const, url: `/api/servers/${s.id}/backups/${b.id}/restore` },
+      { method: "DELETE" as const, url: `/api/servers/${s.id}/backups/${b.id}` },
+      { method: "PATCH" as const, url: `/api/servers/${s.id}/backups/schedule`, payload: { enabled: true, cron: "0 4 * * *" } },
+    ];
+    for (const r of reqs) {
+      expect((await app.inject(r)).statusCode, `${r.method} ${r.url}`).toBe(401);
+    }
+    expect(app.backupsService["repo"].get(b.id)!.status).toBe("ok");
+    expect(app.jobs.list({})).toEqual([]);
+  });
+
   it("crear copia: 409 con el nodo desconectado; conectado envía BackupNow y devuelve el job", async () => {
     const { nodeToken, s } = await setup();
     let res = await post(`/api/servers/${s.id}/backups`);
