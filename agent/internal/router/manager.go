@@ -216,6 +216,7 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 			}
 			existing, recreated = nil, true
 		}
+		fresh := false
 		if existing == nil {
 			if err := m.eng.EnsureImage(ctx, b.Config.Image); err != nil {
 				return fmt.Errorf("descargar %s: %w", b.Config.Image, err)
@@ -224,10 +225,26 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 			if err != nil {
 				return fmt.Errorf("crear el contenedor %s: %w", b.Name, err)
 			}
-			existing = &docker.Container{ID: id, Name: b.Name, State: "created"}
+			existing, fresh = &docker.Container{ID: id, Name: b.Name, State: "created"}, true
 		}
 		if existing.State == "restarting" {
 			return nil
+		}
+		if existing.State != "running" && !fresh {
+			// Un `docker rm -f` a mano emite kill y die antes que destroy, y la lista (una instantánea) da
+			// el contenedor como exited o dead mientras se borra: Docker no lo arrancaría («marked for
+			// removal»). No es un fallo (contaría para RetryAfter y retrasaría la recreación hasta el tick):
+			// la pasada que dispara su destroy lo crea de nuevo.
+			ins, err := m.eng.Inspect(ctx, existing.ID)
+			switch {
+			case errors.Is(err, docker.ErrNotFound):
+				existing = nil
+				continue
+			case err != nil:
+				return fmt.Errorf("inspeccionar el router: %w", err)
+			case ins.State == "removing":
+				return nil
+			}
 		}
 		if existing.State != "running" {
 			if err := m.eng.Start(ctx, existing.ID); err != nil {

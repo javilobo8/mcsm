@@ -66,6 +66,9 @@ type FakeContainer struct {
 	// funcionan pero no publican los puertos (unpublished), aunque se pare y se arranque.
 	startFailed bool
 	unpublished bool
+	// removing: un `docker rm -f` ajeno en curso (BeginRemoval). Como Docker 29.7.2: la lista
+	// (instantánea) lo da como exited, Inspect como removing, y Start y Remove fallan con conflicto.
+	removing bool
 }
 
 // FakeID es el id del n-ésimo contenedor que crea el fake: 64 hex, como los de Docker.
@@ -123,7 +126,11 @@ func (f *Fake) Inspect(_ context.Context, id string) (*Inspect, error) {
 	if c.Config != nil {
 		labels = copyLabels(c.Config.Labels)
 	}
-	return &Inspect{ID: c.ID, Name: c.Name, State: c.State, Running: c.State == "running", Health: c.Health, ExitCode: c.ExitCode, StartedAt: c.StartedAt, Labels: labels,
+	state := c.State
+	if c.removing {
+		state = "removing"
+	}
+	return &Inspect{ID: c.ID, Name: c.Name, State: state, Running: c.State == "running", Health: c.Health, ExitCode: c.ExitCode, StartedAt: c.StartedAt, Labels: labels,
 		PortsMissing: c.State == "running" && c.unpublished && len(hostPorts(c.HostConfig)) > 0}, nil
 }
 
@@ -176,6 +183,9 @@ func (f *Fake) Start(_ context.Context, id string) error {
 	c, ok := f.Containers[id]
 	if !ok {
 		return ErrNotFound
+	}
+	if c.removing { // como Docker
+		return fmt.Errorf("container is marked for removal and cannot be started: %w", cerrdefs.ErrConflict)
 	}
 	if c.State == "running" {
 		return nil
@@ -240,8 +250,12 @@ func (f *Fake) Remove(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.record("Remove %s", id)
-	if _, ok := f.Containers[id]; !ok {
+	c, ok := f.Containers[id]
+	if !ok {
 		return ErrNotFound
+	}
+	if c.removing { // como Docker
+		return fmt.Errorf("removal of container %s is already in progress: %w", id, cerrdefs.ErrConflict)
 	}
 	delete(f.Containers, id)
 	for _, w := range f.logPipes[id] {
@@ -341,6 +355,27 @@ func (f *Fake) EmitEventErr(err error) {
 		default:
 		}
 	}
+}
+
+// BeginRemoval simula un `docker rm -f` ajeno a medias: el contenedor ya está muerto (kill y die
+// emitidos) pero aún existe hasta FinishRemoval (destroy). Ver FakeContainer.removing.
+func (f *Fake) BeginRemoval(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.Containers[id]; ok {
+		c.State, c.Health, c.ExitCode, c.removing = "exited", "", 137, true
+	}
+}
+
+// FinishRemoval completa el borrado que empezó BeginRemoval.
+func (f *Fake) FinishRemoval(id string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.Containers, id)
+	for _, w := range f.logPipes[id] {
+		w.Close()
+	}
+	delete(f.logPipes, id)
 }
 
 // SetHealth permite a los tests simular el healthcheck.

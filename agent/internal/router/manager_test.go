@@ -108,6 +108,32 @@ func TestReconcileRecoversManualChanges(t *testing.T) {
 	}
 }
 
+// TestReconcileDuringManualRemoval: un `docker rm -f` a mano emite kill y die antes que destroy, y la
+// pasada que disparan encuentra el router a medio borrar (la lista lo da como exited). No es un fallo:
+// no se intenta arrancar (Docker lo rechaza) y la pasada del destroy lo recrea sin esperar RetryAfter.
+func TestReconcileDuringManualRemoval(t *testing.T) {
+	m, fake, _ := newManager(t)
+	ctx := context.Background()
+	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
+	first := m.Reconcile(ctx).ContainerId
+
+	fake.BeginRemoval(first)
+	before := len(fake.Calls)
+	if obs := m.Reconcile(ctx); obs.Error != "" { // evento die
+		t.Fatalf("un router a medio borrar no es un fallo: %+v", obs)
+	}
+	for _, call := range fake.Calls[before:] {
+		if strings.HasPrefix(call, "Start") || strings.HasPrefix(call, "Remove") || strings.HasPrefix(call, "Create") {
+			t.Fatalf("con el borrado en curso no se toca el contenedor: %v", fake.Calls[before:])
+		}
+	}
+	fake.FinishRemoval(first)
+	obs := m.Reconcile(ctx) // evento destroy, en el mismo instante (Now fijo)
+	if obs.Error != "" || obs.State != "running" || obs.ContainerId == "" || obs.ContainerId == first {
+		t.Fatalf("tras el destroy se recrea al momento: %+v", obs)
+	}
+}
+
 func TestReconcilePortBusy(t *testing.T) {
 	m, fake, _ := newManager(t)
 	now := time.UnixMilli(1000)
