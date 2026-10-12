@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { PowerActionType } from "@mcsm/proto";
 import {
-  canonicalJson, formatZodError, mergeSpecPatch, specInputSchema, specPatchNullError, specSizeError, usesCurseForge, specSchema, slugify,
+  canonicalJson, dataPathPatchError, formatZodError, mergeSpecPatch, specInputSchema, specPatchNullError, specSizeError, usesCurseForge, specSchema, slugify,
   type ServerCreateInput, type Spec, type SpecInput, type SpecPatch, type PowerActionName,
 } from "@mcsm/shared";
 import type { z } from "zod";
@@ -54,7 +54,8 @@ export class ServersService {
     }
   }
 
-  private checkPorts(nodeId: string, spec: Spec, selfId?: string) {
+  /** Puertos de la spec libres en el nodo (lo usa también la importación, plan-6). */
+  checkPorts(nodeId: string, spec: Spec, selfId?: string) {
     const used = new Set<number>();
     for (const r of this.app.servers.list(nodeId)) {
       if (r.id === selfId) continue;
@@ -107,6 +108,8 @@ export class ServersService {
 
   async create(input: ServerCreateInput) {
     this.requireNode(input.nodeId);
+    // plan-6: dataPath solo lo fija la importación (es la carpeta real de un contenedor adoptado).
+    if (input.spec.dataPath !== undefined) throw new HttpError(400, "La carpeta de datos (dataPath) solo la fija la importación de un servidor");
     if (input.slug && this.app.servers.getBySlug(input.nodeId, input.slug)) {
       throw new HttpError(409, `Ya existe un servidor con slug "${input.slug}" en este nodo`);
     }
@@ -127,6 +130,8 @@ export class ServersService {
       const nullErr = specPatchNullError(input.spec);
       if (nullErr) throw new HttpError(400, nullErr);
       const previous = JSON.parse(row.spec) as Spec;
+      const dpErr = dataPathPatchError(input.spec, previous); // plan-6
+      if (dpErr) throw new HttpError(400, dpErr);
       const { rconPassword: _secret, ...previousInput } = previous;
       const merged = specInputSchema.safeParse(mergeSpecPatch(previousInput, input.spec));
       if (!merged.success) throw new HttpError(400, formatZodError(merged.error));
@@ -170,6 +175,11 @@ export class ServersService {
 
   async remove(id: string, deleteData: boolean) {
     const row = this.requireServer(id);
+    // plan-6: los datos de un importado con dataPath están fuera de DATA_ROOT; el panel no los borra.
+    const dataPath = (JSON.parse(row.spec) as Spec).dataPath;
+    if (deleteData && dataPath) {
+      throw new HttpError(400, `Los datos de este servidor están en ${dataPath}, fuera de DATA_ROOT: el panel no los borra. Elimínalo sin datos y bórralos a mano si quieres`);
+    }
     const conn = this.app.agents.get(row.node_id);
     if (conn) {
       try {

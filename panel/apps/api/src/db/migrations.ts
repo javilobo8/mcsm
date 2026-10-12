@@ -158,6 +158,12 @@ CREATE INDEX backups_server_idx ON backups(server_id, started_at);
   },
   // ── plan-5 ──
   // ── plan-6 ──
+  {
+    // Origen de un servidor importado (spec §4 imported_from): contenedor original, versión de la
+    // adopción y proyecto/servicio de Docker Compose. JSON; NULL en los creados por el panel.
+    name: "050_servers_imported_from",
+    sql: `ALTER TABLE servers ADD COLUMN imported_from TEXT;`,
+  },
   // ── plan-7 ──
   // ── plan-8 ──
   // ── plan-9 ──

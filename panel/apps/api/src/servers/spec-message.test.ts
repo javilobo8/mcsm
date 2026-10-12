@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { ServerSpec } from "@mcsm/proto";
 import { toServerSpecMessage, type ServerRow } from "./repo.js";
 
-const row = (spec: object): ServerRow => ({
+const row = (spec: object, extra: Partial<ServerRow> = {}): ServerRow => ({
   id: "s1", node_id: "n1", name: "A", slug: "a", spec: JSON.stringify(spec), spec_version: 3, desired_state: "running",
-  observed: null, observed_spec_version: 0, observed_at: null, created_at: "", updated_at: "",
+  observed: null, observed_spec_version: 0, observed_at: null, created_at: "", updated_at: "", ...extra,
 });
 const sent = (m: ServerSpec) => JSON.parse(new TextDecoder().decode(m.specJson)) as Record<string, unknown>;
 const cf = row({ type: "AUTO_CURSEFORGE", modpack: { platform: "AUTO_CURSEFORGE", slugOrUrl: "all-the-mods-10" } });
@@ -18,5 +18,12 @@ describe("toServerSpecMessage", () => {
   it("olvidar la key no compila (un emisor sin key haría alternar el hash con SyncSpecs y recrearía el contenedor)", () => {
     // @ts-expect-error: falta la key de CurseForge
     expect(sent(toServerSpecMessage(cf))).not.toHaveProperty("curseforgeApiKey");
+  });
+  it("un importado lleva adopt con el contenedor original y la versión de la adopción; los demás no", () => {
+    const from = { containerId: "c".repeat(64), containerName: "viejo", specVersion: 1, importedAt: "", composeProject: "", composeService: "" };
+    const imported = row({ type: "PAPER", dataPath: "/home/lobo/mc" }, { imported_from: JSON.stringify(from) });
+    expect(sent(toServerSpecMessage(imported, null))).toMatchObject({ adopt: { containerId: "c".repeat(64), version: 1 }, dataPath: "/home/lobo/mc" });
+    expect(sent(toServerSpecMessage(row({ type: "PAPER" }), null))).not.toHaveProperty("adopt");
+    expect(sent(toServerSpecMessage(row({ type: "PAPER" }, { imported_from: null }), "K3y"))).not.toHaveProperty("adopt");
   });
 });
