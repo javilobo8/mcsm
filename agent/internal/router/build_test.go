@@ -2,6 +2,7 @@ package router
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 
 func build(t *testing.T, sp *mcsmv1.RouterSpec) *Build {
 	t.Helper()
-	b, err := BuildContainer(sp, ContainerName, "mcsm", 967)
+	b, err := BuildContainer(sp, ContainerName, "mcsm", 967, "/srv/minecraft/.mcsm-router")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,26 +108,67 @@ func TestBuildContainerHash(t *testing.T) {
 			t.Errorf("%s debe cambiar el hash", name)
 		}
 	}
-	gid, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "mcsm", 999)
+	gid, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "mcsm", 999, "/srv/minecraft/.mcsm-router")
 	if err != nil || gid.Hash == base.Hash {
 		t.Error("el grupo del socket debe cambiar el hash")
 	}
-	net, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "otra", 967)
+	net, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "otra", 967, "/srv/minecraft/.mcsm-router")
 	if err != nil || net.Hash == base.Hash {
 		t.Error("la red debe cambiar el hash")
 	}
 }
 
 func TestValidate(t *testing.T) {
-	for _, bad := range []*mcsmv1.RouterSpec{nil, {}, {HostPort: 70000}, {HostPort: 25565, AutoscaleDownAfterMinutes: 1441}} {
+	many := make([]string, 1001)
+	for i := range many {
+		many[i] = "p" + strconv.Itoa(i)
+	}
+	for _, bad := range []*mcsmv1.RouterSpec{nil, {}, {HostPort: 70000}, {HostPort: 25565, AutoscaleDownAfterMinutes: 1441},
+		{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"a b"}},
+		{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"demasiado_largo_17"}},
+		{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: many}} {
 		if err := Validate(bad); err == nil {
 			t.Errorf("%v debería ser inválida", bad)
 		}
-		if _, err := BuildContainer(bad, ContainerName, "mcsm", 0); err == nil {
+		if _, err := BuildContainer(bad, ContainerName, "mcsm", 0, ""); err == nil {
 			t.Errorf("BuildContainer(%v) debería fallar", bad)
 		}
 	}
 	if err := Validate(&mcsmv1.RouterSpec{HostPort: 1, AutoscaleDownAfterMinutes: 1440}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// S3: con autoscale, cualquiera que llegue al puerto despierta servidores. Una lista de jugadores
+// (nombre o UUID) limita quién despierta: mc-router la lee de un fichero (-auto-scale-allow-deny)
+// que el agente escribe en el host y monta de solo lectura.
+func TestBuildContainerAllowDeny(t *testing.T) {
+	sp := &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"amigo", "0123456789ABCDEF0123456789abcdef"}}
+	b := build(t, sp)
+	if !strings.Contains(strings.Join(b.Config.Cmd, " "), "-auto-scale-allow-deny /etc/mc-router/allow-deny.json") {
+		t.Fatalf("cmd = %v", b.Config.Cmd)
+	}
+	if !slices.Contains(b.HostConfig.Binds, "/srv/minecraft/.mcsm-router/allow-deny.json:/etc/mc-router/allow-deny.json:ro") || len(b.HostConfig.Binds) != 2 {
+		t.Fatalf("binds = %v", b.HostConfig.Binds)
+	}
+	want := `{"global":{"allowlist":[{"name":"amigo"},{"uuid":"01234567-89ab-cdef-0123-456789abcdef"}]}}`
+	if string(b.AllowDeny) != want || b.AllowDenyPath != "/srv/minecraft/.mcsm-router/allow-deny.json" {
+		t.Fatalf("allow-deny = %s en %s", b.AllowDeny, b.AllowDenyPath)
+	}
+	other := build(t, &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"amigo"}})
+	if other.Hash == b.Hash {
+		t.Fatal("cambiar la lista recrea el router (mc-router no relee el fichero)")
+	}
+	// Sin autoscale la lista no cuenta (ni el hash); con autoscale y sin lista, sin fichero.
+	plain := build(t, &mcsmv1.RouterSpec{HostPort: 25565})
+	ignored := build(t, &mcsmv1.RouterSpec{HostPort: 25565, AutoscaleAllowPlayers: []string{"amigo"}})
+	if ignored.Hash != plain.Hash || ignored.AllowDeny != nil {
+		t.Fatal("sin autoscale la lista se ignora")
+	}
+	if open := build(t, &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true}); open.AllowDeny != nil || len(open.HostConfig.Binds) != 1 {
+		t.Fatalf("sin lista: %+v", open.HostConfig.Binds)
+	}
+	if _, err := BuildContainer(sp, ContainerName, "mcsm", 967, ""); err == nil {
+		t.Fatal("con lista hace falta el directorio del host")
 	}
 }

@@ -3,7 +3,9 @@ package router
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -26,7 +28,7 @@ func newManager(t *testing.T) (*Manager, *docker.Fake, *store.Store) {
 	t.Cleanup(func() { st.Close() })
 	fake := docker.NewFake()
 	m := New(fake, st, Options{Network: "mcsm", SocketGID: func() (uint32, error) { return 967, nil },
-		Now: func() time.Time { return time.UnixMilli(1000) }})
+		Now: func() time.Time { return time.UnixMilli(1000) }, FilesDir: filepath.Join(t.TempDir(), ".mcsm-router")})
 	return m, fake, st
 }
 
@@ -313,5 +315,48 @@ func TestReconcileRecreatesRouterLeftWithoutPorts(t *testing.T) {
 		if _, ok := fake.Containers[first]; ok {
 			t.Fatalf("en marcha=%v: el contaminado se borra", alreadyRunning)
 		}
+	}
+}
+
+func TestReconcileWritesAllowDenyFile(t *testing.T) {
+	m, fake, _ := newManager(t)
+	ctx := context.Background()
+	path := filepath.Join(m.opts.FilesDir, "allow-deny.json")
+	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"amigo"}})
+	obs := m.Reconcile(ctx)
+	if obs.State != "running" || obs.Error != "" {
+		t.Fatalf("observed = %+v", obs)
+	}
+	if got, _ := os.ReadFile(path); string(got) != `{"global":{"allowlist":[{"name":"amigo"}]}}` {
+		t.Fatalf("fichero = %q", got)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Fatalf("mc-router (usuario 65532) debe poder leerlo: %v %v", fi, err)
+	}
+	if !slices.Equal(obs.Spec.GetAutoscaleAllowPlayers(), []string{"amigo"}) || !obs.Spec.GetAutoscale() {
+		t.Fatalf("la spec aplicada viaja en RouterObserved: %+v", obs.Spec)
+	}
+	first := obs.ContainerId
+
+	// Otra lista: fichero nuevo y router recreado (mc-router no lo relee).
+	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"amigo", "otro"}})
+	obs = m.Reconcile(ctx)
+	if got, _ := os.ReadFile(path); !strings.Contains(string(got), "otro") || obs.ContainerId == first {
+		t.Fatalf("fichero = %q, contenedor %s", got, obs.ContainerId)
+	}
+	// Si alguien lo borra, la siguiente pasada lo repone (Docker crearía un directorio en su lugar).
+	_ = os.Remove(path)
+	m.Reconcile(ctx)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("el fichero se repone")
+	}
+	// Sin lista, el fichero sobra.
+	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true})
+	m.Reconcile(ctx)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("sin lista no queda fichero: %v", err)
+	}
+	if c := fake.Containers[m.Reconcile(ctx).ContainerId]; len(c.HostConfig.Binds) != 1 {
+		t.Fatalf("binds = %v", c.HostConfig.Binds)
 	}
 }

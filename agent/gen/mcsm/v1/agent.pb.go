@@ -3759,8 +3759,11 @@ type RouterSpec struct {
 	HostPort                  uint32                 `protobuf:"varint,1,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`                                                        // puerto TCP del host (1-65535); dentro del contenedor siempre es 25565
 	Autoscale                 bool                   `protobuf:"varint,2,opt,name=autoscale,proto3" json:"autoscale,omitempty"`                                                                      // mc-router arranca al entrar un jugador y para tras autoscale_down_after_minutes sin jugadores
 	AutoscaleDownAfterMinutes uint32                 `protobuf:"varint,3,opt,name=autoscale_down_after_minutes,json=autoscaleDownAfterMinutes,proto3" json:"autoscale_down_after_minutes,omitempty"` // 1-1440; 0 = 10
-	unknownFields             protoimpl.UnknownFields
-	sizeCache                 protoimpl.SizeCache
+	// Con autoscale, solo estos jugadores (nombre de perfil o UUID) despiertan un servidor dormido o
+	// cancelan su parada (-auto-scale-allow-deny de mc-router). Vacío = cualquiera. Máx. 1000.
+	AutoscaleAllowPlayers []string `protobuf:"bytes,4,rep,name=autoscale_allow_players,json=autoscaleAllowPlayers,proto3" json:"autoscale_allow_players,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *RouterSpec) Reset() {
@@ -3812,6 +3815,13 @@ func (x *RouterSpec) GetAutoscaleDownAfterMinutes() uint32 {
 		return x.AutoscaleDownAfterMinutes
 	}
 	return 0
+}
+
+func (x *RouterSpec) GetAutoscaleAllowPlayers() []string {
+	if x != nil {
+		return x.AutoscaleAllowPlayers
+	}
+	return nil
 }
 
 // Panel → agente. Guarda la spec (sobrevive a reinicios del agente) y reconcilia el contenedor en
@@ -3911,6 +3921,7 @@ type RouterObserved struct {
 	Autoscale     bool                   `protobuf:"varint,6,opt,name=autoscale,proto3" json:"autoscale,omitempty"`
 	Error         string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"` // error de la última reconciliación ("" si fue bien)
 	TsUnixMs      int64                  `protobuf:"varint,8,opt,name=ts_unix_ms,json=tsUnixMs,proto3" json:"ts_unix_ms,omitempty"`
+	Spec          *RouterSpec            `protobuf:"bytes,9,opt,name=spec,proto3" json:"spec,omitempty"` // spec guardada en el agente (ausente sin spec): la web compara con la del panel
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3999,6 +4010,13 @@ func (x *RouterObserved) GetTsUnixMs() int64 {
 		return x.TsUnixMs
 	}
 	return 0
+}
+
+func (x *RouterObserved) GetSpec() *RouterSpec {
+	if x != nil {
+		return x.Spec
+	}
+	return nil
 }
 
 var File_mcsm_v1_agent_proto protoreflect.FileDescriptor
@@ -4276,15 +4294,16 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1f\n" +
 	"\vtransfer_id\x18\x03 \x01(\tR\n" +
 	"transferId\x12\x12\n" +
-	"\x04size\x18\x04 \x01(\x03R\x04size\"\x88\x01\n" +
+	"\x04size\x18\x04 \x01(\x03R\x04size\"\xc0\x01\n" +
 	"\n" +
 	"RouterSpec\x12\x1b\n" +
 	"\thost_port\x18\x01 \x01(\rR\bhostPort\x12\x1c\n" +
 	"\tautoscale\x18\x02 \x01(\bR\tautoscale\x12?\n" +
-	"\x1cautoscale_down_after_minutes\x18\x03 \x01(\rR\x19autoscaleDownAfterMinutes\"6\n" +
+	"\x1cautoscale_down_after_minutes\x18\x03 \x01(\rR\x19autoscaleDownAfterMinutes\x126\n" +
+	"\x17autoscale_allow_players\x18\x04 \x03(\tR\x15autoscaleAllowPlayers\"6\n" +
 	"\vRouterApply\x12'\n" +
 	"\x04spec\x18\x01 \x01(\v2\x13.mcsm.v1.RouterSpecR\x04spec\"\x0e\n" +
-	"\fRouterRemove\"\xee\x01\n" +
+	"\fRouterRemove\"\x97\x02\n" +
 	"\x0eRouterObserved\x12\x1e\n" +
 	"\n" +
 	"configured\x18\x01 \x01(\bR\n" +
@@ -4296,7 +4315,8 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\tautoscale\x18\x06 \x01(\bR\tautoscale\x12\x14\n" +
 	"\x05error\x18\a \x01(\tR\x05error\x12\x1c\n" +
 	"\n" +
-	"ts_unix_ms\x18\b \x01(\x03R\btsUnixMs*c\n" +
+	"ts_unix_ms\x18\b \x01(\x03R\btsUnixMs\x12'\n" +
+	"\x04spec\x18\t \x01(\v2\x13.mcsm.v1.RouterSpecR\x04spec*c\n" +
 	"\fDesiredState\x12\x1d\n" +
 	"\x19DESIRED_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15DESIRED_STATE_RUNNING\x10\x01\x12\x19\n" +
@@ -4452,12 +4472,13 @@ var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	36, // 56: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
 	36, // 57: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
 	49, // 58: mcsm.v1.RouterApply.spec:type_name -> mcsm.v1.RouterSpec
-	0,  // 59: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
-	60, // [60:60] is the sub-list for method output_type
-	60, // [60:60] is the sub-list for method input_type
-	60, // [60:60] is the sub-list for extension type_name
-	60, // [60:60] is the sub-list for extension extendee
-	0,  // [0:60] is the sub-list for field type_name
+	49, // 59: mcsm.v1.RouterObserved.spec:type_name -> mcsm.v1.RouterSpec
+	0,  // 60: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	61, // [61:61] is the sub-list for method output_type
+	61, // [61:61] is the sub-list for method input_type
+	61, // [61:61] is the sub-list for extension type_name
+	61, // [61:61] is the sub-list for extension extendee
+	0,  // [0:61] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }

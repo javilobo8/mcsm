@@ -1,10 +1,13 @@
 package router
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -38,6 +41,9 @@ type Options struct {
 	// HostSocket (montado con la misma ruta en el agente).
 	SocketGID func() (uint32, error)
 	Now       func() time.Time
+	// FilesDir es un directorio del HOST (el agente lo ve en la misma ruta: montaje espejo de
+	// DATA_ROOT) donde se escribe la lista de jugadores del autoscale que se monta en el router.
+	FilesDir string
 }
 
 // Manager reconcilia el contenedor del router con la spec guardada: con spec, un contenedor igual a
@@ -159,8 +165,13 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 	if err != nil {
 		return fmt.Errorf("leer el grupo del socket de Docker %s (el router lo necesita): %w", HostSocket, err)
 	}
-	b, err := BuildContainer(sp, m.opts.Name, m.opts.Network, gid)
+	b, err := BuildContainer(sp, m.opts.Name, m.opts.Network, gid, m.opts.FilesDir)
 	if err != nil {
+		return err
+	}
+	// La lista del autoscale tiene que estar en el host antes de crear o arrancar el router: si
+	// falta, Docker crearía un directorio en su lugar. Se repone en cada pasada si alguien la borra.
+	if err := m.syncAllowDeny(b); err != nil {
 		return err
 	}
 	if existing != nil && existing.Labels[LabelHash] != b.Hash {
@@ -217,6 +228,45 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 	}
 }
 
+// syncAllowDeny deja en FilesDir el fichero de la lista del autoscale de b (escritura atómica y
+// legible por el usuario de mc-router), o lo borra si b no lleva lista.
+func (m *Manager) syncAllowDeny(b *Build) error {
+	if b.AllowDeny == nil {
+		if m.opts.FilesDir != "" {
+			if err := os.Remove(filepath.Join(m.opts.FilesDir, AllowDenyFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("borrar la lista de jugadores del autoscale: %w", err)
+			}
+		}
+		return nil
+	}
+	if cur, err := os.ReadFile(b.AllowDenyPath); err == nil && bytes.Equal(cur, b.AllowDeny) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(b.AllowDenyPath), 0o755); err != nil {
+		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(b.AllowDenyPath), ".allow-deny-*")
+	if err != nil {
+		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(b.AllowDeny); err != nil {
+		tmp.Close()
+		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+	}
+	if err := os.Rename(tmp.Name(), b.AllowDenyPath); err != nil {
+		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+	}
+	return nil
+}
+
 // remove para y borra el contenedor del router.
 func (m *Manager) remove(ctx context.Context, c *docker.Container) error {
 	if err := m.eng.Stop(ctx, c.ID, stopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
@@ -235,7 +285,7 @@ func (m *Manager) observeLocked(ctx context.Context) *mcsmv1.RouterObserved {
 		obs.Error = err.Error()
 	}
 	if sp != nil {
-		obs.Configured, obs.HostPort, obs.Autoscale, obs.Image = true, sp.HostPort, sp.Autoscale, ImageRef()
+		obs.Configured, obs.HostPort, obs.Autoscale, obs.Image, obs.Spec = true, sp.HostPort, sp.Autoscale, ImageRef(), sp
 	}
 	c, err := m.find(ctx)
 	if err != nil {

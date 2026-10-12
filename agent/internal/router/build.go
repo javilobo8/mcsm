@@ -17,8 +17,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -50,6 +52,12 @@ const (
 
 	DefaultDownAfterMinutes = 10
 	MaxDownAfterMinutes     = 1440
+	// MaxAllowPlayers es el tope de la lista de jugadores que despiertan servidores (como las listas de la spec).
+	MaxAllowPlayers = 1000
+	// AllowDenyFile es el nombre del fichero de -auto-scale-allow-deny en el directorio del host
+	// (Options.FilesDir) y allowDenyMount donde lo ve mc-router.
+	AllowDenyFile  = "allow-deny.json"
+	allowDenyMount = "/etc/mc-router/allow-deny.json"
 
 	memoryLimit = 256 << 20
 	pidsLimit   = 256
@@ -77,6 +85,10 @@ type Build struct {
 	HostConfig *container.HostConfig
 	Networking *network.NetworkingConfig
 	Hash       string
+	// AllowDeny es el contenido de -auto-scale-allow-deny (nil sin lista) y AllowDenyPath dónde debe
+	// estar en el host antes de crear o arrancar el contenedor (el Manager lo escribe).
+	AllowDeny     []byte
+	AllowDenyPath string
 }
 
 // Validate comprueba una spec de router del panel.
@@ -90,7 +102,45 @@ func Validate(sp *mcsmv1.RouterSpec) error {
 	if sp.AutoscaleDownAfterMinutes > MaxDownAfterMinutes {
 		return fmt.Errorf("router: minutos sin jugadores fuera de rango: %d (máx. %d)", sp.AutoscaleDownAfterMinutes, MaxDownAfterMinutes)
 	}
+	if len(sp.AutoscaleAllowPlayers) > MaxAllowPlayers {
+		return fmt.Errorf("router: demasiados jugadores en la lista del autoscale: %d (máx. %d)", len(sp.AutoscaleAllowPlayers), MaxAllowPlayers)
+	}
+	for _, p := range sp.AutoscaleAllowPlayers {
+		if !spec.ValidPlayer(p) {
+			return fmt.Errorf("router: jugador inválido en la lista del autoscale: %q (nombre de 1-16 letras, números o _, o UUID)", p)
+		}
+	}
 	return nil
+}
+
+// allowEntry es un jugador del fichero de -auto-scale-allow-deny de mc-router.
+type allowEntry struct {
+	Name string `json:"name,omitempty"`
+	UUID string `json:"uuid,omitempty"`
+}
+
+// allowDeny devuelve el fichero de -auto-scale-allow-deny: una lista global de permitidos (solo ellos
+// despiertan servidores o cancelan su parada), o nil sin autoscale o sin lista. Los UUID van en su
+// forma canónica (8-4-4-4-12 en minúsculas), que es la que entiende mc-router.
+func allowDeny(sp *mcsmv1.RouterSpec) []byte {
+	if !sp.Autoscale || len(sp.AutoscaleAllowPlayers) == 0 {
+		return nil
+	}
+	entries := make([]allowEntry, 0, len(sp.AutoscaleAllowPlayers))
+	for _, p := range sp.AutoscaleAllowPlayers {
+		if h := strings.ToLower(strings.ReplaceAll(p, "-", "")); len(h) == 32 {
+			entries = append(entries, allowEntry{UUID: h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:]})
+		} else {
+			entries = append(entries, allowEntry{Name: p})
+		}
+	}
+	type list struct {
+		Allowlist []allowEntry `json:"allowlist"`
+	}
+	b, _ := json.Marshal(struct {
+		Global list `json:"global"`
+	}{list{entries}})
+	return b
 }
 
 // args son los argumentos de mc-router. Sin autoscale, mc-router solo enruta a contenedores en
@@ -109,10 +159,15 @@ func args(sp *mcsmv1.RouterSpec) []string {
 }
 
 // BuildContainer traduce la spec a la configuración del contenedor. Pura: misma entrada, mismo Hash.
-// socketGID es el grupo propietario del socket de Docker del host (GroupAdd).
-func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName string, socketGID uint32) (*Build, error) {
+// socketGID es el grupo propietario del socket de Docker del host (GroupAdd) y filesDir el
+// directorio del host donde el agente deja los ficheros del router (la lista del autoscale).
+func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName string, socketGID uint32, filesDir string) (*Build, error) {
 	if err := Validate(sp); err != nil {
 		return nil, err
+	}
+	allow := allowDeny(sp)
+	if allow != nil && filesDir == "" {
+		return nil, errors.New("router: falta el directorio del host para la lista de jugadores del autoscale")
 	}
 	port := network.MustParsePort(fmt.Sprintf("%d/tcp", ListenPort))
 	cfg := &container.Config{
@@ -135,13 +190,19 @@ func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName string, socketGID u
 	host.Resources.Memory = memoryLimit
 	pids := int64(pidsLimit)
 	host.Resources.PidsLimit = &pids
+	allowPath := ""
+	if allow != nil {
+		allowPath = filepath.Join(filesDir, AllowDenyFile)
+		cfg.Cmd = append(cfg.Cmd, "-auto-scale-allow-deny", allowDenyMount)
+		host.Binds = append(host.Binds, allowPath+":"+allowDenyMount+":ro")
+	}
 	net := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{networkName: {}}}
-	hash, err := hashOf(name, networkName, cfg, host)
+	hash, err := hashOf(name, networkName, cfg, host, allow)
 	if err != nil {
 		return nil, err
 	}
 	cfg.Labels[LabelHash] = hash
-	return &Build{Name: name, Config: cfg, HostConfig: host, Networking: net, Hash: hash}, nil
+	return &Build{Name: name, Config: cfg, HostConfig: host, Networking: net, Hash: hash, AllowDeny: allow, AllowDenyPath: allowPath}, nil
 }
 
 // hashInput es la forma canónica de lo que define el contenedor del router (no el JSON de moby, que
@@ -165,15 +226,16 @@ type hashInput struct {
 	ReadonlyRootfs bool              `json:"readonlyRootfs"`
 	LogType        string            `json:"logType"`
 	LogOpts        map[string]string `json:"logOpts"`
+	AllowDeny      string            `json:"allowDeny,omitempty"` // contenido del fichero: mc-router no lo relee
 }
 
-func hashOf(name, networkName string, cfg *container.Config, host *container.HostConfig) (string, error) {
+func hashOf(name, networkName string, cfg *container.Config, host *container.HostConfig, allow []byte) (string, error) {
 	in := hashInput{
 		Schema: hashSchema, Name: name, Image: cfg.Image, Cmd: append([]string{}, cfg.Cmd...), User: cfg.User,
 		Labels: map[string]string{}, Binds: sorted(host.Binds), Network: networkName, Restart: string(host.RestartPolicy.Name),
 		Memory: host.Resources.Memory, SecurityOpt: sorted(host.SecurityOpt), CapDrop: sorted(host.CapDrop),
 		GroupAdd: sorted(host.GroupAdd), ReadonlyRootfs: host.ReadonlyRootfs,
-		LogType: host.LogConfig.Type, LogOpts: host.LogConfig.Config,
+		LogType: host.LogConfig.Type, LogOpts: host.LogConfig.Config, AllowDeny: string(allow),
 	}
 	for k, v := range cfg.Labels {
 		if k != LabelHash {

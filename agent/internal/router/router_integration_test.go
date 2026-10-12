@@ -68,6 +68,29 @@ func dialRouter(t *testing.T, port int, host string) string {
 	return string(b)
 }
 
+// loginRouter envía un handshake de login (estado 2) y el Login Start con el nombre del jugador, como
+// un cliente que intenta entrar; mc-router lo usa para la lista del autoscale.
+func loginRouter(t *testing.T, port int, host, player string) string {
+	t.Helper()
+	c, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(port), 2*time.Second)
+	if err != nil {
+		return ""
+	}
+	defer c.Close()
+	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
+	hs := handshake(host, uint16(port))
+	hs[len(hs)-1] = 2 // siguiente estado: login
+	var body bytes.Buffer
+	body.WriteByte(0x00) // Login Start
+	body.WriteByte(byte(len(player)))
+	body.WriteString(player)
+	body.Write(make([]byte, 16)) // UUID (1.20.2+)
+	pkt := append([]byte{byte(body.Len())}, body.Bytes()...)
+	_, _ = c.Write(append(hs, pkt...))
+	b, _ := io.ReadAll(c)
+	return string(b)
+}
+
 func freePort(t *testing.T) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -130,7 +153,7 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	}
 	defer st.Close()
 	name := "mcsm-test-router-" + tag
-	m := New(eng, st, Options{Name: name, Network: netName})
+	m := New(eng, st, Options{Name: name, Network: netName, FilesDir: t.TempDir()})
 	port := freePort(t)
 	if err := m.Apply(&mcsmv1.RouterSpec{HostPort: uint32(port)}); err != nil {
 		t.Fatal(err)
@@ -166,6 +189,43 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	<-time.After(time.Second) // límite de conexiones de mc-router
 	if got := dialRouter(t, port, "desconocido.lan"); strings.Contains(got, "backend") {
 		t.Fatalf("un hostname sin servidor no debe llegar a ninguno: %q", got)
+	}
+
+	// Autoscale con lista de jugadores (S3): un intruso no despierta un servidor dormido; un jugador
+	// de la lista sí. backend-a es el primero creado.
+	if err := m.Apply(&mcsmv1.RouterSpec{HostPort: uint32(port), Autoscale: true, AutoscaleAllowPlayers: []string{"amigo"}}); err != nil {
+		t.Fatal(err)
+	}
+	obs = m.Reconcile(ctx)
+	if obs.ContainerId != "" {
+		created = append(created, obs.ContainerId)
+	}
+	if obs.State != "running" || obs.Error != "" {
+		t.Fatalf("con autoscale y lista: %+v", obs)
+	}
+	backendA := created[0]
+	if err := eng.Stop(ctx, backendA, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	running := func() bool {
+		ins, err := eng.Inspect(ctx, backendA)
+		return err == nil && ins.Running
+	}
+	for i := 0; i < 5; i++ { // un intento por segundo durante 5 s
+		_ = loginRouter(t, port, "survival.lan", "intruso")
+		<-time.After(time.Second)
+		if running() {
+			t.Fatal("un jugador fuera de la lista no debe despertar el servidor")
+		}
+	}
+	woke := false
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline) && !woke; {
+		_ = loginRouter(t, port, "survival.lan", "amigo")
+		<-time.After(time.Second)
+		woke = running()
+	}
+	if !woke {
+		t.Fatal("un jugador de la lista despierta el servidor")
 	}
 
 	if err := m.Clear(); err != nil {

@@ -43,6 +43,10 @@ func (r *Router) Validate() error {
 	return nil
 }
 
+// ValidPlayer indica si p es un nombre de perfil de Java (1-16 letras, números o _) o un UUID, con
+// el mismo criterio que la whitelist y los operadores (plan-8: lista del autoscale del router).
+func ValidPlayer(p string) bool { return playerRe.MatchString(p) }
+
 // Active indica si el servidor entra por el router (sección presente y activada).
 func (r *Router) Active() bool { return r != nil && r.Enabled }
 

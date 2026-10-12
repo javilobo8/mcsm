@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
@@ -14,6 +15,11 @@ import (
 // reconcilia en segundo plano, con el contexto de vida: al recibir RouterApply/RouterRemove, al
 // arrancar el agente, cada reconcileEvery y con los eventos de Docker de su contenedor. Cada pasada
 // envía RouterObserved (id = 0) por la sesión vigente; sin sesión se pierde y la siguiente lo repone.
+
+// routerFilesDir es el directorio del host con los ficheros del router (la lista de jugadores del
+// autoscale). Va dentro de DATA_ROOT porque es lo único del host que el agente ve en la misma ruta
+// (montaje espejo, §6.1); empieza por punto, así que nunca coincide con el slug de un servidor.
+func routerFilesDir(dataRoot string) string { return filepath.Join(dataRoot, ".mcsm-router") }
 
 // onDemand indica si un servidor lo arranca y para mc-router (autoscale del router y hostname).
 // La invoca el reconciliador con el lock del servidor tomado: solo lee un atómico del router.

@@ -467,6 +467,9 @@ message RouterSpec {
   uint32 host_port = 1; // puerto TCP del host (1-65535); dentro del contenedor siempre es 25565
   bool autoscale = 2; // mc-router arranca al entrar un jugador y para tras autoscale_down_after_minutes sin jugadores
   uint32 autoscale_down_after_minutes = 3; // 1-1440; 0 = 10
+  // Con autoscale, solo estos jugadores (nombre de perfil o UUID) despiertan un servidor dormido o
+  // cancelan su parada (-auto-scale-allow-deny de mc-router). Vacío = cualquiera. Máx. 1000.
+  repeated string autoscale_allow_players = 4;
 }
 
 // Panel → agente. Guarda la spec (sobrevive a reinicios del agente) y reconcilia el contenedor en
@@ -491,5 +494,6 @@ message RouterObserved {
   bool autoscale = 6;
   string error = 7; // error de la última reconciliación ("" si fue bien)
   int64 ts_unix_ms = 8;
+  RouterSpec spec = 9; // spec guardada en el agente (ausente sin spec): la web compara con la del panel
 }
 // ── plan-9 ──
