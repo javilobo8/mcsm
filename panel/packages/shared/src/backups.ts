@@ -12,7 +12,10 @@ const CRON_FIELDS: readonly (readonly [string, number, number])[] = [
 /** Mismo criterio que `spec.ValidCron` del agente. Devuelve el error en castellano o null si es válida. */
 export function cronError(expr: string): string | null {
   if (expr.length > 100) return "Expresión cron demasiado larga";
-  const fields = expr.trim().split(/\s+/).filter((f) => f !== "");
+  // Solo ASCII imprimible, espacio y tabulador (como el agente): \s de JS y strings.Fields de Go
+  // difieren en U+FEFF y U+0085.
+  if (/[^\x20-\x7e\t]/.test(expr)) return "La expresión cron solo admite caracteres ASCII, espacios y tabuladores";
+  const fields = expr.split(/[ \t]+/).filter((f) => f !== "");
   if (fields.length !== 5) return "La expresión cron debe tener 5 campos: minuto hora día mes día-de-la-semana";
   for (let i = 0; i < 5; i++) {
     const [name, min, max] = CRON_FIELDS[i]!;

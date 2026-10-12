@@ -20,6 +20,7 @@ type fakeClock struct {
 	now        time.Time
 	waiters    []fakeWaiter
 	registered chan struct{}
+	untilArgs  []time.Time
 }
 
 func newFakeClock(t time.Time) *fakeClock {
@@ -35,6 +36,7 @@ func (c *fakeClock) Now() time.Time {
 func (c *fakeClock) Until(at time.Time) <-chan time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.untilArgs = append(c.untilArgs, at)
 	ch := make(chan time.Time, 1)
 	if !at.After(c.now) {
 		ch <- c.now
@@ -292,11 +294,23 @@ func TestSchedulerConcurrentSetAndFire(t *testing.T) {
 		}
 	}()
 	wg.Wait()
+	// Tras la tormenta el planificador sigue vivo: solo dispara "a" y lo hace al vencer.
+	if err := s.Set("a", "* * * * *"); err != nil {
+		t.Fatal(err)
+	}
+	for len(fired) > 0 {
+		<-fired
+	}
+	clk.Advance(time.Minute)
+	expectFire(t, fired, "a")
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run no terminó")
+	}
+	if ids := s.IDs(); len(ids) != 1 || ids[0] != "a" {
+		t.Fatalf("ids = %v", ids)
 	}
 }
 
@@ -332,16 +346,152 @@ func TestSchedulerSetMatchesPanelFixture(t *testing.T) {
 	}
 }
 
-// Divergencia conocida Go/JS en el espacio en blanco (Task 2): strings.Fields trata U+0085
-// como separador y no U+FEFF; /\s+/ de JS al revés. El agente es la última palabra: lo que
-// el panel deje pasar con U+FEFF el agente lo rechaza (error al aplicar la spec, nunca una
-// programación equivocada), y U+0085, que el panel rechaza, nunca llega.
-func TestSchedulerSetWhitespaceDivergence(t *testing.T) {
+// Go y JS difieren en el espacio en blanco (U+0085, U+FEFF): el panel y el agente rechazan
+// todo lo que no sea ASCII imprimible, espacio o tabulador (también está en el fixture).
+func TestSchedulerSetRejectsNonASCIIWhitespace(t *testing.T) {
 	s := NewScheduler(newFakeClock(time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)), func(string) {})
-	if err := s.Set("a", "0\u00854 * * *"); err != nil {
-		t.Errorf("U+0085 separa campos en Go: %v", err)
+	for _, e := range []string{"0\u00854 * * *", "0\ufeff4 * * *", "\ufeff0 4 * * *", "0\u00a04 * * *"} {
+		if err := s.Set("a", e); err == nil {
+			t.Errorf("Set(%q) debería rechazarla", e)
+		}
 	}
-	if err := s.Set("b", "0\ufeff4 * * *"); err == nil {
-		t.Error("U+FEFF no es separador en Go: debe rechazarse")
+}
+
+func TestSchedulerNormalizesExpression(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 30, 0, time.UTC))
+	s := NewScheduler(clk, func(string) {})
+	if err := s.Set("a", "*/5 * * * *"); err != nil {
+		t.Fatal(err)
 	}
+	clk.Advance(time.Minute)
+	before, _ := s.Next("a")
+	if err := s.Set("a", "  */5\t *  * * * "); err != nil {
+		t.Fatal(err)
+	}
+	if after, _ := s.Next("a"); !after.Equal(before) {
+		t.Fatalf("una variante con espacios no debe reprogramar: %v → %v", before, after)
+	}
+}
+
+// Un Remove hecho por fire (o por otro hilo) entre el vencimiento y el disparo se respeta.
+func TestSchedulerRemoveBetweenDueAndFire(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC))
+	fired := make(chan string, 10)
+	var s *Scheduler
+	s = NewScheduler(clk, func(id string) {
+		fired <- id
+		if id == "a" {
+			s.Remove("b")
+		}
+	})
+	for _, id := range []string{"a", "b"} {
+		if err := s.Set(id, "*/10 * * * *"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	clk.waitLoop(t)
+	clk.Advance(10 * time.Minute)
+	expectFire(t, fired, "a")
+	clk.waitLoop(t)
+	expectNoFire(t, fired)
+}
+
+// Set sobre una entrada vencida ya recogida: la entrada vieja no dispara.
+func TestSchedulerSetReplacesDueEntry(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC))
+	fired := make(chan string, 10)
+	var s *Scheduler
+	s = NewScheduler(clk, func(id string) {
+		fired <- id
+		if id == "a" {
+			_ = s.Set("b", "0 5 * * *")
+		}
+	})
+	for _, id := range []string{"a", "b"} {
+		if err := s.Set(id, "*/10 * * * *"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	clk.waitLoop(t)
+	clk.Advance(10 * time.Minute)
+	expectFire(t, fired, "a")
+	clk.waitLoop(t)
+	expectNoFire(t, fired)
+}
+
+// Tras suspender el equipo, una ejecución perdida por más de maxLate no se recupera.
+func TestSchedulerSkipsLateFire(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 30, 0, time.UTC))
+	fired := make(chan string, 10)
+	s := NewScheduler(clk, func(id string) { fired <- id })
+	if err := s.Set("a", "0 4 * * *"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	clk.waitLoop(t)
+	clk.Advance(20 * time.Hour) // 06:00:30 del 13: el disparo de las 04:00 llega 2 h tarde
+	// El poke de Set puede dejar un aviso de espera antiguo: espera hasta ver la reprogramación.
+	want := time.Date(2026, 10, 14, 4, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		if next, _ := s.Next("a"); next.Equal(want) {
+			break
+		}
+		clk.waitLoop(t)
+	}
+	expectNoFire(t, fired)
+	if next, _ := s.Next("a"); !next.Equal(want) {
+		t.Fatalf("next = %v", next)
+	}
+	// Un disparo con poca tardanza sí se hace.
+	clk.Advance(22 * time.Hour) // 04:00:30 del 14
+	expectFire(t, fired, "a")
+}
+
+func TestSchedulerWaitIsBounded(t *testing.T) {
+	start := time.Date(2026, 10, 12, 10, 0, 30, 0, time.UTC)
+	clk := newFakeClock(start)
+	s := NewScheduler(clk, func(string) {})
+	if err := s.Set("a", "0 4 * * *"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	clk.waitLoop(t)
+	clk.mu.Lock()
+	got := clk.untilArgs[len(clk.untilArgs)-1]
+	clk.mu.Unlock()
+	if !got.Equal(start.Add(time.Minute)) {
+		t.Fatalf("espera hasta %v, esperaba %v", got, start.Add(time.Minute))
+	}
+}
+
+// Un salto del reloj hacia atrás no provoca disparos duplicados.
+func TestSchedulerClockJumpsBack(t *testing.T) {
+	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 30, 0, time.UTC))
+	fired := make(chan string, 10)
+	s := NewScheduler(clk, func(id string) { fired <- id })
+	if err := s.Set("a", "* * * * *"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	clk.waitLoop(t)
+	clk.Advance(30 * time.Second) // 10:01:00
+	expectFire(t, fired, "a")
+	clk.waitLoop(t)
+	clk.Advance(-time.Hour)
+	clk.Advance(time.Hour) // vuelve a 10:01:00
+	expectNoFire(t, fired)
+	clk.Advance(time.Minute)
+	expectFire(t, fired, "a")
 }

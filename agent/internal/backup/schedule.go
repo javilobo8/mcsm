@@ -2,7 +2,9 @@ package backup
 
 import (
 	"context"
+	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +31,10 @@ var RealClock Clock = realClock{}
 
 // maxSchedWait acota cada espera: un salto del reloj del sistema se corrige en ≤ 1 min.
 const maxSchedWait = time.Minute
+
+// maxLate es la tardanza máxima con la que aún se dispara una ejecución: si el agente (o el
+// equipo) estuvo suspendido más tiempo, la ejecución se salta y se recalcula la siguiente.
+const maxLate = 5 * time.Minute
 
 type schedEntry struct {
 	expr  string
@@ -60,15 +66,17 @@ func (s *Scheduler) Set(serverID, expr string) error {
 		s.Remove(serverID)
 		return nil
 	}
+	// ValidCron aplica el mismo criterio que el panel (sin @daily, nombres, ? ni CRON_TZ,
+	// solo ASCII); ParseStandard sola los aceptaría. Valida la expresión original, antes de
+	// normalizar. Ver TestSchedulerSetMatchesPanelFixture.
+	if err := spec.ValidCron(expr); err != nil {
+		return err
+	}
+	expr = strings.Join(strings.Fields(expr), " ") // una variante con espacios no reprograma
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e, ok := s.entries[serverID]; ok && e.expr == expr {
 		return nil
-	}
-	// ValidCron aplica el mismo criterio que el panel (sin @daily, nombres, ? ni CRON_TZ);
-	// ParseStandard sola los aceptaría. Ver TestSchedulerSetMatchesPanelFixture.
-	if err := spec.ValidCron(expr); err != nil {
-		return err
 	}
 	sched, err := cron.ParseStandard(expr)
 	if err != nil {
@@ -124,11 +132,19 @@ func (s *Scheduler) Run(ctx context.Context) {
 	for {
 		now := s.clock.Now()
 		wakeAt := now.Add(maxSchedWait)
-		var due []string
+		type dueItem struct {
+			id    string
+			entry *schedEntry
+		}
+		var due []dueItem
 		s.mu.Lock()
 		for id, e := range s.entries {
 			if !e.next.After(now) {
-				due = append(due, id)
+				if late := now.Sub(e.next); late > maxLate {
+					slog.Warn("copia programada saltada: el planificador despertó tarde", "serverId", id, "late", late.Round(time.Second))
+				} else {
+					due = append(due, dueItem{id, e})
+				}
 				e.next = e.sched.Next(now)
 			}
 			if e.next.Before(wakeAt) {
@@ -136,9 +152,16 @@ func (s *Scheduler) Run(ctx context.Context) {
 			}
 		}
 		s.mu.Unlock()
-		sort.Strings(due)
-		for _, id := range due {
-			s.fire(id)
+		sort.Slice(due, func(i, j int) bool { return due[i].id < due[j].id })
+		for _, d := range due {
+			// Un Remove o Set posterior al vencimiento anula el disparo (la ventana restante
+			// es la de un Remove concurrente a la propia llamada a fire).
+			s.mu.Lock()
+			current := s.entries[d.id] == d.entry
+			s.mu.Unlock()
+			if current {
+				s.fire(d.id)
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -151,7 +174,9 @@ func (s *Scheduler) Run(ctx context.Context) {
 
 // ShouldRun decide si un backup programado se hace (onlyIfPlayersSince, spec §6.5). Se
 // omite solo si: hay un backup anterior, el agente ha observado el servidor desde antes de
-// ese backup y nadie se ha conectado desde entonces. Ante la duda (agente reiniciado), se hace.
+// ese backup y nadie se ha conectado desde entonces. lastBackup debe ser el INICIO de la última
+// copia (con el fin, un jugador que entró durante la copia contaría como anterior y se omitiría
+// la siguiente). PlayerWatch muestrea cada ~10 s: una conexión más corta puede pasar inadvertida. Ante la duda (agente reiniciado), se hace.
 func ShouldRun(onlyIfPlayersSince bool, lastBackup, playersSeen, watchingSince time.Time) bool {
 	if !onlyIfPlayersSince || lastBackup.IsZero() {
 		return true

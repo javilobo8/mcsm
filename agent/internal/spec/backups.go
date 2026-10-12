@@ -50,6 +50,13 @@ func ValidCron(expr string) error {
 	if len(expr) > maxCronLen {
 		return fmt.Errorf("expresión cron demasiado larga")
 	}
+	// Solo ASCII imprimible, espacio y tabulador: strings.Fields y el \s de JS difieren en
+	// U+0085 y U+FEFF, así que el panel y el agente comparten esta regla estricta.
+	for _, r := range expr {
+		if r != '\t' && (r < 0x20 || r > 0x7e) {
+			return fmt.Errorf("expresión cron inválida %q: solo se admiten caracteres ASCII, espacios y tabuladores", expr)
+		}
+	}
 	fields := strings.Fields(expr)
 	if len(fields) != 5 {
 		return fmt.Errorf("expresión cron inválida %q: deben ser 5 campos (minuto hora día mes día-de-la-semana)", expr)
