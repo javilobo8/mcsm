@@ -74,8 +74,11 @@ type App struct {
 	sem     chan struct{}
 	bg      sync.WaitGroup // tareas de fondo (sincronización y despachos)
 
-	xfer transferGate   // transferencias de archivos en curso (files.go)
-	bk   *backupService // plan-4: copias, restauraciones, jobs y programación
+	xfer transferGate // transferencias de archivos en curso (files.go)
+	// fileWrites: mutaciones de archivos en curso por servidor; una restauración las espera
+	// tras reservar el servidor (integración de los Planes 4 y 5, ver filewrites.go).
+	fileWrites fileWrites
+	bk         *backupService // plan-4: copias, restauraciones, jobs y programación
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.

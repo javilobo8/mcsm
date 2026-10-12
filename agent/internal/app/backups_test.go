@@ -538,6 +538,79 @@ func TestRestoreKeepsPreviousDataAndRestarts(t *testing.T) {
 	}
 }
 
+// Una escritura de archivos que empezó antes de la reserva (p. ej. una subida larga) termina
+// antes de que la restauración aparte data: si no, acabaría en el pre-restore y el panel la
+// daría por subida. Mientras espera, las mutaciones nuevas ya responden busy.
+func TestRestoreWaitsForInFlightFileWrites(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	name := e.col.created()[0].Filename
+	e.writeLevel(t, "LEVEL-2")
+	e.clk.Advance(time.Hour)
+	leave := e.a.fileWrites.enter("a") // una mutación ya en curso (pasó la comprobación de Held)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		e.a.Handle(context.Background(), &mcsmv1.Envelope{Id: 20, Body: &mcsmv1.Envelope_BackupRestore{BackupRestore: &mcsmv1.BackupRestore{ServerId: "a", Filename: name, JobId: "job-r"}}}, e.col.reply)
+	}()
+	e.col.waitFor(t, "aviso de espera", func() bool {
+		for _, env := range e.col.all() {
+			if p := env.GetJobProgress(); p != nil && p.JobId == "job-r" && strings.Contains(p.Message, "operaciones de archivos en curso") {
+				return true
+			}
+		}
+		return false
+	})
+	if r := e.col.resp(20); r != nil {
+		t.Fatalf("respondió antes de que terminara la escritura: %+v", r)
+	}
+	if !e.a.rec.Held("a") || readLevel(t, e.dataDir()) != "LEVEL-2" {
+		t.Fatal("reservado y sin tocar data mientras espera")
+	}
+	w := &mcsmv1.Envelope{Id: 30, Body: &mcsmv1.Envelope_FilesWrite{FilesWrite: &mcsmv1.FilesWrite{ServerId: "a", Path: "nuevo.txt", Content: []byte("x")}}}
+	if got := errCode(call(t, e.a, w)); got != errcode.Busy {
+		t.Fatalf("una escritura nueva durante la espera = %q; quiero busy", got)
+	}
+	leave()
+	waitClosed(t, done)
+	if r := e.col.resp(20); r.GetAck() == nil {
+		t.Fatalf("resp = %+v", r)
+	}
+	e.settle(t)
+	if fin := e.col.final("job-r"); fin == nil || fin.Status != jobOK {
+		t.Fatalf("final = %+v", fin)
+	}
+	if readLevel(t, e.dataDir()) != "LEVEL-1" {
+		t.Fatal("no se restauró la copia")
+	}
+}
+
+// Si las escrituras en curso no terminan dentro del plazo, la restauración no empieza: busy,
+// job fallido, reserva liberada y data intacto.
+func TestRestoreBusyWhenFileWritesDoNotDrain(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	name := e.col.created()[0].Filename
+	e.writeLevel(t, "LEVEL-2")
+	e.a.bk.drainWait = 0
+	leave := e.a.fileWrites.enter("a")
+	defer leave()
+	stops := fakeCalls(e.fake, "Stop")
+	r := e.handle(20, &mcsmv1.BackupRestore{ServerId: "a", Filename: name, JobId: "job-r"})
+	if r.GetError().GetCode() != errcode.Busy {
+		t.Fatalf("resp = %+v", r)
+	}
+	e.settle(t)
+	if fin := e.col.final("job-r"); fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "archivos") {
+		t.Fatalf("final = %+v", fin)
+	}
+	if e.a.rec.Held("a") || readLevel(t, e.dataDir()) != "LEVEL-2" || fakeCalls(e.fake, "Stop") != stops {
+		t.Fatal("sin restaurar: reserva liberada, data intacto y el servidor sin parar")
+	}
+}
+
 func TestRestoreRejectsBadName(t *testing.T) {
 	e := newBackupEnv(t, specJSON)
 	r := e.handle(20, &mcsmv1.BackupRestore{ServerId: "a", Filename: "../../etc/passwd", JobId: "job-r"})

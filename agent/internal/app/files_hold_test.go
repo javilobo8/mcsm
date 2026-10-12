@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/errcode"
@@ -53,6 +54,9 @@ func TestFilesMutationsBusyWhileHeld(t *testing.T) {
 	if l := call(t, a, &mcsmv1.Envelope{Id: 7, Body: &mcsmv1.Envelope_FilesList{FilesList: &mcsmv1.FilesList{ServerId: "a", Path: "/"}}}); l.GetFilesListResult() == nil {
 		t.Fatalf("listar con la reserva tomada = %+v", l)
 	}
+	if n := a.fileWrites.count("a"); n != 0 {
+		t.Fatalf("mutaciones en curso tras responder = %d", n)
+	}
 	release(context.Background())
 	if e := call(t, a, mutations[0]); e.GetAck() == nil {
 		t.Fatalf("sin reserva la escritura funciona: %+v", e)
@@ -78,4 +82,37 @@ func TestFilesMkdirOnBlockedServerWithoutDataIsBusy(t *testing.T) {
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
 		t.Fatalf("se creó data: %v", err)
 	}
+}
+
+func TestFileWritesCounter(t *testing.T) {
+	var w fileWrites
+	select {
+	case <-w.drained("a"):
+	default:
+		t.Fatal("sin mutaciones, drained está cerrado")
+	}
+	l1 := w.enter("a")
+	l2 := w.enter("a")
+	other := w.enter("b")
+	ch := w.drained("a")
+	l1()
+	l1() // idempotente
+	select {
+	case <-ch:
+		t.Fatal("queda una mutación en curso en a")
+	default:
+	}
+	if n := w.count("a"); n != 1 {
+		t.Fatalf("count(a) = %d", n)
+	}
+	l2()
+	select {
+	case <-ch:
+	case <-time.After(5 * time.Second):
+		t.Fatal("drained no se cerró al terminar la última")
+	}
+	if n := w.count("b"); n != 1 {
+		t.Fatalf("count(b) = %d (cada servidor cuenta aparte)", n)
+	}
+	other()
 }

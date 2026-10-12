@@ -34,6 +34,10 @@ const (
 	// defaultReleaseWait es lo que un job espera a la reconciliación que hace la liberación de
 	// la reserva antes de terminar y dejarla en segundo plano.
 	defaultReleaseWait = 3 * time.Minute
+	// fileWritesDrainWait es lo que una restauración, ya con el servidor reservado, espera a
+	// las escrituras de archivos que estaban en curso antes de apartar data. Muy por debajo
+	// del plazo de 30 s con que el panel espera la respuesta a BackupRestore.
+	fileWritesDrainWait = 10 * time.Second
 	// shutdownWait es el tope de la espera a las copias en curso al cerrar el agente: el
 	// save-on de una copia cancelada tiene su propio plazo de 15 s. Los docker-compose dan al
 	// agente stop_grace_period: 30s.
@@ -104,6 +108,7 @@ type backupService struct {
 	recoverDisk    func(backupsDir, dataDir, slug string) (backup.Recovery, error)
 	freeSpace      func(dir string) (uint64, error) // nil: statfs
 	releaseWait    time.Duration
+	drainWait      time.Duration // ver fileWritesDrainWait
 	inventoryLimit int
 
 	// invMu ordena el inventario respecto a los avisos de copias: se calcula y se encola bajo
@@ -125,7 +130,7 @@ func newBackupService(a *App, clock backup.Clock) *backupService {
 	b := &backupService{
 		a: a, clock: clock, sleep: backup.Sleep,
 		restore: backup.Restore, recoverDisk: backup.RecoverInterrupted,
-		releaseWait: defaultReleaseWait, inventoryLimit: maxInventoryBytes,
+		releaseWait: defaultReleaseWait, drainWait: fileWritesDrainWait, inventoryLimit: maxInventoryBytes,
 		blocked: map[string]func(context.Context){},
 		slots:   make(chan struct{}, maxParallelJobs),
 	}
@@ -726,12 +731,38 @@ func (b *backupService) startRestore(jobID, serverID, filename string) error {
 		b.finish(j, err, "")
 		return err
 	}
+	if err := b.drainFileWrites(serverID, j); err != nil {
+		release(b.a.life)
+		b.finish(j, err, "")
+		return err
+	}
 	if !b.spawn(func() { b.runRestoreJob(t, filename, j, release) }) {
 		release(b.a.life)
 		b.finish(j, errClosing, "")
 		return errClosing
 	}
 	return nil
+}
+
+// drainFileWrites espera, como mucho drainWait, a que terminen las escrituras de archivos
+// que ya estaban en curso en serverID al reservarlo (las nuevas ya responden busy). Si no
+// terminan, la restauración no empieza: ErrBusy. Ver fileWrites.
+func (b *backupService) drainFileWrites(serverID string, j *jobs.Job) error {
+	drained := b.a.fileWrites.drained(serverID)
+	select {
+	case <-drained:
+		return nil
+	default:
+	}
+	j.Progress(0, "Esperando a que terminen las operaciones de archivos en curso")
+	select {
+	case <-drained:
+		return nil
+	case <-b.clock.Until(b.clock.Now().Add(b.drainWait)):
+		return fmt.Errorf("%w: hay operaciones de archivos en curso en el servidor (subidas, escrituras o borrados); espera a que terminen y vuelve a intentarlo", reconcile.ErrBusy)
+	case <-b.a.life.Done():
+		return errClosing
+	}
 }
 
 func (b *backupService) runRestoreJob(t *target, filename string, j *jobs.Job, release func(context.Context)) {

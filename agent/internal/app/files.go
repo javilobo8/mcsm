@@ -336,11 +336,15 @@ func (a *App) filesOp(ctx context.Context, env *mcsmv1.Envelope, req serverScope
 		return nil, err
 	}
 	// Con el servidor reservado (copia, restauración o bloqueado sin data) no se escribe: una
-	// restauración aparta data con rename y lo escrito acabaría en el pre-restore. Las
-	// lecturas siguen: cada una ve el data viejo o el nuevo, entero (un fichero abierto
-	// conserva su inodo tras el rename).
-	if isFilesMutation(env) && a.rec.Held(req.GetServerId()) {
-		return nil, fmt.Errorf("%w: no se pueden modificar sus archivos hasta que termine", reconcile.ErrBusy)
+	// restauración aparta data con rename y lo escrito acabaría en el pre-restore. enter va
+	// antes de mirar la reserva (ver fileWrites). Las lecturas siguen: cada una ve el data
+	// viejo o el nuevo, entero (un fichero abierto conserva su inodo tras el rename).
+	if isFilesMutation(env) {
+		leave := a.fileWrites.enter(req.GetServerId())
+		defer leave()
+		if a.rec.Held(req.GetServerId()) {
+			return nil, fmt.Errorf("%w: no se pueden modificar sus archivos hasta que termine", reconcile.ErrBusy)
+		}
 	}
 	switch b := env.Body.(type) {
 	case *mcsmv1.Envelope_FilesList:
