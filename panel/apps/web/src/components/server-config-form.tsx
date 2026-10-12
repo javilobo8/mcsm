@@ -10,7 +10,7 @@ import { Field } from "@/components/spec-form/fields";
 import { SaveTemplateDialog } from "@/components/save-template-dialog";
 import { api, apiPath, ApiError, type ServerDto } from "@/lib/api";
 import { editableSpec, validateSpec, type EditableSpec } from "@/lib/spec-edit";
-import { planApply, type PendingApply } from "@/lib/config-apply";
+import { isStale, planApply, type PendingApply } from "@/lib/config-apply";
 import { templateSaveBlock } from "@/lib/template-edit";
 
 const toEditable = (s: ServerDto): EditableSpec => editableSpec(s.spec) as EditableSpec;
@@ -29,13 +29,14 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
   const [showRcon, setShowRcon] = useState(false);
 
   const dirty = name !== base.name || canonicalJson(spec) !== canonicalJson(base.spec);
-  const stale = server.specVersion !== base.version;
+  const stale = isStale(server.specVersion, base.version);
   const resetTo = (s: ServerDto) => {
     const sp = toEditable(s);
     setName(s.name); setSpec(sp); setBase({ version: s.specVersion, name: s.name, spec: sp });
     setErrors({}); setLocalErr(null); setFormKey((k) => k + 1);
   };
-  useEffect(() => { if (stale && !dirty) resetTo(server); }, [stale, dirty]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Solo al cambiar stale/dirty: resetTo y server se leen frescos del render en que cambian (no son dependencias a propósito).
+  useEffect(() => { if (stale && !dirty) resetTo(server); }, [stale, dirty]); // eslint-disable-line react-hooks/exhaustive-deps -- ver arriba
 
   const save = useMutation({
     mutationFn: (p: PendingApply) => api.patch<ServerDto>(apiPath`/api/servers/${server.id}`, { ...(p.name ? { name: p.name } : {}), ...(p.spec ? { spec: p.spec } : {}) }),

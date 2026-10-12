@@ -10,7 +10,9 @@ export type ApplyPlan = { ok: true; pending: PendingApply } | { ok: false; error
 
 /**
  * Prepara «Aplicar»: PATCH mínimo (merge de primer nivel), y un diff entre lo guardado y lo que quedará tras el
- * merge del panel. Cualquier cambio de spec recrea el contenedor; solo el nombre no.
+ * merge del panel. Cualquier cambio de spec recrea el contenedor; solo el nombre no. Si el diff de la spec queda
+ * vacío (p. ej. una sección de mods presente y vacía frente a ausente) no se envía ni se promete recreación:
+ * solo se aplica lo que el diálogo enseña.
  */
 export function planApply(baseName: string, baseSpec: EditableSpec, name: string, edited: EditableSpec): ApplyPlan {
   const trimmed = name.trim();
@@ -20,10 +22,19 @@ export function planApply(baseName: string, baseSpec: EditableSpec, name: string
     ? { ...edited, ports: { ...edited.ports, game: baseSpec.ports.game } }
     : edited;
   const patch = buildSpecPatch(baseSpec, spec);
-  const hasSpec = Object.keys(patch).length > 0;
-  const changes = hasSpec ? diffSpecs(baseSpec, mergeSpecPatch(baseSpec, patch)) : [];
+  const changes = Object.keys(patch).length > 0 ? diffSpecs(baseSpec, mergeSpecPatch(baseSpec, patch)) : [];
+  const hasSpec = changes.length > 0;
   const renamed = trimmed !== baseName;
   if (renamed) changes.unshift({ label: "Nombre", before: baseName, after: trimmed });
   if (!renamed && !hasSpec) return { ok: false, error: "No hay cambios que aplicar" };
   return { ok: true, pending: { name: renamed ? trimmed : undefined, spec: hasSpec ? patch : undefined, changes, recreate: hasSpec } };
+}
+
+/**
+ * ¿Cambió la configuración fuera del formulario? Solo si el servidor va POR DELANTE de la base: justo tras
+ * aplicar, la base ya es N+1 y la prop `server` sigue en N hasta que llega el setQueryData; con «!==» se
+ * recargaba la versión vieja (parpadeo y doble remonte).
+ */
+export function isStale(serverVersion: number, baseVersion: number): boolean {
+  return serverVersion > baseVersion;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput } from "@mcsm/shared";
-import { planApply } from "./config-apply";
+import { isStale, planApply } from "./config-apply";
 
 const base = { ...defaultSpecInput(), ports: { game: 25565, extra: [] } };
 
@@ -41,5 +41,20 @@ describe("planApply", () => {
   it("activar la whitelist con la lista vacía avisa en el diff", () => {
     const r = planApply("A", base, "A", { ...base, whitelist: { enabled: true, players: [] } });
     expect(r.ok && r.pending.changes).toEqual([{ label: "Whitelist", before: "(sin gestionar)", after: expect.stringMatching(/nadie podrá entrar salvo los ops/) }]);
+  });
+  it("un PATCH cuyo diff queda vacío es «sin cambios» y no promete recreación", () => {
+    // mods presente y vacío frente a ausente: el diff no lo distingue (todo «—»)
+    const r = planApply("A", base, "A", { ...base, mods: { modrinthProjects: [], curseforgeFiles: [], urls: [] } });
+    expect(r).toEqual({ ok: false, error: "No hay cambios que aplicar" });
+    const renamed = planApply("A", base, "B", { ...base, mods: { modrinthProjects: [], curseforgeFiles: [], urls: [] } });
+    expect(renamed).toMatchObject({ ok: true, pending: { name: "B", spec: undefined, recreate: false } });
+  });
+});
+
+describe("isStale", () => {
+  it("solo si el servidor va por delante de la base (tras aplicar la base va por delante: no es «cambió fuera»)", () => {
+    expect(isStale(3, 3)).toBe(false);
+    expect(isStale(4, 3)).toBe(true);
+    expect(isStale(3, 4)).toBe(false);
   });
 });
