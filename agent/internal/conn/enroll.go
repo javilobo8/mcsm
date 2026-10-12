@@ -35,7 +35,7 @@ func Enroll(ctx context.Context, panelURL, enrollToken, nameHint, agentVersion s
 		return nil, fmt.Errorf("enroll: el panel respondió %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 	var out EnrollResult
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out); err != nil {
 		return nil, fmt.Errorf("enroll: respuesta inválida: %w", err)
 	}
 	if out.NodeID == "" || out.NodeToken == "" {

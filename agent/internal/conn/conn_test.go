@@ -1,12 +1,15 @@
 package conn
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -270,5 +273,230 @@ func TestBadTokenRetries(t *testing.T) {
 	}
 	if c.Connected() || atomic.LoadInt32(&fp.conns) != 0 {
 		t.Fatal("token malo no debe conectar")
+	}
+}
+
+type syncBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) { s.mu.Lock(); defer s.mu.Unlock(); return s.b.Write(p) }
+func (s *syncBuf) String() string              { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }
+
+func TestHelloIsAlwaysFirstFrame(t *testing.T) {
+	fp := newFakePanel(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var c *Client
+	c = NewClient(Options{Log: quiet, PanelURL: fp.srv.URL, Token: "TOK", Handler: &captureHandler{},
+		Hello: func(ctx context.Context) *mcsmv1.Hello {
+			// un Send concurrente justo mientras se prepara el Hello no debe adelantarlo
+			_ = c.Send(ctx, &mcsmv1.Envelope{Body: &mcsmv1.Envelope_LogLine{LogLine: &mcsmv1.LogLine{}}})
+			return &mcsmv1.Hello{AgentVersion: "x"}
+		}})
+	go c.Run(ctx)
+	select {
+	case h := <-fp.gotHello:
+		if h == nil {
+			t.Fatal("el primer frame no fue el Hello")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("sin Hello")
+	}
+}
+
+type sendCapture struct {
+	first chan func(*mcsmv1.Envelope) error
+	once  sync.Once
+}
+
+func (h *sendCapture) Handle(_ context.Context, _ *mcsmv1.Envelope, send func(*mcsmv1.Envelope) error) {
+	h.once.Do(func() { h.first <- send })
+}
+
+func TestHandlerSendBoundToItsSession(t *testing.T) {
+	fp := newFakePanel(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h := &sendCapture{first: make(chan func(*mcsmv1.Envelope) error, 1)}
+	c := NewClient(Options{Log: quiet, PanelURL: fp.srv.URL, Token: "TOK", Handler: h,
+		Hello: func(context.Context) *mcsmv1.Hello { return &mcsmv1.Hello{} }})
+	c.backoffMin, c.backoffMax = time.Millisecond, 2*time.Millisecond
+	go c.Run(ctx)
+	<-fp.gotHello
+	ws := <-fp.ws
+	raw, _ := proto.Marshal(&mcsmv1.Envelope{Id: 7, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{}}})
+	_ = ws.Write(ctx, websocket.MessageBinary, raw)
+	oldSend := <-h.first
+	ws.Close(websocket.StatusGoingAway, "x")
+	<-fp.gotHello // sesión nueva establecida
+	ws2 := <-fp.ws
+	for !c.Connected() {
+		time.Sleep(time.Millisecond)
+	}
+	if err := oldSend(&mcsmv1.Envelope{Id: 7, Body: &mcsmv1.Envelope_Ack{Ack: &mcsmv1.Ack{}}}); !errors.Is(err, ErrNotConnected) {
+		t.Fatalf("send de sesión vieja: %v", err)
+	}
+	rctx, rc := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer rc()
+	if _, _, err := ws2.Read(rctx); err == nil {
+		t.Fatal("la sesión nueva recibió un frame de la vieja")
+	}
+}
+
+// delayRecorder sustituye a time.After para registrar las esperas sin dormir.
+type delayRecorder struct {
+	mu sync.Mutex
+	ds []time.Duration
+	n  chan struct{}
+}
+
+func (d *delayRecorder) after(x time.Duration) <-chan time.Time {
+	d.mu.Lock()
+	d.ds = append(d.ds, x)
+	d.mu.Unlock()
+	d.n <- struct{}{}
+	ch := make(chan time.Time, 1)
+	ch <- time.Now()
+	return ch
+}
+
+func (d *delayRecorder) collect(t *testing.T, n int) []time.Duration {
+	for i := 0; i < n; i++ {
+		select {
+		case <-d.n:
+		case <-time.After(3 * time.Second):
+			t.Fatal("faltan reintentos")
+		}
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]time.Duration(nil), d.ds[:n]...)
+}
+
+func flappingPanel(t *testing.T, sendFrame bool) *httptest.Server {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		if _, _, err := c.Read(r.Context()); err != nil {
+			return
+		}
+		if sendFrame {
+			raw, _ := proto.Marshal(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_HelloAck{HelloAck: &mcsmv1.HelloAck{}}})
+			_ = c.Write(r.Context(), websocket.MessageBinary, raw)
+		}
+		c.Close(websocket.StatusPolicyViolation, "fuera")
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func runRecording(t *testing.T, url string, rec *delayRecorder) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	c := NewClient(Options{Log: quiet, PanelURL: url, Token: "TOK", Handler: &captureHandler{},
+		Hello: func(context.Context) *mcsmv1.Hello { return &mcsmv1.Hello{} }})
+	c.backoffMin, c.backoffMax = 100*time.Millisecond, time.Second
+	c.after = rec.after
+	go c.Run(ctx)
+}
+
+func TestBackoffNotResetWhenPanelDropsImmediately(t *testing.T) {
+	rec := &delayRecorder{n: make(chan struct{}, 16)}
+	runRecording(t, flappingPanel(t, false).URL, rec)
+	ds := rec.collect(t, 4)
+	if ds[3] < 600*time.Millisecond { // 100,200,400,800 con ±20 %
+		t.Fatalf("el backoff debe crecer: %v", ds)
+	}
+}
+
+func TestBackoffResetAfterPanelFrame(t *testing.T) {
+	rec := &delayRecorder{n: make(chan struct{}, 16)}
+	runRecording(t, flappingPanel(t, true).URL, rec)
+	for _, d := range rec.collect(t, 3) {
+		if d > 120*time.Millisecond {
+			t.Fatalf("tras recibir un frame del panel el backoff debe reiniciarse: %v", d)
+		}
+	}
+}
+
+func TestAuthRejected(t *testing.T) {
+	fp := newFakePanel(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	buf := &syncBuf{}
+	rejected := make(chan struct{}, 8)
+	c := NewClient(Options{Log: slog.New(slog.NewTextHandler(buf, nil)), PanelURL: fp.srv.URL, Token: "SECRETO", Handler: &captureHandler{},
+		Hello:          func(context.Context) *mcsmv1.Hello { return &mcsmv1.Hello{} },
+		OnAuthRejected: func() { rejected <- struct{}{} }})
+	c.backoffMin, c.backoffMax = time.Millisecond, 2*time.Millisecond
+	go c.Run(ctx)
+	select {
+	case <-rejected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("OnAuthRejected no se llamó")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "rechazó el token") {
+		t.Fatalf("log sin error claro: %s", out)
+	}
+	if strings.Contains(out, "SECRETO") {
+		t.Fatal("el log no debe incluir el token")
+	}
+}
+
+type panicHandler struct{ done chan struct{} }
+
+func (h *panicHandler) Handle(context.Context, *mcsmv1.Envelope, func(*mcsmv1.Envelope) error) {
+	close(h.done)
+	panic("boom")
+}
+
+func TestHandlerPanicDoesNotCrash(t *testing.T) {
+	fp := newFakePanel(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h := &panicHandler{done: make(chan struct{})}
+	c := NewClient(Options{Log: quiet, PanelURL: fp.srv.URL, Token: "TOK", Handler: h,
+		Hello: func(context.Context) *mcsmv1.Hello { return &mcsmv1.Hello{} }})
+	go c.Run(ctx)
+	<-fp.gotHello
+	ws := <-fp.ws
+	raw, _ := proto.Marshal(&mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{}}})
+	_ = ws.Write(ctx, websocket.MessageBinary, raw)
+	<-h.done
+	time.Sleep(10 * time.Millisecond) // deja que el panic se propague si no hay recover
+	if !c.Connected() {
+		t.Fatal("la sesión debería seguir viva")
+	}
+}
+
+func TestPingIsSentAndFailureClosesSession(t *testing.T) {
+	fp := newFakePanel(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := NewClient(Options{Log: quiet, PanelURL: fp.srv.URL, Token: "TOK", Handler: &captureHandler{},
+		Hello: func(context.Context) *mcsmv1.Hello { return &mcsmv1.Hello{} }})
+	c.backoffMin, c.backoffMax = time.Millisecond, 2*time.Millisecond
+	c.pingEvery = time.Millisecond
+	var calls int32
+	c.ping = func(context.Context, *websocket.Conn) error {
+		if atomic.AddInt32(&calls, 1) == 2 {
+			return errors.New("par muerto")
+		}
+		return nil
+	}
+	go c.Run(ctx)
+	<-fp.gotHello
+	select {
+	case <-fp.gotHello: // el ping fallido tumbó la sesión y se reconectó
+	case <-time.After(3 * time.Second):
+		t.Fatal("no reconectó tras ping fallido")
+	}
+	if atomic.LoadInt32(&calls) < 2 {
+		t.Fatal("no se enviaron pings")
 	}
 }
