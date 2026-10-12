@@ -65,9 +65,14 @@ export class BackupsRepo {
     return Number(r.changes) > 0;
   }
 
-  /** Marca borradas las copias vigentes de un servidor que el nodo ya no tiene. */
-  markMissingDeleted(serverId: string, present: ReadonlySet<string>): number {
-    const rows = this.db.prepare("SELECT filename FROM backups WHERE server_id = ? AND status = 'ok'").all(serverId) as unknown as { filename: string }[];
+  /**
+   * Marca borradas las copias vigentes de un servidor que el nodo ya no tiene. Solo las que el panel ya conocía
+   * antes de `createdBefore` (cuando pidió el inventario): una copia anunciada después pudo crearse después de que
+   * el agente listara el disco.
+   */
+  markMissingDeleted(serverId: string, present: ReadonlySet<string>, createdBefore: string): number {
+    const rows = this.db.prepare("SELECT filename FROM backups WHERE server_id = ? AND status = 'ok' AND created_at < ?")
+      .all(serverId, createdBefore) as unknown as { filename: string }[];
     let n = 0;
     for (const r of rows) {
       if (!present.has(r.filename) && this.markDeleted(serverId, r.filename)) n++;

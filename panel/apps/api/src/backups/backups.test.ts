@@ -193,6 +193,47 @@ describe("inventario y avisos del agente", () => {
     agent.close();
   });
 
+  it("m2: una copia anunciada después de pedir el inventario no se marca borrada aunque el inventario no la traiga", async () => {
+    const { nodeId, nodeToken } = await enrollNode("nas");
+    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    let changed = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "uno-20261012T040000.000Z-1.tar.zst") } } });
+    await changed;
+    changed = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.ack(list.id);
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], backups: [], jobs: [] } } }); // calculado antes
+    await changed;
+    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["uno-20261012T040000.000Z-1.tar.zst"]);
+    agent.close();
+  });
+
+  it("inventario periódico (sin petición): cierra un job cuyo aviso terminal se perdió sin tocar copias nuevas ni el log de un job en curso", async () => {
+    const { nodeId, nodeToken } = await enrollNode("nas");
+    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    let changed = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.ack(list.id);
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], backups: [], jobs: [] } } });
+    await changed;
+    const stuck = app.jobs.create({ type: "backup", serverId: s.id, nodeId, status: "running" }); // su OK se descartó
+    const live = app.jobs.create({ type: "restore", serverId: s.id, nodeId, status: "running" });
+    app.jobs.update(live.id, { logChunk: "cabecera\n" });
+    changed = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "uno-20261012T040000.000Z-1.tar.zst") } } });
+    await changed;
+    changed = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], backups: [], jobs: [
+      { jobId: stuck.id, serverId: s.id, type: "backup", status: JobStatus.OK, progress: 100, message: "Copia creada", log: "fin\n", startedUnixMs: 1n, finishedUnixMs: 2n },
+      { jobId: live.id, serverId: s.id, type: "restore", status: JobStatus.RUNNING, progress: 40, message: "Extrayendo", log: "cola\n", startedUnixMs: 1n },
+    ] } } });
+    await changed;
+    expect(app.jobs.get(stuck.id)).toMatchObject({ status: "ok", message: "Copia creada" });
+    expect(app.jobs.get(live.id)).toMatchObject({ status: "running", progress: 40, log: "cabecera\n" });
+    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["uno-20261012T040000.000Z-1.tar.zst"]);
+    agent.close();
+  });
+
   it("GET /backups de un servidor inexistente devuelve 404", async () => {
     const res = await app.inject({ method: "GET", url: "/api/servers/nope/backups", headers: { cookie } });
     expect(res.statusCode).toBe(404);

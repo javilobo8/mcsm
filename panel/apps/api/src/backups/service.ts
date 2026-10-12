@@ -187,21 +187,31 @@ export class BackupService {
     if (this.repo.markDeleted(m.serverId, m.filename)) this.app.events.emit("backups", m.serverId);
   }
 
+  /**
+   * Inventario del agente: tras cada petición (`sync`) y, sin pedirlo, cada 10 min. `since` es el inicio de la
+   * última petición de este nodo: el agente calculó el inventario después, así que lo creado antes y ausente ya
+   * no existe (copias) o se perdió (jobs), y lo creado después no se toca (carreras con avisos que cruzan el
+   * inventario). Sin petición conocida solo se aplica lo positivo (altas y estados de jobs).
+   */
   private onInventory(nodeId: string, inv: BackupInventory) {
-    const since = this.syncStartedAt.get(nodeId) ?? nowIso();
+    const since = this.syncStartedAt.get(nodeId);
     for (const serverId of inv.serverIds) {
       if (!this.ownServer(nodeId, serverId)) continue;
       const mine = inv.backups.filter((b) => b.serverId === serverId);
       for (const b of mine) this.repo.upsertOk(nodeId, infoToInput(b));
-      this.repo.markMissingDeleted(serverId, new Set(mine.map((b) => b.filename)));
+      if (since) this.repo.markMissingDeleted(serverId, new Set(mine.map((b) => b.filename)), since);
       this.app.events.emit("backups", serverId);
     }
     const known = new Set<string>();
     for (const r of inv.jobs) {
       known.add(r.jobId);
       if (!this.ensureJob(nodeId, r.jobId, r.serverId, r.type)) continue;
-      this.app.jobs.update(r.jobId, { status: STATUSES[r.status] ?? "running", progress: r.progress, message: r.message, log: r.log });
+      // El log del agente es solo la cola (4 KiB): sustituye al del panel únicamente si este aún no tiene nada
+      // (job que el panel no seguía); si no, el inventario periódico se comería la cabecera cada 10 min.
+      const hasLog = (this.app.jobs.getRow(r.jobId)?.log ?? "") !== "";
+      this.app.jobs.update(r.jobId, { status: STATUSES[r.status] ?? "running", progress: r.progress, message: r.message, ...(hasLog ? {} : { log: r.log }) });
     }
+    if (!since) return;
     // Jobs de copia/restauración de este nodo que el agente no conoce: se perdieron.
     for (const row of this.app.jobs.openAgentJobs(nodeId, since)) {
       if (!known.has(row.id)) this.app.jobs.finish(row.id, "failed", LOST);
