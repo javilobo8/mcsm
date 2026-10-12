@@ -111,6 +111,8 @@ describe("validadores de Propiedades, Avanzado y Recursos", () => {
     expect(validateExtraProperties({ "spawn-npcs": "true" })).toBeNull();
     for (const k of ["server-port", "enable-rcon", "rcon.port", "rcon.password"]) expect(validateExtraProperties({ [k]: "1" })).toContain(k);
     expect(validateExtraProperties({ "Bad Key": "1" })).toContain("Bad Key");
+    // Una clave con campo tipado no se acepta en "Otras": si no, se movería y vaciaría el textarea al teclear.
+    expect(validateExtraProperties({ motd: "x" })).toContain("campo");
   });
   it("env: rechaza reservadas, CF_API_KEY con mensaje propio y nombres inválidos", async () => {
     const { validateEnv } = await import("./spec-edit");

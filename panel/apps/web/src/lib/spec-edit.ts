@@ -3,7 +3,7 @@ import {
   canonicalJson, formatZodError, memoryToBytes, portMappingSchema, specInputSchema, templateSpecSchema,
   type ModpackPlatform, type SpecInput, type SpecPatch, type TemplateSpec,
 } from "@mcsm/shared";
-import { TYPED_PROPERTY_KEYS } from "./spec-catalog";
+import { PROPERTY_DEFS, TYPED_PROPERTY_KEYS } from "./spec-catalog";
 
 /** Estado del formulario: una SpecInput (sin rconPassword). En plantillas, `ports` se ignora. */
 export type EditableSpec = SpecInput;
@@ -158,6 +158,7 @@ const quote = (k: string) => (k.length > 40 ? `${k.slice(0, 40)}…` : k);
 export function validateExtraProperties(kv: Record<string, string>): string | null {
   for (const k of Object.keys(kv)) {
     if (RESERVED_PROPS.has(k)) return `«${k}» es una propiedad reservada: la gestiona el agente (server-port, enable-rcon, rcon.port y rcon.password no se editan)`;
+    if (TYPED_PROPERTY_KEYS.has(k)) return `«${k}» tiene su propio campo (${PROPERTY_DEFS.find((d) => d.key === k)?.label ?? k}): úsalo en lugar de «Otras propiedades»`;
     if (!PROPERTY_KEY_RE.test(k)) return `«${quote(k)}» no es un nombre de propiedad válido (minúsculas, números, . _ -)`;
   }
   return null;

@@ -34,13 +34,20 @@ export function ListField({ id, label, value, onChange, onError, kind = "entry",
   const [text, setText] = useState(() => listToText(value));
   const [error, setError] = useState<string | null>(null);
   useEffect(() => () => onError?.(id, null), [id, onError]);
+  // Resincroniza si el padre reemplaza el valor (no si es el eco de lo emitido).
+  const emitted = useRef(listToText(value));
+  useEffect(() => {
+    const incoming = listToText(value);
+    if (incoming === emitted.current) return;
+    emitted.current = incoming; setText(incoming); setError(null); onError?.(id, null);
+  }, [value, id, onError]);
   const update = (t: string) => {
     setText(t);
     const items = parseLines(t);
     const bad = validateListItems(kind, items);
     const msg = bad ? `${label}: ${bad}` : null;
     setError(msg); onError?.(id, msg);
-    if (!bad) onChange(items);
+    if (!bad) { emitted.current = listToText(items); onChange(items); }
   };
   return (
     <Field id={id} label={label} hint={hint} error={error}>
@@ -96,10 +103,15 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
   const [text, setText] = useState(() => (value === undefined ? "" : String(value)));
   const [error, setError] = useState<string | null>(null);
   useEffect(() => () => onError(id, null), [id, onError]);
+  const emitted = useRef(value);
+  useEffect(() => {
+    if (value === emitted.current) return;
+    emitted.current = value; setText(value === undefined ? "" : String(value)); setError(null); onError(id, null);
+  }, [value, id, onError]);
   const update = (t: string) => {
     setText(t);
     const trimmed = t.trim();
-    if (trimmed === "") { setError(null); onError(id, null); onChange(undefined); return; }
+    if (trimmed === "") { setError(null); onError(id, null); emitted.current = undefined; onChange(undefined); return; }
     // Solo dígitos decimales (nada de "0x10" ni "1e3"); con integer=false admite un decimal con punto o coma.
     const n = (integer ? /^[0-9]+$/ : /^[0-9]+([.,][0-9]+)?$/).test(trimmed) ? Number(trimmed.replace(",", ".")) : Number.NaN;
     const bad = !Number.isFinite(n) || (min !== undefined && n < min) || (max !== undefined && n > max);
@@ -108,7 +120,7 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
       const msg = `${label}: debe ser un número${integer ? " entero" : ""}${range}`;
       setError(msg); onError(id, msg); return;
     }
-    setError(null); onError(id, null); onChange(n);
+    setError(null); onError(id, null); emitted.current = n; onChange(n);
   };
   return (
     <Field id={id} label={label} hint={hint} error={error}>
