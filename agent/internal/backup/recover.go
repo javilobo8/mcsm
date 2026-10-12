@@ -23,18 +23,21 @@ type Recovery struct {
 //
 //   - Borra en backupsDir las copias a medias (<copia>.partial, <copia>.json.partial) y los
 //     .json huérfanos sin su .tar.zst, y junto a data los .json.partial de los pre-restore.
-//   - Si data no existe y el pre-restore más reciente no tiene .json, lo devuelve a data con
-//     un renombrado. Restore escribe ese .json después del intercambio, así que sin él el
-//     intercambio no terminó (crash entre los dos renombrados, o ErrDataMissing): son los
-//     datos originales, y sin ellos Docker crearía un data vacío al arrancar el contenedor y
-//     el servidor generaría un mundo nuevo. Se vuelve a los datos originales y no a la copia
-//     extraída porque el job queda FAILED («interrumpido»). Un pre-restore con .json es de
-//     una restauración completada: si después falta data, no se toca nada.
+//   - Si data no existe y hay pre-restores, el único sin .json, si es además el más reciente,
+//     vuelve a data con un renombrado. Restore escribe ese .json después del intercambio, así
+//     que sin él el intercambio no terminó (crash entre los dos renombrados, o
+//     ErrDataMissing): son los datos originales, y sin ellos Docker crearía un data vacío al
+//     arrancar el contenedor y el servidor generaría un mundo nuevo. Se vuelve a los datos
+//     originales y no a la copia extraída porque el job queda FAILED («interrumpido»). En
+//     cualquier otro caso (solo restauraciones completadas, varios sin .json, o el que no lo
+//     tiene no es el más reciente) la elección es dudosa: no se mueve nada y el error
+//     envuelve ErrDataMissing para que el servidor no arranque con un mundo vacío.
 //   - Con data en su sitio, borra los temporales de extracción data.restoring-*. Sin data se
 //     dejan: pueden ser lo único que quede.
 //
 // Solo toca nombres que siguen las convenciones de este paquete. Si data no existe y no se
-// pudo devolver, el error envuelve ErrDataMissing: el servidor no debe arrancarse.
+// devolvió (dudoso o el renombrado falló), el error envuelve ErrDataMissing: el servidor no
+// debe arrancarse. Sin data ni pre-restores (servidor nuevo) no hay error.
 func RecoverInterrupted(backupsDir, dataDir, slug string) (Recovery, error) {
 	var rec Recovery
 	rec.removeFiles(backupsDir, func(name string) bool { return backupLeftover(backupsDir, slug, name) })
@@ -68,13 +71,23 @@ func RecoverInterrupted(backupsDir, dataDir, slug string) (Recovery, error) {
 		return rec, nil
 	}
 	if cur == nil {
-		sort.Strings(pres) // la marca de tiempo ordena por fecha
 		if len(pres) == 0 {
-			return rec, nil
+			return rec, nil // servidor nuevo: la reconciliación crea data
 		}
+		sort.Strings(pres) // la marca de tiempo ordena por fecha
 		newest := pres[len(pres)-1]
-		if _, err := os.Lstat(filepath.Join(parent, newest+MetaExt)); !errors.Is(err, fs.ErrNotExist) {
-			return rec, nil // restauración completada (o .json ilegible): no es un intercambio a medias
+		var unfinished []string // sin .json: intercambios que no terminaron
+		for _, name := range pres {
+			if _, err := os.Lstat(filepath.Join(parent, name+MetaExt)); errors.Is(err, fs.ErrNotExist) {
+				unfinished = append(unfinished, name)
+			}
+		}
+		if len(unfinished) != 1 || unfinished[0] != newest {
+			// Restauraciones completadas (data borrado después) o elección dudosa (varios sin
+			// .json, o el que no lo tiene no es el más reciente: un reloj que retrocedió). No se
+			// arranca un mundo vacío ni se elige a ciegas: decide el administrador (m9).
+			return rec, fmt.Errorf("%w: falta %s y junto a él hay datos de antes de una restauración (%s); no se sabe cuáles devolver, mueve los buenos a %s",
+				ErrDataMissing, dataDir, strings.Join(pres, ", "), filepath.Base(dataDir))
 		}
 		prePath := filepath.Join(parent, newest)
 		if err := rename(prePath, dataDir); err != nil {

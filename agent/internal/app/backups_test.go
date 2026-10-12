@@ -1159,3 +1159,39 @@ func TestBackupWithoutSpaceFailsBeforeSaveOff(t *testing.T) {
 		t.Fatalf("sin espacio no hay save-off: %v", cmds)
 	}
 }
+
+// m9: sin data tras una restauración completada (pre-restore con .json) no se arranca un
+// mundo vacío: queda bloqueado hasta que exista data (aquí, una carpeta vacía a propósito).
+func TestRecoverBlocksMissingDataAfterCompletedRestore(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	e.clk.Advance(time.Hour)
+	e.handle(20, &mcsmv1.BackupRestore{ServerId: "a", Filename: e.col.created()[0].Filename, JobId: "job-r"})
+	e.settle(t)
+	e.stopContainer(t)
+	if err := os.RemoveAll(e.dataDir()); err != nil {
+		t.Fatal(err)
+	}
+	e.a.bk.recoverAtStart(context.Background())
+	ctx := context.Background()
+	if !e.a.rec.Held("a") {
+		t.Fatal("debe quedar bloqueado")
+	}
+	if obs := e.a.rec.Observe(ctx, "a"); !strings.Contains(obs.Error, "data.pre-restore-") {
+		t.Fatalf("Observed.Error = %q", obs.Error)
+	}
+	e.a.reconcileAll(ctx)
+	waitBackground(t, e.a)
+	if e.running(t) {
+		t.Fatal("no debe arrancar un mundo vacío")
+	}
+	if err := os.Mkdir(e.dataDir(), 0o755); err != nil { // el administrador elige empezar de cero
+		t.Fatal(err)
+	}
+	e.a.bk.checkBlocked()
+	e.settle(t)
+	if e.a.rec.Held("a") || !e.running(t) {
+		t.Fatal("con data se libera y arranca")
+	}
+}

@@ -113,9 +113,10 @@ func TestRecoverRollsBackAfterDataMissing(t *testing.T) {
 	}
 }
 
-// Una restauración completada deja el .json del pre-restore. Si después alguien borra data,
-// no es un intercambio a medias: el pre-restore no se toca (un mundo nuevo es decisión suya).
-func TestRecoverLeavesCompletedRestoreAlone(t *testing.T) {
+// Una restauración completada deja el .json del pre-restore. Si después falta data no es un
+// intercambio a medias, pero tampoco se arranca un mundo vacío: no se elige qué devolver y
+// el error (ErrDataMissing) bloquea el servidor hasta que alguien decida (m9).
+func TestRecoverBlocksWhenOnlyCompletedRestoresRemain(t *testing.T) {
 	dataDir, backupsDir, m := changedWorld(t)
 	at := t0.Add(time.Hour)
 	if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, at)); err != nil {
@@ -124,12 +125,26 @@ func TestRecoverLeavesCompletedRestoreAlone(t *testing.T) {
 	if err := os.RemoveAll(dataDir); err != nil {
 		t.Fatal(err)
 	}
+	pre := PreRestoreName(dataDir, at)
 	rec, err := RecoverInterrupted(backupsDir, dataDir, "survival")
-	if err != nil || rec.RolledBack != "" {
+	if !errors.Is(err, ErrDataMissing) || !strings.Contains(err.Error(), pre) || rec.RolledBack != "" {
 		t.Fatalf("rec = %+v, err = %v", rec, err)
 	}
-	if exists(dataDir) || !exists(filepath.Join(filepath.Dir(dataDir), PreRestoreName(dataDir, at))) {
+	if exists(dataDir) || !exists(filepath.Join(filepath.Dir(dataDir), pre)) {
 		t.Fatal("ni data ni el pre-restore deben cambiar")
+	}
+}
+
+// Sin data y sin pre-restores (servidor nuevo, o borrado a mano sin rastro de restauraciones):
+// nada que decidir, no es un error.
+func TestRecoverWithoutDataNorPreRestoreIsFine(t *testing.T) {
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "survival", "data")
+	if err := os.MkdirAll(filepath.Join(root, "survival", "backups"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if rec, err := RecoverInterrupted(filepath.Join(root, "survival", "backups"), dataDir, "survival"); err != nil || rec.RolledBack != "" {
+		t.Fatalf("rec = %+v, err = %v", rec, err)
 	}
 }
 
@@ -168,17 +183,30 @@ func TestRecoverRollbackFailureIsDataMissing(t *testing.T) {
 	}
 }
 
-// Con varios pre-restore sin .json (uno antiguo cuyo .json no se pudo escribir), se
-// devuelve el más reciente: el del intercambio a medias.
-func TestRecoverPicksNewestPreRestore(t *testing.T) {
+// Con varios pre-restore sin .json (uno antiguo cuyo .json no se pudo escribir) la elección
+// es dudosa: no se devuelve ninguno y se bloquea (m9).
+func TestRecoverAmbiguousPreRestoresBlock(t *testing.T) {
 	dataDir, backupsDir, pre, _ := crashedSwap(t, t0.Add(time.Hour))
 	old := filepath.Join(filepath.Dir(dataDir), PreRestoreName(dataDir, t0))
 	mustWrite(t, filepath.Join(old, "world", "level.dat"), "ANTIGUO", 0o644)
 	rec, err := RecoverInterrupted(backupsDir, dataDir, "survival")
-	if err != nil || rec.RolledBack != filepath.Base(pre) {
+	if !errors.Is(err, ErrDataMissing) || rec.RolledBack != "" || !strings.Contains(err.Error(), filepath.Base(old)) || !strings.Contains(err.Error(), filepath.Base(pre)) {
 		t.Fatalf("rec = %+v, err = %v", rec, err)
 	}
-	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "ORIGINAL" || !exists(old) {
-		t.Fatal("se devuelve el más reciente y el antiguo se conserva")
+	if exists(dataDir) || !exists(pre) || !exists(old) {
+		t.Fatal("no se mueve nada")
+	}
+}
+
+// Reloj que retrocede entre dos restauraciones: el pre-restore sin .json (el del intercambio a
+// medias) no es el más reciente por nombre. Dudoso: se bloquea (m9).
+func TestRecoverPreRestoreWithoutMetaNotNewestBlocks(t *testing.T) {
+	dataDir, backupsDir, pre, _ := crashedSwap(t, t0)
+	newer := filepath.Join(filepath.Dir(dataDir), PreRestoreName(dataDir, t0.Add(time.Hour)))
+	mustWrite(t, filepath.Join(newer, "world", "level.dat"), "OTRO", 0o644)
+	mustWrite(t, newer+MetaExt, "{}", 0o640)
+	_, err := RecoverInterrupted(backupsDir, dataDir, "survival")
+	if !errors.Is(err, ErrDataMissing) || exists(dataDir) || !exists(pre) {
+		t.Fatalf("err = %v", err)
 	}
 }
