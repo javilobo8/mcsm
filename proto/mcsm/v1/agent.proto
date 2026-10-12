@@ -23,6 +23,7 @@ message Envelope {
     Ack ack = 22;
     Error error = 23;
     // ── plan-2 ──
+    MetricBatch metric_batch = 30;
     // ── plan-3 ──
     // ── plan-4 ──
     // ── plan-5 ──
@@ -171,6 +172,47 @@ message Error {
 }
 
 // ── plan-2 ──
+
+// MetricBatch agrupa las métricas de un ciclo de muestreo (cada 10 s, spec §6.4).
+// Agente → panel, no solicitado (Envelope.id = 0). Solo lleva servidores cuyo
+// contenedor está en marcha.
+message MetricBatch {
+  // Epoch en segundos, redondeado hacia abajo a múltiplo de 10.
+  int64 ts_unix = 1;
+  // Ausente mientras no haya dos lecturas de CPU del host.
+  HostMetricSample host = 2;
+  repeated ServerMetricSample servers = 3;
+}
+
+message HostMetricSample {
+  // 0–100 sobre todas las CPU del host.
+  double cpu_pct = 1;
+  // Total menos disponible.
+  uint64 mem_used_bytes = 2;
+  uint64 mem_total_bytes = 3;
+  // Sistema de ficheros que contiene DATA_ROOT.
+  uint64 disk_used_bytes = 4;
+  uint64 disk_total_bytes = 5;
+}
+
+message ServerMetricSample {
+  string server_id = 1;
+  // 100 = un núcleo completo (mismo criterio que `docker stats`).
+  double cpu_pct = 2;
+  // Uso sin la caché de páginas inactiva.
+  uint64 mem_bytes = 3;
+  uint64 mem_limit_bytes = 4;
+  // Acumulados desde que arrancó el contenedor (todas las interfaces).
+  uint64 net_rx_bytes = 5;
+  uint64 net_tx_bytes = 6;
+  // El Server List Ping respondió; si es false, players_* y ping_ms no significan nada.
+  bool mc_online = 7;
+  uint32 players_online = 8;
+  uint32 players_max = 9;
+  uint32 ping_ms = 10;
+  // Solo PAPER/PURPUR: TPS del último minuto, medido en los últimos 45 s.
+  optional double tps = 11;
+}
 // ── plan-3 ──
 // ── plan-4 ──
 // ── plan-5 ──

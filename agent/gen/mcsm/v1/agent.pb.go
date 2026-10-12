@@ -147,6 +147,7 @@ type Envelope struct {
 	//	*Envelope_ServerObserved
 	//	*Envelope_Ack
 	//	*Envelope_Error
+	//	*Envelope_MetricBatch
 	Body          isEnvelope_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -329,6 +330,15 @@ func (x *Envelope) GetError() *Error {
 	return nil
 }
 
+func (x *Envelope) GetMetricBatch() *MetricBatch {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_MetricBatch); ok {
+			return x.MetricBatch
+		}
+	}
+	return nil
+}
+
 type isEnvelope_Body interface {
 	isEnvelope_Body()
 }
@@ -389,6 +399,11 @@ type Envelope_Error struct {
 	Error *Error `protobuf:"bytes,23,opt,name=error,proto3,oneof"`
 }
 
+type Envelope_MetricBatch struct {
+	// ── plan-2 ──
+	MetricBatch *MetricBatch `protobuf:"bytes,30,opt,name=metric_batch,json=metricBatch,proto3,oneof"`
+}
+
 func (*Envelope_Hello) isEnvelope_Body() {}
 
 func (*Envelope_HelloAck) isEnvelope_Body() {}
@@ -416,6 +431,8 @@ func (*Envelope_ServerObserved) isEnvelope_Body() {}
 func (*Envelope_Ack) isEnvelope_Body() {}
 
 func (*Envelope_Error) isEnvelope_Body() {}
+
+func (*Envelope_MetricBatch) isEnvelope_Body() {}
 
 type HostInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1487,11 +1504,284 @@ func (x *Error) GetMessage() string {
 	return ""
 }
 
+// MetricBatch agrupa las métricas de un ciclo de muestreo (cada 10 s, spec §6.4).
+// Agente → panel, no solicitado (Envelope.id = 0). Solo lleva servidores cuyo
+// contenedor está en marcha.
+type MetricBatch struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Epoch en segundos, redondeado hacia abajo a múltiplo de 10.
+	TsUnix int64 `protobuf:"varint,1,opt,name=ts_unix,json=tsUnix,proto3" json:"ts_unix,omitempty"`
+	// Ausente mientras no haya dos lecturas de CPU del host.
+	Host          *HostMetricSample     `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	Servers       []*ServerMetricSample `protobuf:"bytes,3,rep,name=servers,proto3" json:"servers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetricBatch) Reset() {
+	*x = MetricBatch{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetricBatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetricBatch) ProtoMessage() {}
+
+func (x *MetricBatch) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetricBatch.ProtoReflect.Descriptor instead.
+func (*MetricBatch) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *MetricBatch) GetTsUnix() int64 {
+	if x != nil {
+		return x.TsUnix
+	}
+	return 0
+}
+
+func (x *MetricBatch) GetHost() *HostMetricSample {
+	if x != nil {
+		return x.Host
+	}
+	return nil
+}
+
+func (x *MetricBatch) GetServers() []*ServerMetricSample {
+	if x != nil {
+		return x.Servers
+	}
+	return nil
+}
+
+type HostMetricSample struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 0–100 sobre todas las CPU del host.
+	CpuPct float64 `protobuf:"fixed64,1,opt,name=cpu_pct,json=cpuPct,proto3" json:"cpu_pct,omitempty"`
+	// Total menos disponible.
+	MemUsedBytes  uint64 `protobuf:"varint,2,opt,name=mem_used_bytes,json=memUsedBytes,proto3" json:"mem_used_bytes,omitempty"`
+	MemTotalBytes uint64 `protobuf:"varint,3,opt,name=mem_total_bytes,json=memTotalBytes,proto3" json:"mem_total_bytes,omitempty"`
+	// Sistema de ficheros que contiene DATA_ROOT.
+	DiskUsedBytes  uint64 `protobuf:"varint,4,opt,name=disk_used_bytes,json=diskUsedBytes,proto3" json:"disk_used_bytes,omitempty"`
+	DiskTotalBytes uint64 `protobuf:"varint,5,opt,name=disk_total_bytes,json=diskTotalBytes,proto3" json:"disk_total_bytes,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *HostMetricSample) Reset() {
+	*x = HostMetricSample{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostMetricSample) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostMetricSample) ProtoMessage() {}
+
+func (x *HostMetricSample) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostMetricSample.ProtoReflect.Descriptor instead.
+func (*HostMetricSample) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *HostMetricSample) GetCpuPct() float64 {
+	if x != nil {
+		return x.CpuPct
+	}
+	return 0
+}
+
+func (x *HostMetricSample) GetMemUsedBytes() uint64 {
+	if x != nil {
+		return x.MemUsedBytes
+	}
+	return 0
+}
+
+func (x *HostMetricSample) GetMemTotalBytes() uint64 {
+	if x != nil {
+		return x.MemTotalBytes
+	}
+	return 0
+}
+
+func (x *HostMetricSample) GetDiskUsedBytes() uint64 {
+	if x != nil {
+		return x.DiskUsedBytes
+	}
+	return 0
+}
+
+func (x *HostMetricSample) GetDiskTotalBytes() uint64 {
+	if x != nil {
+		return x.DiskTotalBytes
+	}
+	return 0
+}
+
+type ServerMetricSample struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	// 100 = un núcleo completo (mismo criterio que `docker stats`).
+	CpuPct float64 `protobuf:"fixed64,2,opt,name=cpu_pct,json=cpuPct,proto3" json:"cpu_pct,omitempty"`
+	// Uso sin la caché de páginas inactiva.
+	MemBytes      uint64 `protobuf:"varint,3,opt,name=mem_bytes,json=memBytes,proto3" json:"mem_bytes,omitempty"`
+	MemLimitBytes uint64 `protobuf:"varint,4,opt,name=mem_limit_bytes,json=memLimitBytes,proto3" json:"mem_limit_bytes,omitempty"`
+	// Acumulados desde que arrancó el contenedor (todas las interfaces).
+	NetRxBytes uint64 `protobuf:"varint,5,opt,name=net_rx_bytes,json=netRxBytes,proto3" json:"net_rx_bytes,omitempty"`
+	NetTxBytes uint64 `protobuf:"varint,6,opt,name=net_tx_bytes,json=netTxBytes,proto3" json:"net_tx_bytes,omitempty"`
+	// El Server List Ping respondió; si es false, players_* y ping_ms no significan nada.
+	McOnline      bool   `protobuf:"varint,7,opt,name=mc_online,json=mcOnline,proto3" json:"mc_online,omitempty"`
+	PlayersOnline uint32 `protobuf:"varint,8,opt,name=players_online,json=playersOnline,proto3" json:"players_online,omitempty"`
+	PlayersMax    uint32 `protobuf:"varint,9,opt,name=players_max,json=playersMax,proto3" json:"players_max,omitempty"`
+	PingMs        uint32 `protobuf:"varint,10,opt,name=ping_ms,json=pingMs,proto3" json:"ping_ms,omitempty"`
+	// Solo PAPER/PURPUR: TPS del último minuto, medido en los últimos 45 s.
+	Tps           *float64 `protobuf:"fixed64,11,opt,name=tps,proto3,oneof" json:"tps,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServerMetricSample) Reset() {
+	*x = ServerMetricSample{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServerMetricSample) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServerMetricSample) ProtoMessage() {}
+
+func (x *ServerMetricSample) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServerMetricSample.ProtoReflect.Descriptor instead.
+func (*ServerMetricSample) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ServerMetricSample) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *ServerMetricSample) GetCpuPct() float64 {
+	if x != nil {
+		return x.CpuPct
+	}
+	return 0
+}
+
+func (x *ServerMetricSample) GetMemBytes() uint64 {
+	if x != nil {
+		return x.MemBytes
+	}
+	return 0
+}
+
+func (x *ServerMetricSample) GetMemLimitBytes() uint64 {
+	if x != nil {
+		return x.MemLimitBytes
+	}
+	return 0
+}
+
+func (x *ServerMetricSample) GetNetRxBytes() uint64 {
+	if x != nil {
+		return x.NetRxBytes
+	}
+	return 0
+}
+
+func (x *ServerMetricSample) GetNetTxBytes() uint64 {
+	if x != nil {
+		return x.NetTxBytes
+	}
+	return 0
+}
+
+func (x *ServerMetricSample) GetMcOnline() bool {
+	if x != nil {
+		return x.McOnline
+	}
+	return false
+}
+
+func (x *ServerMetricSample) GetPlayersOnline() uint32 {
+	if x != nil {
+		return x.PlayersOnline
+	}
+	return 0
+}
+
+func (x *ServerMetricSample) GetPlayersMax() uint32 {
+	if x != nil {
+		return x.PlayersMax
+	}
+	return 0
+}
+
+func (x *ServerMetricSample) GetPingMs() uint32 {
+	if x != nil {
+		return x.PingMs
+	}
+	return 0
+}
+
+func (x *ServerMetricSample) GetTps() float64 {
+	if x != nil && x.Tps != nil {
+		return *x.Tps
+	}
+	return 0
+}
+
 var File_mcsm_v1_agent_proto protoreflect.FileDescriptor
 
 const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xb1\x06\n" +
+	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xec\x06\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tstream_id\x18\x02 \x01(\x04R\bstreamId\x12&\n" +
@@ -1511,7 +1801,8 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\fstream_close\x18\x14 \x01(\v2\x14.mcsm.v1.StreamCloseH\x00R\vstreamClose\x12B\n" +
 	"\x0fserver_observed\x18\x15 \x01(\v2\x17.mcsm.v1.ServerObservedH\x00R\x0eserverObserved\x12 \n" +
 	"\x03ack\x18\x16 \x01(\v2\f.mcsm.v1.AckH\x00R\x03ack\x12&\n" +
-	"\x05error\x18\x17 \x01(\v2\x0e.mcsm.v1.ErrorH\x00R\x05errorB\x06\n" +
+	"\x05error\x18\x17 \x01(\v2\x0e.mcsm.v1.ErrorH\x00R\x05error\x129\n" +
+	"\fmetric_batch\x18\x1e \x01(\v2\x14.mcsm.v1.MetricBatchH\x00R\vmetricBatchB\x06\n" +
 	"\x04body\"\x86\x01\n" +
 	"\bHostInfo\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x12\n" +
@@ -1593,7 +1884,34 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x03Ack\"5\n" +
 	"\x05Error\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage*c\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x8c\x01\n" +
+	"\vMetricBatch\x12\x17\n" +
+	"\ats_unix\x18\x01 \x01(\x03R\x06tsUnix\x12-\n" +
+	"\x04host\x18\x02 \x01(\v2\x19.mcsm.v1.HostMetricSampleR\x04host\x125\n" +
+	"\aservers\x18\x03 \x03(\v2\x1b.mcsm.v1.ServerMetricSampleR\aservers\"\xcb\x01\n" +
+	"\x10HostMetricSample\x12\x17\n" +
+	"\acpu_pct\x18\x01 \x01(\x01R\x06cpuPct\x12$\n" +
+	"\x0emem_used_bytes\x18\x02 \x01(\x04R\fmemUsedBytes\x12&\n" +
+	"\x0fmem_total_bytes\x18\x03 \x01(\x04R\rmemTotalBytes\x12&\n" +
+	"\x0fdisk_used_bytes\x18\x04 \x01(\x04R\rdiskUsedBytes\x12(\n" +
+	"\x10disk_total_bytes\x18\x05 \x01(\x04R\x0ediskTotalBytes\"\xf0\x02\n" +
+	"\x12ServerMetricSample\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x17\n" +
+	"\acpu_pct\x18\x02 \x01(\x01R\x06cpuPct\x12\x1b\n" +
+	"\tmem_bytes\x18\x03 \x01(\x04R\bmemBytes\x12&\n" +
+	"\x0fmem_limit_bytes\x18\x04 \x01(\x04R\rmemLimitBytes\x12 \n" +
+	"\fnet_rx_bytes\x18\x05 \x01(\x04R\n" +
+	"netRxBytes\x12 \n" +
+	"\fnet_tx_bytes\x18\x06 \x01(\x04R\n" +
+	"netTxBytes\x12\x1b\n" +
+	"\tmc_online\x18\a \x01(\bR\bmcOnline\x12%\n" +
+	"\x0eplayers_online\x18\b \x01(\rR\rplayersOnline\x12\x1f\n" +
+	"\vplayers_max\x18\t \x01(\rR\n" +
+	"playersMax\x12\x17\n" +
+	"\aping_ms\x18\n" +
+	" \x01(\rR\x06pingMs\x12\x15\n" +
+	"\x03tps\x18\v \x01(\x01H\x00R\x03tps\x88\x01\x01B\x06\n" +
+	"\x04_tps*c\n" +
 	"\fDesiredState\x12\x1d\n" +
 	"\x19DESIRED_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15DESIRED_STATE_RUNNING\x10\x01\x12\x19\n" +
@@ -1620,31 +1938,34 @@ func file_mcsm_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_mcsm_v1_agent_proto_goTypes = []any{
-	(DesiredState)(0),      // 0: mcsm.v1.DesiredState
-	(PowerActionType)(0),   // 1: mcsm.v1.PowerActionType
-	(*Envelope)(nil),       // 2: mcsm.v1.Envelope
-	(*HostInfo)(nil),       // 3: mcsm.v1.HostInfo
-	(*Hello)(nil),          // 4: mcsm.v1.Hello
-	(*HelloAck)(nil),       // 5: mcsm.v1.HelloAck
-	(*ServerSpec)(nil),     // 6: mcsm.v1.ServerSpec
-	(*SyncSpecs)(nil),      // 7: mcsm.v1.SyncSpecs
-	(*ApplySpec)(nil),      // 8: mcsm.v1.ApplySpec
-	(*RemoveServer)(nil),   // 9: mcsm.v1.RemoveServer
-	(*PowerAction)(nil),    // 10: mcsm.v1.PowerAction
-	(*SendCommand)(nil),    // 11: mcsm.v1.SendCommand
-	(*CommandResult)(nil),  // 12: mcsm.v1.CommandResult
-	(*SubscribeLogs)(nil),  // 13: mcsm.v1.SubscribeLogs
-	(*LogLine)(nil),        // 14: mcsm.v1.LogLine
-	(*StreamClose)(nil),    // 15: mcsm.v1.StreamClose
-	(*McStatus)(nil),       // 16: mcsm.v1.McStatus
-	(*Observed)(nil),       // 17: mcsm.v1.Observed
-	(*ServerObserved)(nil), // 18: mcsm.v1.ServerObserved
-	(*Ack)(nil),            // 19: mcsm.v1.Ack
-	(*Error)(nil),          // 20: mcsm.v1.Error
-	nil,                    // 21: mcsm.v1.Hello.SpecVersionsEntry
-	nil,                    // 22: mcsm.v1.Hello.DesiredStatesEntry
+	(DesiredState)(0),          // 0: mcsm.v1.DesiredState
+	(PowerActionType)(0),       // 1: mcsm.v1.PowerActionType
+	(*Envelope)(nil),           // 2: mcsm.v1.Envelope
+	(*HostInfo)(nil),           // 3: mcsm.v1.HostInfo
+	(*Hello)(nil),              // 4: mcsm.v1.Hello
+	(*HelloAck)(nil),           // 5: mcsm.v1.HelloAck
+	(*ServerSpec)(nil),         // 6: mcsm.v1.ServerSpec
+	(*SyncSpecs)(nil),          // 7: mcsm.v1.SyncSpecs
+	(*ApplySpec)(nil),          // 8: mcsm.v1.ApplySpec
+	(*RemoveServer)(nil),       // 9: mcsm.v1.RemoveServer
+	(*PowerAction)(nil),        // 10: mcsm.v1.PowerAction
+	(*SendCommand)(nil),        // 11: mcsm.v1.SendCommand
+	(*CommandResult)(nil),      // 12: mcsm.v1.CommandResult
+	(*SubscribeLogs)(nil),      // 13: mcsm.v1.SubscribeLogs
+	(*LogLine)(nil),            // 14: mcsm.v1.LogLine
+	(*StreamClose)(nil),        // 15: mcsm.v1.StreamClose
+	(*McStatus)(nil),           // 16: mcsm.v1.McStatus
+	(*Observed)(nil),           // 17: mcsm.v1.Observed
+	(*ServerObserved)(nil),     // 18: mcsm.v1.ServerObserved
+	(*Ack)(nil),                // 19: mcsm.v1.Ack
+	(*Error)(nil),              // 20: mcsm.v1.Error
+	(*MetricBatch)(nil),        // 21: mcsm.v1.MetricBatch
+	(*HostMetricSample)(nil),   // 22: mcsm.v1.HostMetricSample
+	(*ServerMetricSample)(nil), // 23: mcsm.v1.ServerMetricSample
+	nil,                        // 24: mcsm.v1.Hello.SpecVersionsEntry
+	nil,                        // 25: mcsm.v1.Hello.DesiredStatesEntry
 }
 var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	4,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
@@ -1661,21 +1982,24 @@ var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	18, // 11: mcsm.v1.Envelope.server_observed:type_name -> mcsm.v1.ServerObserved
 	19, // 12: mcsm.v1.Envelope.ack:type_name -> mcsm.v1.Ack
 	20, // 13: mcsm.v1.Envelope.error:type_name -> mcsm.v1.Error
-	3,  // 14: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
-	21, // 15: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
-	22, // 16: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
-	0,  // 17: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
-	6,  // 18: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
-	6,  // 19: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
-	1,  // 20: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
-	16, // 21: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
-	17, // 22: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
-	0,  // 23: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
-	24, // [24:24] is the sub-list for method output_type
-	24, // [24:24] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	21, // 14: mcsm.v1.Envelope.metric_batch:type_name -> mcsm.v1.MetricBatch
+	3,  // 15: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
+	24, // 16: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
+	25, // 17: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
+	0,  // 18: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
+	6,  // 19: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
+	6,  // 20: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
+	1,  // 21: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
+	16, // 22: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
+	17, // 23: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
+	22, // 24: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
+	23, // 25: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
+	0,  // 26: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	27, // [27:27] is the sub-list for method output_type
+	27, // [27:27] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }
@@ -1698,14 +2022,16 @@ func file_mcsm_v1_agent_proto_init() {
 		(*Envelope_ServerObserved)(nil),
 		(*Envelope_Ack)(nil),
 		(*Envelope_Error)(nil),
+		(*Envelope_MetricBatch)(nil),
 	}
+	file_mcsm_v1_agent_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mcsm_v1_agent_proto_rawDesc), len(file_mcsm_v1_agent_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   21,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

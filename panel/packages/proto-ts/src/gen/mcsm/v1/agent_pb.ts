@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mcsm/v1/agent.proto.
  */
 export const file_mcsm_v1_agent: GenFile = /*@__PURE__*/
-  fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIoQFCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAQgYKBGJvZHkiXQoISG9zdEluZm8SEAoIaG9zdG5hbWUYASABKAkSDAoEY3B1cxgCIAEoDRIXCg9tZW1fdG90YWxfYnl0ZXMYAyABKAQSCgoCb3MYBCABKAkSDAoEYXJjaBgFIAEoCSLNAgoFSGVsbG8SFQoNYWdlbnRfdmVyc2lvbhgBIAEoCRIWCg5kb2NrZXJfdmVyc2lvbhgCIAEoCRIfCgRob3N0GAMgASgLMhEubWNzbS52MS5Ib3N0SW5mbxI3Cg1zcGVjX3ZlcnNpb25zGAQgAygLMiAubWNzbS52MS5IZWxsby5TcGVjVmVyc2lvbnNFbnRyeRI5Cg5kZXNpcmVkX3N0YXRlcxgFIAMoCzIhLm1jc20udjEuSGVsbG8uRGVzaXJlZFN0YXRlc0VudHJ5GjMKEVNwZWNWZXJzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoBDoCOAEaSwoSRGVzaXJlZFN0YXRlc0VudHJ5EgsKA2tleRgBIAEoCRIkCgV2YWx1ZRgCIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlOgI4ASIbCghIZWxsb0FjaxIPCgdub2RlX2lkGAEgASgJIn8KClNlcnZlclNwZWMSEQoJc2VydmVyX2lkGAEgASgJEgwKBHNsdWcYAiABKAkSDwoHdmVyc2lvbhgDIAEoBBIsCg1kZXNpcmVkX3N0YXRlGAQgASgOMhUubWNzbS52MS5EZXNpcmVkU3RhdGUSEQoJc3BlY19qc29uGAUgASgMIkYKCVN5bmNTcGVjcxIkCgdzZXJ2ZXJzGAEgAygLMhMubWNzbS52MS5TZXJ2ZXJTcGVjEhMKC3JlbW92ZWRfaWRzGAIgAygJIjAKCUFwcGx5U3BlYxIjCgZzZXJ2ZXIYASABKAsyEy5tY3NtLnYxLlNlcnZlclNwZWMiNgoMUmVtb3ZlU2VydmVyEhEKCXNlcnZlcl9pZBgBIAEoCRITCgtkZWxldGVfZGF0YRgCIAEoCCJKCgtQb3dlckFjdGlvbhIRCglzZXJ2ZXJfaWQYASABKAkSKAoGYWN0aW9uGAIgASgOMhgubWNzbS52MS5Qb3dlckFjdGlvblR5cGUiMQoLU2VuZENvbW1hbmQSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NvbW1hbmQYAiABKAkiHwoNQ29tbWFuZFJlc3VsdBIOCgZvdXRwdXQYASABKAkiMAoNU3Vic2NyaWJlTG9ncxIRCglzZXJ2ZXJfaWQYASABKAkSDAoEdGFpbBgCIAEoDSI+CgdMb2dMaW5lEhEKCXNlcnZlcl9pZBgBIAEoCRISCgp0c191bml4X21zGAIgASgDEgwKBGxpbmUYAyABKAkiHQoLU3RyZWFtQ2xvc2USDgoGcmVhc29uGAEgASgJImwKCE1jU3RhdHVzEg4KBm9ubGluZRgBIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgCIAEoDRITCgtwbGF5ZXJzX21heBgDIAEoDRIPCgd2ZXJzaW9uGAQgASgJEhIKCmxhdGVuY3lfbXMYBSABKA0isgEKCE9ic2VydmVkEhQKDGNvbnRhaW5lcl9pZBgBIAEoCRINCgVzdGF0ZRgCIAEoCRIOCgZoZWFsdGgYAyABKAkSFwoPc3RhcnRlZF9hdF91bml4GAQgASgDEhEKCWV4aXRfY29kZRgFIAEoBRIXCg9hcHBsaWVkX3ZlcnNpb24YBiABKAQSDQoFZXJyb3IYByABKAkSHQoCbWMYCCABKAsyES5tY3NtLnYxLk1jU3RhdHVzIlwKDlNlcnZlck9ic2VydmVkEhEKCXNlcnZlcl9pZBgBIAEoCRIjCghvYnNlcnZlZBgCIAEoCzIRLm1jc20udjEuT2JzZXJ2ZWQSEgoKdHNfdW5peF9tcxgDIAEoAyIFCgNBY2siJgoFRXJyb3ISDAoEY29kZRgBIAEoCRIPCgdtZXNzYWdlGAIgASgJKmMKDERlc2lyZWRTdGF0ZRIdChlERVNJUkVEX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVREVTSVJFRF9TVEFURV9SVU5OSU5HEAESGQoVREVTSVJFRF9TVEFURV9TVE9QUEVEEAIqqAEKD1Bvd2VyQWN0aW9uVHlwZRIhCh1QT1dFUl9BQ1RJT05fVFlQRV9VTlNQRUNJRklFRBAAEhsKF1BPV0VSX0FDVElPTl9UWVBFX1NUQVJUEAESGgoWUE9XRVJfQUNUSU9OX1RZUEVfU1RPUBACEh0KGVBPV0VSX0FDVElPTl9UWVBFX1JFU1RBUlQQAxIaChZQT1dFUl9BQ1RJT05fVFlQRV9LSUxMEARCdQoLY29tLm1jc20udjFCCkFnZW50UHJvdG9QAVodbWNzbS9hZ2VudC9nZW4vbWNzbS92MTttY3NtdjGiAgNNWFiqAgdNY3NtLlYxygIHTWNzbVxWMeICE01jc21cVjFcR1BCTWV0YWRhdGHqAghNY3NtOjpWMWIGcHJvdG8z");
+  fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIrIFCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAEiwKDG1ldHJpY19iYXRjaBgeIAEoCzIULm1jc20udjEuTWV0cmljQmF0Y2hIAEIGCgRib2R5Il0KCEhvc3RJbmZvEhAKCGhvc3RuYW1lGAEgASgJEgwKBGNwdXMYAiABKA0SFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEgoKAm9zGAQgASgJEgwKBGFyY2gYBSABKAkizQIKBUhlbGxvEhUKDWFnZW50X3ZlcnNpb24YASABKAkSFgoOZG9ja2VyX3ZlcnNpb24YAiABKAkSHwoEaG9zdBgDIAEoCzIRLm1jc20udjEuSG9zdEluZm8SNwoNc3BlY192ZXJzaW9ucxgEIAMoCzIgLm1jc20udjEuSGVsbG8uU3BlY1ZlcnNpb25zRW50cnkSOQoOZGVzaXJlZF9zdGF0ZXMYBSADKAsyIS5tY3NtLnYxLkhlbGxvLkRlc2lyZWRTdGF0ZXNFbnRyeRozChFTcGVjVmVyc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBGksKEkRlc2lyZWRTdGF0ZXNFbnRyeRILCgNrZXkYASABKAkSJAoFdmFsdWUYAiABKA4yFS5tY3NtLnYxLkRlc2lyZWRTdGF0ZToCOAEiGwoISGVsbG9BY2sSDwoHbm9kZV9pZBgBIAEoCSJ/CgpTZXJ2ZXJTcGVjEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEg8KB3ZlcnNpb24YAyABKAQSLAoNZGVzaXJlZF9zdGF0ZRgEIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlEhEKCXNwZWNfanNvbhgFIAEoDCJGCglTeW5jU3BlY3MSJAoHc2VydmVycxgBIAMoCzITLm1jc20udjEuU2VydmVyU3BlYxITCgtyZW1vdmVkX2lkcxgCIAMoCSIwCglBcHBseVNwZWMSIwoGc2VydmVyGAEgASgLMhMubWNzbS52MS5TZXJ2ZXJTcGVjIjYKDFJlbW92ZVNlcnZlchIRCglzZXJ2ZXJfaWQYASABKAkSEwoLZGVsZXRlX2RhdGEYAiABKAgiSgoLUG93ZXJBY3Rpb24SEQoJc2VydmVyX2lkGAEgASgJEigKBmFjdGlvbhgCIAEoDjIYLm1jc20udjEuUG93ZXJBY3Rpb25UeXBlIjEKC1NlbmRDb21tYW5kEhEKCXNlcnZlcl9pZBgBIAEoCRIPCgdjb21tYW5kGAIgASgJIh8KDUNvbW1hbmRSZXN1bHQSDgoGb3V0cHV0GAEgASgJIjAKDVN1YnNjcmliZUxvZ3MSEQoJc2VydmVyX2lkGAEgASgJEgwKBHRhaWwYAiABKA0iPgoHTG9nTGluZRIRCglzZXJ2ZXJfaWQYASABKAkSEgoKdHNfdW5peF9tcxgCIAEoAxIMCgRsaW5lGAMgASgJIh0KC1N0cmVhbUNsb3NlEg4KBnJlYXNvbhgBIAEoCSJsCghNY1N0YXR1cxIOCgZvbmxpbmUYASABKAgSFgoOcGxheWVyc19vbmxpbmUYAiABKA0SEwoLcGxheWVyc19tYXgYAyABKA0SDwoHdmVyc2lvbhgEIAEoCRISCgpsYXRlbmN5X21zGAUgASgNIrIBCghPYnNlcnZlZBIUCgxjb250YWluZXJfaWQYASABKAkSDQoFc3RhdGUYAiABKAkSDgoGaGVhbHRoGAMgASgJEhcKD3N0YXJ0ZWRfYXRfdW5peBgEIAEoAxIRCglleGl0X2NvZGUYBSABKAUSFwoPYXBwbGllZF92ZXJzaW9uGAYgASgEEg0KBWVycm9yGAcgASgJEh0KAm1jGAggASgLMhEubWNzbS52MS5NY1N0YXR1cyJcCg5TZXJ2ZXJPYnNlcnZlZBIRCglzZXJ2ZXJfaWQYASABKAkSIwoIb2JzZXJ2ZWQYAiABKAsyES5tY3NtLnYxLk9ic2VydmVkEhIKCnRzX3VuaXhfbXMYAyABKAMiBQoDQWNrIiYKBUVycm9yEgwKBGNvZGUYASABKAkSDwoHbWVzc2FnZRgCIAEoCSJ1CgtNZXRyaWNCYXRjaBIPCgd0c191bml4GAEgASgDEicKBGhvc3QYAiABKAsyGS5tY3NtLnYxLkhvc3RNZXRyaWNTYW1wbGUSLAoHc2VydmVycxgDIAMoCzIbLm1jc20udjEuU2VydmVyTWV0cmljU2FtcGxlIocBChBIb3N0TWV0cmljU2FtcGxlEg8KB2NwdV9wY3QYASABKAESFgoObWVtX3VzZWRfYnl0ZXMYAiABKAQSFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEhcKD2Rpc2tfdXNlZF9ieXRlcxgEIAEoBBIYChBkaXNrX3RvdGFsX2J5dGVzGAUgASgEIvsBChJTZXJ2ZXJNZXRyaWNTYW1wbGUSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NwdV9wY3QYAiABKAESEQoJbWVtX2J5dGVzGAMgASgEEhcKD21lbV9saW1pdF9ieXRlcxgEIAEoBBIUCgxuZXRfcnhfYnl0ZXMYBSABKAQSFAoMbmV0X3R4X2J5dGVzGAYgASgEEhEKCW1jX29ubGluZRgHIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgIIAEoDRITCgtwbGF5ZXJzX21heBgJIAEoDRIPCgdwaW5nX21zGAogASgNEhAKA3RwcxgLIAEoAUgAiAEBQgYKBF90cHMqYwoMRGVzaXJlZFN0YXRlEh0KGURFU0lSRURfU1RBVEVfVU5TUEVDSUZJRUQQABIZChVERVNJUkVEX1NUQVRFX1JVTk5JTkcQARIZChVERVNJUkVEX1NUQVRFX1NUT1BQRUQQAiqoAQoPUG93ZXJBY3Rpb25UeXBlEiEKHVBPV0VSX0FDVElPTl9UWVBFX1VOU1BFQ0lGSUVEEAASGwoXUE9XRVJfQUNUSU9OX1RZUEVfU1RBUlQQARIaChZQT1dFUl9BQ1RJT05fVFlQRV9TVE9QEAISHQoZUE9XRVJfQUNUSU9OX1RZUEVfUkVTVEFSVBADEhoKFlBPV0VSX0FDVElPTl9UWVBFX0tJTEwQBEJ1Cgtjb20ubWNzbS52MUIKQWdlbnRQcm90b1ABWh1tY3NtL2FnZW50L2dlbi9tY3NtL3YxO21jc212MaICA01YWKoCB01jc20uVjHKAgdNY3NtXFYx4gITTWNzbVxWMVxHUEJNZXRhZGF0YeoCCE1jc206OlYxYgZwcm90bzM");
 
 /**
  * Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
@@ -112,7 +112,14 @@ export type Envelope = Message<"mcsm.v1.Envelope"> & {
     case: "ack";
   } | {
     /**
+     * @generated from field: mcsm.v1.Error error = 23;
+     */
+    value: Error;
+    case: "error";
+  } | {
+    /**
      * ── plan-2 ──
+     *
      * ── plan-3 ──
      * ── plan-4 ──
      * ── plan-5 ──
@@ -121,10 +128,10 @@ export type Envelope = Message<"mcsm.v1.Envelope"> & {
      * ── plan-8 ──
      * ── plan-9 ──
      *
-     * @generated from field: mcsm.v1.Error error = 23;
+     * @generated from field: mcsm.v1.MetricBatch metric_batch = 30;
      */
-    value: Error;
-    case: "error";
+    value: MetricBatch;
+    case: "metricBatch";
   } | { case: undefined; value?: undefined };
 };
 
@@ -628,6 +635,161 @@ export type Error = Message<"mcsm.v1.Error"> & {
  */
 export const ErrorSchema: GenMessage<Error> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 18);
+
+/**
+ * MetricBatch agrupa las métricas de un ciclo de muestreo (cada 10 s, spec §6.4).
+ * Agente → panel, no solicitado (Envelope.id = 0). Solo lleva servidores cuyo
+ * contenedor está en marcha.
+ *
+ * @generated from message mcsm.v1.MetricBatch
+ */
+export type MetricBatch = Message<"mcsm.v1.MetricBatch"> & {
+  /**
+   * Epoch en segundos, redondeado hacia abajo a múltiplo de 10.
+   *
+   * @generated from field: int64 ts_unix = 1;
+   */
+  tsUnix: bigint;
+
+  /**
+   * Ausente mientras no haya dos lecturas de CPU del host.
+   *
+   * @generated from field: mcsm.v1.HostMetricSample host = 2;
+   */
+  host?: HostMetricSample | undefined;
+
+  /**
+   * @generated from field: repeated mcsm.v1.ServerMetricSample servers = 3;
+   */
+  servers: ServerMetricSample[];
+};
+
+/**
+ * Describes the message mcsm.v1.MetricBatch.
+ * Use `create(MetricBatchSchema)` to create a new message.
+ */
+export const MetricBatchSchema: GenMessage<MetricBatch> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 19);
+
+/**
+ * @generated from message mcsm.v1.HostMetricSample
+ */
+export type HostMetricSample = Message<"mcsm.v1.HostMetricSample"> & {
+  /**
+   * 0–100 sobre todas las CPU del host.
+   *
+   * @generated from field: double cpu_pct = 1;
+   */
+  cpuPct: number;
+
+  /**
+   * Total menos disponible.
+   *
+   * @generated from field: uint64 mem_used_bytes = 2;
+   */
+  memUsedBytes: bigint;
+
+  /**
+   * @generated from field: uint64 mem_total_bytes = 3;
+   */
+  memTotalBytes: bigint;
+
+  /**
+   * Sistema de ficheros que contiene DATA_ROOT.
+   *
+   * @generated from field: uint64 disk_used_bytes = 4;
+   */
+  diskUsedBytes: bigint;
+
+  /**
+   * @generated from field: uint64 disk_total_bytes = 5;
+   */
+  diskTotalBytes: bigint;
+};
+
+/**
+ * Describes the message mcsm.v1.HostMetricSample.
+ * Use `create(HostMetricSampleSchema)` to create a new message.
+ */
+export const HostMetricSampleSchema: GenMessage<HostMetricSample> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 20);
+
+/**
+ * @generated from message mcsm.v1.ServerMetricSample
+ */
+export type ServerMetricSample = Message<"mcsm.v1.ServerMetricSample"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * 100 = un núcleo completo (mismo criterio que `docker stats`).
+   *
+   * @generated from field: double cpu_pct = 2;
+   */
+  cpuPct: number;
+
+  /**
+   * Uso sin la caché de páginas inactiva.
+   *
+   * @generated from field: uint64 mem_bytes = 3;
+   */
+  memBytes: bigint;
+
+  /**
+   * @generated from field: uint64 mem_limit_bytes = 4;
+   */
+  memLimitBytes: bigint;
+
+  /**
+   * Acumulados desde que arrancó el contenedor (todas las interfaces).
+   *
+   * @generated from field: uint64 net_rx_bytes = 5;
+   */
+  netRxBytes: bigint;
+
+  /**
+   * @generated from field: uint64 net_tx_bytes = 6;
+   */
+  netTxBytes: bigint;
+
+  /**
+   * El Server List Ping respondió; si es false, players_* y ping_ms no significan nada.
+   *
+   * @generated from field: bool mc_online = 7;
+   */
+  mcOnline: boolean;
+
+  /**
+   * @generated from field: uint32 players_online = 8;
+   */
+  playersOnline: number;
+
+  /**
+   * @generated from field: uint32 players_max = 9;
+   */
+  playersMax: number;
+
+  /**
+   * @generated from field: uint32 ping_ms = 10;
+   */
+  pingMs: number;
+
+  /**
+   * Solo PAPER/PURPUR: TPS del último minuto, medido en los últimos 45 s.
+   *
+   * @generated from field: optional double tps = 11;
+   */
+  tps?: number | undefined;
+};
+
+/**
+ * Describes the message mcsm.v1.ServerMetricSample.
+ * Use `create(ServerMetricSampleSchema)` to create a new message.
+ */
+export const ServerMetricSampleSchema: GenMessage<ServerMetricSample> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 21);
 
 /**
  * @generated from enum mcsm.v1.DesiredState
