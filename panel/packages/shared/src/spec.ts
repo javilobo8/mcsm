@@ -4,6 +4,7 @@ import { specPatchSchema, type SpecPatch } from "./spec-patch.js";
 import { contentCheck, contentFields } from "./spec-content.js";
 import { limitsCheck } from "./spec-limits.js";
 import { backupsSchema } from "./backups.js";
+import { dataPathCheck, dataPathSchema } from "./data-path.js";
 
 export const RESERVED_ENV = new Set([
   "EULA", "TYPE", "VERSION", "MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "RCON_PORT", "SERVER_PORT", "CUSTOM_SERVER_PROPERTIES",
@@ -93,16 +94,23 @@ export const specSchema = z
     ...baseFields,
     ports: z.object({ game: port, extra: z.array(portMappingSchema).default([]) }),
     rconPassword: z.string().min(8),
+    // plan-6: solo specs de servidor (no está en baseFields: las plantillas no lo llevan).
+    dataPath: dataPathSchema.optional(),
   })
-  .superRefine(specChecks);
+  .superRefine(specChecks)
+  .superRefine(dataPathCheck);
 
 /** Lo que envía la UI al crear/editar: el panel añade puerto y rconPassword. */
 export const specInputSchema = z
   .object({
     ...baseFields,
     ports: z.object({ game: port.optional(), extra: z.array(portMappingSchema).default([]) }).prefault({}),
+    // plan-6: un PATCH lo conserva al fusionar con la spec guardada (si faltara, zod lo descartaría
+    // y el servidor se recrearía sobre <DATA_ROOT>/<slug>/data, vacío).
+    dataPath: dataPathSchema.optional(),
   })
-  .superRefine(specChecks);
+  .superRefine(specChecks)
+  .superRefine(dataPathCheck);
 
 export type Spec = z.infer<typeof specSchema>;
 export type SpecInput = z.infer<typeof specInputSchema>;
