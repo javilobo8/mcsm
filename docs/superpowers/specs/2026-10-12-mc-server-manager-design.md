@@ -135,7 +135,8 @@ Todas las tablas usan `id` UUIDv7 como texto, `created_at`/`updated_at` en ISO 8
   (`running|ok|failed|deleted`), `started_at`, `finished_at`, `error`.
 
 **jobs**
-- `type` (`create_server|apply_spec|backup|restore|migrate|import|deploy_router|...`),
+- `type` (`create_server|apply_spec|backup|restore|migrate|import|...`; el router no es un
+  job: ver `router_deployments`),
   `server_id` nullable, `node_id`, `status` (`queued|running|ok|failed|cancelled`),
   `progress` (0-100), `message`, `log` (texto acumulado), `payload` JSON,
   `started_at`, `finished_at`.
@@ -153,9 +154,17 @@ Todas las tablas usan `id` UUIDv7 como texto, `created_at`/`updated_at` en ISO 8
 panel que se incrusta en el comando de alta, API key de CurseForge opcional (global, se
 inyecta como `CF_API_KEY` en los servidores que lo pidan), preferencias de UI.
 
-**router_deployments**
-- `node_id` (único), `spec` JSON (puerto de escucha, default backend, autoscale on/off,
-  mapeos adicionales), `observed` JSON.
+**router_deployments** (mc-router por nodo; implementado en el Plan 8)
+- `node_id` (clave, borrado en cascada con el nodo), `spec` JSON
+  `{enabled, port (25565), autoscale, autoscaleDownAfterMinutes (1-1440, 10), autoscaleAllowPlayers: [nombre|UUID] (≤ 1000)}`,
+  `observed` JSON (último `RouterObserved`: configurado, estado, contenedor, imagen, puerto,
+  autoscale, error y la spec que tiene el agente), `observed_at`, `updated_at`.
+- Sin «default backend» ni mapeos adicionales: cada servidor entra por **un** hostname de su
+  spec (4.1). Sin fila = router sin configurar (desactivado).
+- El autoscale es **por nodo**, no por servidor: con él, mc-router arranca al entrar un jugador
+  y para tras los minutos sin jugadores **todos** los servidores del nodo con hostname activo
+  («bajo demanda»). `autoscaleAllowPlayers` limita quién los despierta
+  (`-auto-scale-allow-deny`); vacía = cualquiera que llegue al puerto.
 
 ### 4.1 Forma de `spec` de servidor
 
@@ -181,7 +190,7 @@ inyecta como `CF_API_KEY` en los servidores que lo pidan), preferencias de UI.
   "restartPolicy": "unless-stopped",
   "rconPassword": "<generado por el panel>",        // RCON nunca se publica en el host
   "backups": { "enabled": true, "cron": "0 4 * * *", "keepDays": 7, "keepCount": 10, "excludes": ["*.jar","cache","logs","*.tmp"], "onlyIfPlayersSince": true },
-  "router": { "enabled": false, "hostnames": ["survival.lan"], "autoscale": false }
+  "router": { "enabled": true, "hostname": "survival.lan" }   // opcional; un hostname por servidor (RFC 1123, minúsculas)
 }
 ```
 
@@ -189,9 +198,16 @@ El **agente** transforma la spec en una `ContainerConfig` + `HostConfig` determi
 nombre `mcsm-<slug>`, etiquetas `mcsm.*`, bind `<data_root>/<slug>/data:/data`, env
 generado (TYPE, VERSION, MEMORY, EULA=TRUE, RCON_PASSWORD, MODRINTH_PROJECTS…,
 propiedades mapeadas a sus variables itzg), puertos, límites, política de reinicio, y
-etiquetas `mc-router.host` si `router.enabled`. La función es pura y se prueba con
-tablas de casos. Un hash de ese resultado se guarda en la etiqueta `mcsm.spec_hash`
-para detectar drift sin comparar campo a campo.
+etiquetas `mc-router.host=<hostname>` y `mc-router.network=<red del agente>` solo si
+`router.enabled` (sin sección, o desactivada, el contenedor y su hash no cambian). La función
+es pura y se prueba con tablas de casos. Un hash de ese resultado se guarda en la etiqueta
+`mcsm.spec_hash` para detectar drift sin comparar campo a campo.
+
+`router` (Plan 8): el hostname es único por nodo entre los servidores con el router activo
+(contando las migraciones abiertas hacia ese nodo) y el panel lo valida con la misma regex que
+el agente (fixture `router-hostname-cases.json`). Cada servidor conserva su puerto propio. Las
+plantillas no llevan `router` y la importación tampoco lo adopta: se activa después en
+Configuración → Red (un adoptado no tiene etiquetas hasta que se recrea).
 
 ## 5. Protocolo panel ↔ agente
 
@@ -246,7 +262,8 @@ Panel → agente:
   `BackupDelete`, `BackupPush{backup_id, transfer_id}` (sube al panel), `BackupPull{transfer_id, server_id}` (descarga desde el panel al nodo).
 - `ImportScan{}` → `ImportCandidates{[container_id, name, env, ports, mounts, image]}`;
   `ImportAdopt{container_id, server_id, slug}`.
-- `RouterApply{spec}` / `RouterRemove{}`.
+- `RouterApply{spec}` / `RouterRemove{}` (el agente responde con `RouterObserved`, no solicitado,
+  tras cada reconciliación del router).
 - `PullImage{ref, job_id}`.
 
 ### 5.4 Idempotencia y versiones
@@ -288,6 +305,12 @@ Bucle disparado por: cambio de spec, evento Docker relevante (`die`, `start`, `d
 5. Reportar `ServerObserved`. Si una acción falla (puerto ocupado, imagen inexistente,
    sin espacio), guardar el error en `observed.error` y reintentar con backoff
    (máx. cada 5 min) hasta que la spec cambie.
+   Docker 29.7.2: tras un `start` fallido por el puerto, el siguiente arranca **sin publicar
+   puertos**. Por eso un arranque que falla, o que deja el contenedor sin sus puertos, lo borra
+   (`startOrDiscard`; los datos están en el bind) y la siguiente pasada lo recrea (`Power` lo
+   recrea al momento); nunca el contenedor original de un importado (solo se informa). Uno en
+   marcha sin sus puertos (lo arrancó otro: la política de reinicio, mc-router) se informa en
+   `observed.error` y «Reiniciar» lo recrea.
 
 Los contenedores con etiquetas `mcsm.*` que no estén en ninguna spec se **paran y
 borran** solo si el panel los incluyó en `removed_ids`; nunca por iniciativa propia del
@@ -360,6 +383,35 @@ el usuario pida el primer cambio de spec; mientras tanto se gestiona por `import
   (6) arrancar y esperar `health=healthy` o 5 min, (7) `removed_ids` en origen y borrado
   del directorio de datos de origen **solo** si el usuario marcó "borrar origen"; por
   defecto se conserva renombrado `data.migrated-<ts>`.
+  Con el router (Plan 8): el puerto del router del destino no se propone; el hostname tiene que
+  estar libre en el destino (al planificar y otra vez, sin `await`, justo antes del commit, igual
+  que el puerto del router); un servidor con hostname **no se migra** (409) si el router del
+  origen tiene autoscale, porque mc-router lo arrancaría en el origen entre la parada y la
+  retirada (el agente también rechaza esa copia `pre_migration`); y tras migrar el DNS del
+  hostname tiene que apuntar al destino (la pestaña Migrar lo avisa).
+- **Router** (`RouterService`, Plan 8): la fila de `router_deployments` es la verdad. Cada
+  cambio se envía al momento (`RouterApply` si está activo, `RouterRemove` si no), en cadena por
+  nodo, y tras cada handshake se reenvía; un `RouterObserved` con router que el panel no quiere
+  provoca un `RouterRemove`. No hay job `deploy_router`. Activar en un agente sin soporte
+  (`unsupported`) no se guarda (409). El puerto del router no se reparte ni se puede publicar
+  en el nodo, y no se activa en uno ocupado por un servidor o reservado por una migración hacia
+  el nodo, ni con autoscale mientras salga de él una migración de un servidor con hostname. Un
+  nodo con el router activo (o retirándose, conectado) no se borra.
+  - En el agente, un contenedor `mcsm-router` de `itzg/mc-router` **fijado por digest**
+    (`1.47.1@sha256:…`) con `-in-docker`, en la red de los servidores y con el socket de Docker
+    (equivale a root en el nodo: se documenta). Endurecido: usuario 65532 con solo el grupo del
+    socket, `CapDrop ALL`, `no-new-privileges`, raíz de solo lectura, 256 MiB y 256 procesos,
+    `-connection-rate-limit 10`, logs `json-file` con rotación. Hash propio en
+    `mcsm.router_hash` (independiente de `mcsm.spec_hash`): un cambio lo recrea (no tiene
+    estado). Se reconcilia al arrancar, cada 30 s y con sus eventos; un arranque fallido o en
+    marcha sin publicar su puerto (Docker 29.7.2) lo borra y lo recrea.
+  - Bajo demanda (autoscale): el reconciliador crea y recrea el contenedor pero no impone el
+    estado deseado (lo hace mc-router; `Power` sí manda), salvo que un contenedor que nunca
+    arrancó se arranca, porque mc-router no lo vería; él lo duerme tras los minutos sin
+    jugadores. La reserva (`Hold`) solo frena al agente: mientras una restauración, una copia
+    en frío o un bloqueo sin `data` reservan un servidor bajo demanda, el agente lo **aparca**
+    (`Park`: lo para y borra el contenedor; los datos están en el bind) y al liberar la reserva
+    lo recrea.
 
 ## 8. Interfaz web
 
@@ -374,7 +426,9 @@ Páginas:
 - **Nuevo servidor**: asistente en 3 pasos (plantilla o desde cero → nodo y nombre → revisar).
 - **Plantillas**: lista, crear, editar, duplicar, "crear servidor desde plantilla".
 - **Nodos**: lista, alta (muestra `docker run` con token), detalle con métricas,
-  servidores, mc-router (activar/configurar), importación de contenedores.
+  servidores, mc-router (activar, puerto, autoscale con sus minutos y la lista de jugadores que
+  despiertan servidores; estado en vivo), importación de contenedores. El hostname de cada
+  servidor va en Configuración → Red.
 - **Jobs**: lista global con progreso y log.
 - **Ajustes**: contraseña, URL del panel, API key de CurseForge, rango de puertos por defecto.
 
