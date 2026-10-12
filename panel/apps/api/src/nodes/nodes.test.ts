@@ -122,6 +122,24 @@ describe("app.nodes en la raíz", () => {
   });
 });
 
+describe("snippet sin PANEL_PUBLIC_URL", () => {
+  it("usa el Host de la petición con su puerto", async () => {
+    const other = await buildApp({ db: openDb(":memory:"), config: { publicUrl: "" } });
+    try {
+      const setup = await other.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
+      const c = setup.cookies.find((c) => c.name === "mcsm_session")!;
+      const res = await other.inject({
+        method: "POST", url: "/api/nodes/enrollment-tokens",
+        headers: { cookie: `${c.name}=${c.value}`, host: "192.168.1.10:8080" }, payload: { nameHint: "nas" },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().dockerRun).toContain("PANEL_URL=http://192.168.1.10:8080 ");
+    } finally {
+      await other.close();
+    }
+  });
+});
+
 describe("snippet de shell", () => {
   it("entrecomilla con comillas simples los valores que no son seguros", async () => {
     const { dockerRunSnippet } = await import("./routes.js");
