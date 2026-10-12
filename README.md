@@ -26,11 +26,59 @@ Configuración del agente (por nodo, variable de entorno):
 |---|---|---|
 | `UPLOAD_MAX_BYTES` | `4294967296` (4 GiB) | Tamaño máximo de una subida, en bytes. Por encima, el nodo la rechaza con «la subida supera el máximo… (UPLOAD_MAX_BYTES)». Ejemplo para 10 GiB: `UPLOAD_MAX_BYTES=10737418240`. |
 
+Se fija en el `.env` de `deploy/docker-compose.yml` o de `deploy/docker-compose.node.yml` (vacío = el valor por defecto) o, en un nodo arrancado con el `docker run` de **Añadir nodo**, añadiendo `-e UPLOAD_MAX_BYTES=…`.
+
 Límites fijos, para saber qué esperar:
 
 - Como mucho **4 subidas o descargas a la vez por nodo**; la quinta recibe «el nodo ya tiene 4 transferencias de archivos en curso».
 - Una transferencia se corta si pasa **60 s sin moverse un byte** (el agente) o 120 s (el panel); mientras avance, no tiene plazo total.
-- Las escrituras son atómicas: un temporal oculto `.mcsm-tmp-…` en la misma carpeta y un `rename` al terminar. Si el agente muere a mitad (corte de luz, `kill -9`), el temporal se borra al volver a arrancar (si lleva más de 1 h sin tocarse). Al pararlo (`docker stop`, actualización), el agente espera hasta 20 s a que las operaciones de archivos en curso terminen o limpien.
+- Las escrituras son atómicas: un temporal oculto `.mcsm-tmp-<16 hexadecimales>` en la misma carpeta y un `rename` al terminar. Si el agente muere a mitad (corte de luz, `kill -9`), el temporal se borra al volver a arrancar (si lleva más de 1 h sin tocarse). Un fichero tuyo que solo empiece igual (`.mcsm-tmp-notas`) es un fichero más.
+- Al pararlo (`docker stop`, actualización), el agente espera hasta 20 s a que las operaciones de archivos en curso terminen o limpien, a la vez que a las copias (ver [Parar el agente](#parar-el-agente)).
+- Mientras el servidor tiene una copia o una restauración en curso (o en cola), o está bloqueado sin datos, Archivos solo deja mirar y descargar: escribir, crear carpetas, renombrar, borrar y subir responden «servidor ocupado o reservado (…)». Ver [Copias de seguridad](#copias-de-seguridad).
+
+## Copias de seguridad
+
+La pestaña **Backups** de cada servidor hace copias al momento, programa copias automáticas (cron con la hora del nodo, retención por número y por días, y «solo si ha entrado alguien desde la última») y restaura. **Historial** muestra los trabajos con su registro.
+
+- **Dónde:** `DATA_ROOT/<slug>/backups/<slug>-<fecha>-<versión de la spec>.tar.zst` (tar + zstd), con un `.json` al lado (sha256, tamaño). Con el servidor en marcha la copia es en caliente (`save-off`, `save-all flush`, copia, `save-on`, que se envía aunque la copia falle); parado, directa. Los temporales de las subidas de Archivos nunca entran.
+- **Retención:** solo poda las copias programadas, y nunca la más reciente. Las manuales y los datos pre-restore se borran a mano.
+- **Las plantillas se llevan la programación.** «Guardar como plantilla» la incluye y cada servidor creado con la plantilla la hereda; el editor de plantillas y el asistente la enseñan, pero se cambia en la pestaña Backups de cada servidor.
+
+### Restaurar y los datos pre-restore
+
+Restaurar **no borra nada**: para el servidor, extrae la copia en `data.restoring-<fecha>`, aparta los datos actuales en `DATA_ROOT/<slug>/data.pre-restore-<fecha>` y pone la copia en `data`. Después lo vuelve a arrancar si su estado deseado es «en marcha»; si no, se queda parado.
+
+El pre-restore aparece en la lista de copias. No se restaura desde la web: bórralo cuando ya no lo necesites (es un mundo entero, así que puede tardar). Para volver a esos datos a mano, para el servidor desde el panel y, en el host del nodo:
+
+```bash
+cd "$DATA_ROOT/<slug>"
+mv data data.descartado                   # o bórralo, si no lo quieres
+mv data.pre-restore-<fecha> data
+rm -f data.pre-restore-<fecha>.json
+```
+
+Luego arráncalo desde el panel y borra `data.descartado` cuando lo hayas comprobado.
+
+### Servidor bloqueado sin `data`
+
+Si una restauración falla justo en el intercambio, o el agente muere a mitad y al volver no está claro cuáles son los datos buenos, el servidor se queda **parado y reservado**, con el error en la cabecera: «…El servidor no se arrancará hasta que exista …/data». Arrancarlo sin `data` crearía una carpeta vacía y el servidor generaría un mundo nuevo. Mientras dure, encender y apagar dan 409 y Archivos solo permite leer.
+
+Para recuperarlo, en el host del nodo, deja un `data` en su sitio:
+
+- **Volver a los datos que había:** `mv data.pre-restore-<fecha> data` dentro de `DATA_ROOT/<slug>`. Los que no tienen `.json` al lado son intercambios que no terminaron, es decir, los datos originales; si hay varios, normalmente es el más reciente.
+- **Empezar un mundo nuevo:** `mkdir data && chown 1000:1000 data`.
+
+El agente lo revisa cada 15 s: en cuanto hay `data`, libera el servidor y lo devuelve a su estado deseado (lo arranca si debía estar en marcha).
+
+### Espacio, archivos y trabajos a la vez
+
+- **Margen de espacio:** una copia estima lo que ocupará (la última copia más un 20 % o, la primera vez, lo que ocupan los datos) y una restauración lo que ocupa extraída. Si en el disco no queda eso más un margen de 256 MiB o el 5 % (el mayor), no empiezan. Durante la escritura vigilan el margen y, si se agota, se cortan: se borra lo escrito a medias y los datos del servidor no se tocan.
+- **Archivos da «ocupado» durante copias y restauraciones** (y con el servidor bloqueado sin datos): solo se puede mirar y descargar. Una restauración espera hasta 10 s a que terminen las operaciones de archivos ya empezadas; si siguen, falla con «servidor ocupado o reservado: hay operaciones de archivos en curso…» sin tocar nada.
+- **Como mucho 2 copias o restauraciones a la vez por nodo.** Las demás esperan «En cola…», con su servidor reservado (encender, apagar y modificar archivos dan ocupado hasta que terminen).
+
+### Parar el agente
+
+Al parar el agente (`docker stop`, actualizarlo), espera **a la vez** hasta 20 s a las operaciones de archivos y hasta 25 s a las copias y restauraciones en curso: una copia en caliente se cancela y envía su `save-on`. Docker lo mataría a los 10 s, así que los compose le dan `stop_grace_period: 30s` y el `docker run` de **Añadir nodo** lleva `--stop-timeout 30`. Si arrancas el agente de otra forma, dale al menos 30 s. Si aun así muere a mitad, al volver a arrancar borra los restos (copias `.partial`, `data.restoring-*`) y, si una restauración se quedó a medias, devuelve los datos originales a `data` o bloquea el servidor (ver arriba).
 
 ## Desarrollo
 
