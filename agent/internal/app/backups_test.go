@@ -1195,3 +1195,41 @@ func TestRecoverBlocksMissingDataAfterCompletedRestore(t *testing.T) {
 		t.Fatal("con data se libera y arranca")
 	}
 }
+
+// m5: un disparo sobre un servidor ocupado (cron más rápido que la copia) se omite con un
+// aviso en el log, sin crear un job FAILED en cada disparo.
+func TestScheduledSkipsBusyServerWithoutJob(t *testing.T) {
+	e := newBackupEnv(t, backupsSpecJSON)
+	reached, unblock := e.rc.blockFlush()
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	waitClosed(t, reached)
+	e.a.bk.scheduled("a") // el disparo, en línea: vuelve al ver el servidor reservado
+	unblock()
+	e.settle(t)
+	for _, env := range e.col.all() {
+		if p := env.GetJobProgress(); p != nil && p.JobId != "job-1" {
+			t.Fatalf("el disparo omitido no debe crear job: %+v", p)
+		}
+	}
+	if metas, _ := backup.List(e.backupsDir(), "alpha"); len(metas) != 1 {
+		t.Fatalf("solo la copia manual: %d", len(metas))
+	}
+}
+
+// m5: sin data (servidor que aún no ha arrancado nunca) el disparo se omite sin job.
+func TestScheduledSkipsServerWithoutData(t *testing.T) {
+	e := newBackupEnv(t, backupsSpecJSON)
+	if err := os.RemoveAll(e.dataDir()); err != nil {
+		t.Fatal(err)
+	}
+	e.a.bk.onSchedule("a")
+	e.settle(t)
+	for _, env := range e.col.all() {
+		if env.GetJobProgress() != nil {
+			t.Fatalf("sin datos no debe crear job: %+v", env)
+		}
+	}
+	if e.a.rec.Held("a") {
+		t.Fatal("no debe quedar reservado")
+	}
+}

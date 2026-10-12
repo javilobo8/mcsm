@@ -288,13 +288,6 @@ func (b *backupService) dataBack(serverID string) bool {
 	return err == nil && fi.IsDir()
 }
 
-func (b *backupService) isBlocked(serverID string) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	_, ok := b.blocked[serverID]
-	return ok
-}
-
 func (b *backupService) unblock(serverID string) {
 	b.mu.Lock()
 	release, ok := b.blocked[serverID]
@@ -476,11 +469,20 @@ func (b *backupService) startBackup(jobID, serverID, trigger string) error {
 		b.jobs.Replay(existing)
 		return nil
 	}
-	release, err := b.a.rec.Hold(serverID, "copia de seguridad")
+	release, err := b.a.rec.Hold(serverID, holdBackup)
 	if err != nil {
 		b.finish(j, err, "")
 		return err
 	}
+	return b.launchBackup(j, serverID, trigger, release)
+}
+
+// holdBackup es el motivo de la reserva de una copia.
+const holdBackup = "copia de seguridad"
+
+// launchBackup lanza en segundo plano la copia de un job ya registrado y con el servidor
+// reservado. Si el agente se está cerrando, libera y cierra el job.
+func (b *backupService) launchBackup(j *jobs.Job, serverID, trigger string, release func(context.Context)) error {
 	if !b.spawn(func() { b.runBackupJob(serverID, trigger, j, release) }) {
 		release(b.a.life)
 		b.finish(j, errClosing, "")
@@ -801,7 +803,10 @@ func (b *backupService) onSchedule(serverID string) {
 
 // scheduled ejecuta un disparo. Vuelve a comprobar que el servidor sigue en el nodo y la
 // programación activa: entre el disparo y aquí pudo llegar un Remove o una spec nueva que el
-// refresco del programador aún no recogió.
+// refresco del programador aún no recogió. Un servidor sin data (aún no arrancado nunca) o
+// ya reservado (otra copia en curso, un cron más rápido que la copia, o bloqueado sin datos)
+// se omite con un aviso en el log, sin job: un job FAILED en cada disparo solo sería ruido.
+// Por eso aquí la reserva va antes que el job.
 func (b *backupService) scheduled(serverID string) {
 	t, err := b.target(serverID)
 	if errors.Is(err, errUnknownServer) {
@@ -815,15 +820,26 @@ func (b *backupService) scheduled(serverID string) {
 	if cfg == nil || !cfg.Enabled {
 		return
 	}
-	if b.isBlocked(serverID) {
-		b.a.log.Warn("copia programada omitida: el servidor está bloqueado sin directorio de datos", "server", t.slug)
+	if fi, err := os.Lstat(t.dataDir); err != nil || !fi.IsDir() {
+		b.a.log.Warn("copia programada omitida: el servidor aún no tiene directorio de datos", "server", t.slug)
 		return
 	}
 	if !backup.ShouldRun(cfg.OnlyIfPlayersSince, b.lastBackup(t), b.players.LastSeen(serverID), b.players.Since()) {
 		b.a.log.Info("copia programada omitida: nadie se ha conectado desde la última", "server", t.slug)
 		return
 	}
-	if err := b.startBackup(jobs.NewID(), serverID, backup.TriggerScheduled); err != nil {
+	release, err := b.a.rec.Hold(serverID, holdBackup)
+	if err != nil {
+		b.a.log.Warn("copia programada omitida", "server", t.slug, "err", err)
+		return
+	}
+	j, _, err := b.jobs.Begin(jobs.NewID(), serverID, jobs.TypeBackup)
+	if err != nil {
+		release(b.a.life)
+		b.a.log.Warn("copia programada", "server", t.slug, "err", err)
+		return
+	}
+	if err := b.launchBackup(j, serverID, backup.TriggerScheduled, release); err != nil {
 		b.a.log.Warn("copia programada", "server", t.slug, "err", err)
 	}
 }
