@@ -31,6 +31,19 @@ type Inspect struct {
 	Labels    map[string]string
 }
 
+// Stats es una lectura puntual de `docker stats` (una sola muestra, sin la previa:
+// el % de CPU lo calcula el muestreador con dos lecturas consecutivas).
+type Stats struct {
+	Read        time.Time
+	CPUTotalNs  uint64 // CPU acumulada del contenedor, en ns
+	SystemCPUNs uint64 // CPU acumulada del host (todas las CPU), en ns
+	OnlineCPUs  uint32
+	MemBytes    uint64 // uso sin la caché de páginas inactiva (como la CLI de Docker)
+	MemLimit    uint64
+	NetRxBytes  uint64 // suma de todas las interfaces, acumulado desde el arranque
+	NetTxBytes  uint64
+}
+
 type Event struct {
 	Action      string
 	ContainerID string
@@ -53,4 +66,7 @@ type Engine interface {
 	Logs(ctx context.Context, id string, tail int) (io.ReadCloser, error)
 	// Events emite eventos de contenedores con la etiqueta mcsm.managed=true hasta que ctx termina.
 	Events(ctx context.Context) (<-chan Event, <-chan error)
+	// Stats devuelve una lectura puntual de uso de recursos (one-shot: no espera a una
+	// segunda muestra). ErrNotFound si el contenedor no existe.
+	Stats(ctx context.Context, id string) (Stats, error)
 }
