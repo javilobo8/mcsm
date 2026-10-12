@@ -192,18 +192,19 @@ func (s Spec) contentEnv(m map[string]string) {
 	if w := s.Whitelist; w != nil {
 		if w.Enabled {
 			m["ENABLE_WHITELIST"] = "true"
-			if list := joinList(w.Players); list != "" {
-				m["WHITELIST"] = list
-				// El panel es la fuente de verdad: quitar a alguien de la lista lo quita del fichero.
-				m["EXISTING_WHITELIST_FILE"] = "SYNCHRONIZE"
-			}
+			// Sección presente: el panel es la fuente de verdad aunque la lista quede vacía
+			// (quitar al último jugador debe vaciar el fichero; sin SYNCHRONIZE itzg lo conserva).
+			m["WHITELIST"] = joinPlayers(w.Players)
+			m["EXISTING_WHITELIST_FILE"] = "SYNCHRONIZE"
 		} else {
 			// Explícito: sin esto, una whitelist activada antes seguiría activa en server.properties.
 			m["ENABLE_WHITELIST"] = "false"
 		}
 	}
-	if list := joinList(s.Ops); list != "" {
-		m["OPS"] = list
+	// Ops: nil = ausente (no se emite nada); presente (aunque vacío) sincroniza el fichero,
+	// de modo que revocar al último op le quita el permiso.
+	if s.Ops != nil {
+		m["OPS"] = joinPlayers(s.Ops)
 		m["EXISTING_OPS_FILE"] = "SYNCHRONIZE"
 	}
 	if s.CurseForgeAPIKey != "" && s.UsesCurseForge() {
@@ -232,4 +233,21 @@ func joinList(lists ...[]string) string {
 	}
 	sort.Strings(out)
 	return strings.Join(out, ",")
+}
+
+// joinPlayers como joinList pero sin distinguir mayúsculas (los nombres de Minecraft no
+// las distinguen): se conserva la primera variante en orden ASCII.
+func joinPlayers(list []string) string {
+	out := append([]string{}, list...)
+	sort.Strings(out)
+	seen := map[string]bool{}
+	res := out[:0]
+	for _, it := range out {
+		k := strings.ToLower(it)
+		if !seen[k] {
+			seen[k] = true
+			res = append(res, it)
+		}
+	}
+	return strings.Join(res, ",")
 }

@@ -186,8 +186,13 @@ func TestContentHash(t *testing.T) {
 
 	noOps := base
 	noOps.Ops = []string{}
-	if hashOfSpec(t, noOps) != h0 {
-		t.Error("ops vacío no debe cambiar el hash")
+	if hashOfSpec(t, noOps) == h0 {
+		t.Error("ops presente y vacío debe cambiar el hash (sincroniza el fichero)")
+	}
+	absentOps := base
+	absentOps.Ops = nil
+	if hashOfSpec(t, absentOps) != h0 {
+		t.Error("ops ausente no debe cambiar el hash")
 	}
 
 	withKey := base
@@ -252,5 +257,78 @@ func TestParseIgnoresUnknownFields(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "backups") {
 		t.Fatal("fixture mal construida")
+	}
+}
+
+// Ausente (nil) no emite nada; presente y vacío sincroniza el fichero a vacío (revocar al
+// último op o jugador debe llegar al servidor).
+func TestEmptyOpsAndWhitelistSynchronize(t *testing.T) {
+	s := loadFixture(t)
+	env := buildEnv(t, s)
+	for _, k := range []string{"OPS", "EXISTING_OPS_FILE", "WHITELIST", "EXISTING_WHITELIST_FILE", "ENABLE_WHITELIST"} {
+		if _, ok := env[k]; ok {
+			t.Errorf("sección ausente no debe emitir %s", k)
+		}
+	}
+	s.Ops = []string{}
+	s.Whitelist = &Whitelist{Enabled: true, Players: []string{}}
+	env = buildEnv(t, s)
+	for k, want := range map[string]string{
+		"OPS": "", "EXISTING_OPS_FILE": "SYNCHRONIZE",
+		"WHITELIST": "", "EXISTING_WHITELIST_FILE": "SYNCHRONIZE", "ENABLE_WHITELIST": "true",
+	} {
+		if v, ok := env[k]; !ok || v != want {
+			t.Errorf("env[%s] = %q (presente=%v), want %q", k, v, ok, want)
+		}
+	}
+}
+
+// La distinción ausente/vacío sobrevive a Parse y a re-serializar.
+func TestOpsAbsentVsEmptyJSON(t *testing.T) {
+	base, _ := os.ReadFile(fixturePath("spec-example.json"))
+	var doc map[string]json.RawMessage
+	_ = json.Unmarshal(base, &doc)
+	doc["ops"] = json.RawMessage(`[]`)
+	b, _ := json.Marshal(doc)
+	s, err := Parse(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Ops == nil {
+		t.Fatal(`"ops": [] debe parsear como presente (no nil)`)
+	}
+	out, _ := json.Marshal(s)
+	if !strings.Contains(string(out), `"ops":[]`) {
+		t.Errorf("re-serializar debe conservar ops vacío: %s", out)
+	}
+	s.Ops = nil
+	out, _ = json.Marshal(s)
+	if strings.Contains(string(out), `"ops"`) {
+		t.Errorf("ops ausente no debe serializarse: %s", out)
+	}
+}
+
+func TestPlayerListsDedupeCaseInsensitive(t *testing.T) {
+	s := loadFixture(t)
+	s.Ops = []string{"lobo", "Lobo", "Steve"}
+	s.Whitelist = &Whitelist{Enabled: true, Players: []string{"steve", "Steve", "Lobo"}}
+	env := buildEnv(t, s)
+	if env["OPS"] != "Lobo,Steve" || env["WHITELIST"] != "Lobo,Steve" {
+		t.Errorf("OPS=%q WHITELIST=%q", env["OPS"], env["WHITELIST"])
+	}
+	a, b := s, s
+	a.Ops = []string{"Lobo"}
+	b.Ops = []string{"lobo", "Lobo"}
+	if hashOfSpec(t, a) != hashOfSpec(t, b) {
+		t.Error("variantes de mayúsculas no deben recrear el contenedor")
+	}
+}
+
+func TestModsAndPluginsShareModrinthProjects(t *testing.T) {
+	s := loadFixture(t)
+	s.Mods = &ModSources{ModrinthProjects: []string{"lithium", "sodium"}}
+	s.Plugins = &PluginSources{ModrinthProjects: []string{"luckperms", "lithium"}}
+	if got := buildEnv(t, s)["MODRINTH_PROJECTS"]; got != "lithium,luckperms,sodium" {
+		t.Errorf("MODRINTH_PROJECTS = %q", got)
 	}
 }

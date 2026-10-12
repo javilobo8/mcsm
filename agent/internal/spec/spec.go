@@ -102,7 +102,8 @@ type Spec struct {
 	Mods      *ModSources    `json:"mods,omitempty"`
 	Plugins   *PluginSources `json:"plugins,omitempty"`
 	Whitelist *Whitelist     `json:"whitelist,omitempty"`
-	Ops       []string       `json:"ops,omitempty"`
+	// nil = ausente; [] = presente y vacío (omitzero conserva la diferencia al serializar).
+	Ops []string `json:"ops,omitzero"`
 	// CurseForgeAPIKey la añade el panel al enviar la spec al agente. Nunca se guarda en la
 	// spec del panel ni viaja al navegador.
 	CurseForgeAPIKey string `json:"curseforgeApiKey,omitempty"`
