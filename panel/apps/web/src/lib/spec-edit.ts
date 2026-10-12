@@ -245,7 +245,7 @@ export function shouldResyncNumber(o: { text: string; incoming: number | undefin
   return norm(parseNumberText(o.text)) !== norm(o.incoming);
 }
 
-// ── plan-8: sección router (mc-router) ──
+// plan-8: sección router (mc-router)
 
 /** Fija la sección router; desactivada y sin hostname vuelve a «ausente» (no se envía ni versiona nada). */
 export function withRouter(spec: EditableSpec, router: ServerRouter): EditableSpec {
