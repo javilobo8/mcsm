@@ -4,6 +4,7 @@ import { config, type Config } from "./config.js";
 import { authPlugin } from "./auth/plugin.js";
 import { authRoutes } from "./auth/routes.js";
 import { nodeRoutes } from "./nodes/routes.js";
+import { NodesRepo } from "./nodes/repo.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
 
@@ -12,6 +13,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false });
   app.decorate("db", opts.db);
   app.decorate("config", cfg);
+  app.decorate("nodes", new NodesRepo(opts.db));
 
   app.get("/api/health", async () => ({ ok: true }));
 
@@ -29,5 +31,6 @@ declare module "fastify" {
   interface FastifyInstance {
     db: Db;
     config: Config;
+    nodes: NodesRepo;
   }
 }

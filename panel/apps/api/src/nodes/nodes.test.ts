@@ -66,3 +66,68 @@ describe("nodos y alta", () => {
     expect(res.json()).toHaveLength(0);
   });
 });
+
+const enroll = (token: string, nameHint = "x") =>
+  app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: token, nameHint, agentVersion: "x" } });
+const newToken = async (payload: Record<string, unknown> = { nameHint: "n" }) =>
+  (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload })).json();
+
+describe("alta: dataRoot, caducidad, reuso y sesión", () => {
+  it("persiste el dataRoot del token de alta en el nodo creado", async () => {
+    const { token } = await newToken({ nameHint: "mc", dataRoot: "/data/mc" });
+    expect((await enroll(token, "mc")).statusCode).toBe(200);
+    const nodes = (await app.inject({ method: "GET", url: "/api/nodes", headers: { cookie } })).json();
+    expect(nodes[0]).toMatchObject({ name: "mc", dataRoot: "/data/mc" });
+  });
+
+  it("token caducado -> 401", async () => {
+    const { token } = await newToken();
+    app.db.prepare("UPDATE enrollment_tokens SET expires_at = ?").run("2000-01-01T00:00:00.000Z");
+    expect((await enroll(token)).statusCode).toBe(401);
+  });
+
+  it("token ya usado -> 401 y no crea un segundo nodo", async () => {
+    const { token } = await newToken();
+    expect((await enroll(token)).statusCode).toBe(200);
+    expect((await enroll(token)).statusCode).toBe(401);
+    const nodes = (await app.inject({ method: "GET", url: "/api/nodes", headers: { cookie } })).json();
+    expect(nodes).toHaveLength(1);
+  });
+
+  it("rechaza dataRoot que no sea ruta absoluta segura", async () => {
+    for (const dataRoot of ["/a; rm -rf /", "relativa/x", "/a/../b", "/a b", "/" + "x".repeat(201)]) {
+      const res = await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { dataRoot } });
+      expect(res.statusCode, dataRoot).toBe(400);
+    }
+  });
+
+  it("sin sesión, las rutas de nodos responden 401", async () => {
+    const cases = [
+      { method: "GET", url: "/api/nodes" },
+      { method: "POST", url: "/api/nodes/enrollment-tokens", payload: { nameHint: "n" } },
+      { method: "PATCH", url: "/api/nodes/abc", payload: { name: "z" } },
+      { method: "DELETE", url: "/api/nodes/abc" },
+    ] as const;
+    for (const c of cases) {
+      const res = await app.inject(c as any);
+      expect(res.statusCode, `${c.method} ${c.url}`).toBe(401);
+    }
+  });
+});
+
+describe("app.nodes en la raíz", () => {
+  it("tras buildApp y ready, app.nodes está definido en la raíz", () => {
+    expect(app.nodes).toBeDefined();
+    expect(typeof app.nodes.list).toBe("function");
+  });
+});
+
+describe("snippet de shell", () => {
+  it("entrecomilla con comillas simples los valores que no son seguros", async () => {
+    const { dockerRunSnippet } = await import("./routes.js");
+    const s = dockerRunSnippet("http://h'x;rm", "tok", "/data/mc");
+    expect(s).toContain("PANEL_URL='http://h'\\''x;rm'");
+    expect(s).toContain("ENROLL_TOKEN=tok");
+    expect(s).toContain("DATA_ROOT=/data/mc");
+  });
+});

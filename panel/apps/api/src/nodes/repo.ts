@@ -19,6 +19,10 @@ export const toNodeDto = (r: NodeRow): NodeDto => ({
   hostInfo: r.host_info ? JSON.parse(r.host_info) : null, lastSeenAt: r.last_seen_at, createdAt: r.created_at,
 });
 
+/** Error de clave foránea de SQLite (p. ej. borrar un nodo con servidores). */
+export const isForeignKeyError = (e: unknown): boolean =>
+  e instanceof Error && /FOREIGN KEY constraint failed/.test(e.message);
+
 export class NodesRepo {
   constructor(private db: Db) {}
 
@@ -62,19 +66,40 @@ export class NodesRepo {
     this.db.prepare("DELETE FROM nodes WHERE id = ?").run(id);
   }
 
-  createEnrollmentToken(nameHint: string, ttlSeconds: number): { token: string; expiresAt: string } {
+  createEnrollmentToken(nameHint: string, ttlSeconds: number, dataRoot: string): { token: string; expiresAt: string } {
     const token = randomToken();
     const expiresAt = plusSeconds(ttlSeconds);
-    this.db.prepare("INSERT INTO enrollment_tokens (id, token_hash, name_hint, expires_at) VALUES (?, ?, ?, ?)")
-      .run(newId(), hashToken(token), nameHint, expiresAt);
+    this.db.prepare("INSERT INTO enrollment_tokens (id, token_hash, name_hint, data_root, expires_at) VALUES (?, ?, ?, ?, ?)")
+      .run(newId(), hashToken(token), nameHint, dataRoot, expiresAt);
     return { token, expiresAt };
   }
-  /** Devuelve el name_hint si el token es válido, lo marca usado; null si no. */
-  consumeEnrollmentToken(token: string): string | null {
-    const row = this.db.prepare("SELECT id, name_hint, expires_at, used_at FROM enrollment_tokens WHERE token_hash = ?")
-      .get(hashToken(token)) as { id: string; name_hint: string; expires_at: string; used_at: string | null } | undefined;
-    if (!row || row.used_at || row.expires_at <= nowIso()) return null;
-    this.db.prepare("UPDATE enrollment_tokens SET used_at = ? WHERE id = ?").run(nowIso(), row.id);
-    return row.name_hint;
+
+  /**
+   * Canjea un token de alta y crea el nodo en una sola transacción: consumo atómico
+   * (UPDATE condicional con RETURNING) y, si la creación falla, el token no queda quemado.
+   * Devuelve null si el token es desconocido, caducado o ya usado.
+   */
+  enrollNode(enrollToken: string, agentVersion?: string): { nodeId: string; nodeToken: string } | null {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const now = nowIso();
+      const row = this.db.prepare(
+        "UPDATE enrollment_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING name_hint, data_root",
+      ).get(now, hashToken(enrollToken), now) as { name_hint: string; data_root: string } | undefined;
+      if (!row) {
+        this.db.exec("ROLLBACK");
+        return null;
+      }
+      let name = row.name_hint;
+      for (let i = 2; this.nameExists(name); i++) name = `${row.name_hint}-${i}`;
+      const nodeToken = randomToken();
+      const node = this.create({ name, tokenHash: hashToken(nodeToken), dataRoot: row.data_root });
+      if (agentVersion) this.setStatus(node.id, "offline", { agentVersion });
+      this.db.exec("COMMIT");
+      return { nodeId: node.id, nodeToken };
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
   }
 }

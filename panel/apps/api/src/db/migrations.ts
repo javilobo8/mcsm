@@ -50,4 +50,8 @@ CREATE TABLE servers (
 CREATE INDEX servers_node_idx ON servers(node_id);
 `,
   },
+  {
+    name: "002_enrollment_data_root",
+    sql: `ALTER TABLE enrollment_tokens ADD COLUMN data_root TEXT NOT NULL DEFAULT '/srv/minecraft';`,
+  },
 ];
