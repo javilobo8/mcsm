@@ -121,8 +121,9 @@ export class ImportService {
     this.app.serversService.checkPorts(nodeId, full.data);
 
     // La key de CurseForge del contenedor viaja con la adopción si no hay ninguna en Ajustes, y se guarda
-    // allí solo si el agente pudo adoptarlo (o quizá lo hizo). Sin reaplicar a los demás servidores
-    // (recrearlos por importar uno sorprendería): la recibirán en su próximo cambio.
+    // allí solo si el agente confirma la adopción (m10: con un 504 no se sabe si la aceptó; el usuario la
+    // pone en Ajustes). Sin reaplicar a los demás servidores (recrearlos por importar uno sorprendería):
+    // la recibirán en su próximo cambio.
     const storedKey = this.app.curseforge.get();
     const containerKey = storedKey === null && p.curseforgeApiKey && usesCurseForge(full.data) ? p.curseforgeApiKey : null;
     const keepContainerKey = () => { if (containerKey && this.app.curseforge.get() === null) this.app.curseforge.set(containerKey); };
@@ -140,10 +141,10 @@ export class ImportService {
         // Puede que el agente lo adoptara: borrar la fila haría que el próximo SyncSpecs retirara el servidor
         // y borrara el contenedor original. Se conserva: al reconectar, su spec (con adopt) completa la
         // adopción con las mismas comprobaciones. Con applyNow sube ya a v2: el agente recrea al adoptar.
-        keepContainerKey();
         if (input.applyNow) void this.app.serversService.push(this.app.servers.bumpVersion(row.id));
         this.app.log.warn({ nodeId, serverId: row.id, code: e.code }, "ImportAdopt sin confirmar; el servidor importado se conserva");
-        throw new HttpError(504, "El agente no confirmó la adopción a tiempo. El servidor queda importado y la adopción se completará cuando el nodo responda: revisa su estado en unos segundos");
+        const cfNote = containerKey ? " Usa CurseForge y no se ha guardado la API key del contenedor: configúrala en Ajustes antes de aplicar cambios" : "";
+        throw new HttpError(504, `El agente no confirmó la adopción a tiempo. El servidor queda importado y la adopción se completará cuando el nodo responda: revisa su estado en unos segundos.${cfNote}`);
       }
       this.app.servers.delete(row.id);
       throw agentErrorToHttp(e, "El agente no pudo adoptar el contenedor");

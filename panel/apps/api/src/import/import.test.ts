@@ -264,6 +264,20 @@ describe("Nodos → Importar: lo que decide el panel y no el navegador", () => {
     agent.close();
   });
 
+  it("m10: si la adopción queda sin confirmar (504), la CF_API_KEY del contenedor no se guarda en Ajustes", async () => {
+    const agent = await online();
+    const cf = candidate({ env: { TYPE: "AUTO_CURSEFORGE", CF_SLUG: "all-the-mods-10", CF_API_KEY: "$2a$10$clave-cf", RCON_PASSWORD: "s3cr3t-rcon-pass" } });
+    const [c] = (await listCandidates(agent, [cf])).json();
+    const adopting = post(`/api/nodes/${nodeId}/import`, { containerId: ID, name: "ATM", spec: c.proposal.spec });
+    await answerScan(agent, [cf]);
+    await agent.waitFor("importAdopt");
+    agent.close();
+    const res = await adopting;
+    expect(res.statusCode).toBe(504);
+    expect(res.json().error).toMatch(/Ajustes/);
+    expect(app.curseforge.get()).toBeNull();
+  });
+
   it("«Adoptar y aplicar» con la conexión caída: el importado se conserva ya en v2 (el agente recreará al reconectar)", async () => {
     const agent = await online();
     const [c] = (await listCandidates(agent)).json();
