@@ -101,14 +101,14 @@ export function ServerPage() {
           <Stat label="Healthcheck" value={o?.health || "—"} />
           <Stat label="Último exit code" value={o && o.state !== "running" ? o.exitCode : "—"} />
           <Stat label="Spec" value={applying ? `v${s.specVersion} (aplicando; actual v${s.observedSpecVersion})` : `v${s.specVersion} (aplicada)`} />
-          <div className="col-span-2 mt-2 md:col-span-4"><ServerCharts serverId={s.id} /></div>
+          <div className="col-span-2 mt-2 md:col-span-4"><ServerCharts key={s.id} serverId={s.id} /></div>
         </TabsContent>
         <TabsContent value="console"><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
         <TabsContent value="config"><ServerConfigForm key={s.id} server={s} /></TabsContent>
         {/* ── plan-2 ── */}
         {/* ── plan-3 ── */}
         {/* ── plan-4 ── */}
-        <TabsContent value="backups"><BackupsTab server={s} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="backups"><BackupsTab key={s.id} server={s} nodeOnline={nodeOnline} /></TabsContent>
         <TabsContent value="history"><JobList key={s.id} filter={{ serverId: s.id }} showServer={false} /></TabsContent>
         {/* ── plan-5 ── */}
         <TabsContent value="files"><FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
