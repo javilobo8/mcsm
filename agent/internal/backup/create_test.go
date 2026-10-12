@@ -20,6 +20,7 @@ type fakeRcon struct {
 	cmds   []string
 	ctxErr map[string]error
 	fail   map[string]error
+	reply  map[string]string // respuesta del servidor; "ok" si no hay
 }
 
 func (f *fakeRcon) run(ctx context.Context, cmd string) (string, error) {
@@ -30,6 +31,9 @@ func (f *fakeRcon) run(ctx context.Context, cmd string) (string, error) {
 		f.ctxErr = map[string]error{}
 	}
 	f.ctxErr[cmd] = ctx.Err()
+	if r, ok := f.reply[cmd]; ok {
+		return r, f.fail[cmd]
+	}
 	return "ok", f.fail[cmd]
 }
 
@@ -218,9 +222,17 @@ func TestCreateCopyAndSaveOnFailureReportsBoth(t *testing.T) {
 	req := baseReq(dataDir, backupsDir)
 	req.Rcon = rc.run
 	req.Sleep = func(ctx context.Context, _ time.Duration) error { cancel(); return ctx.Err() }
+	var logs []string
+	req.Log = func(l string) { logs = append(logs, l) }
 	meta, err := Create(ctx, req)
 	if !errors.Is(err, context.Canceled) || !errors.Is(err, ErrResume) {
 		t.Fatalf("err = %v; debe envolver la cancelación y ErrResume", err)
+	}
+	if strings.Contains(err.Error(), "\n") {
+		t.Fatalf("el error llega al job y a la UI: una sola línea: %q", err)
+	}
+	if !strings.Contains(strings.Join(logs, "\n"), "puede seguir desactivado") {
+		t.Fatalf("el log debe avisar de que el autoguardado puede seguir desactivado: %v", logs)
 	}
 	if meta.Filename != "" {
 		t.Fatalf("sin copia no hay metadatos: %+v", meta)
@@ -289,5 +301,148 @@ func TestCreateProgressAndUncompressedSize(t *testing.T) {
 	}
 	if onDisk, err := ReadMeta(backupsDir, meta.Filename); err != nil || onDisk.DataBytes != want {
 		t.Fatalf(".json = %+v, %v", onDisk, err)
+	}
+}
+
+func TestCreateFlushFailureStillSendsSaveOn(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{fail: map[string]error{"save-all flush": errors.New("rcon: ejecutar: i/o timeout")}}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	_, err := Create(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "save-all flush") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := strings.Join(rc.cmds, ","); got != "save-off,save-all flush,save-on" {
+		t.Fatalf("comandos = %s", got)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// Spec §6.5: tar; save-on; sha256; .json. El mundo no debe seguir sin autoguardado durante
+// el fsync de un fichero de varios GiB, el renombrado y los metadatos.
+func TestCreateSaveOnRightAfterArchive(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	final := filepath.Join(backupsDir, Filename("survival", t0, 3))
+	var cmds []string
+	var partialAtSaveOn, finalAtSaveOn bool
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = func(_ context.Context, cmd string) (string, error) {
+		cmds = append(cmds, cmd)
+		if cmd == "save-on" {
+			partialAtSaveOn, finalAtSaveOn = exists(final+partialExt), exists(final)
+		}
+		return "", nil
+	}
+	if _, err := Create(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(cmds, ","); got != "save-off,save-all flush,save-on" {
+		t.Fatalf("save-on una sola vez: %s", got)
+	}
+	if !partialAtSaveOn || finalAtSaveOn {
+		t.Fatalf("save-on debe salir al cerrar el tar, antes de renombrar (parcial=%v final=%v)", partialAtSaveOn, finalAtSaveOn)
+	}
+}
+
+func TestCreateLogsRconReplies(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{reply: map[string]string{
+		"save-off":       "Automatic saving is now disabled",
+		"save-all flush": "Unable to save the game\n(no hay espacio)",
+		"save-on":        "Automatic saving is now enabled",
+	}}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	var logs []string
+	req.Log = func(l string) { logs = append(logs, l) }
+	if _, err := Create(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(logs, "\n")
+	for _, want := range []string{"Automatic saving is now disabled", "ATENCIÓN", "Unable to save the game (no hay espacio)", "Automatic saving is now enabled"} {
+		if !strings.Contains(all, want) {
+			t.Errorf("falta %q en el log: %v", want, logs)
+		}
+	}
+	if strings.Count(all, "ATENCIÓN") != 1 {
+		t.Errorf("solo la respuesta de fallo lleva ATENCIÓN: %v", logs)
+	}
+}
+
+func TestCreateRenameFailureRemovesPartialAndMeta(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	stubRename(t, func(oldpath, newpath string) error {
+		if strings.HasSuffix(newpath, Ext) {
+			return errors.New("fallo simulado")
+		}
+		return os.Rename(oldpath, newpath)
+	})
+	if _, err := Create(context.Background(), req); err == nil || !strings.Contains(err.Error(), "fallo simulado") {
+		t.Fatalf("err = %v", err)
+	}
+	if rc.cmds[len(rc.cmds)-1] != "save-on" {
+		t.Fatalf("comandos = %v", rc.cmds)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// El inventario (List) nunca debe ver la copia sin su .json: se escribe antes del nombre final.
+func TestCreateMetaBeforeArchiveIsVisible(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	var metaFirst bool
+	stubRename(t, func(oldpath, newpath string) error {
+		if strings.HasSuffix(newpath, Ext) {
+			m, err := ReadMeta(backupsDir, filepath.Base(newpath))
+			metaFirst = err == nil && m.SHA256 != ""
+		}
+		return os.Rename(oldpath, newpath)
+	})
+	if _, err := Create(context.Background(), baseReq(dataDir, backupsDir)); err != nil {
+		t.Fatal(err)
+	}
+	if !metaFirst {
+		t.Fatal("el .json debe existir (con su sha256) antes de que la copia tenga su nombre final")
+	}
+}
+
+func TestCreateRejectsSymlinkedData(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	target := filepath.Join(filepath.Dir(dataDir), "real-data")
+	if err := os.Rename(dataDir, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, dataDir); err != nil {
+		t.Fatal(err)
+	}
+	rc := &fakeRcon{}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	if _, err := Create(context.Background(), req); err == nil || !strings.Contains(err.Error(), "no es un directorio") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(rc.cmds) != 0 {
+		t.Fatalf("sin nada que copiar no se toca el autoguardado: %v", rc.cmds)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+func TestCreateUnreadableDataIsNotMissing(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root no recibe EACCES")
+	}
+	dataDir, backupsDir := newWorld(t)
+	parent := filepath.Dir(dataDir)
+	if err := os.Chmod(parent, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o755) })
+	backupsDir = filepath.Join(t.TempDir(), "backups")
+	_, err := Create(context.Background(), baseReq(dataDir, backupsDir))
+	if err == nil || strings.Contains(err.Error(), "aún no tiene datos") || !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("un EACCES se informa como tal: %v", err)
 	}
 }

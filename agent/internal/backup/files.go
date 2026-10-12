@@ -108,20 +108,33 @@ func WriteMeta(dir string, m Meta) error {
 	return writeJSON(filepath.Join(dir, m.Filename+MetaExt), m)
 }
 
-func writeJSON(p string, v any) error {
+// writeJSON escribe p de forma atómica y duradera: fichero temporal, fsync y rename (el
+// llamante sincroniza el directorio).
+func writeJSON(p string, v any) (err error) {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
 	tmp := p + partialExt
-	if err := os.WriteFile(tmp, b, 0o640); err != nil {
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o640)
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, p); err != nil {
-		_ = os.Remove(tmp)
+	defer func() {
+		if err != nil {
+			_ = os.Remove(tmp)
+		}
+	}()
+	if _, err = f.Write(b); err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		return err
 	}
-	return nil
+	return os.Rename(tmp, p)
 }
 
 // ReadMeta lee <dir>/<name>.json.

@@ -12,6 +12,22 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
+)
+
+// ErrDataMissing indica que la restauración apartó los datos y no pudo devolverlos: el
+// directorio de datos NO existe (los originales siguen enteros en el pre-restore que
+// nombra el error). El llamante no debe arrancar el servidor: Docker crearía un data vacío
+// y el servidor generaría un mundo nuevo encima.
+var ErrDataMissing = errors.New("el servidor se ha quedado sin directorio de datos; no lo arranques hasta devolverlos a su sitio")
+
+// Margen de la comprobación de espacio: el mayor entre el 5 % de lo que se va a extraer y
+// 256 MiB (redondeo a bloques, directorios, y sitio para que los servidores del nodo sigan
+// guardando mientras tanto).
+const (
+	spaceMarginPct = 5
+	spaceMarginMin = 256 << 20
 )
 
 // RestoreRequest describe una restauración. El servidor debe estar parado: lo para el
@@ -39,21 +55,24 @@ func (r *RestoreRequest) defaults() {
 	}
 }
 
-// Sustituibles en tests: el espacio libre del sistema de ficheros, el volcado a disco y
-// los renombrados del intercambio (para simular fallos y cancelaciones a mitad).
+// Puntos de inyección para tests: el espacio libre, el volcado a disco, los renombrados
+// del intercambio y el borrado del temporal (para simular fallos y cancelaciones a mitad).
+// Son variables de paquete, así que los tests de este paquete no usan t.Parallel.
 var (
 	freeSpace = statfsFree
-	syncFS    = syscall.Sync
+	syncFS    = syncFilesystem
 	rename    = os.Rename
+	removeAll = os.RemoveAll
 )
 
 // Restore reemplaza DataDir por el contenido de una copia SIN borrar nunca los datos
 // previos (spec §6.5): verifica el sha256 si lo hay, comprueba el espacio libre, extrae en
-// <data>.restoring-<ts>, renombra DataDir a <data>.pre-restore-<ts> y el extraído a
-// DataDir. Mientras no se haya completado el intercambio, un fallo o una cancelación dejan
-// DataDir como estaba (si falla el segundo renombrado, el primero se deshace) y el
-// directorio temporal se borra. Devuelve los metadatos del directorio pre-restore
-// (Filename vacío si no había datos previos).
+// <data>.restoring-<ts>, lo vuelca a disco, renombra DataDir a <data>.pre-restore-<ts> y
+// el extraído a DataDir. Mientras no se haya completado el intercambio, un fallo o una
+// cancelación dejan DataDir como estaba (si falla el segundo renombrado, el primero se
+// deshace; si eso también falla, el error envuelve ErrDataMissing) y el directorio
+// temporal se borra. Devuelve los metadatos del directorio pre-restore (Filename vacío si
+// no había datos previos).
 func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 	req.defaults()
 	if !ValidName(req.Slug, req.Filename) {
@@ -74,7 +93,8 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 	if merr == nil && m.DataBytes > 0 {
 		need = m.DataBytes
 	}
-	if merr == nil && m.SHA256 != "" {
+	switch {
+	case merr == nil && m.SHA256 != "":
 		req.Progress(2, "Verificando la copia (sha256)")
 		sum, err := fileSHA256(ctx, src)
 		if err != nil {
@@ -84,8 +104,12 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 			return Meta{}, fmt.Errorf("la copia está dañada: sha256 %s, esperado %s", sum, m.SHA256)
 		}
 		req.Log("sha256 verificado")
-	} else {
-		req.Log("aviso: la copia no tiene sha256 guardado; se restaura sin verificar")
+	case merr == nil:
+		req.Log("aviso: los metadatos de la copia no traen sha256; se restaura sin verificar")
+	case errors.Is(merr, fs.ErrNotExist):
+		req.Log("aviso: la copia no tiene sha256 guardado (falta su .json); se restaura sin verificar")
+	default:
+		req.Log("aviso: no se pudo leer el .json de la copia (" + merr.Error() + "); se restaura sin verificar el sha256")
 	}
 
 	// Todo lo que pueda fallar sin escribir nada, antes de extraer.
@@ -112,8 +136,12 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 	}
 	swapped := false
 	defer func() {
-		if !swapped {
-			_ = os.RemoveAll(staging) // directorio propio recién creado: borrarlo es seguro
+		if swapped {
+			return
+		}
+		// Directorio propio recién creado (Mkdir falla si ya existía): borrarlo es seguro.
+		if err := removeAll(staging); err != nil {
+			req.Log("aviso: no se pudo borrar el directorio temporal " + staging + " (bórralo a mano): " + err.Error())
 		}
 	}()
 	f, err := os.Open(src)
@@ -126,13 +154,21 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 		req.Progress(10+uint32(done*80/total), "Extrayendo la copia")
 	}}
 	if err := ExtractArchive(ctx, pr, staging, req.Log); err != nil {
+		if cerr := ctx.Err(); cerr != nil { // no es una copia dañada: se canceló
+			return Meta{}, fmt.Errorf("restauración cancelada: %w", cerr)
+		}
 		return Meta{}, fmt.Errorf("extraer la copia: %w", err)
 	}
 	// Lo extraído, en disco antes de activarlo: un corte de luz tras el intercambio no debe
 	// dejar en data ficheros a medio escribir (los previos ya estarán en el pre-restore).
-	syncFS()
+	if err := syncCtx(ctx, staging); err != nil {
+		if cerr := ctx.Err(); cerr != nil {
+			return Meta{}, fmt.Errorf("restauración cancelada: %w", cerr)
+		}
+		return Meta{}, fmt.Errorf("volcar a disco la copia extraída: %w", err)
+	}
 	if err := ctx.Err(); err != nil {
-		return Meta{}, err
+		return Meta{}, fmt.Errorf("restauración cancelada: %w", err)
 	}
 
 	cur, err := currentData(req.DataDir)
@@ -150,15 +186,16 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 	if err := rename(staging, req.DataDir); err != nil {
 		if hadData {
 			if uerr := rename(prePath, req.DataDir); uerr != nil {
-				return Meta{}, fmt.Errorf("activar la copia: %v; tampoco se pudieron devolver los datos originales (siguen en %s): %v", err, prePath, uerr)
+				return Meta{}, fmt.Errorf("%w: activar la copia: %v; tampoco se pudieron devolver los datos originales, que siguen en %s: %v",
+					ErrDataMissing, err, prePath, uerr)
 			}
 		}
 		return Meta{}, fmt.Errorf("activar la copia: %w", err)
 	}
 	swapped = true
-	_ = syncDir(parent)
 	req.Log("copia restaurada en " + req.DataDir)
 	if !hadData {
+		_ = syncDir(parent)
 		return Meta{}, nil
 	}
 	pre := Meta{
@@ -168,8 +205,42 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 	if err := writeJSON(prePath+MetaExt, pre); err != nil {
 		req.Log("aviso: no se pudo escribir el .json de " + preName + ": " + err.Error())
 	}
+	_ = syncDir(parent) // los dos renombrados y el .json del pre-restore
 	req.Log("datos anteriores conservados en " + preName + " (no se borran solos)")
 	return pre, nil
+}
+
+// syncCtx vuelca a disco el sistema de ficheros de dir sin dejar de atender a ctx.
+// syncfs(2) no se puede interrumpir. Si se cancela mientras tanto (p. ej. el agente se
+// está cerrando), se deja de esperar y la restauración falla sin intercambiar nada; la
+// goroutine sigue en el kernel hasta que el volcado vuelva y entonces termina sola.
+// Compromiso: una goroutine y un descriptor retenidos a cambio de no bloquear la
+// restauración (con el servidor parado y reservado) en un volcado lento. Un sistema de
+// ficheros de datos muerto del todo bloquearía ya la extracción y la limpieza del
+// temporal; solo se vuelca el FS de los datos, nunca los demás montajes del host.
+func syncCtx(ctx context.Context, dir string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	done := make(chan error, 1) // con hueco: la goroutine abandonada no se queda colgada al enviar
+	go func() { done <- syncFS(dir) }()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// syncFilesystem hace syncfs(2) del sistema de ficheros que contiene dir: solo ese FS,
+// no sync(2), que recorre todos los montajes del host (y se cuelga con un NFS caído).
+func syncFilesystem(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return unix.Syncfs(int(d.Fd()))
 }
 
 // currentData devuelve el directorio de datos actual, nil si no existe, o un error si es
@@ -187,17 +258,24 @@ func currentData(dataDir string) (fs.FileInfo, error) {
 	return fi, nil
 }
 
-// checkSpace falla si en dir no caben need bytes. Si no se puede consultar, avisa y deja
-// seguir: si de verdad no cabe, la extracción fallará sin tocar los datos.
+// requiredSpace es lo que debe quedar libre para extraer need bytes: need más el margen.
+func requiredSpace(need int64) uint64 {
+	n := uint64(max(need, 0))
+	return n + max(n*spaceMarginPct/100, spaceMarginMin)
+}
+
+// checkSpace falla si en dir no cabe la extracción con su margen. Si no se puede
+// consultar, avisa y deja seguir: si de verdad no cabe, la extracción fallará sin tocar
+// los datos.
 func checkSpace(dir string, need int64, log func(string)) error {
 	free, err := freeSpace(dir)
 	if err != nil {
 		log("aviso: no se pudo comprobar el espacio libre en " + dir + ": " + err.Error())
 		return nil
 	}
-	if need > 0 && free < uint64(need) {
-		return fmt.Errorf("no hay espacio libre suficiente para restaurar: hacen falta %s y quedan %s libres en %s",
-			humanBytes(uint64(need)), humanBytes(free), dir)
+	if req := requiredSpace(need); free < req {
+		return fmt.Errorf("no hay espacio libre suficiente para restaurar: hacen falta %s (%s de datos más un margen de %s para el redondeo a bloques y para que los servidores del nodo sigan pudiendo guardar) y quedan %s libres en %s",
+			humanBytes(req), humanBytes(uint64(max(need, 0))), humanBytes(req-uint64(max(need, 0))), humanBytes(free), dir)
 	}
 	return nil
 }
@@ -205,11 +283,21 @@ func checkSpace(dir string, need int64, log func(string)) error {
 // statfsFree es el espacio disponible para usuarios sin privilegios (sin la reserva de
 // root): el servidor, que no es root, también necesita sitio para escribir después.
 func statfsFree(dir string) (uint64, error) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(dir, &st); err != nil {
+	var st unix.Statfs_t
+	if err := unix.Statfs(dir, &st); err != nil {
 		return 0, err
 	}
-	return st.Bavail * uint64(st.Bsize), nil
+	return freeBytes(uint64(st.Bavail), int64(st.Frsize), int64(st.Bsize)), nil
+}
+
+// freeBytes: f_bavail va en unidades de f_frsize (en FUSE puede no coincidir con
+// f_bsize); si el FS no informa f_frsize, se usa f_bsize.
+func freeBytes(bavail uint64, frsize, bsize int64) uint64 {
+	unit := frsize
+	if unit <= 0 {
+		unit = bsize
+	}
+	return bavail * uint64(max(unit, 0))
 }
 
 func humanBytes(n uint64) string {
