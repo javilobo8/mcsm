@@ -156,19 +156,31 @@ func (m *Moby) Logs(ctx context.Context, id string, tail int) (io.ReadCloser, er
 	}
 	// Sin TTY (los contenedores de Compose, p. ej. un importado aún adoptado) Docker multiplexa
 	// stdout y stderr con una cabecera de 8 bytes por trama: se separan aquí, en el mismo flujo.
+	return demuxLogs(rc), nil
+}
+
+// demuxLogs junta en un flujo de texto el stdout y el stderr de unos logs multiplexados por Docker,
+// en streaming (io.Pipe, sin buffer propio: cada trama llega al lector según la manda Docker). La
+// goroutine de StdCopy termina cuando su lectura del stream de Docker acaba o falla (EOF, contexto
+// cancelado, Close) o falla su escritura (Close del lector); su error llega al lector (nil → EOF).
+func demuxLogs(rc io.ReadCloser) *demuxedLogs {
 	pr, pw := io.Pipe()
+	d := &demuxedLogs{PipeReader: pr, src: rc, done: make(chan struct{})}
 	go func() {
+		defer close(d.done)
 		_, err := stdcopy.StdCopy(pw, pw, rc)
 		_ = pw.CloseWithError(err) // nil → EOF para el lector
 	}()
-	return &demuxedLogs{PipeReader: pr, src: rc}, nil
+	return d
 }
 
 // demuxedLogs es el texto de unos logs multiplexados; Close cierra también el stream de Docker
-// (la goroutine de StdCopy termina al fallar su lectura o su escritura). Idempotente.
+// (la goroutine de StdCopy termina al fallar su lectura o su escritura). Idempotente y seguro desde
+// varias goroutines. done se cierra al terminar la goroutine.
 type demuxedLogs struct {
 	*io.PipeReader
-	src io.Closer
+	src  io.Closer
+	done chan struct{}
 }
 
 func (d *demuxedLogs) Close() error {

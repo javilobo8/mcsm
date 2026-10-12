@@ -31,7 +31,8 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 	_, _ = m.cli.ContainerRemove(ctx, name, client.ContainerRemoveOptions{Force: true})
 	id, err := m.Create(ctx, name,
 		&container.Config{Image: "alpine:3.22", Tty: false, Labels: map[string]string{"mcsm.test": "true"},
-			Cmd: []string{"sh", "-c", "echo uno; echo dos >&2; echo tres; sleep 300"}},
+			// «cuatro» espera a que exista /tmp/sigue: llega en streaming, con el seguimiento ya abierto.
+			Cmd: []string{"sh", "-c", "echo uno; echo dos >&2; echo tres; while [ ! -e /tmp/sigue ]; do sleep 0.1; done; echo cuatro >&2; sleep 300"}},
 		&container.HostConfig{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -64,5 +65,44 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 	slices.Sort(got)
 	if want := []string{"dos", "tres", "uno"}; !slices.Equal(got, want) {
 		t.Fatalf("líneas = %q, quiero %q (stdout y stderr, sin cabeceras)", got, want)
+	}
+	// Seguimiento en vivo: una línea nueva de stderr llega separada y con su marca de tiempo.
+	ex, err := m.cli.ExecCreate(ctx, id, client.ExecCreateOptions{Cmd: []string{"touch", "/tmp/sigue"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.cli.ExecStart(ctx, ex.ID, client.ExecStartOptions{Detach: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !sc.Scan() {
+		t.Fatalf("no llegó la línea en vivo: %v", sc.Err())
+	}
+	if ts, msg, _ := strings.Cut(sc.Text(), " "); msg != "cuatro" {
+		t.Fatalf("línea en vivo = %q", sc.Text())
+	} else if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
+		t.Fatalf("línea en vivo sin marca de tiempo: %q", sc.Text())
+	}
+	// Close corta el seguimiento: la lectura pendiente termina (sin goroutines colgadas).
+	done := make(chan error, 1)
+	go func() { _, err := rc.Read(make([]byte, 1)); done <- err }()
+	if err := rc.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("leer tras Close debe fallar")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close no cortó la lectura")
+	}
+	if d, ok := rc.(*demuxedLogs); !ok {
+		t.Fatalf("sin TTY Logs devuelve el flujo separado: %T", rc)
+	} else {
+		select {
+		case <-d.done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("la goroutine de StdCopy no terminó tras Close")
+		}
 	}
 }
