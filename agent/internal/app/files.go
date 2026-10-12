@@ -2,14 +2,155 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/conn"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/files"
 )
+
+const (
+	// maxTransfers acota las subidas y descargas simultáneas del nodo (descriptores, temporales
+	// y conexiones). La siguiente recibe busy al instante, sin consumir su transferencia.
+	maxTransfers = 4
+	// transferIdle: una transferencia que no mueve un byte durante un periodo entero se corta
+	// (se detecta entre 1 y 2 periodos después del último byte).
+	transferIdle = 60 * time.Second
+)
+
+var (
+	errTransfersBusy = fmt.Errorf("el nodo ya tiene %d transferencias de archivos en curso: espera a que termine alguna", maxTransfers)
+	errIdle          = errors.New("transferencia inactiva")
+)
+
+// transferGate cuenta las transferencias en curso y lleva el reloj del vigilante de
+// inactividad. El valor cero es utilizable.
+type transferGate struct {
+	mu     sync.Mutex
+	active int
+	// after es el reloj del vigilante (nil → time.After). Solo lo cambian los tests.
+	after func(time.Duration) <-chan time.Time
+}
+
+// acquire reserva un hueco sin esperar: si no hay, errTransfersBusy.
+func (g *transferGate) acquire() (release func(), err error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.active >= maxTransfers {
+		return nil, errTransfersBusy
+	}
+	g.active++
+	return func() {
+		g.mu.Lock()
+		g.active--
+		g.mu.Unlock()
+	}, nil
+}
+
+func (g *transferGate) clock() func(time.Duration) <-chan time.Time {
+	if g.after != nil {
+		return g.after
+	}
+	return time.After
+}
+
+// progressReader marca moved cada vez que pasan bytes.
+type progressReader struct {
+	r     io.Reader
+	moved *atomic.Bool
+}
+
+func (p progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	if n > 0 {
+		p.moved.Store(true)
+	}
+	return n, err
+}
+
+// withIdleGuard ejecuta fn con un contexto derivado de ctx que se cancela si pasa un periodo
+// entero de transferIdle sin que se mueva un byte por los lectores envueltos con track. Con
+// el cliente HTTP actual basta: en un GET los bytes se cuentan al leer el cuerpo y en un PUT
+// cuando net/http lee el origen para escribir en el socket (si el panel deja de leer, el
+// socket se llena y la lectura se detiene). Antes de volver espera a que el vigilante acabe.
+func (a *App) withIdleGuard(ctx context.Context, fn func(ctx context.Context, track func(io.Reader) io.Reader) error) error {
+	after := a.xfer.clock()
+	gctx, cancel := context.WithCancelCause(ctx)
+	var moved atomic.Bool
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-gctx.Done():
+				return
+			case <-after(transferIdle):
+			}
+			if !moved.Swap(false) {
+				cancel(errIdle)
+				return
+			}
+		}
+	}()
+	err := fn(gctx, func(r io.Reader) io.Reader { return progressReader{r: r, moved: &moved} })
+	cancel(nil)
+	<-done
+	if err != nil && errors.Is(context.Cause(gctx), errIdle) {
+		return fmt.Errorf("%w: más de %d s sin moverse ningún byte", files.ErrTransfer, int(transferIdle.Seconds()))
+	}
+	return err
+}
+
+// errOverCap marca que el origen trajo más bytes que el tope.
+var errOverCap = errors.New("la subida supera el máximo")
+
+// capReader falla en cuanto el origen trae más de left bytes (subidas sin tamaño conocido).
+type capReader struct {
+	r    io.Reader
+	left int64
+	over bool
+}
+
+func (c *capReader) Read(p []byte) (int, error) {
+	if int64(len(p)) > c.left+1 {
+		p = p[:c.left+1] // un byte de más basta para saber que se pasa
+	}
+	n, err := c.r.Read(p)
+	if int64(n) > c.left {
+		c.over = true
+		return 0, errOverCap
+	}
+	c.left -= int64(n)
+	return n, err
+}
+
+// uploadMax es el tope de una subida (UPLOAD_MAX_BYTES; por defecto 4 GiB).
+func (a *App) uploadMax() int64 {
+	if a.cfg.UploadMax > 0 {
+		return a.cfg.UploadMax
+	}
+	return defaultUploadMax
+}
+
+func errUploadTooLarge(limit int64) error {
+	return fmt.Errorf("%w: la subida supera el máximo de %s del nodo (UPLOAD_MAX_BYTES)", files.ErrTooLarge, humanBytes(limit))
+}
+
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<30 && n%(1<<30) == 0:
+		return fmt.Sprintf("%d GiB", n>>30)
+	case n >= 1<<20 && n%(1<<20) == 0:
+		return fmt.Sprintf("%d MiB", n>>20)
+	}
+	return fmt.Sprintf("%d bytes", n)
+}
 
 // serverScoped lo cumplen todos los mensajes Files*.
 type serverScoped interface{ GetServerId() string }
@@ -93,7 +234,11 @@ func (a *App) handleFiles(ctx context.Context, env *mcsmv1.Envelope, send func(*
 	}
 	resp, err := a.filesOp(ctx, env, req)
 	if err != nil {
-		_ = send(errMsg(env.Id, files.Code(err), err))
+		code := files.Code(err)
+		if errors.Is(err, errTransfersBusy) {
+			code = errcode.Busy
+		}
+		_ = send(errMsg(env.Id, code, err))
 		return
 	}
 	resp.Id = env.Id
@@ -151,7 +296,8 @@ func (a *App) filesOp(ctx context.Context, env *mcsmv1.Envelope, req serverScope
 }
 
 // filesDownload sube el fichero al panel por PUT /agent/transfer/{id} y confirma al terminar.
-// El fichero se abre antes de tocar la transferencia: una ruta mala no la consume.
+// El fichero se abre y el hueco se reserva antes de tocar la transferencia: una ruta mala o un
+// nodo ocupado no la consumen.
 func (a *App) filesDownload(ctx context.Context, fsys *files.FS, m *mcsmv1.FilesDownload) error {
 	f, e, err := fsys.Open(m.Path)
 	if err != nil {
@@ -164,36 +310,68 @@ func (a *App) filesDownload(ctx context.Context, fsys *files.FS, m *mcsmv1.Files
 	if err != nil {
 		return err
 	}
-	// LimitReader: si el fichero crece mientras se envía, se manda lo que medía al abrirlo; si
-	// encoge, Put falla por Content-Length y el panel no recibe un fichero incompleto como bueno.
-	if err := xfer.Put(ctx, m.TransferId, io.LimitReader(f, e.Size), e.Size); err != nil {
-		return fmt.Errorf("%w: %v", files.ErrTransfer, err)
+	release, err := a.xfer.acquire()
+	if err != nil {
+		return err
 	}
-	return nil
+	defer release()
+	return a.withIdleGuard(ctx, func(ctx context.Context, track func(io.Reader) io.Reader) error {
+		// LimitReader: si el fichero crece mientras se envía, se manda lo que medía al abrirlo;
+		// si encoge, Put falla por Content-Length y el panel no da por bueno un fichero incompleto.
+		if err := xfer.Put(ctx, m.TransferId, track(io.LimitReader(f, e.Size)), e.Size); err != nil {
+			return fmt.Errorf("%w: %v", files.ErrTransfer, err)
+		}
+		return nil
+	})
 }
 
-// filesUpload valida el destino, descarga del panel por GET /agent/transfer/{id} y escribe de
-// forma atómica en streaming. Un cuerpo truncado nunca reemplaza el fichero.
+// filesUpload valida el destino y el tamaño, descarga del panel por GET /agent/transfer/{id} y
+// escribe de forma atómica en streaming. Un cuerpo truncado nunca reemplaza el fichero y nada
+// supera UPLOAD_MAX_BYTES, tampoco una subida sin tamaño conocido (size = -1 y chunked).
 func (a *App) filesUpload(ctx context.Context, fsys *files.FS, m *mcsmv1.FilesUpload) error {
-	if err := fsys.CheckWrite(m.Path); err != nil { // fallar antes de consumir la transferencia
+	// Todo lo que se puede rechazar sin la transferencia va antes de reclamarla.
+	if err := fsys.CheckWrite(m.Path); err != nil {
 		return err
+	}
+	limit := a.uploadMax()
+	if m.Size > limit {
+		return errUploadTooLarge(limit)
 	}
 	xfer, err := a.transfers()
 	if err != nil {
 		return err
 	}
-	body, size, err := xfer.Get(ctx, m.TransferId)
+	release, err := a.xfer.acquire()
 	if err != nil {
-		return fmt.Errorf("%w: %v", files.ErrTransfer, err)
+		return err
 	}
-	defer body.Close()
-	expected := m.Size
-	if expected < 0 {
-		expected = size
-	}
-	if size >= 0 && expected != size {
-		return fmt.Errorf("%w: el panel anuncia %d bytes y envía %d", files.ErrTransfer, m.Size, size)
-	}
-	_, err = fsys.WriteFrom(m.Path, body, expected)
-	return err
+	defer release()
+	return a.withIdleGuard(ctx, func(ctx context.Context, track func(io.Reader) io.Reader) error {
+		body, size, err := xfer.Get(ctx, m.TransferId)
+		if err != nil {
+			return fmt.Errorf("%w: %v", files.ErrTransfer, err)
+		}
+		defer body.Close()
+		expected := m.Size
+		if expected < 0 {
+			expected = size
+		}
+		if size >= 0 && expected != size {
+			return fmt.Errorf("%w: el panel anuncia %d bytes y envía %d", files.ErrTransfer, m.Size, size)
+		}
+		if expected > limit {
+			return errUploadTooLarge(limit)
+		}
+		src := track(body)
+		var capped *capReader
+		if expected < 0 { // sin tamaño: WriteFrom no pondría tope
+			capped = &capReader{r: src, left: limit}
+			src = capped
+		}
+		_, err = fsys.WriteFrom(m.Path, src, expected)
+		if err != nil && capped != nil && capped.over {
+			return errUploadTooLarge(limit)
+		}
+		return err
+	})
 }

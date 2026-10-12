@@ -6,12 +6,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -465,4 +467,61 @@ func TestTransferStreamsWithoutBuffering(t *testing.T) {
 	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 8<<20 {
 		t.Fatalf("se reservaron %d bytes para mover 2×64 MiB: no está en streaming", alloc)
 	}
+}
+
+// assertScrubbed comprueba que un error de red no lleva lo que identifica la conexión: el
+// mensaje acaba en el navegador (Error del agente → 502 con su texto).
+func assertScrubbed(t *testing.T, what string, err error, secrets ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("%s: debe fallar", what)
+	}
+	for _, s := range append(secrets, tid, "/agent/transfer", "127.0.0.1") {
+		if strings.Contains(err.Error(), s) {
+			t.Fatalf("%s: el error filtra %q: %v", what, s, err)
+		}
+	}
+}
+
+// Los errores de red no llevan la URL (con el transfer_id) ni direcciones IP o puertos, y
+// conservan la causa para errors.Is.
+func TestTransferNetworkErrorsHideURLAndAddresses(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	_, port, _ := net.SplitHostPort(addr)
+	ln.Close() // nadie escucha: conexión rechazada
+	c := NewTransferClient("http://"+addr, "tok")
+	_, _, err = c.Get(context.Background(), tid)
+	assertScrubbed(t, "GET rechazado", err, port)
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Fatalf("GET rechazado: la causa se pierde: %v", err)
+	}
+	err = c.Put(context.Background(), tid, strings.NewReader("x"), 1)
+	assertScrubbed(t, "PUT rechazado", err, port)
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Fatalf("PUT rechazado: la causa se pierde: %v", err)
+	}
+
+	// El panel corta la conexión con RST a mitad del cuerpo.
+	srv := transferPanel(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		_, _ = w.Write(make([]byte, 10))
+		w.(http.Flusher).Flush()
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		_ = conn.(*net.TCPConn).SetLinger(0)
+		_ = conn.Close()
+	})
+	body, _, err := NewTransferClient(srv.URL, "tok").Get(context.Background(), tid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer body.Close()
+	_, err = io.ReadAll(body)
+	assertScrubbed(t, "cuerpo cortado", err)
 }

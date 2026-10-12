@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -86,7 +87,7 @@ func (c *TransferClient) do(ctx context.Context, method, id string, body io.Read
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, netCause(err)
 	}
 	if err := c.statusErr(resp); err != nil {
 		resp.Body.Close()
@@ -141,7 +142,39 @@ func (c *TransferClient) Get(ctx context.Context, id string) (io.ReadCloser, int
 	if err != nil {
 		return nil, 0, err
 	}
-	return resp.Body, resp.ContentLength, nil
+	return scrubBody{resp.Body}, resp.ContentLength, nil
+}
+
+// netCause deja de un error de red solo su causa: sin la URL de *url.Error (lleva el
+// transfer_id) ni las direcciones de *net.OpError y *net.DNSError. El mensaje acaba en el
+// navegador (Error del agente → 502 con su texto). errors.Is sigue viendo la causa
+// (context.Canceled, ECONNREFUSED, io.ErrUnexpectedEOF…).
+func netCause(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) && ue.Err != nil {
+		err = ue.Err
+	}
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return fmt.Errorf("no se puede resolver el nombre del panel: %s", dns.Err)
+	}
+	var op *net.OpError
+	if errors.As(err, &op) && op.Err != nil {
+		return op.Err
+	}
+	return err
+}
+
+// scrubBody limpia con netCause los errores de lectura del cuerpo (un RST del panel a mitad
+// trae las direcciones de la conexión).
+type scrubBody struct{ io.ReadCloser }
+
+func (b scrubBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil && err != io.EOF {
+		err = netCause(err)
+	}
+	return n, err
 }
 
 // readerOnly oculta Close (y cualquier otro método) del cuerpo del llamante.

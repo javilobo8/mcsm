@@ -72,6 +72,8 @@ type App struct {
 	forced  map[string]bool // reconciliaciones pedidas sin backoff (SyncSpecs), pendientes de ejecutar
 	sem     chan struct{}
 	bg      sync.WaitGroup // tareas de fondo (sincronización y despachos)
+
+	xfer transferGate // transferencias de archivos en curso (files.go)
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.

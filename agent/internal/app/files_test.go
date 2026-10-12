@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -347,6 +348,254 @@ func TestFilesListNonUTF8NameStillMarshals(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("list = %+v", e)
+	}
+}
+
+// chunked envía data sin Content-Length (Transfer-Encoding: chunked).
+func chunked(data []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		half := len(data) / 2
+		_, _ = w.Write(data[:half])
+		w.(http.Flusher).Flush() // ya sin Content-Length
+		_, _ = w.Write(data[half:])
+	}
+}
+
+// Sin tamaño conocido (FilesUpload.size = -1 y respuesta chunked) la subida tiene un tope
+// duro: un origen sin fin no llena el disco del nodo.
+func TestFilesUploadUnknownSizeIsCapped(t *testing.T) {
+	a, root := filesApp(t)
+	a.cfg.UploadMax = 1000
+	panelFor(t, a, chunked(bytes.Repeat([]byte("x"), 2000)))
+	e := call(t, a, &mcsmv1.Envelope{Id: 17, Body: &mcsmv1.Envelope_FilesUpload{FilesUpload: &mcsmv1.FilesUpload{ServerId: "a", Path: "mods/sin-fin.jar", TransferId: xferID, Size: -1}}})
+	if errCode(e) != "too_large" {
+		t.Fatalf("resp = %+v", e)
+	}
+	if _, err := os.Stat(filepath.Join(root, "mods", "sin-fin.jar")); !os.IsNotExist(err) {
+		t.Fatalf("no debe quedar el fichero: %v", err)
+	}
+	if left := tmpFiles(t, filepath.Join(root, "mods")); len(left) != 0 {
+		t.Fatalf("quedan temporales: %v", left)
+	}
+}
+
+// Una subida chunked dentro del tope se escribe entera.
+func TestFilesUploadUnknownSizeWithinCap(t *testing.T) {
+	a, root := filesApp(t)
+	a.cfg.UploadMax = 1000
+	panelFor(t, a, chunked(bytes.Repeat([]byte("y"), 1000)))
+	e := call(t, a, &mcsmv1.Envelope{Id: 18, Body: &mcsmv1.Envelope_FilesUpload{FilesUpload: &mcsmv1.FilesUpload{ServerId: "a", Path: "mods/ok.jar", TransferId: xferID, Size: -1}}})
+	if e.GetAck() == nil {
+		t.Fatalf("resp = %+v", e)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "mods", "ok.jar")); len(b) != 1000 {
+		t.Fatalf("escritos %d bytes", len(b))
+	}
+}
+
+// Un tamaño anunciado por encima del tope se rechaza sin consumir la transferencia.
+func TestFilesUploadKnownSizeOverCapDoesNotConsumeTransfer(t *testing.T) {
+	a, _ := filesApp(t)
+	a.cfg.UploadMax = 1000
+	var hit atomic.Bool
+	panelFor(t, a, func(w http.ResponseWriter, r *http.Request) { hit.Store(true) })
+	e := call(t, a, &mcsmv1.Envelope{Id: 19, Body: &mcsmv1.Envelope_FilesUpload{FilesUpload: &mcsmv1.FilesUpload{ServerId: "a", Path: "mods/x.jar", TransferId: xferID, Size: 1001}}})
+	if errCode(e) != "too_large" || hit.Load() {
+		t.Fatalf("resp = %+v, transferencia consumida = %v", e, hit.Load())
+	}
+}
+
+func TestLoadConfigUploadMax(t *testing.T) {
+	t.Setenv("PANEL_URL", "http://p")
+	t.Setenv("UPLOAD_MAX_BYTES", "")
+	cfg, err := LoadConfig("x")
+	if err != nil || cfg.UploadMax != 4<<30 {
+		t.Fatalf("por defecto: cfg.UploadMax=%d err=%v", cfg.UploadMax, err)
+	}
+	t.Setenv("UPLOAD_MAX_BYTES", "1048576")
+	if cfg, err = LoadConfig("x"); err != nil || cfg.UploadMax != 1<<20 {
+		t.Fatalf("cfg.UploadMax=%d err=%v", cfg.UploadMax, err)
+	}
+	for _, bad := range []string{"0", "-5", "4G", "abc"} {
+		t.Setenv("UPLOAD_MAX_BYTES", bad)
+		if _, err := LoadConfig("x"); err == nil {
+			t.Fatalf("UPLOAD_MAX_BYTES=%q debe fallar", bad)
+		}
+	}
+}
+
+// El nodo atiende como mucho maxTransfers transferencias a la vez; la siguiente recibe busy
+// al instante y sin consumir su transferencia. Al terminar una, hay sitio otra vez.
+func TestFilesTransfersAreLimited(t *testing.T) {
+	a, root := filesApp(t)
+	hits := make(chan string, 2*maxTransfers)
+	release := make(chan struct{})
+	panelFor(t, a, func(w http.ResponseWriter, r *http.Request) {
+		hits <- r.Method
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		if r.Method == http.MethodPut {
+			_, _ = io.Copy(io.Discard, r.Body)
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Length", "1")
+		_, _ = w.Write([]byte("z"))
+	})
+	var once sync.Once
+	open := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(open) // antes que srv.Close (orden inverso)
+	s := newSink()
+	for i := 1; i <= maxTransfers; i++ {
+		go a.Handle(context.Background(), &mcsmv1.Envelope{Id: uint64(i), Body: &mcsmv1.Envelope_FilesUpload{FilesUpload: &mcsmv1.FilesUpload{ServerId: "a", Path: "mods/" + strconv.Itoa(i) + ".jar", TransferId: xferID, Size: 1}}}, s.send)
+	}
+	for i := 0; i < maxTransfers; i++ {
+		select {
+		case <-hits:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("solo %d transferencias en curso", i)
+		}
+	}
+	// Las 4 tienen hueco y están en el panel: una subida y una descarga más no caben. Van en
+	// goroutines para que, si el límite fallara, el test falle a los 3 s y no al plazo HTTP.
+	extra := newSink()
+	go a.Handle(context.Background(), &mcsmv1.Envelope{Id: 10, Body: &mcsmv1.Envelope_FilesUpload{FilesUpload: &mcsmv1.FilesUpload{ServerId: "a", Path: "mods/extra.jar", TransferId: xferID, Size: 1}}}, extra.send)
+	if e := extra.waitID(t, 10); errCode(e) != "busy" {
+		t.Fatalf("subida de más = %+v", e)
+	}
+	go a.Handle(context.Background(), &mcsmv1.Envelope{Id: 11, Body: &mcsmv1.Envelope_FilesDownload{FilesDownload: &mcsmv1.FilesDownload{ServerId: "a", Path: "server.properties", TransferId: xferID}}}, extra.send)
+	if e := extra.waitID(t, 11); errCode(e) != "busy" {
+		t.Fatalf("descarga de más = %+v", e)
+	}
+	if len(hits) != 0 {
+		t.Fatal("las rechazadas no deben consumir su transferencia")
+	}
+	// Las operaciones inline no cuentan.
+	if e := call(t, a, &mcsmv1.Envelope{Id: 12, Body: &mcsmv1.Envelope_FilesList{FilesList: &mcsmv1.FilesList{ServerId: "a", Path: "/"}}}); e.GetFilesListResult() == nil {
+		t.Fatalf("list = %+v", e)
+	}
+	open()
+	for i := 0; i < maxTransfers; i++ {
+		if e := s.next(t); e.GetAck() == nil {
+			t.Fatalf("resp = %+v", e)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "mods", "1.jar")); string(b) != "z" {
+		t.Fatalf("subido = %q", b)
+	}
+	if e := call(t, a, &mcsmv1.Envelope{Id: 13, Body: &mcsmv1.Envelope_FilesDownload{FilesDownload: &mcsmv1.FilesDownload{ServerId: "a", Path: "server.properties", TransferId: xferID}}}); e.GetAck() == nil {
+		t.Fatalf("tras liberar = %+v", e)
+	}
+}
+
+// fakeIdle sustituye el reloj del vigilante de inactividad: cada periodo es un canal que el
+// test dispara a mano.
+func fakeIdle(a *App) chan chan time.Time {
+	timers := make(chan chan time.Time, 16)
+	a.xfer.after = func(time.Duration) <-chan time.Time {
+		ch := make(chan time.Time, 1)
+		timers <- ch
+		return ch
+	}
+	return timers
+}
+
+func nextTimer(t *testing.T, timers chan chan time.Time) chan time.Time {
+	t.Helper()
+	select {
+	case ch := <-timers:
+		return ch
+	case <-time.After(3 * time.Second):
+		t.Fatal("el vigilante de inactividad no arrancó")
+		return nil
+	}
+}
+
+// Una subida que deja de recibir bytes durante un periodo entero se corta; un periodo con
+// progreso no la corta.
+func TestFilesUploadIdleIsCut(t *testing.T) {
+	a, root := filesApp(t)
+	timers := fakeIdle(a)
+	release := make(chan struct{})
+	panelFor(t, a, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		_, _ = w.Write(bytes.Repeat([]byte("x"), 100))
+		w.(http.Flusher).Flush()
+		select { // el panel se cuelga sin cerrar la conexión
+		case <-r.Context().Done():
+		case <-release:
+		}
+	})
+	t.Cleanup(func() { close(release) })
+	s := newSink()
+	go a.Handle(context.Background(), &mcsmv1.Envelope{Id: 20, Body: &mcsmv1.Envelope_FilesUpload{FilesUpload: &mcsmv1.FilesUpload{ServerId: "a", Path: "server.properties", TransferId: xferID, Size: 1000}}}, s.send)
+	first := nextTimer(t, timers)
+	deadline := time.After(3 * time.Second)
+	for len(tmpFiles(t, root)) == 0 || func() bool { info, err := tmpFiles(t, root)[0].Info(); return err != nil || info.Size() != 100 }() {
+		select {
+		case <-deadline:
+			t.Fatal("la subida no empezó a escribir")
+		case <-time.After(time.Millisecond):
+		}
+	}
+	first <- time.Time{}                // hubo progreso en este periodo: sigue
+	nextTimer(t, timers) <- time.Time{} // periodo entero sin bytes: se corta
+	e := s.waitID(t, 20)
+	if errCode(e) != "transfer_failed" || !strings.Contains(e.GetError().GetMessage(), "sin moverse") {
+		t.Fatalf("resp = %+v", e)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "server.properties")); string(b) != "motd=hola\n" {
+		t.Fatalf("el original cambió: %q", b)
+	}
+	if left := tmpFiles(t, root); len(left) != 0 {
+		t.Fatalf("quedan temporales: %v", left)
+	}
+}
+
+// Una descarga cuyo panel deja de leer (o no responde) se corta igual.
+func TestFilesDownloadIdleIsCut(t *testing.T) {
+	a, _ := filesApp(t)
+	timers := fakeIdle(a)
+	read := make(chan struct{})
+	release := make(chan struct{})
+	panelFor(t, a, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadFull(r.Body, make([]byte, 1))
+		close(read)
+		select { // nunca responde
+		case <-r.Context().Done():
+		case <-release:
+		}
+	})
+	t.Cleanup(func() { close(release) })
+	s := newSink()
+	go a.Handle(context.Background(), &mcsmv1.Envelope{Id: 21, Body: &mcsmv1.Envelope_FilesDownload{FilesDownload: &mcsmv1.FilesDownload{ServerId: "a", Path: "server.properties", TransferId: xferID}}}, s.send)
+	first := nextTimer(t, timers)
+	select {
+	case <-read:
+	case <-time.After(3 * time.Second):
+		t.Fatal("el panel no recibió nada")
+	}
+	first <- time.Time{}
+	nextTimer(t, timers) <- time.Time{}
+	if e := s.waitID(t, 21); errCode(e) != "transfer_failed" || !strings.Contains(e.GetError().GetMessage(), "sin moverse") {
+		t.Fatalf("resp = %+v", e)
+	}
+}
+
+// El Error que llega al panel (y al navegador) no lleva la URL, el transfer_id ni la IP.
+func TestFilesTransferErrorHidesURL(t *testing.T) {
+	a, _ := filesApp(t)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	addr := srv.Listener.Addr().String()
+	srv.Close() // nadie escucha
+	a.cfg.PanelURL = "http://" + addr
+	e := call(t, a, &mcsmv1.Envelope{Id: 22, Body: &mcsmv1.Envelope_FilesDownload{FilesDownload: &mcsmv1.FilesDownload{ServerId: "a", Path: "server.properties", TransferId: xferID}}})
+	msg := e.GetError().GetMessage()
+	if errCode(e) != "transfer_failed" || strings.Contains(msg, xferID) || strings.Contains(msg, addr) || strings.Contains(msg, "127.0.0.1") {
+		t.Fatalf("resp = %+v", e)
 	}
 }
 
