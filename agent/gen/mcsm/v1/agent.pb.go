@@ -275,6 +275,9 @@ type Envelope struct {
 	//	*Envelope_FilesDelete
 	//	*Envelope_FilesDownload
 	//	*Envelope_FilesUpload
+	//	*Envelope_ImportScan
+	//	*Envelope_ImportScanResult
+	//	*Envelope_ImportAdopt
 	Body          isEnvelope_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -646,6 +649,33 @@ func (x *Envelope) GetFilesUpload() *FilesUpload {
 	return nil
 }
 
+func (x *Envelope) GetImportScan() *ImportScan {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_ImportScan); ok {
+			return x.ImportScan
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetImportScanResult() *ImportScanResult {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_ImportScanResult); ok {
+			return x.ImportScanResult
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetImportAdopt() *ImportAdopt {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_ImportAdopt); ok {
+			return x.ImportAdopt
+		}
+	}
+	return nil
+}
+
 type isEnvelope_Body interface {
 	isEnvelope_Body()
 }
@@ -794,6 +824,19 @@ type Envelope_FilesUpload struct {
 	FilesUpload *FilesUpload `protobuf:"bytes,81,opt,name=files_upload,json=filesUpload,proto3,oneof"`
 }
 
+type Envelope_ImportScan struct {
+	// ── plan-6 ──
+	ImportScan *ImportScan `protobuf:"bytes,90,opt,name=import_scan,json=importScan,proto3,oneof"`
+}
+
+type Envelope_ImportScanResult struct {
+	ImportScanResult *ImportScanResult `protobuf:"bytes,91,opt,name=import_scan_result,json=importScanResult,proto3,oneof"`
+}
+
+type Envelope_ImportAdopt struct {
+	ImportAdopt *ImportAdopt `protobuf:"bytes,92,opt,name=import_adopt,json=importAdopt,proto3,oneof"`
+}
+
 func (*Envelope_Hello) isEnvelope_Body() {}
 
 func (*Envelope_HelloAck) isEnvelope_Body() {}
@@ -863,6 +906,12 @@ func (*Envelope_FilesDelete) isEnvelope_Body() {}
 func (*Envelope_FilesDownload) isEnvelope_Body() {}
 
 func (*Envelope_FilesUpload) isEnvelope_Body() {}
+
+func (*Envelope_ImportScan) isEnvelope_Body() {}
+
+func (*Envelope_ImportScanResult) isEnvelope_Body() {}
+
+func (*Envelope_ImportAdopt) isEnvelope_Body() {}
 
 type HostInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1883,6 +1932,8 @@ func (*Ack) Descriptor() ([]byte, []int) {
 //	not_dir          era una carpeta y es un fichero                    400
 //	transfer_failed  subida/descarga fallida                            502
 //	io_error         error de E/S del host                              502
+//	external_data    los datos del servidor están fuera de DATA_ROOT (dataPath):  409
+//	                 sin copias de seguridad ni archivos (Plan 6)
 //	apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
 //	                 del agente o de Docker (spec §10)
 //	backup_failed    fallo de una copia, restauración o borrado de copias  502
@@ -3702,11 +3753,440 @@ func (x *FilesUpload) GetSize() int64 {
 	return 0
 }
 
+// Panel → agente. Lista los contenedores cuya imagen es itzg/minecraft-server, sin la etiqueta
+// mcsm.managed y que este agente no haya adoptado ya. Respuesta: ImportScanResult, o Error.
+type ImportScan struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportScan) Reset() {
+	*x = ImportScan{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportScan) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportScan) ProtoMessage() {}
+
+func (x *ImportScan) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportScan.ProtoReflect.Descriptor instead.
+func (*ImportScan) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{45}
+}
+
+type ImportScanResult struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Candidates []*ImportCandidate     `protobuf:"bytes,1,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	// DATA_ROOT del agente: el panel decide con él si los datos de un candidato están en
+	// <DATA_ROOT>/<slug>/data o necesitan dataPath.
+	DataRoot      string `protobuf:"bytes,2,opt,name=data_root,json=dataRoot,proto3" json:"data_root,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportScanResult) Reset() {
+	*x = ImportScanResult{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportScanResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportScanResult) ProtoMessage() {}
+
+func (x *ImportScanResult) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportScanResult.ProtoReflect.Descriptor instead.
+func (*ImportScanResult) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *ImportScanResult) GetCandidates() []*ImportCandidate {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
+func (x *ImportScanResult) GetDataRoot() string {
+	if x != nil {
+		return x.DataRoot
+	}
+	return ""
+}
+
+// Inspect reducido de un contenedor importable. `env` lleva solo lo que fijó el usuario (sin las
+// variables idénticas al ENV de la imagen) e INCLUYE secretos (RCON_PASSWORD, CF_API_KEY): el
+// panel no los reenvía al navegador ni los registra.
+type ImportCandidate struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ContainerId      string                 `protobuf:"bytes,1,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"` // id completo
+	Name             string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                  // sin "/" inicial
+	Image            string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`                                // Config.Image tal cual (itzg/minecraft-server:java21)
+	State            string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`                                // created|running|restarting|exited|paused|dead
+	Env              map[string]string      `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Ports            []*ImportPort          `protobuf:"bytes,6,rep,name=ports,proto3" json:"ports,omitempty"` // publicaciones configuradas (HostConfig.PortBindings)
+	Mounts           []*ImportMount         `protobuf:"bytes,7,rep,name=mounts,proto3" json:"mounts,omitempty"`
+	RestartPolicy    string                 `protobuf:"bytes,8,opt,name=restart_policy,json=restartPolicy,proto3" json:"restart_policy,omitempty"`             // no|always|unless-stopped|on-failure ("" = no)
+	MemoryLimitBytes int64                  `protobuf:"varint,9,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"` // 0 = sin límite
+	NanoCpus         int64                  `protobuf:"varint,10,opt,name=nano_cpus,json=nanoCpus,proto3" json:"nano_cpus,omitempty"`                          // 0 = sin límite
+	NetworkMode      string                 `protobuf:"bytes,11,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`                  // bridge|host|none|container:<id>|<red de usuario>
+	Networks         []string               `protobuf:"bytes,12,rep,name=networks,proto3" json:"networks,omitempty"`
+	Labels           map[string]string      `protobuf:"bytes,13,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // solo com.docker.compose.project y com.docker.compose.service
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ImportCandidate) Reset() {
+	*x = ImportCandidate{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportCandidate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportCandidate) ProtoMessage() {}
+
+func (x *ImportCandidate) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportCandidate.ProtoReflect.Descriptor instead.
+func (*ImportCandidate) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *ImportCandidate) GetContainerId() string {
+	if x != nil {
+		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *ImportCandidate) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ImportCandidate) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *ImportCandidate) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *ImportCandidate) GetEnv() map[string]string {
+	if x != nil {
+		return x.Env
+	}
+	return nil
+}
+
+func (x *ImportCandidate) GetPorts() []*ImportPort {
+	if x != nil {
+		return x.Ports
+	}
+	return nil
+}
+
+func (x *ImportCandidate) GetMounts() []*ImportMount {
+	if x != nil {
+		return x.Mounts
+	}
+	return nil
+}
+
+func (x *ImportCandidate) GetRestartPolicy() string {
+	if x != nil {
+		return x.RestartPolicy
+	}
+	return ""
+}
+
+func (x *ImportCandidate) GetMemoryLimitBytes() int64 {
+	if x != nil {
+		return x.MemoryLimitBytes
+	}
+	return 0
+}
+
+func (x *ImportCandidate) GetNanoCpus() int64 {
+	if x != nil {
+		return x.NanoCpus
+	}
+	return 0
+}
+
+func (x *ImportCandidate) GetNetworkMode() string {
+	if x != nil {
+		return x.NetworkMode
+	}
+	return ""
+}
+
+func (x *ImportCandidate) GetNetworks() []string {
+	if x != nil {
+		return x.Networks
+	}
+	return nil
+}
+
+func (x *ImportCandidate) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+type ImportPort struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ContainerPort uint32                 `protobuf:"varint,1,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
+	Proto         string                 `protobuf:"bytes,2,opt,name=proto,proto3" json:"proto,omitempty"`                        // tcp|udp
+	HostIp        string                 `protobuf:"bytes,3,opt,name=host_ip,json=hostIp,proto3" json:"host_ip,omitempty"`        // "" = todas las interfaces
+	HostPort      uint32                 `protobuf:"varint,4,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"` // 0 = efímero
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportPort) Reset() {
+	*x = ImportPort{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportPort) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportPort) ProtoMessage() {}
+
+func (x *ImportPort) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportPort.ProtoReflect.Descriptor instead.
+func (*ImportPort) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *ImportPort) GetContainerPort() uint32 {
+	if x != nil {
+		return x.ContainerPort
+	}
+	return 0
+}
+
+func (x *ImportPort) GetProto() string {
+	if x != nil {
+		return x.Proto
+	}
+	return ""
+}
+
+func (x *ImportPort) GetHostIp() string {
+	if x != nil {
+		return x.HostIp
+	}
+	return ""
+}
+
+func (x *ImportPort) GetHostPort() uint32 {
+	if x != nil {
+		return x.HostPort
+	}
+	return 0
+}
+
+type ImportMount struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`     // bind|volume|tmpfs…
+	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"` // ruta del host (bind) o del volumen
+	Destination   string                 `protobuf:"bytes,3,opt,name=destination,proto3" json:"destination,omitempty"`
+	ReadWrite     bool                   `protobuf:"varint,4,opt,name=read_write,json=readWrite,proto3" json:"read_write,omitempty"`
+	Name          string                 `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"` // nombre del volumen
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportMount) Reset() {
+	*x = ImportMount{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportMount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportMount) ProtoMessage() {}
+
+func (x *ImportMount) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportMount.ProtoReflect.Descriptor instead.
+func (*ImportMount) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *ImportMount) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *ImportMount) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *ImportMount) GetDestination() string {
+	if x != nil {
+		return x.Destination
+	}
+	return ""
+}
+
+func (x *ImportMount) GetReadWrite() bool {
+	if x != nil {
+		return x.ReadWrite
+	}
+	return false
+}
+
+func (x *ImportMount) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+// Panel → agente. Adopta un contenedor sin recrearlo. server.spec_json lleva "adopt":
+// {"containerId", "version"} (lo añade el panel). El agente comprueba que el contenedor existe,
+// no es de MC Server Manager, usa la imagen itzg y monta en /data la carpeta de la spec; lo
+// conecta a su red con el alias mcsm-<slug> y guarda spec y adopción. Respuesta: Ack, o Error con
+// not_found (no existe), exists (gestionado o adoptado por otro servidor), invalid_request (no es
+// itzg, red host/none/container o /data distinto), invalid_spec o apply_failed (Docker).
+type ImportAdopt struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Server        *ServerSpec            `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ImportAdopt) Reset() {
+	*x = ImportAdopt{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ImportAdopt) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ImportAdopt) ProtoMessage() {}
+
+func (x *ImportAdopt) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ImportAdopt.ProtoReflect.Descriptor instead.
+func (*ImportAdopt) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{50}
+}
+
+func (x *ImportAdopt) GetServer() *ServerSpec {
+	if x != nil {
+		return x.Server
+	}
+	return nil
+}
+
 var File_mcsm_v1_agent_proto protoreflect.FileDescriptor
 
 const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xb5\x10\n" +
+	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xf3\x11\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tstream_id\x18\x02 \x01(\x04R\bstreamId\x12&\n" +
@@ -3754,7 +4234,11 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\ffiles_rename\x18N \x01(\v2\x14.mcsm.v1.FilesRenameH\x00R\vfilesRename\x129\n" +
 	"\ffiles_delete\x18O \x01(\v2\x14.mcsm.v1.FilesDeleteH\x00R\vfilesDelete\x12?\n" +
 	"\x0efiles_download\x18P \x01(\v2\x16.mcsm.v1.FilesDownloadH\x00R\rfilesDownload\x129\n" +
-	"\ffiles_upload\x18Q \x01(\v2\x14.mcsm.v1.FilesUploadH\x00R\vfilesUploadB\x06\n" +
+	"\ffiles_upload\x18Q \x01(\v2\x14.mcsm.v1.FilesUploadH\x00R\vfilesUpload\x126\n" +
+	"\vimport_scan\x18Z \x01(\v2\x13.mcsm.v1.ImportScanH\x00R\n" +
+	"importScan\x12I\n" +
+	"\x12import_scan_result\x18[ \x01(\v2\x19.mcsm.v1.ImportScanResultH\x00R\x10importScanResult\x129\n" +
+	"\fimport_adopt\x18\\ \x01(\v2\x14.mcsm.v1.ImportAdoptH\x00R\vimportAdoptB\x06\n" +
 	"\x04body\"\x86\x01\n" +
 	"\bHostInfo\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x12\n" +
@@ -3974,7 +4458,50 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1f\n" +
 	"\vtransfer_id\x18\x03 \x01(\tR\n" +
 	"transferId\x12\x12\n" +
-	"\x04size\x18\x04 \x01(\x03R\x04size*c\n" +
+	"\x04size\x18\x04 \x01(\x03R\x04size\"\f\n" +
+	"\n" +
+	"ImportScan\"i\n" +
+	"\x10ImportScanResult\x128\n" +
+	"\n" +
+	"candidates\x18\x01 \x03(\v2\x18.mcsm.v1.ImportCandidateR\n" +
+	"candidates\x12\x1b\n" +
+	"\tdata_root\x18\x02 \x01(\tR\bdataRoot\"\xe4\x04\n" +
+	"\x0fImportCandidate\x12!\n" +
+	"\fcontainer_id\x18\x01 \x01(\tR\vcontainerId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
+	"\x05image\x18\x03 \x01(\tR\x05image\x12\x14\n" +
+	"\x05state\x18\x04 \x01(\tR\x05state\x123\n" +
+	"\x03env\x18\x05 \x03(\v2!.mcsm.v1.ImportCandidate.EnvEntryR\x03env\x12)\n" +
+	"\x05ports\x18\x06 \x03(\v2\x13.mcsm.v1.ImportPortR\x05ports\x12,\n" +
+	"\x06mounts\x18\a \x03(\v2\x14.mcsm.v1.ImportMountR\x06mounts\x12%\n" +
+	"\x0erestart_policy\x18\b \x01(\tR\rrestartPolicy\x12,\n" +
+	"\x12memory_limit_bytes\x18\t \x01(\x03R\x10memoryLimitBytes\x12\x1b\n" +
+	"\tnano_cpus\x18\n" +
+	" \x01(\x03R\bnanoCpus\x12!\n" +
+	"\fnetwork_mode\x18\v \x01(\tR\vnetworkMode\x12\x1a\n" +
+	"\bnetworks\x18\f \x03(\tR\bnetworks\x12<\n" +
+	"\x06labels\x18\r \x03(\v2$.mcsm.v1.ImportCandidate.LabelsEntryR\x06labels\x1a6\n" +
+	"\bEnvEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x7f\n" +
+	"\n" +
+	"ImportPort\x12%\n" +
+	"\x0econtainer_port\x18\x01 \x01(\rR\rcontainerPort\x12\x14\n" +
+	"\x05proto\x18\x02 \x01(\tR\x05proto\x12\x17\n" +
+	"\ahost_ip\x18\x03 \x01(\tR\x06hostIp\x12\x1b\n" +
+	"\thost_port\x18\x04 \x01(\rR\bhostPort\"\x8e\x01\n" +
+	"\vImportMount\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x12 \n" +
+	"\vdestination\x18\x03 \x01(\tR\vdestination\x12\x1d\n" +
+	"\n" +
+	"read_write\x18\x04 \x01(\bR\treadWrite\x12\x12\n" +
+	"\x04name\x18\x05 \x01(\tR\x04name\":\n" +
+	"\vImportAdopt\x12+\n" +
+	"\x06server\x18\x01 \x01(\v2\x13.mcsm.v1.ServerSpecR\x06server*c\n" +
 	"\fDesiredState\x12\x1d\n" +
 	"\x19DESIRED_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15DESIRED_STATE_RUNNING\x10\x01\x12\x19\n" +
@@ -4012,7 +4539,7 @@ func file_mcsm_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
+var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 55)
 var file_mcsm_v1_agent_proto_goTypes = []any{
 	(DesiredState)(0),          // 0: mcsm.v1.DesiredState
 	(PowerActionType)(0),       // 1: mcsm.v1.PowerActionType
@@ -4063,8 +4590,16 @@ var file_mcsm_v1_agent_proto_goTypes = []any{
 	(*FilesDelete)(nil),        // 46: mcsm.v1.FilesDelete
 	(*FilesDownload)(nil),      // 47: mcsm.v1.FilesDownload
 	(*FilesUpload)(nil),        // 48: mcsm.v1.FilesUpload
-	nil,                        // 49: mcsm.v1.Hello.SpecVersionsEntry
-	nil,                        // 50: mcsm.v1.Hello.DesiredStatesEntry
+	(*ImportScan)(nil),         // 49: mcsm.v1.ImportScan
+	(*ImportScanResult)(nil),   // 50: mcsm.v1.ImportScanResult
+	(*ImportCandidate)(nil),    // 51: mcsm.v1.ImportCandidate
+	(*ImportPort)(nil),         // 52: mcsm.v1.ImportPort
+	(*ImportMount)(nil),        // 53: mcsm.v1.ImportMount
+	(*ImportAdopt)(nil),        // 54: mcsm.v1.ImportAdopt
+	nil,                        // 55: mcsm.v1.Hello.SpecVersionsEntry
+	nil,                        // 56: mcsm.v1.Hello.DesiredStatesEntry
+	nil,                        // 57: mcsm.v1.ImportCandidate.EnvEntry
+	nil,                        // 58: mcsm.v1.ImportCandidate.LabelsEntry
 }
 var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	6,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
@@ -4102,32 +4637,41 @@ var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	46, // 32: mcsm.v1.Envelope.files_delete:type_name -> mcsm.v1.FilesDelete
 	47, // 33: mcsm.v1.Envelope.files_download:type_name -> mcsm.v1.FilesDownload
 	48, // 34: mcsm.v1.Envelope.files_upload:type_name -> mcsm.v1.FilesUpload
-	5,  // 35: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
-	49, // 36: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
-	50, // 37: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
-	0,  // 38: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
-	8,  // 39: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
-	8,  // 40: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
-	1,  // 41: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
-	18, // 42: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
-	19, // 43: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
-	24, // 44: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
-	25, // 45: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
-	2,  // 46: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
-	2,  // 47: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
-	26, // 48: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
-	35, // 49: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
-	26, // 50: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
-	3,  // 51: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
-	3,  // 52: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
-	36, // 53: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
-	36, // 54: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
-	0,  // 55: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
-	56, // [56:56] is the sub-list for method output_type
-	56, // [56:56] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	49, // 35: mcsm.v1.Envelope.import_scan:type_name -> mcsm.v1.ImportScan
+	50, // 36: mcsm.v1.Envelope.import_scan_result:type_name -> mcsm.v1.ImportScanResult
+	54, // 37: mcsm.v1.Envelope.import_adopt:type_name -> mcsm.v1.ImportAdopt
+	5,  // 38: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
+	55, // 39: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
+	56, // 40: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
+	0,  // 41: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
+	8,  // 42: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
+	8,  // 43: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
+	1,  // 44: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
+	18, // 45: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
+	19, // 46: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
+	24, // 47: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
+	25, // 48: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
+	2,  // 49: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
+	2,  // 50: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
+	26, // 51: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
+	35, // 52: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
+	26, // 53: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
+	3,  // 54: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
+	3,  // 55: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
+	36, // 56: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
+	36, // 57: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
+	51, // 58: mcsm.v1.ImportScanResult.candidates:type_name -> mcsm.v1.ImportCandidate
+	57, // 59: mcsm.v1.ImportCandidate.env:type_name -> mcsm.v1.ImportCandidate.EnvEntry
+	52, // 60: mcsm.v1.ImportCandidate.ports:type_name -> mcsm.v1.ImportPort
+	53, // 61: mcsm.v1.ImportCandidate.mounts:type_name -> mcsm.v1.ImportMount
+	58, // 62: mcsm.v1.ImportCandidate.labels:type_name -> mcsm.v1.ImportCandidate.LabelsEntry
+	8,  // 63: mcsm.v1.ImportAdopt.server:type_name -> mcsm.v1.ServerSpec
+	0,  // 64: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	65, // [65:65] is the sub-list for method output_type
+	65, // [65:65] is the sub-list for method input_type
+	65, // [65:65] is the sub-list for extension type_name
+	65, // [65:65] is the sub-list for extension extendee
+	0,  // [0:65] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }
@@ -4171,6 +4715,9 @@ func file_mcsm_v1_agent_proto_init() {
 		(*Envelope_FilesDelete)(nil),
 		(*Envelope_FilesDownload)(nil),
 		(*Envelope_FilesUpload)(nil),
+		(*Envelope_ImportScan)(nil),
+		(*Envelope_ImportScanResult)(nil),
+		(*Envelope_ImportAdopt)(nil),
 	}
 	file_mcsm_v1_agent_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
@@ -4179,7 +4726,7 @@ func file_mcsm_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mcsm_v1_agent_proto_rawDesc), len(file_mcsm_v1_agent_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   47,
+			NumMessages:   55,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -32,6 +32,8 @@ const STATUS_BY_CODE: Record<string, number> = {
   [AgentErrorCode.NotDir]: 400,
   [AgentErrorCode.TransferFailed]: 502,
   [AgentErrorCode.IoError]: 502,
+  // Importación (Plan 6): servidor con los datos fuera de DATA_ROOT.
+  [AgentErrorCode.ExternalData]: 409,
 };
 
 /**
