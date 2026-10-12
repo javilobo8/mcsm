@@ -48,6 +48,22 @@ function getFirstChunk(path: string, token: string): Promise<{ req: http.ClientR
   });
 }
 
+/**
+ * GET crudo como el del agente (sin keep-alive, como su cliente Go): estado, bytes recibidos y si
+ * la respuesta llegó completa según su Content-Length. Un corte antes de las cabeceras es estado 0.
+ */
+function agentGet(path: string, token: string): Promise<{ status: number; body: Buffer; complete: boolean }> {
+  return new Promise((resolve) => {
+    const req = http.get(`${url}${path}`, { headers: { ...auth(token), connection: "close" }, agent: false }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("error", () => {});
+      res.once("close", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks), complete: res.complete }));
+    });
+    req.on("error", () => resolve({ status: 0, body: Buffer.alloc(0), complete: false }));
+  });
+}
+
 /** Se resuelve cuando la respuesta se corta sin terminar (el servidor destruyó la conexión). */
 function cutShort(res: http.IncomingMessage): Promise<boolean> {
   return new Promise((resolve) => {
@@ -239,6 +255,37 @@ describe("GET /agent/transfer/:id (panel → agente)", () => {
     const closed = new Promise((r) => src.once("close", r));
     open();
     await closed; // abierto tarde: se destruye sin servirse
+  });
+
+  it("si la fuente termina con menos bytes de los anunciados, el agente ve el corte y done se rechaza", async () => {
+    const { nodeId, nodeToken } = await enrollNode("nas");
+    const t = app.transfers.outbound(nodeId, async () => ({ stream: Readable.from([Buffer.from("hola")]), size: 10 }));
+    const r = await agentGet(`/agent/transfer/${t.id}`, nodeToken);
+    expect(r.complete).toBe(false);
+    expect(r.body.length).toBeLessThan(10);
+    await expect(t.done).rejects.toMatchObject({ code: "aborted" });
+    expect(app.transfers.activeCount).toBe(0);
+  });
+
+  it("si la fuente entrega más bytes de los anunciados, el agente nunca recibe un cuerpo completo", async () => {
+    const { nodeId, nodeToken } = await enrollNode("nas");
+    // El primer trozo ya completa el tamaño: lo que llega después no puede colarse ni darlo por bueno.
+    for (const chunks of [["0123456789", "de más"], ["0123456789de más"]]) {
+      const t = app.transfers.outbound(nodeId, async () => ({ stream: Readable.from(chunks.map((c) => Buffer.from(c))), size: 10 }));
+      const r = await agentGet(`/agent/transfer/${t.id}`, nodeToken);
+      expect(r.status === 200 && r.complete).toBe(false);
+      await expect(t.done).rejects.toMatchObject({ code: "aborted" });
+    }
+    expect(app.transfers.activeCount).toBe(0);
+  });
+
+  it("un trozo vacío tras completar el tamaño no se come el último trozo", async () => {
+    const { nodeId, nodeToken } = await enrollNode("nas");
+    const t = app.transfers.outbound(nodeId, async () => ({ stream: Readable.from([Buffer.from("hola "), Buffer.from("mundo"), Buffer.alloc(0)]), size: 10 }));
+    const r = await agentGet(`/agent/transfer/${t.id}`, nodeToken);
+    expect(r).toMatchObject({ status: 200, complete: true });
+    expect(r.body.toString()).toBe("hola mundo");
+    await expect(t.done).resolves.toBeUndefined();
   });
 });
 
