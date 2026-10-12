@@ -115,3 +115,37 @@ conocer.)
 
 - Versiones del Plan 1 que no existen en npm: `vitest ^4.3.0` → usa `^4.1.11`;
   `@fastify/static ^8.4.0` → usa `^8.3.0`. El resto de versiones del plan existen.
+- Fastify: decora servicios/repos (`app.nodes`, `app.servers`, `app.agents`,
+  `app.events`, `app.serversService`…) en `buildApp()` o con `fastify-plugin`; nunca
+  dentro de un plugin encapsulado (quedan invisibles para el resto). Las rutas sí van
+  encapsuladas, con su propio `setErrorHandler` si lo necesitan. Errores HTTP:
+  `{ error: "mensaje en castellano" }`; 5xx genéricos ("Error interno") salvo el 502
+  con el texto del agente/Docker, que es intencionado (spec §10).
+- Guard de sesión: decide por la ruta enrutada (`req.routeOptions.url`), no por
+  `req.url` (los paths percent-encoded saltaban la auth). Allowlist pública exacta.
+- `@fastify/websocket` se registra una sola vez en toda la app (antes de `authPlugin`).
+- Migraciones: nunca edites una aplicada; añade una nueva al array (se aplican por
+  nombre, en orden del array).
+- Protocolo agente↔panel: solo `ack`/`error`/`commandResult` con `id≠0` resuelven
+  peticiones del panel; los mensajes no solicitados del agente van con `id=0`.
+  `AgentConn.request/openStream` fallan al instante con `AgentError("disconnected")`.
+  `openStream` registra el stream antes de pedirlo.
+- Agente: usa `rec.Apply(ctx, spec)` (guarda de versión + PutSpec + Reconcile bajo el
+  lock por servidor), nunca PutSpec+Reconcile a mano; `rec.Remove` borra la spec
+  dentro del lock. El observer del reconciliador se invoca con el lock tomado: no
+  reentrar. RCON con cliente Source propio (`internal/mc`), no `mcutil/rcon`.
+- Fake de Docker (`internal/docker/fake.go`): semántica real (puertos se enlazan en
+  Start; Kill sobre parado = conflicto). Mantén `CreateErr`, `Calls`, `Pulled`.
+- WS del navegador: `log_reset {serverId}` precede a la cola de líneas al (re)abrir
+  (la consola se vacía), `log_dropped {serverId,count}`, `error {message}`,
+  `stream_closed`. La web invalida sus queries en `realtime.onReconnect`.
+- Web: shadcn se usa con `pnpm dlx shadcn@3.8.5` (variante Radix), nunca `@latest`.
+  `cn` = clsx + tailwind-merge. Tests con vitest (`pnpm --filter @mcsm/web test`).
+- Validación de spec (Go y zod idénticas): nombres de env `^[A-Za-z_][A-Za-z0-9_]*$`
+  y reservadas; memoria `^[1-9]\d*[MmGg]$`; puertos extra sin container 25575;
+  properties con clave `^[a-z0-9][a-z0-9._-]*$`, sin saltos de línea y sin
+  `server-port`/`enable-rcon`/`rcon.port`/`rcon.password`; `imageTag` por defecto
+  `latest`. Slug autogenerado repetido → sufijo `-2`, `-3`…
+- Tests sin `time.Sleep`/`setTimeout` para sincronizar: relojes y planificadores
+  inyectables.
+
