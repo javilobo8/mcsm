@@ -1,6 +1,8 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Db } from "./db/db.js";
 import { config, type Config } from "./config.js";
+import { authPlugin } from "./auth/plugin.js";
+import { authRoutes } from "./auth/routes.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
 
@@ -12,7 +14,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get("/api/health", async () => ({ ok: true }));
 
-  // Task 11: await app.register(authPlugin); await app.register(authRoutes);
+  await app.register(authPlugin);
+  await app.register(authRoutes);
   // Task 12: await app.register(nodeRoutes);
   // Task 13: app.decorate("agents", new AgentHub()); await app.register(agentRoutes);
   // Task 14: await app.register(serverRoutes);
