@@ -49,7 +49,27 @@ export function upsertJob(list: JobDto[], job: JobDto, f: NormalizedFilter): Job
   if (existing && !supersedes(existing, job)) return list;
   const rest = list.filter((j) => j.id !== job.id);
   if (!matches(job, f)) return rest.length === list.length ? list : rest;
-  return [...rest, job].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).slice(0, MAX_LIST);
+  return [...rest, job].sort(byCreatedDesc).slice(0, MAX_LIST);
+}
+
+const byCreatedDesc = (a: JobDto, b: JobDto) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0);
+
+/** Fila desplegada de una lista de jobs y el filtro (clave de `jobsKey`) con el que se abrió. */
+export interface OpenRow { id: string; filterKey: string }
+
+/** Id de la fila abierta con el filtro actual: al cambiar el filtro (o de servidor) se pliega. */
+export function openRowId(open: OpenRow | null, filterKey: string): string | null {
+  return open && open.filterKey === filterKey ? open.id : null;
+}
+
+/**
+ * Filas que muestra la lista: las del filtro y, si la fila abierta ya no está (su job terminó con el filtro
+ * «En curso»), esa fila con su último estado conocido (`openJob`, el detalle) en su sitio por fecha, hasta que se
+ * pliegue o cambie el filtro.
+ */
+export function withOpenRow(list: JobDto[], openId: string | null, openJob: JobDto | undefined): JobDto[] {
+  if (!openId || !openJob || openJob.id !== openId || list.some((j) => j.id === openId)) return list;
+  return [...list, openJob].sort(byCreatedDesc);
 }
 
 /** Mismo tope y marca que `capLog` del panel (jobs/service.ts). */

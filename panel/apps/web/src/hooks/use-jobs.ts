@@ -12,8 +12,9 @@ export function useJobs(filter: JobsFilter = {}) {
   return useQuery({ queryKey: jobsKey(filter), queryFn: () => api.get<JobDto[]>(`/api/jobs?${params}`), placeholderData: keepPreviousData });
 }
 
-export function useJob(id: string) {
-  return useQuery({ queryKey: jobKey(id), queryFn: () => api.get<JobDetailDto>(apiPath`/api/jobs/${id}`) });
+/** Detalle de un job (con su log). Sin id no consulta nada. */
+export function useJob(id: string | null) {
+  return useQuery({ queryKey: jobKey(id ?? ""), queryFn: () => api.get<JobDetailDto>(apiPath`/api/jobs/${id ?? ""}`), enabled: id !== null });
 }
 
 /** Mantiene jobs y copias al día con el topic `jobs` mientras el componente esté montado. */

@@ -104,7 +104,7 @@ export function ServerPage() {
         {/* ── plan-3 ── */}
         {/* ── plan-4 ── */}
         <TabsContent value="backups"><BackupsTab server={s} nodeOnline={nodeOnline} /></TabsContent>
-        <TabsContent value="history"><JobList filter={{ serverId: s.id }} showServer={false} /></TabsContent>
+        <TabsContent value="history"><JobList key={s.id} filter={{ serverId: s.id }} showServer={false} /></TabsContent>
         {/* ── plan-5 ── */}
         {/* ── plan-6 ── */}
         {/* ── plan-7 ── */}

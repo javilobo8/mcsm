@@ -8,19 +8,26 @@ import { useJob, useJobs, useJobsLive } from "@/hooks/use-jobs";
 import { useServers } from "@/hooks/use-servers";
 import type { JobDto, JobState } from "@/lib/api";
 import { formatBackupDate } from "@/lib/backups";
-import { formatFinishTime, isActive, JOB_STATUS_LABEL, jobServerName, jobTriggerLabel, jobTypeLabel, type JobsFilter } from "@/lib/jobs";
+import { formatFinishTime, isActive, JOB_STATUS_LABEL, jobsKey, jobServerName, jobTriggerLabel, jobTypeLabel, openRowId, withOpenRow, type JobsFilter, type OpenRow } from "@/lib/jobs";
 
 const VARIANT: Record<JobState, "default" | "secondary" | "destructive" | "outline"> = {
   queued: "outline", running: "secondary", ok: "default", failed: "destructive", cancelled: "outline",
 };
 
-/** Tabla de jobs en vivo; el botón de cada fila despliega su log. */
+/**
+ * Tabla de jobs en vivo; el botón de cada fila despliega su log. La fila abierta no desaparece si su job deja de
+ * cumplir el filtro (termina con «En curso»): sigue hasta que se pliegue o cambie el filtro.
+ */
 export function JobList({ filter, showServer = true }: { filter: JobsFilter; showServer?: boolean }) {
   useJobsLive();
   const jobs = useJobs(filter);
   const servers = useServers();
-  const [open, setOpen] = useState<string | null>(null);
-  const toggle = useCallback((id: string) => setOpen((cur) => (cur === id ? null : id)), []);
+  const filterKey = JSON.stringify(jobsKey(filter));
+  const [openRow, setOpenRow] = useState<OpenRow | null>(null);
+  const open = openRowId(openRow, filterKey);
+  const toggle = useCallback((id: string) => setOpenRow((cur) => (openRowId(cur, filterKey) === id ? null : { id, filterKey })), [filterKey]);
+  const openJob = useJob(open); // la misma consulta que el log de la fila abierta
+  const rows = jobs.data ? withOpenRow(jobs.data, open, openJob.data) : undefined;
   const cols = showServer ? 6 : 5;
   return (
     <Table>
@@ -37,8 +44,8 @@ export function JobList({ filter, showServer = true }: { filter: JobsFilter; sho
       <TableBody>
         {jobs.isPending && <TableRow><TableCell colSpan={cols} className="text-center text-zinc-400">Cargando…</TableCell></TableRow>}
         {jobs.isError && <TableRow><TableCell colSpan={cols} className="text-center text-red-400">No se pudieron cargar los jobs: {jobs.error.message}</TableCell></TableRow>}
-        {jobs.data?.length === 0 && <TableRow><TableCell colSpan={cols} className="text-center text-zinc-400">No hay jobs.</TableCell></TableRow>}
-        {jobs.data?.map((j) => (
+        {rows?.length === 0 && <TableRow><TableCell colSpan={cols} className="text-center text-zinc-400">No hay jobs.</TableCell></TableRow>}
+        {rows?.map((j) => (
           <JobRow key={j.id} job={j} cols={cols} showServer={showServer} isOpen={open === j.id} onToggle={toggle}
             serverLabel={j.serverId ? jobServerName(j.serverId, servers.data) : null} />
         ))}

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, jobsFilterFor, JOB_FILTER_OPTIONS, formatFinishTime, jobServerName, retainJobsLive, upsertJob, type JobsLiveSource } from "./jobs";
+import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, jobsFilterFor, JOB_FILTER_OPTIONS, formatFinishTime, jobServerName, openRowId, retainJobsLive, upsertJob, withOpenRow, type JobsLiveSource } from "./jobs";
 import { topicOf } from "./ws";
 import type { JobDetailDto, JobDto, ServerMessage } from "./api";
 
@@ -182,5 +182,27 @@ describe("formatFinishTime", () => {
   });
   it("formatea la hora de una fecha válida", () => {
     expect(formatFinishTime("2026-10-12T10:05:07Z")).toMatch(/\d{1,2}:\d{2}:\d{2}/);
+  });
+});
+
+describe("fila abierta de la lista de jobs", () => {
+  const a = job("a", "2026-10-12T04:00:00.000Z");
+  const b = job("b", "2026-10-12T05:00:00.000Z");
+  const c = job("c", "2026-10-12T06:00:00.000Z");
+  it("se pliega al cambiar el filtro (o de servidor)", () => {
+    expect(openRowId({ id: "a", filterKey: "k1" }, "k1")).toBe("a");
+    expect(openRowId({ id: "a", filterKey: "k1" }, "k2")).toBeNull();
+    expect(openRowId(null, "k1")).toBeNull();
+  });
+  it("si el job abierto termina con «En curso» y sale de la lista, se mantiene en su sitio con su último estado", () => {
+    const done = { ...b, status: "ok" as const, progress: 100 };
+    expect(withOpenRow([c, a], "b", done)).toEqual([c, done, a]);
+  });
+  it("sin cambios si sigue en la lista, no hay fila abierta o el detalle es de otro job", () => {
+    const list = [c, b, a];
+    expect(withOpenRow(list, "b", { ...b, status: "ok" })).toBe(list);
+    expect(withOpenRow([c, a], null, b)).toEqual([c, a]);
+    expect(withOpenRow([c, a], "b", undefined)).toEqual([c, a]);
+    expect(withOpenRow([c, a], "b", a)).toEqual([c, a]);
   });
 });
