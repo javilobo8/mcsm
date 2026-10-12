@@ -87,7 +87,12 @@ export class MetricsService {
         ts, cpuPct: finite(h.cpuPct), memBytes: Number(h.memUsedBytes), memTotalBytes: Number(h.memTotalBytes),
         diskBytes: Number(h.diskUsedBytes), diskTotalBytes: Number(h.diskTotalBytes),
       };
-      this.deps.events.emit("node_metrics", nodeId, sample);
+      try {
+        this.deps.events.emit("node_metrics", nodeId, sample);
+      } catch (e) {
+        // Un listener que lanza no debe romper la ingesta: las filas ya están guardadas.
+        this.deps.log?.warn({ err: e }, "fallo en un listener de node_metrics");
+      }
     }
     return rows.length;
   }

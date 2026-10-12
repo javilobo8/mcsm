@@ -48,6 +48,10 @@ export class BrowserHub {
     app.events.on("observed", onObserved);
     app.events.on("node", onNode);
     this.offs.push(() => app.events.off("observed", onObserved), () => app.events.off("node", onNode));
+    // plan-2: muestra del host de un nodo cada 10 s, a quien siga el topic "nodes".
+    const onNodeMetrics = (nodeId: string, sample: unknown) => this.publish("nodes", { type: "node_metrics", nodeId, sample });
+    app.events.on("node_metrics", onNodeMetrics);
+    this.offs.push(() => app.events.off("node_metrics", onNodeMetrics));
   }
 
   dispose() {
