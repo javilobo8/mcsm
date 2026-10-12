@@ -65,8 +65,17 @@ function deferred<T>(): Deferred<T> {
 }
 
 type Entry =
-  | { kind: "outbound"; nodeId: string; createdAt: number; source: TransferSource; done: Deferred<void> }
-  | { kind: "inbound"; nodeId: string; createdAt: number; incoming: Deferred<TransferPayload> };
+  | { kind: "outbound"; nodeId: string; createdAt: number; ttl: number; source: TransferSource; done: Deferred<void> }
+  | { kind: "inbound"; nodeId: string; createdAt: number; ttl: number; incoming: Deferred<TransferPayload> };
+
+/** Opciones de una transferencia concreta. */
+export interface TransferOptions {
+  /**
+   * Plazo para reclamarla (por defecto, el del servicio: 60 s). La migración entre nodos lo alarga: el destino
+   * reclama la copia cuando le toca uno de sus huecos de copia/restauración, y puede esperar en cola.
+   */
+  claimTtlMs?: number;
+}
 
 /** Transferencia reclamada y aún en curso. */
 interface Active { entry: Entry; controller: AbortController; stream?: Readable }
@@ -109,17 +118,17 @@ export class TransferService {
   /** Transferencias reclamadas que aún no han terminado. */
   get activeCount(): number { return this.active.size; }
 
-  outbound(nodeId: string, source: TransferSource): OutboundTransfer {
+  outbound(nodeId: string, source: TransferSource, opts: TransferOptions = {}): OutboundTransfer {
     const id = randomToken();
     const done = deferred<void>();
-    this.add(id, { kind: "outbound", nodeId, createdAt: this.now(), source, done });
+    this.add(id, { kind: "outbound", nodeId, createdAt: this.now(), ttl: opts.claimTtlMs ?? this.ttl, source, done });
     return { id, done: done.promise, cancel: (reason = "cancelada") => this.cancel(id, reason) };
   }
 
-  inbound(nodeId: string): InboundTransfer {
+  inbound(nodeId: string, opts: TransferOptions = {}): InboundTransfer {
     const id = randomToken();
     const incoming = deferred<TransferPayload>();
-    this.add(id, { kind: "inbound", nodeId, createdAt: this.now(), incoming });
+    this.add(id, { kind: "inbound", nodeId, createdAt: this.now(), ttl: opts.claimTtlMs ?? this.ttl, incoming });
     return { id, incoming: incoming.promise, cancel: (reason = "cancelada") => this.cancel(id, reason) };
   }
 
@@ -202,7 +211,7 @@ export class TransferService {
   }
 
   private expired(e: Entry): boolean {
-    return this.now() - e.createdAt > this.ttl;
+    return this.now() - e.createdAt > e.ttl;
   }
 
   private cancel(id: string, reason: string) {

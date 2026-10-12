@@ -40,6 +40,13 @@ export interface StepDeps { app: FastifyInstance; timers: Timers; timings: Migra
 export interface BackupMade { filename: string; sizeBytes: number; sha256: string }
 export interface Pushed { staged: StagedFile; dataBytes: number }
 
+/**
+ * Plazo para que el destino reclame la copia (GET /agent/transfer). La recepción espera uno de los 2 huecos de
+ * copia/restauración del nodo ANTES de descargar («En cola…»): con el plazo de 60 s de Archivos, dos copias
+ * programadas a la vez en el destino harían fallar la migración sin motivo. El mismo orden que jobIdleMs.
+ */
+export const MIGRATION_CLAIM_TTL_MS = 30 * 60_000;
+
 /** Sin plazo total (máximo de setTimeout): una transferencia que avanza dura lo que haga falta (como en Archivos). */
 const NO_DEADLINE_MS = 2 ** 31 - 1;
 /** Retirar o deshacer puede borrar un mundo entero en un disco lento. */
@@ -210,7 +217,7 @@ export async function receiveOnTarget(d: StepDeps, m: MigrationRow, pushed: Push
       id: jobId, type: "migrate_in", serverId: m.server_id, nodeId: m.target_node_id, status: "running",
       message: "Solicitando la recepción de la copia", payload: { migrationId: m.id },
     });
-    const out = app.transfers.outbound(m.target_node_id, app.staging.source(pushed.staged, { removeAfter: false }));
+    const out = app.transfers.outbound(m.target_node_id, app.staging.source(pushed.staged, { removeAfter: false }), { claimTtlMs: MIGRATION_CLAIM_TTL_MS });
     out.done.catch(() => {});
     const wait = waitJob(app, jobId, {
       idleMs: d.timings.jobIdleMs, timers: d.timers, idleMessage: "La recepción en el destino lleva demasiado tiempo sin avanzar",

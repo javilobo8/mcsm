@@ -186,6 +186,27 @@ describe("receiveOnTarget", () => {
     await expect(p).resolves.toBeUndefined();
   });
 
+  it("la copia espera al destino en cola: su transferencia no caduca a los 60 s (M2)", async () => {
+    const { b, m, d } = await setup();
+    const payload = randomBytes(20_000);
+    const made = { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) };
+    const p = receiveOnTarget(d, m, { staged: await staged(m, payload), dataBytes: 1000 }, made);
+    p.catch(() => {});
+    const rx = await b.next("migrateReceive");
+    if (rx.body.case !== "migrateReceive") throw new Error();
+    b.ack(rx);
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 10 * 60_000); // 10 min en cola en el destino
+    try {
+      expect(app.transfers.sweep()).toBe(0);
+    } finally {
+      clock.mockRestore();
+    }
+    expect(sha256(await b.get(rx.body.value.transferId))).toBe(sha256(payload));
+    b.progress(rx.body.value.jobId, m.server_id, "migrate_in", JobStatus.OK, 100, "Copia recibida");
+    await expect(p).resolves.toBeUndefined();
+  });
+
   it("si el destino no confirma la limpieza del intento fallido, no se reintenta", async () => {
     const { b, m, d } = await setup();
     const payload = randomBytes(10_000);

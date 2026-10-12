@@ -80,6 +80,23 @@ describe("TransferService", () => {
     expect(svc.pendingCount).toBe(0);
   });
 
+  it("plazo de reclamo propio por transferencia (migración): no caduca con el del servicio", async () => {
+    const c = clock();
+    const svc = new TransferService({ now: c.now, claimTtlMs: 60_000 });
+    const long = svc.outbound("n1", async () => payload(), { claimTtlMs: 30 * 60_000 });
+    const longIn = svc.inbound("n1", { claimTtlMs: 30 * 60_000 });
+    const short = svc.outbound("n1", async () => payload());
+    c.advance(61_000);
+    expect(svc.sweep()).toBe(1); // solo la del plazo por defecto (Archivos)
+    await expect(short.done).rejects.toMatchObject({ code: "expired" });
+    c.advance(28 * 60_000); // 29 min 1 s desde la creación
+    expect(svc.claim(long.id, "n1", "GET")?.kind).toBe("outbound");
+    expect(svc.sweep()).toBe(0);
+    c.advance(60_000);
+    expect(svc.sweep()).toBe(1);
+    await expect(longIn.incoming).rejects.toMatchObject({ code: "expired" });
+  });
+
   it("cancel antes de reclamar rechaza y deja el id inservible; closeAll cancela todo", async () => {
     const svc = new TransferService();
     const t = svc.inbound("n1");
