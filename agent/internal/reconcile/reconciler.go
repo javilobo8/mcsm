@@ -279,8 +279,8 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 		if err := r.st.DeleteAdoption(serverID); err != nil {
 			return err
 		}
-		// plan-6: con dataPath la carpeta es del host y el agente no la ve (solo monta DATA_ROOT);
-		// Docker la crea al montar si no existe.
+		// plan-6: con dataPath la carpeta es del host y el agente no la ve (solo monta DATA_ROOT). Va
+		// en Mounts (M3): si no existe, Docker falla al crear en vez de crearla vacía.
 		if parsed.DataPath == "" {
 			if err := os.MkdirAll(build.DataDir, 0o755); err != nil {
 				return fmt.Errorf("crear directorio de datos: %w", err)
