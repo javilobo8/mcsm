@@ -19,7 +19,9 @@ async function plugin(app: FastifyInstance) {
   app.decorateRequest("sessionId", null);
 
   app.addHook("onRequest", async (req: FastifyRequest, reply) => {
-    const path = req.url.split("?")[0] ?? "";
+    // Se decide por el patrón de ruta enrutada, no por la URL cruda: find-my-way decodifica
+    // el path al enrutar, así que `/%61pi/x` llega a `/api/x`.
+    const route = req.routeOptions.url;
     const raw = req.cookies[SESSION_COOKIE];
     if (raw) {
       const unsigned = req.unsignCookie(raw);
@@ -27,8 +29,9 @@ async function plugin(app: FastifyInstance) {
         req.sessionId = unsigned.value;
       }
     }
-    const protectedPath = (path.startsWith("/api/") && !PUBLIC.has(path)) || path === "/ws";
-    if (protectedPath && !req.sessionId) {
+    if (route === undefined) return;
+    const protectedRoute = (route.startsWith("/api/") && !PUBLIC.has(route)) || route === "/ws";
+    if (protectedRoute && !req.sessionId) {
       return reply.code(401).send({ error: "No autenticado" });
     }
   });

@@ -19,11 +19,14 @@ export async function authRoutes(app: FastifyInstance) {
     authenticated: req.sessionId !== null,
   }));
 
-  app.post("/api/auth/setup", async (req, reply) => {
-    if (app.auth.getSetting("admin_password_hash")) return reply.code(409).send({ error: "La contraseña ya está configurada" });
+  app.post("/api/auth/setup", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const yaConfigurada = () => reply.code(409).send({ error: "La contraseña ya está configurada" });
+    if (app.auth.getSetting("admin_password_hash")) return yaConfigurada();
     const parsed = passwordBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Datos inválidos" });
-    app.auth.setSetting("admin_password_hash", await hashPassword(parsed.data.password));
+    const hash = await hashPassword(parsed.data.password);
+    // Atómico: si otro setup ganó mientras hasheábamos, la inserción no hace nada.
+    if (!app.auth.setSettingIfAbsent("admin_password_hash", hash)) return yaConfigurada();
     setCookie(reply, app.auth.createSession(app.config.sessionTtlSeconds));
     return { ok: true };
   });

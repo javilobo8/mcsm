@@ -11,6 +11,11 @@ export class AuthRepo {
   setSetting(key: string, value: string): void {
     this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
   }
+  /** Inserta solo si la clave no existe. Devuelve true si la fila se insertó. */
+  setSettingIfAbsent(key: string, value: string): boolean {
+    const r = this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING").run(key, value);
+    return r.changes === 1;
+  }
   createSession(ttlSeconds: number): string {
     const id = newId();
     this.db.prepare("INSERT INTO sessions (id, created_at, expires_at) VALUES (?, ?, ?)").run(id, nowIso(), plusSeconds(ttlSeconds));
