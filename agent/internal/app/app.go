@@ -357,6 +357,11 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	// ── plan-3 ──
 	// ── plan-4 ──
 	// ── plan-5 ──
+	case *mcsmv1.Envelope_FilesList, *mcsmv1.Envelope_FilesStat, *mcsmv1.Envelope_FilesRead,
+		*mcsmv1.Envelope_FilesWrite, *mcsmv1.Envelope_FilesMkdir, *mcsmv1.Envelope_FilesRename,
+		*mcsmv1.Envelope_FilesDelete, *mcsmv1.Envelope_FilesDownload, *mcsmv1.Envelope_FilesUpload:
+		// Disco y transferencias con el contexto de vida: un corte del WS no los aborta.
+		a.handleFiles(life, env, send)
 	// ── plan-6 ──
 	// ── plan-7 ──
 	// ── plan-8 ──
