@@ -6,7 +6,7 @@ import { baseName, editorLanguage } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
-import { filesApi } from "@/lib/files";
+import { filesApi, isClean } from "@/lib/files";
 import { CodeEditor } from "./code-editor";
 
 const errText = (e: unknown) => (e instanceof ApiError ? e.message : "Error inesperado");
@@ -16,11 +16,18 @@ export function FileEditor({ serverId, path, onClose }: { serverId: string; path
   const file = useQuery({ queryKey: ["file-content", serverId, path], queryFn: () => filesApi.read(serverId, path), gcTime: 0, staleTime: Infinity });
   const view = useRef<EditorView | null>(null);
   const [dirty, setDirty] = useState(false);
+  // Último contenido conocido en disco (lo cargado, o lo último guardado con éxito).
+  const saved = useRef<string | null>(null);
+  if (saved.current === null && file.data) saved.current = file.data.content;
   const save = useMutation({
     mutationFn: (content: string) => filesApi.write(serverId, path, content),
-    onSuccess: () => setDirty(false),
+    onSuccess: (_, content) => {
+      saved.current = content;
+      // Si se tecleó mientras el guardado estaba en vuelo, sigue sucio.
+      setDirty(view.current ? !isClean(view.current.state.doc, content) : false);
+    },
   });
-  const doSave = () => { if (view.current && !save.isPending) save.mutate(view.current.state.doc.toString()); };
+  const doSave = () => { if (view.current && dirty && !save.isPending) save.mutate(view.current.state.doc.toString()); };
   const close = () => { if (!dirty || confirm("Hay cambios sin guardar. ¿Descartarlos?")) onClose(); };
   const name = baseName(path);
 
@@ -49,7 +56,11 @@ export function FileEditor({ serverId, path, onClose }: { serverId: string; path
           initial={file.data.content}
           language={editorLanguage(name) ?? "text"}
           onView={(v) => { view.current = v; }}
-          onDirty={() => { setDirty(true); save.reset(); }}
+          onChange={() => {
+            const d = view.current ? !isClean(view.current.state.doc, saved.current ?? "") : true;
+            setDirty(d);
+            if (d) save.reset();
+          }}
           onSave={doSave}
         />
       )}

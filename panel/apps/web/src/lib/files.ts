@@ -5,6 +5,7 @@ export interface FileListDto { path: string; entries: FileEntryDto[]; truncated:
 export interface FileContentDto { path: string; content: string; size: number }
 
 const base = (serverId: string) => apiPath`/api/servers/${serverId}/files`;
+const UPLOAD_CANCELLED = "Subida cancelada";
 const q = (path: string) => `path=${encodeURIComponent(path)}`;
 
 export const filesApi = {
@@ -24,20 +25,25 @@ export const filesApi = {
 export function uploadFile(serverId: string, path: string, file: Blob, onProgress?: (sent: number, total: number) => void, signal?: AbortSignal): Promise<void> {
   const url = `${base(serverId)}/upload?${q(path)}`;
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new ApiError(0, UPLOAD_CANCELLED));
     const xhr = new XMLHttpRequest();
+    const onAbort = () => xhr.abort();
+    const done = () => signal?.removeEventListener("abort", onAbort);
     xhr.open("PUT", url);
     xhr.setRequestHeader("content-type", "application/octet-stream");
     xhr.upload.onprogress = (e) => onProgress?.(e.loaded, e.lengthComputable ? e.total : file.size);
     xhr.onload = () => {
+      done();
       if (xhr.status >= 200 && xhr.status < 300) return resolve();
       reportStatus(xhr.status, url);
       let data: unknown = null;
       try { data = JSON.parse(xhr.responseText); } catch { /* cuerpo no JSON */ }
       reject(new ApiError(xhr.status, errorMessage(xhr.status, xhr.statusText, data)));
     };
-    xhr.onerror = () => reject(new ApiError(0, "Error de red: la subida se cortó"));
-    xhr.onabort = () => reject(new ApiError(0, "Subida cancelada"));
-    signal?.addEventListener("abort", () => xhr.abort(), { once: true });
+    xhr.onerror = () => { done(); reject(new ApiError(0, "Error de red: la subida se cortó")); };
+    xhr.ontimeout = () => { done(); reject(new ApiError(0, "La subida tardó demasiado y se cortó")); };
+    xhr.onabort = () => { done(); reject(new ApiError(0, UPLOAD_CANCELLED)); };
+    signal?.addEventListener("abort", onAbort, { once: true });
     xhr.send(file);
   });
 }
@@ -68,3 +74,6 @@ export function validateNewName(name: string, existing: readonly string[], curre
 
 /** Porcentaje entero de una subida (0 si el total es 0). */
 export const progressPct = (sent: number, total: number): number => (total > 0 ? Math.min(100, Math.floor((sent / total) * 100)) : 0);
+
+/** Cierto si el documento del editor es idéntico al contenido guardado (sin construir la cadena si difiere la longitud). */
+export const isClean = (doc: { length: number; toString(): string }, saved: string): boolean => doc.length === saved.length && doc.toString() === saved;

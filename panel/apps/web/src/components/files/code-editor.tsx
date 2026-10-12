@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { EditorView, basicSetup } from "codemirror";
 import { EditorState, Prec, type Extension } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
@@ -25,15 +25,20 @@ interface Props {
   language: EditorLanguage;
   /** Recibe la vista al montarse (y null al desmontarse) para leer el documento al guardar. */
   onView(view: EditorView | null): void;
-  onDirty(): void;
+  /** Se llama tras cada cambio del documento; lee el contenido de la vista recibida en onView. */
+  onChange(): void;
   onSave(): void;
 }
 
-/** CodeMirror 6 sin dependencias de React: se crea al montar y se destruye al desmontar. */
-export function CodeEditor({ initial, language, onView, onDirty, onSave }: Props) {
+/**
+ * CodeMirror 6 sin dependencias de React: se crea al montar y se destruye al desmontar.
+ * `initial` y `language` solo se aplican al montar: un cambio posterior NO recrea la vista ni
+ * pisa lo editado. Para cargar otro contenido/lenguaje, remonta el componente con `key`.
+ */
+export function CodeEditor({ initial, language, onView, onChange, onSave }: Props) {
   const host = useRef<HTMLDivElement>(null);
-  const cb = useRef({ onView, onDirty, onSave });
-  cb.current = { onView, onDirty, onSave };
+  const cb = useRef({ onView, onChange, onSave });
+  useLayoutEffect(() => { cb.current = { onView, onChange, onSave }; });
 
   useEffect(() => {
     const view = new EditorView({
@@ -45,14 +50,15 @@ export function CodeEditor({ initial, language, onView, onDirty, onSave }: Props
           oneDark,
           languageExtension(language),
           Prec.highest(keymap.of([{ key: "Mod-s", preventDefault: true, run: () => { cb.current.onSave(); return true; } }])),
-          EditorView.updateListener.of((u) => { if (u.docChanged) cb.current.onDirty(); }),
+          EditorView.updateListener.of((u) => { if (u.docChanged) cb.current.onChange(); }),
           EditorView.theme({ "&": { height: "65vh", fontSize: "12px" }, ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, monospace" } }),
         ],
       }),
     });
     cb.current.onView(view);
     return () => { cb.current.onView(null); view.destroy(); };
-  }, [initial, language]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar (ver doc del componente)
+  }, []);
 
   return <div ref={host} className="overflow-hidden rounded-md border border-border" />;
 }
