@@ -275,6 +275,9 @@ type Envelope struct {
 	//	*Envelope_FilesDelete
 	//	*Envelope_FilesDownload
 	//	*Envelope_FilesUpload
+	//	*Envelope_RouterApply
+	//	*Envelope_RouterRemove
+	//	*Envelope_RouterObserved
 	Body          isEnvelope_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -646,6 +649,33 @@ func (x *Envelope) GetFilesUpload() *FilesUpload {
 	return nil
 }
 
+func (x *Envelope) GetRouterApply() *RouterApply {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_RouterApply); ok {
+			return x.RouterApply
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetRouterRemove() *RouterRemove {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_RouterRemove); ok {
+			return x.RouterRemove
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetRouterObserved() *RouterObserved {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_RouterObserved); ok {
+			return x.RouterObserved
+		}
+	}
+	return nil
+}
+
 type isEnvelope_Body interface {
 	isEnvelope_Body()
 }
@@ -794,6 +824,21 @@ type Envelope_FilesUpload struct {
 	FilesUpload *FilesUpload `protobuf:"bytes,81,opt,name=files_upload,json=filesUpload,proto3,oneof"`
 }
 
+type Envelope_RouterApply struct {
+	// ── plan-6 ──
+	// ── plan-7 ──
+	// ── plan-8 ──
+	RouterApply *RouterApply `protobuf:"bytes,110,opt,name=router_apply,json=routerApply,proto3,oneof"`
+}
+
+type Envelope_RouterRemove struct {
+	RouterRemove *RouterRemove `protobuf:"bytes,111,opt,name=router_remove,json=routerRemove,proto3,oneof"`
+}
+
+type Envelope_RouterObserved struct {
+	RouterObserved *RouterObserved `protobuf:"bytes,112,opt,name=router_observed,json=routerObserved,proto3,oneof"` // ── plan-9 ──
+}
+
 func (*Envelope_Hello) isEnvelope_Body() {}
 
 func (*Envelope_HelloAck) isEnvelope_Body() {}
@@ -863,6 +908,12 @@ func (*Envelope_FilesDelete) isEnvelope_Body() {}
 func (*Envelope_FilesDownload) isEnvelope_Body() {}
 
 func (*Envelope_FilesUpload) isEnvelope_Body() {}
+
+func (*Envelope_RouterApply) isEnvelope_Body() {}
+
+func (*Envelope_RouterRemove) isEnvelope_Body() {}
+
+func (*Envelope_RouterObserved) isEnvelope_Body() {}
 
 type HostInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3702,11 +3753,259 @@ func (x *FilesUpload) GetSize() int64 {
 	return 0
 }
 
+// Configuración del router de un nodo.
+type RouterSpec struct {
+	state                     protoimpl.MessageState `protogen:"open.v1"`
+	HostPort                  uint32                 `protobuf:"varint,1,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`                                                        // puerto TCP del host (1-65535); dentro del contenedor siempre es 25565
+	Autoscale                 bool                   `protobuf:"varint,2,opt,name=autoscale,proto3" json:"autoscale,omitempty"`                                                                      // mc-router arranca al entrar un jugador y para tras autoscale_down_after_minutes sin jugadores
+	AutoscaleDownAfterMinutes uint32                 `protobuf:"varint,3,opt,name=autoscale_down_after_minutes,json=autoscaleDownAfterMinutes,proto3" json:"autoscale_down_after_minutes,omitempty"` // 1-1440; 0 = 10
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *RouterSpec) Reset() {
+	*x = RouterSpec{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RouterSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RouterSpec) ProtoMessage() {}
+
+func (x *RouterSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RouterSpec.ProtoReflect.Descriptor instead.
+func (*RouterSpec) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *RouterSpec) GetHostPort() uint32 {
+	if x != nil {
+		return x.HostPort
+	}
+	return 0
+}
+
+func (x *RouterSpec) GetAutoscale() bool {
+	if x != nil {
+		return x.Autoscale
+	}
+	return false
+}
+
+func (x *RouterSpec) GetAutoscaleDownAfterMinutes() uint32 {
+	if x != nil {
+		return x.AutoscaleDownAfterMinutes
+	}
+	return 0
+}
+
+// Panel → agente. Guarda la spec (sobrevive a reinicios del agente) y reconcilia el contenedor en
+// segundo plano. Respuesta: Ack (guardada; el resultado llega por RouterObserved) o Error
+// (invalid_request: spec ausente o fuera de rango).
+type RouterApply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Spec          *RouterSpec            `protobuf:"bytes,1,opt,name=spec,proto3" json:"spec,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RouterApply) Reset() {
+	*x = RouterApply{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RouterApply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RouterApply) ProtoMessage() {}
+
+func (x *RouterApply) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RouterApply.ProtoReflect.Descriptor instead.
+func (*RouterApply) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *RouterApply) GetSpec() *RouterSpec {
+	if x != nil {
+		return x.Spec
+	}
+	return nil
+}
+
+// Panel → agente. Borra la spec guardada y, en segundo plano, el contenedor del router. Idempotente.
+// Respuesta: Ack, o Error (io_error) si no se pudo borrar del store del agente.
+type RouterRemove struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RouterRemove) Reset() {
+	*x = RouterRemove{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RouterRemove) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RouterRemove) ProtoMessage() {}
+
+func (x *RouterRemove) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RouterRemove.ProtoReflect.Descriptor instead.
+func (*RouterRemove) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{47}
+}
+
+// Agente → panel, no solicitado (id = 0): estado del router tras cada reconciliación (al recibir
+// RouterApply/RouterRemove, cada 30 s y con los eventos de Docker de su contenedor).
+type RouterObserved struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Configured    bool                   `protobuf:"varint,1,opt,name=configured,proto3" json:"configured,omitempty"` // el agente tiene una spec de router guardada
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`            // missing|created|running|restarting|exited|dead|paused
+	ContainerId   string                 `protobuf:"bytes,3,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	Image         string                 `protobuf:"bytes,4,opt,name=image,proto3" json:"image,omitempty"`                        // imagen del contenedor, p. ej. itzg/mc-router:1.47.1
+	HostPort      uint32                 `protobuf:"varint,5,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"` // puerto de la spec aplicada (0 sin spec)
+	Autoscale     bool                   `protobuf:"varint,6,opt,name=autoscale,proto3" json:"autoscale,omitempty"`
+	Error         string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"` // error de la última reconciliación ("" si fue bien)
+	TsUnixMs      int64                  `protobuf:"varint,8,opt,name=ts_unix_ms,json=tsUnixMs,proto3" json:"ts_unix_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RouterObserved) Reset() {
+	*x = RouterObserved{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RouterObserved) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RouterObserved) ProtoMessage() {}
+
+func (x *RouterObserved) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RouterObserved.ProtoReflect.Descriptor instead.
+func (*RouterObserved) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *RouterObserved) GetConfigured() bool {
+	if x != nil {
+		return x.Configured
+	}
+	return false
+}
+
+func (x *RouterObserved) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *RouterObserved) GetContainerId() string {
+	if x != nil {
+		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *RouterObserved) GetImage() string {
+	if x != nil {
+		return x.Image
+	}
+	return ""
+}
+
+func (x *RouterObserved) GetHostPort() uint32 {
+	if x != nil {
+		return x.HostPort
+	}
+	return 0
+}
+
+func (x *RouterObserved) GetAutoscale() bool {
+	if x != nil {
+		return x.Autoscale
+	}
+	return false
+}
+
+func (x *RouterObserved) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *RouterObserved) GetTsUnixMs() int64 {
+	if x != nil {
+		return x.TsUnixMs
+	}
+	return 0
+}
+
 var File_mcsm_v1_agent_proto protoreflect.FileDescriptor
 
 const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xb5\x10\n" +
+	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xf2\x11\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tstream_id\x18\x02 \x01(\x04R\bstreamId\x12&\n" +
@@ -3754,7 +4053,10 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\ffiles_rename\x18N \x01(\v2\x14.mcsm.v1.FilesRenameH\x00R\vfilesRename\x129\n" +
 	"\ffiles_delete\x18O \x01(\v2\x14.mcsm.v1.FilesDeleteH\x00R\vfilesDelete\x12?\n" +
 	"\x0efiles_download\x18P \x01(\v2\x16.mcsm.v1.FilesDownloadH\x00R\rfilesDownload\x129\n" +
-	"\ffiles_upload\x18Q \x01(\v2\x14.mcsm.v1.FilesUploadH\x00R\vfilesUploadB\x06\n" +
+	"\ffiles_upload\x18Q \x01(\v2\x14.mcsm.v1.FilesUploadH\x00R\vfilesUpload\x129\n" +
+	"\frouter_apply\x18n \x01(\v2\x14.mcsm.v1.RouterApplyH\x00R\vrouterApply\x12<\n" +
+	"\rrouter_remove\x18o \x01(\v2\x15.mcsm.v1.RouterRemoveH\x00R\frouterRemove\x12B\n" +
+	"\x0frouter_observed\x18p \x01(\v2\x17.mcsm.v1.RouterObservedH\x00R\x0erouterObservedB\x06\n" +
 	"\x04body\"\x86\x01\n" +
 	"\bHostInfo\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x12\n" +
@@ -3974,7 +4276,27 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1f\n" +
 	"\vtransfer_id\x18\x03 \x01(\tR\n" +
 	"transferId\x12\x12\n" +
-	"\x04size\x18\x04 \x01(\x03R\x04size*c\n" +
+	"\x04size\x18\x04 \x01(\x03R\x04size\"\x88\x01\n" +
+	"\n" +
+	"RouterSpec\x12\x1b\n" +
+	"\thost_port\x18\x01 \x01(\rR\bhostPort\x12\x1c\n" +
+	"\tautoscale\x18\x02 \x01(\bR\tautoscale\x12?\n" +
+	"\x1cautoscale_down_after_minutes\x18\x03 \x01(\rR\x19autoscaleDownAfterMinutes\"6\n" +
+	"\vRouterApply\x12'\n" +
+	"\x04spec\x18\x01 \x01(\v2\x13.mcsm.v1.RouterSpecR\x04spec\"\x0e\n" +
+	"\fRouterRemove\"\xee\x01\n" +
+	"\x0eRouterObserved\x12\x1e\n" +
+	"\n" +
+	"configured\x18\x01 \x01(\bR\n" +
+	"configured\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\x12!\n" +
+	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerId\x12\x14\n" +
+	"\x05image\x18\x04 \x01(\tR\x05image\x12\x1b\n" +
+	"\thost_port\x18\x05 \x01(\rR\bhostPort\x12\x1c\n" +
+	"\tautoscale\x18\x06 \x01(\bR\tautoscale\x12\x14\n" +
+	"\x05error\x18\a \x01(\tR\x05error\x12\x1c\n" +
+	"\n" +
+	"ts_unix_ms\x18\b \x01(\x03R\btsUnixMs*c\n" +
 	"\fDesiredState\x12\x1d\n" +
 	"\x19DESIRED_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15DESIRED_STATE_RUNNING\x10\x01\x12\x19\n" +
@@ -4012,7 +4334,7 @@ func file_mcsm_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
+var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_mcsm_v1_agent_proto_goTypes = []any{
 	(DesiredState)(0),          // 0: mcsm.v1.DesiredState
 	(PowerActionType)(0),       // 1: mcsm.v1.PowerActionType
@@ -4063,8 +4385,12 @@ var file_mcsm_v1_agent_proto_goTypes = []any{
 	(*FilesDelete)(nil),        // 46: mcsm.v1.FilesDelete
 	(*FilesDownload)(nil),      // 47: mcsm.v1.FilesDownload
 	(*FilesUpload)(nil),        // 48: mcsm.v1.FilesUpload
-	nil,                        // 49: mcsm.v1.Hello.SpecVersionsEntry
-	nil,                        // 50: mcsm.v1.Hello.DesiredStatesEntry
+	(*RouterSpec)(nil),         // 49: mcsm.v1.RouterSpec
+	(*RouterApply)(nil),        // 50: mcsm.v1.RouterApply
+	(*RouterRemove)(nil),       // 51: mcsm.v1.RouterRemove
+	(*RouterObserved)(nil),     // 52: mcsm.v1.RouterObserved
+	nil,                        // 53: mcsm.v1.Hello.SpecVersionsEntry
+	nil,                        // 54: mcsm.v1.Hello.DesiredStatesEntry
 }
 var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	6,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
@@ -4102,32 +4428,36 @@ var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	46, // 32: mcsm.v1.Envelope.files_delete:type_name -> mcsm.v1.FilesDelete
 	47, // 33: mcsm.v1.Envelope.files_download:type_name -> mcsm.v1.FilesDownload
 	48, // 34: mcsm.v1.Envelope.files_upload:type_name -> mcsm.v1.FilesUpload
-	5,  // 35: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
-	49, // 36: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
-	50, // 37: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
-	0,  // 38: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
-	8,  // 39: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
-	8,  // 40: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
-	1,  // 41: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
-	18, // 42: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
-	19, // 43: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
-	24, // 44: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
-	25, // 45: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
-	2,  // 46: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
-	2,  // 47: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
-	26, // 48: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
-	35, // 49: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
-	26, // 50: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
-	3,  // 51: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
-	3,  // 52: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
-	36, // 53: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
-	36, // 54: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
-	0,  // 55: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
-	56, // [56:56] is the sub-list for method output_type
-	56, // [56:56] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	50, // 35: mcsm.v1.Envelope.router_apply:type_name -> mcsm.v1.RouterApply
+	51, // 36: mcsm.v1.Envelope.router_remove:type_name -> mcsm.v1.RouterRemove
+	52, // 37: mcsm.v1.Envelope.router_observed:type_name -> mcsm.v1.RouterObserved
+	5,  // 38: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
+	53, // 39: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
+	54, // 40: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
+	0,  // 41: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
+	8,  // 42: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
+	8,  // 43: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
+	1,  // 44: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
+	18, // 45: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
+	19, // 46: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
+	24, // 47: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
+	25, // 48: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
+	2,  // 49: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
+	2,  // 50: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
+	26, // 51: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
+	35, // 52: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
+	26, // 53: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
+	3,  // 54: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
+	3,  // 55: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
+	36, // 56: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
+	36, // 57: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
+	49, // 58: mcsm.v1.RouterApply.spec:type_name -> mcsm.v1.RouterSpec
+	0,  // 59: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	60, // [60:60] is the sub-list for method output_type
+	60, // [60:60] is the sub-list for method input_type
+	60, // [60:60] is the sub-list for extension type_name
+	60, // [60:60] is the sub-list for extension extendee
+	0,  // [0:60] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }
@@ -4171,6 +4501,9 @@ func file_mcsm_v1_agent_proto_init() {
 		(*Envelope_FilesDelete)(nil),
 		(*Envelope_FilesDownload)(nil),
 		(*Envelope_FilesUpload)(nil),
+		(*Envelope_RouterApply)(nil),
+		(*Envelope_RouterRemove)(nil),
+		(*Envelope_RouterObserved)(nil),
 	}
 	file_mcsm_v1_agent_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
@@ -4179,7 +4512,7 @@ func file_mcsm_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mcsm_v1_agent_proto_rawDesc), len(file_mcsm_v1_agent_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   47,
+			NumMessages:   51,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
