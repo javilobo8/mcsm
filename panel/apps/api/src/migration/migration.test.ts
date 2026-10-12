@@ -285,6 +285,10 @@ describe("migración", () => {
     const external = await begin(ext.id, { targetNodeId: b.id });
     expect(external.statusCode).toBe(409);
     expect(external.json().error).toMatch(/fuera de DATA_ROOT/);
+    // El Plan 6 prohíbe quitar dataPath por PATCH: el camino es volver a importarlo con los datos en DATA_ROOT.
+    expect(external.json().error).toMatch(/\/mnt\/mundo/);
+    expect(external.json().error).toMatch(/vuelve a importarlo/);
+    expect(external.json().error).not.toMatch(/quita dataPath/);
     b.close();
     await vi.waitFor(() => expect(app.agents.get(b.id)).toBeUndefined());
     const offline = await begin(s.id, { targetNodeId: b.id });

@@ -108,7 +108,7 @@ La pestaña **Migrar** de cada servidor lo mueve (mundo, configuración, copias 
   - El destino ya está protegido: tras confirmar, el agente no borra el servidor aunque se lo pida un panel restaurado.
 - **`restartPolicy: always`.** Si el daemon de Docker del origen se reinicia entre el paso 1 y la retirada, arranca el contenedor parado hasta la siguiente reconciliación del agente (≤ 30 s), que lo vuelve a parar. Evita reiniciar Docker en el origen durante una migración, o usa `unless-stopped` (el valor por defecto).
 - **Spec tardía.** Si una migración falla justo al crear el servidor en el destino, este puede quedarse sin borrar `DATA_ROOT/<slug>`, vacío. Sería por una orden que el agente ejecutó tarde y es casi imposible. Una migración posterior con ese slug responderá «ya existe»: bórralo a mano.
-- **Servidores con `dataPath`** (datos fuera de `DATA_ROOT`): no se migran. Muévelos antes a `DATA_ROOT/<slug>/data`.
+- **Servidores con `dataPath`** (datos fuera de `DATA_ROOT`): no se migran, y `dataPath` no se quita desde la configuración. Para migrarlo, elimina el servidor sin borrar datos, mueve la carpeta a `DATA_ROOT/<slug>/data` del nodo y vuelve a importarlo.
 
 ## Desarrollo
 

@@ -179,9 +179,10 @@ export class MigrationService {
     const open = this.app.migrations.openForServer(row.id);
     if (open) throw new HttpError(409, this.openMessage(open));
     const spec = JSON.parse(row.spec) as Spec;
-    // dataPath (Plan 6): los datos están fuera de DATA_ROOT y el agente no puede copiarlos ni restaurarlos.
-    if ((spec as unknown as Record<string, unknown>).dataPath) {
-      throw new HttpError(409, `Los datos de «${row.name}» están fuera de DATA_ROOT (dataPath, servidor importado) y el agente no puede copiarlos: muévelos a <DATA_ROOT>/${row.slug}/data del nodo y quita dataPath antes de migrarlo`);
+    // dataPath (Plan 6): los datos están fuera de DATA_ROOT y el agente no puede copiarlos ni restaurarlos. dataPath
+    // no se quita por PATCH (dataPathPatchError): el camino es el mismo que da el Plan 6, volver a importarlo.
+    if (spec.dataPath) {
+      throw new HttpError(409, `Los datos de «${row.name}» están en ${spec.dataPath}, fuera de DATA_ROOT, y el agente no puede copiarlos: no se puede migrar. Para migrarlo, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${row.slug}/data del nodo y vuelve a importarlo`);
     }
     const targetServers: TargetServer[] = this.app.servers.list(targetNodeId).map((r) => ({ slug: r.slug, spec: JSON.parse(r.spec) as Spec }));
     // Lo que ya reservan otras migraciones sin confirmar hacia ese nodo y, si el nodo es el origen de una migración
