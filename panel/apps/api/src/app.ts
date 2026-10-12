@@ -22,6 +22,7 @@ import { metricsPlugin } from "./metrics/plugin.js";
 import { TemplatesRepo } from "./templates/repo.js";
 import { templateRoutes } from "./templates/routes.js";
 import { errorHandler } from "./lib/http.js";
+import { routerRoutes } from "./router/routes.js";
 import { backupRoutes } from "./backups/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
 
@@ -68,6 +69,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // ── plan-6 ──
   // ── plan-7 ──
   // ── plan-8 ──
+  await app.register(routerRoutes);
   // ── plan-9 ──
   if (cfg.webDist) {
     await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
