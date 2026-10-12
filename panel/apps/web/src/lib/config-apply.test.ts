@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput } from "@mcsm/shared";
-import { isStale, planApply } from "./config-apply";
+import { configLeaveWarning, isStale, planApply } from "./config-apply";
 
 const base = { ...defaultSpecInput(), ports: { game: 25565, extra: [] } };
 
@@ -56,5 +56,18 @@ describe("isStale", () => {
     expect(isStale(3, 3)).toBe(false);
     expect(isStale(4, 3)).toBe(true);
     expect(isStale(3, 4)).toBe(false);
+  });
+});
+
+describe("configLeaveWarning", () => {
+  it("con cambios sin guardar protege la salida (pestaña, navegación y cierre del navegador)", () => {
+    expect(configLeaveWarning(true)).toEqual({
+      title: "Cambios sin guardar",
+      description: "Hay cambios sin guardar en la configuración. Si sales, se perderán.",
+      confirmLabel: "Salir y descartar",
+    });
+  });
+  it("sin cambios no hay nada que proteger", () => {
+    expect(configLeaveWarning(false)).toBeNull();
   });
 });

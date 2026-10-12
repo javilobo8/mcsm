@@ -2,6 +2,7 @@ import type { SpecPatch } from "@mcsm/shared";
 import { mergeSpecPatch } from "@mcsm/shared";
 import { buildSpecPatch, type EditableSpec } from "./spec-edit";
 import { diffSpecs, type DiffLine } from "./spec-diff";
+import type { GuardText } from "./tab-guard";
 
 /** Cambios pendientes de confirmar: cuerpo mínimo del PATCH, diff legible y si el contenedor se recrea. */
 export interface PendingApply { name?: string; spec?: SpecPatch; changes: DiffLine[]; recreate: boolean }
@@ -37,4 +38,18 @@ export function planApply(baseName: string, baseSpec: EditableSpec, name: string
  */
 export function isStale(serverVersion: number, baseVersion: number): boolean {
   return serverVersion > baseVersion;
+}
+
+const CONFIG_LEAVE_WARNING: GuardText = {
+  title: "Cambios sin guardar",
+  description: "Hay cambios sin guardar en la configuración. Si sales, se perderán.",
+  confirmLabel: "Salir y descartar",
+};
+
+/**
+ * Qué proteger al salir de la pestaña Configuración (otra pestaña, otra página o cerrar el navegador): sus
+ * cambios sin guardar. null si no hay nada que perder.
+ */
+export function configLeaveWarning(dirty: boolean): GuardText | null {
+  return dirty ? CONFIG_LEAVE_WARNING : null;
 }

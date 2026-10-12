@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBlocker } from "@tanstack/react-router";
 import { Eye, EyeOff } from "lucide-react";
 import { canonicalJson } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { SpecForm, type SpecFormErrors } from "@/components/spec-form/spec-form";
 import { Field } from "@/components/spec-form/fields";
 import { SaveTemplateDialog } from "@/components/save-template-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useTabGuard } from "@/components/guarded-tabs";
 import { api, apiPath, ApiError, type ServerDto } from "@/lib/api";
 import { editableSpec, validateSpec, type EditableSpec } from "@/lib/spec-edit";
-import { isStale, planApply, type PendingApply } from "@/lib/config-apply";
+import { configLeaveWarning, isStale, planApply, type PendingApply } from "@/lib/config-apply";
 import { templateSaveBlock } from "@/lib/template-edit";
 
 const toEditable = (s: ServerDto): EditableSpec => editableSpec(s.spec) as EditableSpec;
@@ -37,6 +40,15 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
   };
   // Solo al cambiar stale/dirty: resetTo y server se leen frescos del render en que cambian (no son dependencias a propósito).
   useEffect(() => { if (stale && !dirty) resetTo(server); }, [stale, dirty]); // eslint-disable-line react-hooks/exhaustive-deps -- ver arriba
+
+  // Cambios sin guardar: bloquea la navegación del router (diálogo), el cambio de pestaña del servidor y avisa al
+  // cerrar o recargar la pestaña del navegador, como el editor de Archivos.
+  const leave = configLeaveWarning(dirty);
+  const guarded = leave !== null;
+  const lastLeave = useRef(leave); // el texto no desaparece mientras se cierra el diálogo
+  if (leave) lastLeave.current = leave;
+  const blocker = useBlocker({ shouldBlockFn: () => true, disabled: !guarded, enableBeforeUnload: () => guarded, withResolver: true });
+  useTabGuard(guarded, leave ?? undefined);
 
   const save = useMutation({
     mutationFn: (p: PendingApply) => api.patch<ServerDto>(apiPath`/api/servers/${server.id}`, { ...(p.name ? { name: p.name } : {}), ...(p.spec ? { spec: p.spec } : {}) }),
@@ -122,6 +134,15 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={blocker.status === "blocked"}
+        title={lastLeave.current?.title ?? "Salir"}
+        description={lastLeave.current?.description ?? ""}
+        confirmLabel={lastLeave.current?.confirmLabel ?? "Salir"}
+        cancelLabel="Quedarme"
+        onConfirm={() => blocker.proceed?.()}
+        onCancel={() => blocker.reset?.()}
+      />
     </form>
   );
 }
