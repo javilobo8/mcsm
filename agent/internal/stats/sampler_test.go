@@ -214,13 +214,10 @@ func find(b *mcsmv1.MetricBatch, id string) *mcsmv1.ServerMetricSample {
 	return nil
 }
 
-// lim es el límite de memoria de las lecturas válidas: una lectura con MemLimit == 0
-// es "sin datos" (la que devuelve Docker para un contenedor parado).
-const lim = 1 << 30
-
-// st es una lectura válida de un núcleo.
+// st es una lectura válida de un núcleo (sin datos de memoria: MemLimit == 0 no la
+// invalida).
 func st(cpuNs, sysNs uint64) docker.Stats {
-	return docker.Stats{CPUTotalNs: cpuNs, SystemCPUNs: sysNs, OnlineCPUs: 1, MemLimit: lim}
+	return docker.Stats{CPUTotalNs: cpuNs, SystemCPUNs: sysNs, OnlineCPUs: 1}
 }
 
 var t0 = time.Date(2026, 10, 12, 10, 0, 5, 0, time.UTC)
@@ -290,8 +287,8 @@ func TestSampleSkipsStoppedUnlabeledAndResetCounters(t *testing.T) {
 	}
 }
 
-// Una lectura sin datos (todo a cero, MemLimit == 0 o SystemCPUNs == 0) no es un 0 %:
-// no se envía y no sustituye a la última lectura válida como base de la CPU.
+// Una lectura sin datos (SystemCPUNs == 0: la de un contenedor parado, o todo a cero) no
+// es un 0 %: no se envía y no sustituye a la última lectura válida como base de la CPU.
 func TestNoDataReadingIsSkippedAndKeepsBase(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
@@ -300,8 +297,7 @@ func TestNoDataReadingIsSkippedAndKeepsBase(t *testing.T) {
 	w.s.Sample(ctx, t0)
 	empties := []docker.Stats{
 		{},
-		{CPUTotalNs: 2e9, SystemCPUNs: 20e9, OnlineCPUs: 1},
-		{CPUTotalNs: 2e9, OnlineCPUs: 1, MemLimit: lim},
+		{CPUTotalNs: 2e9, OnlineCPUs: 1, MemBytes: 1 << 20, MemLimit: 1 << 30},
 	}
 	for i, e := range empties {
 		w.eng.SetStats(cid, e)
@@ -312,6 +308,21 @@ func TestNoDataReadingIsSkippedAndKeepsBase(t *testing.T) {
 	w.eng.SetStats(cid, st(4e9, 40e9))
 	if m := find(w.s.Sample(ctx, t0.Add(40*time.Second)), "a"); m == nil || m.CpuPct != 10 {
 		t.Fatalf("la base debe seguir siendo la última lectura válida (10 %%): %+v", m)
+	}
+}
+
+// Sin cgroup de memoria (p. ej. Raspberry Pi OS sin cgroup_enable=memory) Docker da CPU
+// válida y MemLimit == 0: la muestra se envía con límite 0 ("sin límite conocido").
+func TestZeroMemLimitWithValidCPUIsSent(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	cid := w.server("a", "alpha", "VANILLA", true)
+	w.eng.SetStats(cid, docker.Stats{CPUTotalNs: 1e9, SystemCPUNs: 10e9, OnlineCPUs: 2})
+	w.s.Sample(ctx, t0)
+	w.eng.SetStats(cid, docker.Stats{CPUTotalNs: 2e9, SystemCPUNs: 20e9, OnlineCPUs: 2, MemBytes: 512 << 20, NetRxBytes: 7})
+	m := find(w.s.Sample(ctx, t0.Add(10*time.Second)), "a")
+	if m == nil || m.CpuPct != 20 || m.MemBytes != 512<<20 || m.MemLimitBytes != 0 || m.NetRxBytes != 7 {
+		t.Fatalf("muestra con MemLimit 0 = %+v", m)
 	}
 }
 

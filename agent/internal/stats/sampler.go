@@ -266,9 +266,10 @@ func (s *Sampler) sampleHost(ctx context.Context) *mcsmv1.HostMetricSample {
 	return h
 }
 
-// hasData: Docker devuelve una lectura a ceros (sin límite de memoria ni reloj de CPU
-// del host) para un contenedor que ya no está en marcha. No es un 0 %: se ignora.
-func hasData(st docker.Stats) bool { return st.SystemCPUNs != 0 && st.MemLimit != 0 }
+// hasData: Docker devuelve una lectura sin reloj de CPU del host (SystemCPUNs == 0) para
+// un contenedor que ya no está en marcha. No es un 0 %: se ignora. MemLimit == 0 sí es
+// una lectura válida (host sin cgroup de memoria): se envía con límite 0.
+func hasData(st docker.Stats) bool { return st.SystemCPUNs != 0 }
 
 // measure corre en su propia goroutine: lee docker stats, calcula la CPU respecto a la
 // última lectura válida y, si hay muestra, sondea SLP y TPS. Todo dentro de ProbeTimeout.
