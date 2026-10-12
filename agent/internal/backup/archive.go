@@ -320,6 +320,9 @@ const (
 	tarBlock      = 512
 )
 
+// errExtractBytes: la extracción pasó de ExtractLimits.MaxBytes.
+var errExtractBytes = errors.New("la copia supera el límite")
+
 // ExtractLimits acota lo que puede crear una extracción (bombas de descompresión). Un
 // campo a cero toma el valor por defecto.
 type ExtractLimits struct {
@@ -455,7 +458,7 @@ func (x *extractor) run(dec io.Reader) error {
 		// se lea lo descarta Next() descomprimiéndolo entero. Todo cuenta para el límite.
 		if !headerOnly(hdr.Typeflag) {
 			if hdr.Size > x.lim.MaxBytes-x.bytes {
-				return fmt.Errorf("la copia supera el límite de %d bytes descomprimidos: rechazada", x.lim.MaxBytes)
+				return fmt.Errorf("%w de %d bytes descomprimidos: rechazada", errExtractBytes, x.lim.MaxBytes)
 			}
 			x.bytes += hdr.Size
 		}

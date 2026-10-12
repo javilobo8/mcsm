@@ -91,6 +91,7 @@ type backupService struct {
 	// Inyectables en tests.
 	restore        func(ctx context.Context, req backup.RestoreRequest) (backup.Meta, error)
 	recoverDisk    func(backupsDir, dataDir, slug string) (backup.Recovery, error)
+	freeSpace      func(dir string) (uint64, error) // nil: statfs
 	releaseWait    time.Duration
 	inventoryLimit int
 
@@ -546,7 +547,7 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 	req := backup.CreateRequest{
 		ServerID: serverID, Slug: t.slug, SpecVersion: t.version, Trigger: trigger,
 		DataDir: t.dataDir, BackupsDir: t.backupsDir, Excludes: t.spec.BackupExcludes(),
-		Now: b.clock.Now, Sleep: b.sleep, Progress: j.Progress, Log: j.Log,
+		Now: b.clock.Now, Sleep: b.sleep, Progress: j.Progress, Log: j.Log, FreeSpace: b.freeSpace,
 	}
 	running, err := b.isRunning(ctx, serverID)
 	if err != nil {

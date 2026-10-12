@@ -126,8 +126,17 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return Meta{}, err
 	}
-	if err := checkSpace(parent, need, req.Log); err != nil {
+	free, known, err := checkSpace(parent, need, req.Log)
+	if err != nil {
 		return Meta{}, err
+	}
+	// S2: lo extraído no puede pasar de lo que cabe dejando el margen (una copia sin .json
+	// llega con need = tamaño comprimido y podría descomprimir mucho más).
+	var lim ExtractLimits
+	room := int64(-1)
+	if known {
+		room = int64(min(free-(requiredSpace(need)-uint64(max(need, 0))), uint64(DefaultMaxExtractBytes)))
+		lim.MaxBytes = max(room, 1)
 	}
 
 	staging := req.DataDir + restoringInfix + now.UTC().Format(tsLayout)
@@ -153,9 +162,13 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 	pr := &progressReader{r: ctxReader{ctx: ctx, r: f}, total: max(fi.Size(), 1), fn: func(done, total int64) {
 		req.Progress(10+uint32(done*80/total), "Extrayendo la copia")
 	}}
-	if err := ExtractArchive(ctx, pr, staging, req.Log); err != nil {
+	if err := ExtractArchiveLimits(ctx, pr, staging, req.Log, lim); err != nil {
 		if cerr := ctx.Err(); cerr != nil { // no es una copia dañada: se canceló
 			return Meta{}, fmt.Errorf("restauración cancelada: %w", cerr)
+		}
+		if errors.Is(err, errExtractBytes) && room >= 0 && room < DefaultMaxExtractBytes {
+			return Meta{}, fmt.Errorf("%w para restaurar: la copia descomprimida ocupa más de %s, lo que cabe en %s dejando el margen para que los servidores del nodo sigan pudiendo guardar",
+				ErrNoSpace, humanBytes(uint64(room)), parent)
 		}
 		return Meta{}, fmt.Errorf("extraer la copia: %w", err)
 	}
@@ -264,20 +277,20 @@ func requiredSpace(need int64) uint64 {
 	return n + max(n*spaceMarginPct/100, spaceMarginMin)
 }
 
-// checkSpace falla si en dir no cabe la extracción con su margen. Si no se puede
-// consultar, avisa y deja seguir: si de verdad no cabe, la extracción fallará sin tocar
-// los datos.
-func checkSpace(dir string, need int64, log func(string)) error {
-	free, err := freeSpace(dir)
+// checkSpace falla si en dir no cabe la extracción con su margen y devuelve el espacio
+// libre (known false si no se pudo consultar: entonces avisa y deja seguir; si de verdad no
+// cabe, la extracción fallará sin tocar los datos).
+func checkSpace(dir string, need int64, log func(string)) (free uint64, known bool, err error) {
+	free, err = freeSpace(dir)
 	if err != nil {
 		log("aviso: no se pudo comprobar el espacio libre en " + dir + ": " + err.Error())
-		return nil
+		return 0, false, nil
 	}
 	if req := requiredSpace(need); free < req {
-		return fmt.Errorf("no hay espacio libre suficiente para restaurar: hacen falta %s (%s de datos más un margen de %s para el redondeo a bloques y para que los servidores del nodo sigan pudiendo guardar) y quedan %s libres en %s",
-			humanBytes(req), humanBytes(uint64(max(need, 0))), humanBytes(req-uint64(max(need, 0))), humanBytes(free), dir)
+		return free, true, fmt.Errorf("%w para restaurar: hacen falta %s (%s de datos más un margen de %s para el redondeo a bloques y para que los servidores del nodo sigan pudiendo guardar) y quedan %s libres en %s; faltan %s",
+			ErrNoSpace, humanBytes(req), humanBytes(uint64(max(need, 0))), humanBytes(req-uint64(max(need, 0))), humanBytes(free), dir, humanBytes(req-free))
 	}
-	return nil
+	return free, true, nil
 }
 
 // statfsFree es el espacio disponible para usuarios sin privilegios (sin la reserva de

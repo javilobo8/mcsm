@@ -1144,3 +1144,18 @@ func TestRecoverSendsSaveOnWhenDockerCannotBeQueried(t *testing.T) {
 		t.Fatalf("RCON = %q", got)
 	}
 }
+
+// Sin espacio para la copia, el job falla diciendo cuánto falta y sin tocar el servidor.
+func TestBackupWithoutSpaceFailsBeforeSaveOff(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.a.bk.freeSpace = func(string) (uint64, error) { return 1 << 20, nil }
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	fin := e.col.final("job-1")
+	if fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "faltan") {
+		t.Fatalf("final = %+v", fin)
+	}
+	if cmds := e.rc.list(); len(cmds) != 0 {
+		t.Fatalf("sin espacio no hay save-off: %v", cmds)
+	}
+}

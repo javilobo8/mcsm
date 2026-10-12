@@ -24,11 +24,17 @@ const (
 	resumeTimeout = 15 * time.Second
 	// maxReply acota la respuesta de RCON que se copia al log del job.
 	maxReply = 200
+	// spaceCheckEvery: cada cuántos bytes escritos se vuelve a mirar el espacio libre.
+	spaceCheckEvery = 64 << 20
 )
 
 // ErrResume indica que no se pudo reactivar el guardado automático tras una copia en
 // caliente: el mundo puede seguir con save-off hasta que alguien ejecute save-on.
 var ErrResume = errors.New("no se pudo reactivar el guardado automático (save-on); ejecuta save-on en la consola")
+
+// ErrNoSpace: no hay (o deja de haber) espacio libre para la copia o la restauración sin
+// dejar el disco del nodo por debajo del margen con el que los servidores siguen guardando.
+var ErrNoSpace = errors.New("no hay espacio libre suficiente")
 
 // RconFunc ejecuta un comando de consola en el servidor. El plazo de cada comando es el
 // del contexto que recibe (save-all flush en un mundo grande tarda más de 5 s).
@@ -49,9 +55,14 @@ type CreateRequest struct {
 	Sleep    func(ctx context.Context, d time.Duration) error
 	Progress func(pct uint32, msg string)
 	Log      func(line string)
+	// FreeSpace devuelve el espacio libre del sistema de ficheros de dir (nil: statfs).
+	FreeSpace func(dir string) (uint64, error)
 }
 
 func (r *CreateRequest) defaults() {
+	if r.FreeSpace == nil {
+		r.FreeSpace = freeSpace
+	}
 	if r.Now == nil {
 		r.Now = time.Now
 	}
@@ -114,6 +125,11 @@ func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 	if _, serr := os.Lstat(final); serr == nil {
 		return Meta{}, fmt.Errorf("la copia %s ya existe", name)
 	}
+	// Antes de save-off: sin espacio, el servidor ni se entera.
+	margin, err := backupSpace(ctx, req, excl)
+	if err != nil {
+		return Meta{}, err
+	}
 
 	resume := func() {}
 	if req.Rcon != nil {
@@ -162,7 +178,7 @@ func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 	}
 
 	partial := final + partialExt
-	size, sum, stats, err := writeArchive(ctx, req, excl, partial, resume)
+	size, sum, stats, err := writeArchive(ctx, req, excl, partial, margin, resume)
 	if err != nil {
 		return Meta{}, err
 	}
@@ -194,7 +210,7 @@ func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 // writeArchive escribe la copia en partial calculando su sha256 y la sincroniza. Llama a
 // archived en cuanto el tar está cerrado (ya no se leen los datos del mundo: es cuando
 // toca save-on). Si algo falla, borra el parcial.
-func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partial string, archived func()) (size int64, sum string, st ArchiveStats, err error) {
+func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partial string, margin uint64, archived func()) (size int64, sum string, st ArchiveStats, err error) {
 	f, err := os.OpenFile(partial, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
 	if err != nil {
 		return 0, "", st, fmt.Errorf("crear la copia: %w", err)
@@ -209,8 +225,12 @@ func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partia
 		}
 	}()
 	h := sha256.New()
+	out := io.Writer(f)
+	if margin > 0 {
+		out = &spaceGuard{w: f, free: req.FreeSpace, dir: req.BackupsDir, margin: margin, since: -1}
+	}
 	req.Progress(2, "Copiando datos")
-	st, err = WriteArchive(ctx, req.DataDir, io.MultiWriter(f, h), excl, func(done, total int64) {
+	st, err = WriteArchive(ctx, req.DataDir, io.MultiWriter(out, h), excl, func(done, total int64) {
 		pct := uint32(97)
 		if total > 0 {
 			pct = 2 + uint32(done*95/total)
@@ -233,6 +253,73 @@ func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partia
 		return 0, "", st, fmt.Errorf("guardar la copia en disco: %w", err)
 	}
 	return info.Size(), hex.EncodeToString(h.Sum(nil)), st, nil
+}
+
+// backupSpace comprueba, antes de tocar el servidor, que cabe la copia: la estimación (la
+// última copia del servidor ×1,2 o, si es la primera, lo que ocupan los datos sin comprimir)
+// más el margen de la restauración, max(5 %, 256 MiB), para que los servidores del nodo
+// sigan pudiendo guardar. Devuelve ese margen, que vigila spaceGuard durante el tar, o 0 si
+// no se pudo consultar el espacio (se avisa y se copia sin vigilancia).
+func backupSpace(ctx context.Context, req CreateRequest, excl *Excluder) (uint64, error) {
+	est, basis, err := estimateBackup(ctx, req, excl)
+	if err != nil {
+		return 0, err
+	}
+	free, err := req.FreeSpace(req.BackupsDir)
+	if err != nil {
+		req.Log("aviso: no se pudo comprobar el espacio libre en " + req.BackupsDir + ": " + err.Error())
+		return 0, nil
+	}
+	need := requiredSpace(est)
+	margin := need - uint64(max(est, 0))
+	if free < need {
+		return 0, fmt.Errorf("%w para la copia: hacen falta %s (%s de copia según %s, más un margen de %s para que los servidores del nodo sigan pudiendo guardar) y quedan %s libres en %s; faltan %s",
+			ErrNoSpace, humanBytes(need), humanBytes(uint64(max(est, 0))), basis, humanBytes(margin), humanBytes(free), req.BackupsDir, humanBytes(need-free))
+	}
+	return margin, nil
+}
+
+// estimateBackup estima lo que ocupará la copia y explica de dónde sale la cifra.
+func estimateBackup(ctx context.Context, req CreateRequest, excl *Excluder) (int64, string, error) {
+	if metas, err := List(req.BackupsDir, req.Slug); err == nil && len(metas) > 0 && metas[0].SizeBytes > 0 {
+		last := metas[0].SizeBytes
+		return last + last/5, "la última copia (" + humanBytes(uint64(last)) + ") más un 20 %", nil
+	}
+	root, err := os.OpenRoot(req.DataDir)
+	if err != nil {
+		return 0, "", fmt.Errorf("medir los datos: %w", err)
+	}
+	defer root.Close()
+	var st ArchiveStats
+	_, total, err := scan(ctx, root, excl, &st)
+	if err != nil {
+		return 0, "", fmt.Errorf("medir los datos: %w", err)
+	}
+	return total, "lo que ocupan los datos sin comprimir (es la primera copia)", nil
+}
+
+// spaceGuard deja de escribir la copia si el espacio libre baja del margen: otra copia u otro
+// servidor pueden estar llenando el disco. Lo mira al empezar y cada spaceCheckEvery bytes; si
+// no puede consultarlo, sigue.
+type spaceGuard struct {
+	w      io.Writer
+	free   func(dir string) (uint64, error)
+	dir    string
+	margin uint64
+	since  int64 // bytes desde la última comprobación; -1 = ninguna todavía
+}
+
+func (g *spaceGuard) Write(p []byte) (int, error) {
+	if g.since < 0 || g.since >= spaceCheckEvery {
+		g.since = 0
+		if free, err := g.free(g.dir); err == nil && free < g.margin {
+			return 0, fmt.Errorf("%w: el espacio libre bajó a %s durante la copia, por debajo del margen de %s en %s; copia cancelada para no llenar el disco",
+				ErrNoSpace, humanBytes(free), humanBytes(g.margin), g.dir)
+		}
+	}
+	n, err := g.w.Write(p)
+	g.since += int64(n)
+	return n, err
 }
 
 // logRcon registra en el log del job la respuesta a un comando de la copia. Minecraft
