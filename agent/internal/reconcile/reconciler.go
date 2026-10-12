@@ -175,8 +175,8 @@ func (r *Reconciler) StoreForce(sp *mcsmv1.ServerSpec) error {
 func (r *Reconciler) Forget(serverID string) error {
 	unlock := r.lock(serverID)
 	defer unlock()
-	// Spec fuera y lápida dentro en una sola transacción: nunca queda un contenedor sin
-	// spec ni lápida.
+	// Spec fuera y lápida dentro en una sola transacción: tras un Forget, el contenedor
+	// siempre tiene spec o lápida.
 	if err := r.st.ForgetWithTombstone(serverID, r.now()); err != nil {
 		return err
 	}
@@ -298,6 +298,7 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 		if err := r.st.DeleteTombstone(serverID); err != nil { // nada que borrar
 			return err
 		}
+		r.clearFailure(serverID)
 		if deleteData {
 			return fmt.Errorf("servidor %s desconocido: no se pueden borrar sus datos", serverID)
 		}
@@ -314,7 +315,10 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 	if err := r.st.DeleteSpec(serverID); err != nil {
 		return err
 	}
-	r.clearFailure(serverID)
+	if sp != nil {
+		// Sin spec (lápida) el backoff del reintento se conserva hasta que el borrado termine.
+		r.clearFailure(serverID)
+	}
 	if c != nil {
 		if err := r.eng.Stop(ctx, c.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			r.log.Warn("parada limpia fallida antes de borrar", "server", slug, "err", err)
@@ -329,7 +333,10 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 		}
 	}
 	if sp == nil {
-		return r.st.DeleteTombstone(serverID) // el borrado pendiente terminó
+		if err := r.st.DeleteTombstone(serverID); err != nil { // el borrado pendiente terminó
+			return err
+		}
+		r.clearFailure(serverID)
 	}
 	return nil
 }

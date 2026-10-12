@@ -18,10 +18,17 @@ import (
 // id (Apply, StoreForce) la anula en la misma transacción (store.PutSpec). Las lápidas no
 // aparecen en ListSpecs: ni en el Hello, ni en los ticks, ni en el inventario.
 
+// maxRemovalsPerTick acota los borrados que intenta cada pasada de RetryRemovals: cada uno
+// puede tardar hasta StopTimeout, y varios contenedores atascados no deben retener el tick
+// N×60 s. Los que fallan quedan en backoff y no cuentan en las pasadas siguientes.
+const maxRemovalsPerTick = 3
+
 // RetryRemovals reintenta borrar los contenedores de los servidores con lápida y devuelve
-// los ids cuyo borrado terminó (también los que ya no tenían contenedor). Los reservados
-// (Hold) esperan al siguiente tick. Solo actúa sobre ids con lápida explícita: un
-// contenedor mcsm.* sin spec ni lápida no se toca nunca (invariante §6.2).
+// los ids cuyo borrado terminó (también los que ya no tenían contenedor). Respeta el
+// backoff de cada lápida (spec §6.2: 30 s, 60 s, … máx. 5 min) e intenta como mucho
+// maxRemovalsPerTick por pasada. Los reservados (Hold) esperan a que se libere la reserva,
+// que completa el borrado. Solo actúa sobre ids con lápida explícita: un contenedor mcsm.*
+// sin spec ni lápida no se toca nunca (invariante §6.2).
 func (r *Reconciler) RetryRemovals(ctx context.Context) []string {
 	list, err := r.st.ListTombstones()
 	if err != nil {
@@ -29,26 +36,39 @@ func (r *Reconciler) RetryRemovals(ctx context.Context) []string {
 		return nil
 	}
 	var done []string
+	attempts := 0
 	for _, t := range list {
-		ok, err := r.retryRemoval(ctx, t.ServerID)
+		if attempts >= maxRemovalsPerTick {
+			break
+		}
+		tried, err := r.retryRemoval(ctx, t.ServerID)
+		if !tried {
+			continue
+		}
+		attempts++
 		if err != nil {
 			r.log.Warn("reintentar el borrado de un servidor retirado", "server", t.ServerID, "retirado", t.Since, "err", err)
 			continue
 		}
-		if ok {
-			r.log.Info("borrado pendiente de un servidor retirado completado", "server", t.ServerID)
-			done = append(done, t.ServerID)
-		}
+		r.log.Info("borrado pendiente de un servidor retirado completado", "server", t.ServerID)
+		done = append(done, t.ServerID)
 	}
 	return done
 }
 
-// retryRemoval borra el contenedor de id si sigue con lápida, comprobado bajo el lock del
-// servidor (un Apply o StoreForce pudo anularla después de listarla).
-func (r *Reconciler) retryRemoval(ctx context.Context, id string) (bool, error) {
+// retryRemoval intenta borrar el contenedor de id si sigue con lápida (comprobado bajo el
+// lock del servidor: un Apply o StoreForce pudo anularla después de listarla), no está
+// reservado y su backoff venció. tried indica si hubo intento; err, si falló.
+func (r *Reconciler) retryRemoval(ctx context.Context, id string) (tried bool, err error) {
 	unlock := r.lock(id)
 	defer unlock()
 	if r.heldReason(id) != "" {
+		return false, nil
+	}
+	r.mu.Lock()
+	until, waiting := r.retryAt[id]
+	r.mu.Unlock()
+	if waiting && r.now().Before(until) {
 		return false, nil
 	}
 	tomb, err := r.st.HasTombstone(id)
@@ -63,8 +83,15 @@ func (r *Reconciler) retryRemoval(ctx context.Context, id string) (bool, error) 
 		// No debería pasar (PutSpec borra la lápida): la spec manda y el servidor vive.
 		return false, r.st.DeleteTombstone(id)
 	}
+	return true, r.removeTombstoned(ctx, id)
+}
+
+// removeTombstoned borra el contenedor de un servidor con lápida (sin sus datos) y quita la
+// lápida; si falla, programa el siguiente intento con backoff. Requiere el lock del servidor.
+func (r *Reconciler) removeTombstoned(ctx context.Context, id string) error {
 	if err := r.removeLocked(ctx, id, false); err != nil {
-		return false, err
+		r.markFailure(id, 0, err.Error())
+		return err
 	}
-	return true, nil
+	return nil
 }
