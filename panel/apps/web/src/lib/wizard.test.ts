@@ -29,6 +29,11 @@ describe("asistente de nuevo servidor", () => {
       { label: "Mods", value: "2 mods" },
       { label: "Whitelist", value: "1 jugador" },
     ]));
+    expect(summarizeSpec(t).map((l) => l.label)).not.toContain("Copias automáticas");
+  });
+  it("la programación de copias que trae la plantilla sale en el resumen", () => {
+    const t = templateSpecSchema.parse({ type: "PAPER", backups: { enabled: true, cron: "0 */6 * * *", keepCount: 20, keepDays: 0 } });
+    expect(summarizeSpec(t)).toContainEqual({ label: "Copias automáticas", value: "0 */6 * * * (cada 6 horas) · como máximo 20 copias" });
   });
 });
 

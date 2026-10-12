@@ -2,6 +2,7 @@ import type { TemplateSpec } from "@mcsm/shared";
 import { apiPath } from "./api";
 import type { EditableSpec } from "./spec-edit";
 import { typeLabel } from "./spec-catalog";
+import { scheduleSummary } from "./backups";
 
 export interface WizardTarget { nodeId: string; name: string; port?: number; start: boolean }
 
@@ -34,6 +35,8 @@ export function summarizeSpec(spec: TemplateSpec | EditableSpec): { label: strin
   if (spec.ops?.length) lines.push({ label: "Operadores", value: spec.ops.join(", ") });
   const props = Object.keys(spec.properties).length;
   if (props) lines.push({ label: "Propiedades", value: count(props, "propiedad fijada", "propiedades fijadas") });
+  const backups = scheduleSummary(spec.backups);
+  if (backups) lines.push({ label: "Copias automáticas", value: backups });
   return lines;
 }
 

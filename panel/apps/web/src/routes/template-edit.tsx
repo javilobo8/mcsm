@@ -11,6 +11,7 @@ import { Field } from "@/components/spec-form/fields";
 import { api, apiPath, ApiError, type TemplateDto } from "@/lib/api";
 import { editableFromTemplate, validateSpec, type EditableSpec } from "@/lib/spec-edit";
 import { templateCreateBody, templatePatchBody, templateSaveBlock } from "@/lib/template-edit";
+import { scheduleSummary } from "@/lib/backups";
 import { useTemplate } from "@/hooks/use-templates";
 
 function TemplateEditor({ template }: { template?: TemplateDto }) {
@@ -33,6 +34,8 @@ function TemplateEditor({ template }: { template?: TemplateDto }) {
     },
   });
 
+  // La programación de copias viaja en la plantilla pero no se edita aquí (el editor solo envía FORM_KEYS).
+  const schedule = scheduleSummary(template?.spec.backups);
   const blocked = templateSaveBlock(name, errors);
   const submit = (e: React.FormEvent) => {
     e.preventDefault(); setLocalErr(null); save.reset();
@@ -47,6 +50,7 @@ function TemplateEditor({ template }: { template?: TemplateDto }) {
       <Field id="tpl-name" label="Nombre de la plantilla"><Input id="tpl-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></Field>
       <Field id="tpl-desc" label="Descripción (opcional)"><Textarea id="tpl-desc" rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
       <p className="text-xs text-muted-foreground">Las plantillas no guardan puertos ni contraseña RCON: el panel los asigna al crear cada servidor.</p>
+      {schedule && <p className="text-xs text-muted-foreground" data-testid="tpl-backups">Copias automáticas: {schedule}. Cada servidor creado con la plantilla las hereda; se cambian en su pestaña Backups.</p>}
     </div>
   );
   const err = localErr ?? (save.error instanceof ApiError ? save.error.message : save.error ? "Error inesperado" : null);

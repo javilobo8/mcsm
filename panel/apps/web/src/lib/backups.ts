@@ -14,6 +14,28 @@ export function presetFor(cron: string): string {
   return CRON_PRESETS.find((p) => p.cron !== "" && p.cron === cron.trim())?.value ?? "custom";
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * La programación de copias en una línea, para enseñarla en solo lectura donde no se edita (editor de
+ * plantillas, resumen del asistente): «0 4 * * * (cada día a las 4:00) · como máximo 10 copias y 7 días».
+ * null si la spec no trae sección `backups`.
+ */
+export function scheduleSummary(b: BackupsConfig | undefined): string | null {
+  if (!b) return null;
+  if (!b.enabled) return "desactivadas";
+  const preset = CRON_PRESETS.find((p) => p.cron !== "" && p.cron === b.cron.trim());
+  const when = preset ? `${b.cron} (${preset.label.toLowerCase()})` : b.cron;
+  const keep = [b.keepCount > 0 ? plural(b.keepCount, "copia", "copias") : "", b.keepDays > 0 ? plural(b.keepDays, "día", "días") : ""].filter(Boolean);
+  return `${when} · ${keep.length ? `como máximo ${keep.join(" y ")}` : "sin límite de retención"}`;
+}
+
+/** Aviso de «Guardar como plantilla»: la plantilla se lleva la programación de copias del servidor. */
+export function templateScheduleNote(b: BackupsConfig | undefined): string | null {
+  const summary = scheduleSummary(b);
+  return summary ? `Incluye la programación de copias (${summary}): los servidores creados con la plantilla la heredan.` : null;
+}
+
 /** Estado del formulario de programación (los números como texto, las exclusiones una por línea). */
 export interface ScheduleForm {
   enabled: boolean; cron: string; keepDays: string; keepCount: string; excludes: string; onlyIfPlayersSince: boolean;

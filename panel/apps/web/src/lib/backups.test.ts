@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError, type BackupDto, type JobDto } from "./api";
-import { backupActions, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, restoreDialogText, scheduleToForm, toggleBusyReason } from "./backups";
+import { backupsSchema } from "@mcsm/shared";
+import { backupActions, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, restoreDialogText, scheduleSummary, scheduleToForm, templateScheduleNote, toggleBusyReason } from "./backups";
 
 const base: BackupDto = {
   id: "b1", serverId: "s1", nodeId: "n1", filename: "x.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
@@ -112,5 +113,34 @@ describe("diálogo de restaurar", () => {
     expect(t).toContain("data.pre-restore-");
     expect(t).toMatch(/si el servidor debe estar en marcha.*se volverá a arrancar/);
     expect(t).not.toMatch(/si estaba en marcha/);
+  });
+});
+
+describe("scheduleSummary (plantillas y asistente, solo lectura)", () => {
+  const b = (over: object) => backupsSchema.parse({ enabled: true, ...over });
+  it("sin sección backups no hay nada que enseñar", () => {
+    expect(scheduleSummary(undefined)).toBeNull();
+  });
+  it("una línea: expresión, el preset si lo es, y la retención", () => {
+    expect(scheduleSummary(b({}))).toBe("0 4 * * * (cada día a las 4:00) · como máximo 10 copias y 7 días");
+    expect(scheduleSummary(b({ cron: "30 2 * * 1", keepDays: 0 }))).toBe("30 2 * * 1 · como máximo 10 copias");
+    expect(scheduleSummary(b({ keepCount: 0, keepDays: 30 }))).toBe("0 4 * * * (cada día a las 4:00) · como máximo 30 días");
+    expect(scheduleSummary(b({ keepCount: 1, keepDays: 1 }))).toBe("0 4 * * * (cada día a las 4:00) · como máximo 1 copia y 1 día");
+    expect(scheduleSummary(b({ keepCount: 0, keepDays: 0 }))).toBe("0 4 * * * (cada día a las 4:00) · sin límite de retención");
+  });
+  it("desactivadas", () => {
+    expect(scheduleSummary(b({ enabled: false }))).toBe("desactivadas");
+  });
+});
+
+describe("templateScheduleNote («Guardar como plantilla»)", () => {
+  it("avisa de que la plantilla se lleva la programación de copias", () => {
+    expect(templateScheduleNote(backupsSchema.parse({ enabled: true }))).toBe(
+      "Incluye la programación de copias (0 4 * * * (cada día a las 4:00) · como máximo 10 copias y 7 días): los servidores creados con la plantilla la heredan.",
+    );
+    expect(templateScheduleNote(backupsSchema.parse({}))).toMatch(/^Incluye la programación de copias \(desactivadas\)/);
+  });
+  it("sin programación, nada", () => {
+    expect(templateScheduleNote(undefined)).toBeNull();
   });
 });

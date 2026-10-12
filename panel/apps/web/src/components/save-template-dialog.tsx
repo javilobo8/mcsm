@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field } from "@/components/spec-form/fields";
 import { api, ApiError, type ServerDto, type TemplateDto } from "@/lib/api";
 import { dialogSubmit } from "@/lib/dialog-form";
+import { templateScheduleNote } from "@/lib/backups";
 
 /** "Guardar como plantilla": copia la spec APLICADA del servidor sin puertos ni rconPassword (lo quita el panel). */
 export function SaveTemplateDialog({ server }: { server: ServerDto }) {
@@ -16,6 +17,7 @@ export function SaveTemplateDialog({ server }: { server: ServerDto }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const scheduleNote = templateScheduleNote(server.spec.backups);
   const save = useMutation({
     mutationFn: () => api.post<TemplateDto>("/api/templates", { name: name.trim(), description: description.trim(), fromServerId: server.id }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ["templates"] }); },
@@ -28,6 +30,7 @@ export function SaveTemplateDialog({ server }: { server: ServerDto }) {
           <DialogTitle>Guardar «{server.name}» como plantilla</DialogTitle>
           <DialogDescription>Se guarda la configuración aplicada (v{server.specVersion}) sin puertos ni contraseña RCON. Los cambios sin aplicar no se incluyen.</DialogDescription>
         </DialogHeader>
+        {scheduleNote && <p className="text-sm text-amber-300" data-testid="stpl-backups">{scheduleNote}</p>}
         {save.isSuccess ? (
           <div className="flex flex-col gap-3 text-sm">
             <p role="status" className="text-emerald-400">Plantilla «{save.data.name}» creada.</p>
