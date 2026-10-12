@@ -78,14 +78,14 @@ export function importNotices(s: Pick<ServerDto, "importedFrom" | "observed" | "
     }
   }
   if (s.spec.dataPath) {
-    out.push(`Los datos están en ${s.spec.dataPath}, fuera de DATA_ROOT: este servidor no tiene copias de seguridad ni navegador de archivos.`);
+    out.push(`Los datos están en ${s.spec.dataPath}, fuera de DATA_ROOT: este servidor no tiene copias de seguridad ni navegador de archivos, y no se puede migrar a otro nodo.`);
   }
   return out;
 }
 
 /**
  * Qué cambia en la página de un servidor importado (I3, m5). Con dataPath el agente no ve los datos:
- * las pestañas Backups y Archivos se sustituyen por una explicación y la casilla de borrar el mundo se
+ * las pestañas Backups, Archivos y Migrar se sustituyen por una explicación y la casilla de borrar el mundo se
  * desactiva (el panel no lo borra). Si aún sigue en el contenedor original, el borrado lo elimina.
  */
 export interface ServerImportView {
@@ -95,6 +95,8 @@ export interface ServerImportView {
   files: string | null;
   /** Por qué no se puede marcar «borrar también el mundo», o null. */
   deleteData: string | null;
+  /** Explicación en lugar de la pestaña Migrar (el panel respondería 409), o null si se puede migrar. */
+  migrate: string | null;
   /** Texto del diálogo de borrado. */
   deleteDescription: string;
 }
@@ -121,6 +123,7 @@ export function serverImportView(s: Pick<ServerDto, "importedFrom" | "observed" 
     backups: outside && `${outside}: no tiene copias de seguridad. ${howTo}`,
     files: outside && `${outside}: no tiene navegador de archivos. ${howTo}`,
     deleteData: dataPath ? `Los datos están en ${dataPath}, fuera de DATA_ROOT: el panel no los borra (bórralos a mano si quieres).` : null,
+    migrate: outside && `${outside}: no se puede migrar a otro nodo. Para migrarlo, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${s.slug}/data y vuelve a importarlo.`,
     deleteDescription,
   };
 }

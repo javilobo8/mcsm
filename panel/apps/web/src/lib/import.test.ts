@@ -78,6 +78,7 @@ describe("avisos de un servidor importado", () => {
     expect(n[0]).toMatch(/mcsm-survival/);
     expect(n[1]).toMatch(/Compose/);
     expect(n[2]).toMatch(/\/home\/lobo\/mc\/survival/);
+    expect(n[2]).toMatch(/migrar/);
   });
 
   it("ya recreado: solo el aviso de dataPath; un servidor normal no tiene avisos", () => {
@@ -95,7 +96,7 @@ describe("serverImportView: pestañas y borrado de un servidor importado (I3, m5
 
   it("un servidor del panel: todo disponible y el texto de borrado de siempre", () => {
     const v = serverImportView(base);
-    expect(v).toMatchObject({ backups: null, files: null, deleteData: null });
+    expect(v).toMatchObject({ backups: null, files: null, deleteData: null, migrate: null });
     expect(v.deleteDescription).not.toMatch(/original/);
   });
 
@@ -106,6 +107,15 @@ describe("serverImportView: pestañas y borrado de un servidor importado (I3, m5
     expect(v.files).toMatch(/archivos/);
     expect(v.backups).toMatch(/vuelve a importarlo/);
     expect(v.deleteData).toMatch(/no los borra/);
+  });
+
+  it("con dataPath: la pestaña Migrar explica por qué no se migra y cómo, en vez de acabar en un 409 (Planes 6 y 7)", () => {
+    const v = serverImportView(withData);
+    expect(v.migrate).toMatch(/\/home\/lobo\/mc\/survival/);
+    expect(v.migrate).toMatch(/no se puede migrar/);
+    expect(v.migrate).toMatch(/DATA_ROOT\/survival\/data/);
+    expect(v.migrate).toMatch(/vuelve a importarlo/);
+    expect(v.migrate).not.toMatch(/quita/);
   });
 
   it("aún adoptado: el borrado elimina el contenedor original que se importó (y avisa de Compose)", () => {

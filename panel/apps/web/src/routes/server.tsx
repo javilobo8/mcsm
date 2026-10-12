@@ -122,7 +122,7 @@ export function ServerPage() {
         <TabsContent value="files">{iv.files ? <ExternalDataNote text={iv.files} /> : <FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} />}</TabsContent>
         {/* ── plan-6 ── */}
         {/* ── plan-7 ── */}
-        <TabsContent value="migrate"><MigrateTab key={s.id} server={s} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="migrate">{iv.migrate ? <ExternalDataNote text={iv.migrate} /> : <MigrateTab key={s.id} server={s} nodeOnline={nodeOnline} />}</TabsContent>
         {/* ── plan-8 ── */}
         {/* ── plan-9 ── */}
       </GuardedTabs>
