@@ -209,3 +209,30 @@ describe("proposeImport: estado", () => {
     expect(proposeImport(cand({ state: "exited" }), ctx()).desiredState).toBe("stopped");
   });
 });
+
+describe("proposeImport: usuario del contenedor (m7)", () => {
+  it("--user uid:gid numérico → UID y GID en env (itzg no cambia el propietario de /data al recrearlo)", () => {
+    const p = proposeImport(cand({ user: "1001:1002" }), ctx());
+    expect(p.spec.env).toMatchObject({ UID: "1001", GID: "1002" });
+    expect(p.specError).toBeNull();
+    expect(p.warnings.join(" ")).toMatch(/UID=1001/);
+  });
+  it("solo uid: UID y aviso de revisar GID", () => {
+    const p = proposeImport(cand({ user: "1001" }), ctx());
+    expect(p.spec.env).toMatchObject({ UID: "1001" });
+    expect(p.spec.env).not.toHaveProperty("GID");
+    expect(p.warnings.join(" ")).toMatch(/GID/);
+  });
+  it("por nombre: aviso, sin UID/GID", () => {
+    const p = proposeImport(cand({ user: "minecraft" }), ctx());
+    expect(p.spec.env).not.toHaveProperty("UID");
+    expect(p.warnings.join(" ")).toMatch(/usuario «minecraft»/);
+  });
+  it("vacío o root: nada que hacer (itzg ya arrancaba como root)", () => {
+    for (const user of ["", "0", "0:0", "root"]) {
+      const p = proposeImport(cand({ user }), ctx());
+      expect(p.spec.env).not.toHaveProperty("UID");
+      expect(p.warnings.join(" ")).not.toMatch(/UID|usuario/);
+    }
+  });
+});

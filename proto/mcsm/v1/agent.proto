@@ -487,6 +487,7 @@ message ImportCandidate {
   string network_mode = 11; // bridge|host|none|container:<id>|<red de usuario>
   repeated string networks = 12;
   map<string, string> labels = 13; // solo com.docker.compose.project y com.docker.compose.service
+  string user = 14; // Config.User (--user): "" = el de la imagen; "uid[:gid]" o un nombre
 }
 
 message ImportPort {

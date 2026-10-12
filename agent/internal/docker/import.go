@@ -9,6 +9,7 @@ type ImportInfo struct {
 	Image       string // Config.Image tal cual la escribió el usuario
 	ImageID     string // imagen con la que corre (sha256:… en Docker)
 	State       string
+	User        string // Config.User (--user): "" = el de la imagen
 	Env         []string
 	Labels      map[string]string
 	Ports       []PortPublish // publicaciones configuradas (HostConfig.PortBindings), ordenadas

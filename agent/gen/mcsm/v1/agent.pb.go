@@ -3863,6 +3863,7 @@ type ImportCandidate struct {
 	NetworkMode      string                 `protobuf:"bytes,11,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`                  // bridge|host|none|container:<id>|<red de usuario>
 	Networks         []string               `protobuf:"bytes,12,rep,name=networks,proto3" json:"networks,omitempty"`
 	Labels           map[string]string      `protobuf:"bytes,13,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // solo com.docker.compose.project y com.docker.compose.service
+	User             string                 `protobuf:"bytes,14,opt,name=user,proto3" json:"user,omitempty"`                                                                               // Config.User (--user): "" = el de la imagen; "uid[:gid]" o un nombre
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -3986,6 +3987,13 @@ func (x *ImportCandidate) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
+}
+
+func (x *ImportCandidate) GetUser() string {
+	if x != nil {
+		return x.User
+	}
+	return ""
 }
 
 type ImportPort struct {
@@ -4465,7 +4473,7 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\n" +
 	"candidates\x18\x01 \x03(\v2\x18.mcsm.v1.ImportCandidateR\n" +
 	"candidates\x12\x1b\n" +
-	"\tdata_root\x18\x02 \x01(\tR\bdataRoot\"\xe4\x04\n" +
+	"\tdata_root\x18\x02 \x01(\tR\bdataRoot\"\xf8\x04\n" +
 	"\x0fImportCandidate\x12!\n" +
 	"\fcontainer_id\x18\x01 \x01(\tR\vcontainerId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -4480,7 +4488,8 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	" \x01(\x03R\bnanoCpus\x12!\n" +
 	"\fnetwork_mode\x18\v \x01(\tR\vnetworkMode\x12\x1a\n" +
 	"\bnetworks\x18\f \x03(\tR\bnetworks\x12<\n" +
-	"\x06labels\x18\r \x03(\v2$.mcsm.v1.ImportCandidate.LabelsEntryR\x06labels\x1a6\n" +
+	"\x06labels\x18\r \x03(\v2$.mcsm.v1.ImportCandidate.LabelsEntryR\x06labels\x12\x12\n" +
+	"\x04user\x18\x0e \x01(\tR\x04user\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a9\n" +

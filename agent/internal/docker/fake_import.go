@@ -39,6 +39,7 @@ func (f *Fake) InspectImport(_ context.Context, id string) (*ImportInfo, error) 
 	out := &ImportInfo{ID: c.ID, Name: c.Name, State: c.State, Labels: map[string]string{}}
 	if c.Config != nil {
 		out.Image, out.ImageID = c.Config.Image, c.Config.Image
+		out.User = c.Config.User
 		out.Env = append([]string(nil), c.Config.Env...)
 		out.Labels = copyLabels(c.Config.Labels)
 	}

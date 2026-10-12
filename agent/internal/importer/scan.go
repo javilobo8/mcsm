@@ -84,7 +84,7 @@ func valid(s string) string { return strings.ToValidUTF8(s, "�") }
 
 func candidate(info *docker.ImportInfo, env map[string]string) *mcsmv1.ImportCandidate {
 	c := &mcsmv1.ImportCandidate{
-		ContainerId: info.ID, Name: valid(info.Name), Image: valid(info.Image), State: info.State,
+		ContainerId: info.ID, Name: valid(info.Name), Image: valid(info.Image), State: info.State, User: valid(info.User),
 		Env: make(map[string]string, len(env)), RestartPolicy: info.Restart, MemoryLimitBytes: info.Memory,
 		NanoCpus: info.NanoCPUs, NetworkMode: valid(info.NetworkMode), Labels: map[string]string{},
 	}

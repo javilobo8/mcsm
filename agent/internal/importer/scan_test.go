@@ -124,3 +124,17 @@ func TestUserEnv(t *testing.T) {
 		t.Fatalf("UserEnv = %v", got)
 	}
 }
+
+// m7: el usuario con el que corre el contenedor (--user) viaja al panel, que propone UID/GID para que
+// itzg no cambie el propietario de /data al recrearlo.
+func TestScanSendsContainerUser(t *testing.T) {
+	f := docker.NewFake()
+	id, err := f.Create(context.Background(), "mc", &container.Config{Image: "itzg/minecraft-server", User: "1001:1001"}, &container.HostConfig{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := Scan(context.Background(), f, func(string) bool { return false })
+	if err != nil || len(list) != 1 || list[0].ContainerId != id || list[0].User != "1001:1001" {
+		t.Fatalf("list = %v, %v", list, err)
+	}
+}

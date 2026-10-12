@@ -42,7 +42,7 @@ func TestMobyImportInspectAndConnect(t *testing.T) {
 	}
 	dir := t.TempDir()
 	id, err := m.Create(ctx, name,
-		&container.Config{Image: "alpine:3.22", Cmd: []string{"sleep", "300"}, Env: []string{"FOO=bar"},
+		&container.Config{Image: "alpine:3.22", Cmd: []string{"sleep", "300"}, Env: []string{"FOO=bar"}, User: "1001:1001",
 			Labels: map[string]string{"mcsm.test": "true", "com.docker.compose.project": "mcsm-test"}},
 		&container.HostConfig{
 			Binds:         []string{dir + ":/data", dir + ":/extra:ro"},
@@ -65,7 +65,7 @@ func TestMobyImportInspectAndConnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Name != name || info.Image != "alpine:3.22" || !strings.HasPrefix(info.ImageID, "sha256:") || info.State != "running" ||
+	if info.Name != name || info.Image != "alpine:3.22" || info.User != "1001:1001" || !strings.HasPrefix(info.ImageID, "sha256:") || info.State != "running" ||
 		!slices.Contains(info.Env, "FOO=bar") || info.Restart != "unless-stopped" || info.Memory != 64<<20 || info.NanoCPUs != 5e8 {
 		t.Fatalf("inspect = %+v", info)
 	}

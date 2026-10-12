@@ -295,6 +295,21 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
     warn("La whitelist y los operadores se quedan en variables de entorno (Avanzado) porque el contenedor no sincroniza esos ficheros: así no se pierde lo añadido desde el juego");
   }
 
+  // Usuario (--user): al recrearlo, itzg arranca como root y cambia el propietario de /data a UID:GID
+  // (1000:1000 por defecto). Con los del contenedor, los archivos del host conservan su dueño (m7).
+  const user = c.user.trim();
+  if (user && user !== "root") {
+    const ids = /^(\d+)(?::(\d+))?$/.exec(user);
+    if (!ids) {
+      warn(`El contenedor corre con el usuario «${user}» (por nombre): al recrearlo correrá con el de itzg (1000:1000) y cambiará el propietario de los archivos de /data. Pon en «Avanzado» UID y GID con los números de ese usuario`);
+    } else if (ids[1] !== "0") {
+      const [, uid, gid] = ids as unknown as [string, string, string | undefined];
+      env.UID = uid;
+      if (gid !== undefined) env.GID = gid;
+      warn(`El contenedor corre con --user ${user}: se propone UID=${uid}${gid !== undefined ? ` y GID=${gid}` : ""} para que, al recrearlo, itzg no cambie el propietario de los archivos de /data${gid === undefined ? ". Sin grupo en --user, revisa GID en «Avanzado»" : ""}`);
+    }
+  }
+
   // Resto del env.
   const passEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {

@@ -38,6 +38,7 @@ func (m *Moby) InspectImport(ctx context.Context, id string) (*ImportInfo, error
 	}
 	if c.Config != nil {
 		out.Image = c.Config.Image
+		out.User = c.Config.User
 		out.Env = c.Config.Env
 		if c.Config.Labels != nil {
 			out.Labels = c.Config.Labels
