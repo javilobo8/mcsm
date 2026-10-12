@@ -432,14 +432,36 @@ func TestNeverDeletesUnknownManagedContainer(t *testing.T) {
 }
 
 func TestRemoveIsIdempotent(t *testing.T) {
-	r, st, _, _, _ := setup(t)
+	r, st, fake, _, _ := setup(t)
 	ctx := context.Background()
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	_ = r.Reconcile(ctx, "a")
 	for i := 0; i < 2; i++ {
-		if err := r.Remove(ctx, "a", true); err != nil {
+		if err := r.Remove(ctx, "a", false); err != nil {
 			t.Fatalf("Remove #%d: %v", i+1, err)
 		}
+		if sp, _ := st.GetSpec("a"); sp != nil {
+			t.Fatalf("Remove #%d: queda la spec", i+1)
+		}
+		if list, _ := fake.ListManaged(ctx); len(list) != 0 {
+			t.Fatalf("Remove #%d: queda el contenedor", i+1)
+		}
+	}
+}
+
+func TestRemoveDataOfUnknownServerFails(t *testing.T) {
+	r, st, _, _, root := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	_ = r.Reconcile(ctx, "a")
+	if err := r.Remove(ctx, "a", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Remove(ctx, "a", true); err == nil {
+		t.Fatal("deleteData sobre servidor desconocido debe devolver error, no fallar en silencio")
+	}
+	if _, err := os.Stat(filepath.Join(root, "alpha", "data")); err != nil {
+		t.Fatal("el directorio de datos debe seguir intacto")
 	}
 }
 

@@ -238,6 +238,9 @@ func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData boo
 		slug = c.Labels[spec.LabelSlug]
 	}
 	if sp == nil && c == nil {
+		if deleteData {
+			return fmt.Errorf("servidor %s desconocido: no se pueden borrar sus datos", serverID)
+		}
 		return nil // ya borrado: idempotente (el panel reenvía removed_ids al reconectar)
 	}
 	// Validar antes de tocar nada: un slug inválido no debe dejar el borrado a medias.
