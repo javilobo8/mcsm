@@ -25,8 +25,10 @@ type Fake struct {
 	Calls      []string
 	CreateErr  error
 	StartErr   error
-	StatsErr   error            // si no es nil, Stats lo devuelve
-	stats      map[string]Stats // lecturas fijadas con SetStats, por id de contenedor
+	StatsErr   error               // si no es nil, Stats lo devuelve
+	ImageEnvs  map[string][]string // plan-6: ENV de cada imagen, por referencia (ImageEnv)
+	ConnectErr error               // plan-6: si no es nil, ConnectNetwork lo devuelve
+	stats      map[string]Stats    // lecturas fijadas con SetStats, por id de contenedor
 	logPipes   map[string][]*io.PipeWriter
 	subs       []*eventSub
 }
@@ -58,10 +60,11 @@ type FakeContainer struct {
 	Config     *container.Config
 	HostConfig *container.HostConfig
 	Net        *network.NetworkingConfig
+	Aliases    map[string][]string // plan-6: red → alias añadidos con ConnectNetwork
 }
 
 func NewFake() *Fake {
-	return &Fake{Containers: map[string]*FakeContainer{}, Images: map[string]bool{}, Networks: map[string]bool{}, logPipes: map[string][]*io.PipeWriter{}}
+	return &Fake{Containers: map[string]*FakeContainer{}, Images: map[string]bool{}, Networks: map[string]bool{}, ImageEnvs: map[string][]string{}, logPipes: map[string][]*io.PipeWriter{}}
 }
 
 func (f *Fake) record(format string, args ...any) {

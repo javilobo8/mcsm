@@ -18,6 +18,9 @@ type Container struct {
 	Name   string
 	State  string
 	Labels map[string]string
+	// Adopted lo marca el reconciliador en el contenedor original de un servidor importado (plan-6):
+	// no tiene etiquetas mcsm.* y sus Labels son sintetizadas. Docker nunca lo rellena.
+	Adopted bool
 }
 
 type Inspect struct {
@@ -69,4 +72,14 @@ type Engine interface {
 	// Stats devuelve una lectura puntual de uso de recursos (one-shot: no espera a una
 	// segunda muestra). ErrNotFound si el contenedor no existe.
 	Stats(ctx context.Context, id string) (Stats, error)
+
+	// ── plan-6: importación (spec §6.7) ──
+	// ListAll lista todos los contenedores del host (como `docker ps -a`), gestionados o no.
+	ListAll(ctx context.Context) ([]Container, error)
+	// InspectImport es el inspect reducido de un contenedor importable. ErrNotFound si no existe.
+	InspectImport(ctx context.Context, id string) (*ImportInfo, error)
+	// ImageEnv devuelve el ENV de una imagen (por id o referencia). ErrNotFound si no existe.
+	ImageEnv(ctx context.Context, image string) ([]string, error)
+	// ConnectNetwork conecta un contenedor (en marcha o no) a una red con alias DNS, sin reiniciarlo.
+	ConnectNetwork(ctx context.Context, netName, id string, aliases []string) error
 }
