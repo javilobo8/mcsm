@@ -53,8 +53,13 @@ export function duplicateHostPorts(game: number | undefined, extra: readonly Ext
   return [...dups];
 }
 
-/** Sección "Red": puerto de juego (en el host) y puertos extra (Geyser, voz, mapas web…). */
-export function NetworkSection({ spec, onChange, onError }: { spec: EditableSpec; onChange: (s: EditableSpec) => void; onError: ReportError }) {
+/**
+ * Sección "Red": puerto de juego (en el host), puertos extra (Geyser, voz, mapas web…) y el router (plan-8), que
+ * `routerHidden` sustituye por un texto.
+ */
+export function NetworkSection({ spec, onChange, onError, routerHidden }: {
+  spec: EditableSpec; onChange: (s: EditableSpec) => void; onError: ReportError; routerHidden?: string;
+}) {
   const extra = spec.ports.extra;
   const setExtra = (list: Extra[]) => onChange({ ...spec, ports: { ...spec.ports, extra: list } });
   const dups = duplicateHostPorts(spec.ports.game, extra);
@@ -94,7 +99,9 @@ export function NetworkSection({ spec, onChange, onError }: { spec: EditableSpec
           </Button>
         </div>
       </div>
-      <RouterSection spec={spec} onChange={onChange} onError={onError} />
+      {routerHidden === undefined
+        ? <RouterSection spec={spec} onChange={onChange} onError={onError} />
+        : <p className="text-xs text-muted-foreground">{routerHidden}</p>}
     </div>
   );
 }

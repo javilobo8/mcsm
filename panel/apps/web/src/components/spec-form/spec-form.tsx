@@ -51,9 +51,11 @@ export function sectionOfField(field: string): string {
  * `general` es el contenido propio de quien lo usa (nombre, descripción, RCON…).
  * `onError` recibe el mapa AGREGADO de errores de todas las secciones cada vez que cambia: quien lo usa
  * debe bloquear guardar/aplicar mientras no esté vacío. El propio formulario resume cuántos y dónde.
+ * `routerHidden` (plan-8): sustituye la sección del router de la pestaña Red por ese texto (la importación).
  */
-export function SpecForm({ value, onChange, onError, mode, general }: {
+export function SpecForm({ value, onChange, onError, mode, general, routerHidden }: {
   value: EditableSpec; onChange: (s: EditableSpec) => void; onError: (errors: SpecFormErrors) => void; mode: "server" | "template"; general: React.ReactNode;
+  routerHidden?: string;
 }) {
   const [errors, setErrors] = useState<SpecFormErrors>({});
   const [tab, setTab] = useState<TabValue>("general");
@@ -104,7 +106,7 @@ export function SpecForm({ value, onChange, onError, mode, general }: {
       <TabsContent forceMount value="version" className="data-[state=inactive]:hidden"><VersionSection spec={value} onChange={onChange} onError={report} /></TabsContent>
       <TabsContent forceMount value="properties" className="data-[state=inactive]:hidden"><PropertiesSection {...props} /></TabsContent>
       <TabsContent forceMount value="players" className="data-[state=inactive]:hidden"><PlayersSection spec={value} onChange={onChange} onError={report} /></TabsContent>
-      {mode === "server" && <TabsContent forceMount value="network" className="data-[state=inactive]:hidden"><NetworkSection {...props} /></TabsContent>}
+      {mode === "server" && <TabsContent forceMount value="network" className="data-[state=inactive]:hidden"><NetworkSection {...props} routerHidden={routerHidden} /></TabsContent>}
       <TabsContent forceMount value="resources" className="data-[state=inactive]:hidden"><ResourcesSection {...props} /></TabsContent>
       <TabsContent forceMount value="advanced" className="data-[state=inactive]:hidden"><AdvancedSection {...props} /></TabsContent>
     </Tabs>

@@ -14,7 +14,7 @@ import { useImportCandidates } from "@/hooks/use-import";
 import { api, apiPath, ApiError, type ServerDto } from "@/lib/api";
 import { validateSpec } from "@/lib/spec-edit";
 import {
-  adoptBlock, adoptRequest, candidateStateLabel, initialReview, isPristine, reviewDirty, reviewLeaveWarning, type ReviewState,
+  IMPORT_ROUTER_NOTE, adoptBlock, adoptRequest, candidateStateLabel, initialReview, isPristine, reviewDirty, reviewLeaveWarning, type ReviewState,
 } from "@/lib/import";
 
 /** Nodos → Importar (spec §8): contenedores itzg del nodo que el panel aún no gestiona. */
@@ -144,7 +144,8 @@ function ImportReview({ nodeId, candidate: c, onCancel }: { nodeId: string; cand
         </ul>
       )}
       {c.proposal.specError && <p role="alert" className="text-sm text-red-400">La configuración deducida no es válida tal cual ({c.proposal.specError}): corrígela y usa «Adoptar y aplicar».</p>}
-      <SpecForm value={review.spec} onChange={(spec) => setReview((r) => ({ ...r, spec }))} onError={setErrors} mode="server" general={general} />
+      <SpecForm value={review.spec} onChange={(spec) => setReview((r) => ({ ...r, spec }))} onError={setErrors} mode="server" general={general}
+        routerHidden={IMPORT_ROUTER_NOTE} />
       {err && !confirmApply && <p role="alert" className="text-sm text-red-400">{err}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <Button disabled={adopt.isPending || hotBlock !== null} aria-describedby={hotBlock ? "imp-hot-why" : undefined} onClick={() => adopt.mutate(false)}>

@@ -5,10 +5,10 @@ import { defaultSpecInput } from "@mcsm/shared";
 import { SpecForm, sectionOfField } from "./spec-form";
 import type { EditableSpec } from "@/lib/spec-edit";
 
-const render = (spec: EditableSpec, mode: "server" | "template") =>
+const render = (spec: EditableSpec, mode: "server" | "template", routerHidden?: string) =>
   renderToString(
     <QueryClientProvider client={new QueryClient()}>
-      <SpecForm value={spec} onChange={() => {}} onError={() => {}} mode={mode} general={<p>contenido general</p>} />
+      <SpecForm value={spec} onChange={() => {}} onError={() => {}} mode={mode} general={<p>contenido general</p>} routerHidden={routerHidden} />
     </QueryClientProvider>,
   );
 
@@ -33,6 +33,14 @@ describe("SpecForm (render en servidor, sin DOM)", () => {
     const html = render({ ...defaultSpecInput(), ports: { extra: [] } }, "template");
     expect(html).not.toContain("Puerto de juego");
     expect(html).toContain("Avanzado");
+  });
+
+  it("plan-8: con routerHidden (la importación) no se pinta la sección del router, sino ese texto", () => {
+    expect(render(defaultSpecInput(), "server")).toContain("Router (mc-router)");
+    const html = render(defaultSpecInput(), "server", "EL ROUTER SE ACTIVA DESPUÉS");
+    expect(html).not.toContain("Router (mc-router)");
+    expect(html).toContain("EL ROUTER SE ACTIVA DESPUÉS");
+    expect(html).toContain("Puerto de juego");
   });
 
   it("ausente no es vacío: sin ops/whitelist se ofrece gestionarlos y no hay botón de dejar de gestionar", () => {

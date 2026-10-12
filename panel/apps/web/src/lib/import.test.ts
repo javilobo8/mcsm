@@ -57,6 +57,20 @@ describe("revisión de un candidato", () => {
     expect(reviewLeaveWarning(true)?.title).toBeTruthy();
   });
 
+  it("plan-8: el router no se adopta (se activa después, en Configuración → Red): ni viaja, ni ensucia, ni impide adoptar sin parar", () => {
+    const c = cand();
+    const r = initialReview(c);
+    const routed = { ...r, spec: { ...r.spec, router: { enabled: true, hostname: "survival.lan" } } };
+    expect(adoptRequest(c, routed, false)).toEqual({ containerId: ID, name: "survival", slug: "survival", spec, applyNow: false });
+    expect(isPristine(c, routed.spec)).toBe(true);
+    expect(reviewDirty(c, routed)).toBe(false);
+    expect(adoptBlock(c, routed, { ...noErrors, applyNow: false })).toBeNull();
+    // También si la propuesta lo trajera.
+    const withRouter = cand({}, { spec: { ...spec, router: { enabled: true, hostname: "x.lan" } } });
+    expect(adoptRequest(withRouter, initialReview(withRouter), true).spec).not.toHaveProperty("router");
+    expect(isPristine(withRouter, spec)).toBe(true);
+  });
+
   it("estados en castellano", () => {
     expect(candidateStateLabel("running")).toBe("En marcha");
     expect(candidateStateLabel("exited")).toBe("Parado");

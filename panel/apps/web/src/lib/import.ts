@@ -10,16 +10,28 @@ export function initialReview(c: ImportCandidateDto): ReviewState {
   return { name: c.proposal.name, slug: c.proposal.slug, spec: c.proposal.spec };
 }
 
+/**
+ * Plan 8: la importación no adopta el router (el panel lo descarta: un adoptado no tiene las etiquetas de mc-router
+ * hasta que se recrea). La revisión no lo enseña y aquí no cuenta: se activa después, en Configuración → Red.
+ */
+function withoutRouter(spec: EditableSpec): EditableSpec {
+  const { router: _router, ...rest } = spec;
+  return rest;
+}
+
 /** ¿La spec revisada es la deducida del contenedor, y esta es válida? Solo entonces se adopta sin parar. */
 export function isPristine(c: ImportCandidateDto, spec: EditableSpec): boolean {
-  return c.proposal.specError === null && sameSpecInput(c.proposal.spec, spec);
+  return c.proposal.specError === null && sameSpecInput(withoutRouter(c.proposal.spec), withoutRouter(spec));
 }
 
 /** ¿Hay algo que perder si se sale de la revisión? (nombre, slug o spec distintos de la propuesta). */
 export function reviewDirty(c: ImportCandidateDto, r: ReviewState): boolean {
   const init = initialReview(c);
-  return r.name !== init.name || r.slug !== init.slug || canonicalJson(r.spec) !== canonicalJson(init.spec);
+  return r.name !== init.name || r.slug !== init.slug || canonicalJson(withoutRouter(r.spec)) !== canonicalJson(withoutRouter(init.spec));
 }
+
+/** Plan 8: lo que dice la pestaña Red de la revisión en lugar de la sección del router. */
+export const IMPORT_ROUTER_NOTE = "Router (mc-router): el hostname se activa después de importar el servidor, en su Configuración → Red.";
 
 const REVIEW_LEAVE_WARNING: GuardText = {
   title: "Revisión sin terminar",
@@ -56,9 +68,9 @@ export function adoptBlock(
   return null;
 }
 
-/** Cuerpo de POST /api/nodes/:id/import. dataPath no viaja (el panel lo saca del contenedor) ni el slug fijo. */
+/** Cuerpo de POST /api/nodes/:id/import. dataPath no viaja (el panel lo saca del contenedor) ni el slug fijo, ni el router. */
 export function adoptRequest(c: ImportCandidateDto, r: ReviewState, applyNow: boolean) {
-  const { dataPath: _fromContainer, ...spec } = r.spec;
+  const { dataPath: _fromContainer, ...spec } = withoutRouter(r.spec);
   return { containerId: c.containerId, name: r.name.trim(), ...(c.proposal.slugLocked ? {} : { slug: r.slug }), spec, applyNow };
 }
 
