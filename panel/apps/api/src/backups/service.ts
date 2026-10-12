@@ -137,13 +137,12 @@ export class BackupService {
     this.app.events.emit("backups", serverId);
   }
 
-  /** Cambia `spec.backups` (programación y retención) y la envía al agente como una spec nueva. El cuerpo REEMPLAZA
-   * `backups` entero (lo omitido vuelve a sus valores por defecto). No es acción inmediata: con el nodo desconectado
-   * se guarda y versiona sin 409, y la spec llega en el próximo SyncSpecs. */
   /**
-   * Sustituye la sección `backups` con el PATCH de spec del Plan 3 (merge de primer nivel): mismos
-   * topes, errores de zod en castellano con la ruta del campo, comprobación de puertos y, si nada
-   * cambia, sin versión nueva ni ApplySpec.
+   * Cambia `spec.backups` (programación y retención) con el PATCH de spec del Plan 3 (`serversService.patch`). Es un
+   * merge de primer nivel: el cuerpo sustituye la sección `backups` entera (lo omitido dentro de ella vuelve a sus
+   * valores por defecto). Mismos topes, errores de zod en castellano con la ruta del campo y comprobación de puertos;
+   * si nada cambia, sin versión nueva ni ApplySpec. No es una acción inmediata: con el nodo desconectado se guarda y
+   * versiona sin 409, y la spec llega en el próximo SyncSpecs.
    */
   async updateSchedule(serverId: string, input: Record<string, unknown>) {
     return this.app.serversService.patch(serverId, { spec: { backups: input } });
