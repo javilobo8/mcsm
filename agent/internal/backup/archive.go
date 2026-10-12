@@ -77,19 +77,23 @@ func (e *Excluder) Excluded(rel string) bool {
 type ArchiveStats struct {
 	Files    int
 	Bytes    int64    // contenido sin comprimir
-	Warnings []string // entradas omitidas o que cambiaron durante la copia
+	Warnings []string // entradas omitidas (borradas o que dejaron de ser ficheros durante la copia)
 }
 
 // ProgressFunc recibe los bytes de contenido copiados y el total previsto.
 type ProgressFunc func(done, total int64)
 
-// entry es una entrada del escaneo. info (Lstat) fija el tipo, tamaño, permisos y
-// propietario de la cabecera aunque el fichero cambie después.
+// entry es una entrada del escaneo. info (Lstat) fija el tipo de la entrada y, salvo en
+// los ficheros regulares (cuya cabecera sale de lo que hay al abrirlos), su cabecera.
 type entry struct {
 	rel  string // relativa a la raíz, con `/`
 	info fs.FileInfo
 	link string // destino, si es un enlace simbólico
 }
+
+// ErrSourceChanged: un fichero cambió (tamaño, mtime o bytes leídos) mientras se copiaba su
+// contenido. La copia no vale: nunca se trunca ni se rellena en silencio.
+var ErrSourceChanged = errors.New("cambió mientras se copiaba")
 
 // copyBufSize es el búfer de copia de contenido (lectura y extracción).
 const copyBufSize = 1 << 20
@@ -98,9 +102,9 @@ const copyBufSize = 1 << 20
 // con zstd. No sigue enlaces simbólicos: los guarda como enlace. Todo se lee a través de
 // un os.Root abierto en src: aunque un proceso del contenedor cambie un directorio por un
 // enlace a mitad de copia, el agente (root) nunca lee nada de fuera de los datos. Un
-// fichero que crece durante la copia se trunca a su tamaño inicial, uno que encoge se
-// rellena con ceros y uno que desaparece se omite (quedan en Warnings): la copia no se
-// aborta porque un log se escriba a la vez. El sha256 lo calcula el llamante en vuelo
+// fichero se copia tal como está al abrirlo; si cambia mientras se lee, la copia falla con
+// ErrSourceChanged (nunca se trunca ni se rellena). Uno que desaparece antes de abrirlo se
+// omite (queda en Warnings). El sha256 lo calcula el llamante en vuelo
 // envolviendo w (io.MultiWriter). Si falla o se cancela, NO cierra el tar ni la trama
 // zstd: lo escrito queda truncado e ilegible para ExtractArchive en vez de pasar por una
 // copia completa.
@@ -252,19 +256,16 @@ func readDirIn(root *os.Root, dir string, want fs.FileInfo) (des []fs.DirEntry, 
 	return des, false, err
 }
 
+// writeEntry escribe una entrada. La cabecera de un fichero regular sale de lo que hay al
+// abrirlo (no del escaneo): un fichero que cambió antes se copia tal como está. Si cambia
+// mientras se lee (bytes leídos, tamaño o mtime distintos al terminar), falla con
+// ErrSourceChanged: lo escrito en el tar no se corresponde con ningún estado del fichero.
 func writeEntry(ctx context.Context, tw *tar.Writer, root *os.Root, e entry, buf []byte) (n int64, skipped bool, warn string, err error) {
-	hdr, err := tar.FileInfoHeader(e.info, e.link)
-	if err != nil {
-		return 0, false, "", err
-	}
-	hdr.Name = e.rel
-	if e.info.IsDir() {
-		hdr.Name += "/"
-	}
-	hdr.Format = tar.FormatPAX
-	hdr.Uname, hdr.Gname = "", "" // solo uid/gid numéricos: la imagen itzg usa 1000
-	hdr.AccessTime, hdr.ChangeTime = time.Time{}, time.Time{}
 	if !e.info.Mode().IsRegular() {
+		hdr, err := entryHeader(e.info, e)
+		if err != nil {
+			return 0, false, "", err
+		}
 		return 0, false, "", tw.WriteHeader(hdr)
 	}
 	// O_NONBLOCK: si el fichero se cambió por una FIFO tras el escaneo, abrirla no se
@@ -277,10 +278,16 @@ func writeEntry(ctx context.Context, tw *tar.Writer, root *os.Root, e entry, buf
 		return 0, false, "", err
 	}
 	defer f.Close()
-	if fi, err := f.Stat(); err != nil {
+	before, err := f.Stat()
+	if err != nil {
 		return 0, false, "", err
-	} else if !fi.Mode().IsRegular() {
+	}
+	if !before.Mode().IsRegular() {
 		return 0, true, "omitido (dejó de ser un fichero durante la copia): " + e.rel, nil
+	}
+	hdr, err := entryHeader(before, e)
+	if err != nil {
+		return 0, false, "", err
 	}
 	if err := tw.WriteHeader(hdr); err != nil {
 		return 0, false, "", err
@@ -289,21 +296,30 @@ func writeEntry(ctx context.Context, tw *tar.Writer, root *os.Root, e entry, buf
 	if err != nil {
 		return n, false, "", err
 	}
-	if n < hdr.Size {
-		if _, err := io.CopyN(tw, zeroReader{}, hdr.Size-n); err != nil {
-			return n, false, "", err
-		}
-		warn = "cambió durante la copia (rellenado con ceros): " + e.rel
-		n = hdr.Size
+	after, err := f.Stat()
+	if err != nil {
+		return n, false, "", err
 	}
-	return n, false, warn, nil
+	if n != hdr.Size || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+		return n, false, "", ErrSourceChanged
+	}
+	return n, false, "", nil
 }
 
-type zeroReader struct{}
-
-func (zeroReader) Read(p []byte) (int, error) {
-	clear(p)
-	return len(p), nil
+// entryHeader construye la cabecera PAX de e a partir de info.
+func entryHeader(info fs.FileInfo, e entry) (*tar.Header, error) {
+	hdr, err := tar.FileInfoHeader(info, e.link)
+	if err != nil {
+		return nil, err
+	}
+	hdr.Name = e.rel
+	if info.IsDir() {
+		hdr.Name += "/"
+	}
+	hdr.Format = tar.FormatPAX
+	hdr.Uname, hdr.Gname = "", "" // solo uid/gid numéricos: la imagen itzg usa 1000
+	hdr.AccessTime, hdr.ChangeTime = time.Time{}, time.Time{}
+	return hdr, nil
 }
 
 // cancelReader corta una copia larga (un fichero de varios GiB) al cancelar ctx.

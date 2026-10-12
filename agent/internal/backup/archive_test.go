@@ -722,7 +722,10 @@ func TestWriteArchiveWriterError(t *testing.T) {
 	}
 }
 
-func TestWriteEntryPadsShrunkFileAndTruncatesGrown(t *testing.T) {
+// Un fichero que cambió entre el escaneo y su lectura (p. ej. playerdata que Minecraft
+// reescribe al salir un jugador, aun con save-off) se copia tal como está al abrirlo: la
+// cabecera sale de ese momento, sin rellenos ni recortes y sin aviso.
+func TestWriteEntryCopiesFileAsOpened(t *testing.T) {
 	dir := t.TempDir()
 	shrunk, grown := filepath.Join(dir, "shrunk.log"), filepath.Join(dir, "grown.log")
 	mustWrite(t, shrunk, "0123456789", 0o644)
@@ -740,11 +743,11 @@ func TestWriteEntryPadsShrunkFileAndTruncatesGrown(t *testing.T) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	n, skipped, warn, err := writeEntry(ctx, tw, root, entry{rel: "shrunk.log", info: si}, make([]byte, 64))
-	if err != nil || skipped || n != 10 || !strings.Contains(warn, "cambió") {
+	if err != nil || skipped || n != 4 || warn != "" {
 		t.Fatalf("shrunk: n=%d skipped=%v warn=%q err=%v", n, skipped, warn, err)
 	}
 	n, _, warn, err = writeEntry(ctx, tw, root, entry{rel: "grown.log", info: gi}, make([]byte, 64))
-	if err != nil || n != 10 || warn != "" {
+	if err != nil || n != 20 || warn != "" {
 		t.Fatalf("grown: n=%d warn=%q err=%v", n, warn, err)
 	}
 	if _, _, warn, _ = writeEntry(ctx, tw, root, entry{rel: "gone.log", info: si}, make([]byte, 64)); !strings.Contains(warn, "borró") {
@@ -754,8 +757,7 @@ func TestWriteEntryPadsShrunkFileAndTruncatesGrown(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr := tar.NewReader(&buf)
-	want := []string{"0123\x00\x00\x00\x00\x00\x00", "0123456789"}
-	for _, w := range want {
+	for _, w := range []string{"0123", "0123456789ABCDEFGHIJ"} {
 		if _, err := tr.Next(); err != nil {
 			t.Fatal(err)
 		}
@@ -763,6 +765,119 @@ func TestWriteEntryPadsShrunkFileAndTruncatesGrown(t *testing.T) {
 		if string(body) != w {
 			t.Fatalf("contenido %q, esperaba %q", body, w)
 		}
+	}
+}
+
+// hookWriter llama a fire la primera vez que lo escrito contiene marker: así un test cambia
+// un fichero justo mientras se está copiando su contenido.
+type hookWriter struct {
+	w      io.Writer
+	marker []byte
+	fire   func()
+	fired  bool
+}
+
+func (h *hookWriter) Write(p []byte) (int, error) {
+	if !h.fired && bytes.Contains(p, h.marker) {
+		h.fired = true
+		h.fire()
+	}
+	return h.w.Write(p)
+}
+
+// Un fichero que cambia MIENTRAS se lee (Minecraft guardando al pararse durante una copia en
+// caliente) no se trunca ni se rellena: la entrada falla con ErrSourceChanged.
+func TestWriteEntryFailsWhenFileChangesWhileRead(t *testing.T) {
+	body := strings.Repeat("x", 200)
+	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC) // mtime viejo: cualquier escritura lo cambia
+	cases := map[string]func(t *testing.T, p string){
+		"crece": func(t *testing.T, p string) {
+			f, err := os.OpenFile(p, os.O_WRONLY|os.O_APPEND, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			if _, err := f.WriteString("MAS"); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"encoge": func(t *testing.T, p string) {
+			if err := os.Truncate(p, 10); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"reescrito con el mismo tamaño": func(t *testing.T, p string) {
+			f, err := os.OpenFile(p, os.O_WRONLY, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			if _, err := f.WriteAt([]byte(strings.Repeat("y", 200)), 0); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			p := filepath.Join(dir, "level.dat")
+			mustWrite(t, p, body, 0o644)
+			if err := os.Chtimes(p, old, old); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Lstat(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			hw := &hookWriter{w: io.Discard, marker: []byte("xxxxxxxx"), fire: func() { change(t, p) }}
+			_, _, _, err = writeEntry(context.Background(), tar.NewWriter(hw), root, entry{rel: "level.dat", info: info}, make([]byte, 64))
+			if !hw.fired {
+				t.Fatal("el cambio debía ocurrir durante la lectura")
+			}
+			if !errors.Is(err, ErrSourceChanged) {
+				t.Fatalf("err = %v; esperaba ErrSourceChanged", err)
+			}
+		})
+	}
+}
+
+// Igual a través de WriteArchive: el error nombra el fichero y lo escrito no es una copia legible.
+func TestWriteArchiveFailsWhenFileGrowsWhileRead(t *testing.T) {
+	src := t.TempDir()
+	noise := make([]byte, 4<<20) // incompresible: el compresor escribe antes de acabar el fichero
+	rng := rand.New(rand.NewPCG(3, 4))
+	for i := range noise {
+		noise[i] = byte(rng.Uint32())
+	}
+	big := filepath.Join(src, "world", "region", "r.0.0.mca")
+	mustWrite(t, big, string(noise), 0o644)
+	mustWrite(t, filepath.Join(src, "world", "zz.dat"), "fin", 0o644)
+	var out bytes.Buffer
+	grow := func() {
+		f, err := os.OpenFile(big, os.O_WRONLY|os.O_APPEND, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if _, err := f.Write([]byte("chunk guardado al parar")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hw := &hookWriter{w: &out, marker: nil, fire: grow} // la primera escritura del compresor
+	_, err := WriteArchive(context.Background(), src, hw, nil, nil)
+	if !hw.fired {
+		t.Fatal("el compresor no escribió nada antes del final")
+	}
+	if !errors.Is(err, ErrSourceChanged) || !strings.Contains(err.Error(), "world/region/r.0.0.mca") {
+		t.Fatalf("err = %v; esperaba ErrSourceChanged con el nombre del fichero", err)
+	}
+	if err := ExtractArchive(context.Background(), &out, t.TempDir(), nil); err == nil {
+		t.Fatal("lo escrito por una copia fallida debe ser ilegible")
 	}
 }
 

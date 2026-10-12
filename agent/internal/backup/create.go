@@ -231,8 +231,8 @@ func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partia
 	}
 	req.Progress(2, "Copiando datos")
 	st, err = WriteArchive(ctx, req.DataDir, io.MultiWriter(out, h), excl, func(done, total int64) {
-		pct := uint32(97)
-		if total > 0 {
+		pct := uint32(97) // done supera total si un fichero creció tras el escaneo
+		if total > 0 && done < total {
 			pct = 2 + uint32(done*95/total)
 		}
 		req.Progress(pct, "Copiando datos")
