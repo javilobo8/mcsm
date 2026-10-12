@@ -1,10 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import websocket from "@fastify/websocket";
 import { hashToken } from "../lib/tokens.js";
 
 export async function agentRoutes(app: FastifyInstance) {
-  if (!app.hasPlugin("@fastify/websocket")) await app.register(websocket, { options: { maxPayload: 4 * 1024 * 1024 } });
-
   app.addHook("onRequest", async (req, reply) => {
     if (req.routeOptions.url !== "/agent/ws") return;
     const header = req.headers.authorization ?? "";

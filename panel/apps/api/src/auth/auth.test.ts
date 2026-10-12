@@ -7,7 +7,6 @@ let app: FastifyInstance;
 beforeEach(async () => {
   app = await buildApp({ db: openDb(":memory:") });
   app.get("/api/__probe", async () => ({ ok: true }));
-  app.get("/ws", async () => ({ ok: true }));
   await app.ready();
 });
 afterEach(async () => { await app.close(); });
