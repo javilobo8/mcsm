@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addHistory, applyMessage, filterLines, initialConsole, isAtBottom, navigateHistory, pushLine } from "./console";
+import { addHistory, applyBatch, applyMessage, stripFormatting, filterLines, initialConsole, isAtBottom, navigateHistory, pushLine } from "./console";
 
 const log = (line: string) => ({ type: "log", serverId: "s", ts: 1, line }) as const;
 
@@ -52,5 +52,19 @@ describe("consola", () => {
   it("detecta el final del scroll", () => {
     expect(isAtBottom(1000, 580, 400)).toBe(true);
     expect(isAtBottom(1000, 300, 400)).toBe(false);
+  });
+  it("lote: respeta el orden, el reset a mitad vacía y el límite", () => {
+    const msgs = [log("a"), log("b"), { type: "log_reset", serverId: "s" } as const, log("c"), log("d"), log("e")];
+    expect(applyBatch(initialConsole(), msgs, 0).lines.map((l) => l.text)).toEqual(["c", "d", "e"]);
+    expect(applyBatch(initialConsole(), msgs, 0, 2).lines.map((l) => l.text)).toEqual(["d", "e"]);
+    const big = Array.from({ length: 2500 }, (_, i) => log(`x${i}`));
+    const r = applyBatch(initialConsole(), big, 0);
+    expect(r.lines).toHaveLength(2000);
+    expect(r.lines[0]!.text).toBe("x500");
+    expect(new Set(r.lines.map((l) => l.id)).size).toBe(2000);
+  });
+  it("quita ANSI y códigos § de color", () => {
+    expect(stripFormatting("\x1b[32mhola\x1b[0m §averde§r fin")).toBe("hola verde fin");
+    expect(applyBatch(initialConsole(), [log("§cmal")], 0).lines[0]!.text).toBe("mal");
   });
 });

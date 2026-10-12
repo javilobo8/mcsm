@@ -30,9 +30,10 @@ export function ServerPage() {
   const del = useMutation({
     mutationFn: () => api.del(`/api/servers/${serverId}?deleteData=${deleteData}`),
     onSuccess: () => {
-      qc.removeQueries({ queryKey: ["server", serverId] });
-      void qc.invalidateQueries({ queryKey: ["servers"] });
-      void navigate({ to: "/" });
+      void navigate({ to: "/" }).then(() => {
+        qc.removeQueries({ queryKey: ["server", serverId] });
+        void qc.invalidateQueries({ queryKey: ["servers"] });
+      });
     },
   });
 
@@ -84,8 +85,8 @@ export function ServerPage() {
           <Stat label="Último exit code" value={o && o.state !== "running" ? o.exitCode : "—"} />
           <Stat label="Spec" value={applying ? `v${s.specVersion} (aplicando; actual v${s.observedSpecVersion})` : `v${s.specVersion} (aplicada)`} />
         </TabsContent>
-        <TabsContent value="console"><Console serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
-        <TabsContent value="config"><ServerConfigForm key={s.specVersion} server={s} /></TabsContent>
+        <TabsContent value="console"><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="config"><ServerConfigForm key={s.id} server={s} /></TabsContent>
       </Tabs>
 
       <Dialog open={confirmDel} onOpenChange={(o) => { if (!del.isPending) setConfirmDel(o); }}>

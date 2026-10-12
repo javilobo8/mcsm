@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff } from "lucide-react";
 import type { SpecInput } from "@mcsm/shared";
@@ -20,6 +20,16 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
   const qc = useQueryClient();
   const [name, setName] = useState(server.name);
   const [v, setV] = useState<FormValues>(() => valuesFromSpec(server.spec));
+  // Línea base: lo cargado en el formulario y su versión (para detectar cambios hechos fuera).
+  const [base, setBase] = useState({ version: server.specVersion, name: server.name, v: valuesFromSpec(server.spec) });
+  const dirty = name !== base.name || JSON.stringify(v) !== JSON.stringify(base.v);
+  const stale = server.specVersion !== base.version;
+  const reload = () => {
+    const nv = valuesFromSpec(server.spec);
+    setName(server.name); setV(nv); setBase({ version: server.specVersion, name: server.name, v: nv });
+    setLocalErr(null);
+  };
+  useEffect(() => { if (stale && !dirty) reload(); }, [stale, dirty]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showRcon, setShowRcon] = useState(false);
   const [localErr, setLocalErr] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -30,6 +40,8 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
     mutationFn: (p: Pending) => api.patch<ServerDto>(`/api/servers/${server.id}`, { name: p.name, spec: p.spec }),
     onSuccess: (dto) => {
       setPending(null);
+      const nv = valuesFromSpec(dto.spec);
+      setName(dto.name); setV(nv); setBase({ version: dto.specVersion, name: dto.name, v: nv });
       qc.setQueryData(["server", server.id], dto);
       void qc.invalidateQueries({ queryKey: ["servers"] });
     },
@@ -92,6 +104,12 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
             {showRcon ? <EyeOff className="size-4" /> : <Eye className="size-4" />}{showRcon ? "Ocultar" : "Revelar"}
           </Button>
         </section>
+      )}
+      {stale && dirty && (
+        <p role="alert" className="flex items-center gap-2 rounded-md border border-amber-700 bg-amber-950/30 p-2 text-sm text-amber-300">
+          La configuración cambió en el servidor (v{server.specVersion}) y tienes cambios sin guardar.
+          <Button type="button" size="sm" variant="secondary" onClick={reload}>Recargar y descartar mis cambios</Button>
+        </p>
       )}
       {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
       {save.isSuccess && <p role="status" className="text-sm text-emerald-400">Guardado (v{save.data.specVersion}). El agente recreará el contenedor si hace falta.</p>}
