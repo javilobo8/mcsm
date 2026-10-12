@@ -256,3 +256,8 @@ conocer.)
   `deploy/data` para el `DATA_ROOT` de los nodos dind.
 - Tras cada fusión, también `go vet -tags integration ./...` (los tests de integración no
   compilan en `go vet` normal y ahí aparecen los duplicados).
+- Copias en caliente: `CreateRequest.Running` obligatorio (mismo ID y `StartedAt` del contenedor
+  al cerrar el tar y antes del `.json`); un fichero que cambia mientras se lee →
+  `ErrSourceChanged`; una copia fallida (también con `save-on` fallido) nunca deja fichero ni se
+  anuncia. Ventana residual conocida: un stop que empieza durante el tar con Minecraft aún
+  guardando en ambas comprobaciones (para servidores bajo demanda, preferir copias en frío).
