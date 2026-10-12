@@ -107,7 +107,7 @@ export class AgentService {
     const rows = this.app.servers.list(nodeId);
     const known = new Set(Object.keys(hello.specVersions));
     const curseforgeApiKey = this.app.curseforge.get();
-    const servers = rows.filter((r) => specDiffers(r, hello)).map((r) => toServerSpecMessage(r, { curseforgeApiKey }));
+    const servers = rows.filter((r) => specDiffers(r, hello)).map((r) => toServerSpecMessage(r, curseforgeApiKey));
     const removedIds = [...known].filter((id) => !rows.some((r) => r.id === id));
     try {
       await conn.request({ case: "syncSpecs", value: { servers, removedIds } }, 120_000);

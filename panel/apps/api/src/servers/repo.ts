@@ -39,12 +39,15 @@ export function toServerDto(r: ServerRow, opts: { includeSecrets: boolean } = { 
 /**
  * Mensaje ServerSpec para el agente. La API key global de CurseForge se añade aquí, solo a las
  * specs que usan CurseForge: no está en servers.spec ni en los DTO del navegador.
+ * `curseforgeApiKey` es obligatorio (`app.curseforge.get()`, null si no hay): un emisor que la
+ * olvidara alternaría «con key» y «sin key» frente a SyncSpecs, cambiando el hash y recreando
+ * el contenedor en cada envío.
  */
-export function toServerSpecMessage(r: ServerRow, opts: { curseforgeApiKey?: string | null } = {}): ServerSpec {
+export function toServerSpecMessage(r: ServerRow, curseforgeApiKey: string | null): ServerSpec {
   let json = r.spec;
-  if (opts.curseforgeApiKey) {
+  if (curseforgeApiKey) {
     const spec = JSON.parse(r.spec) as Spec;
-    if (usesCurseForge(spec)) json = JSON.stringify({ ...spec, curseforgeApiKey: opts.curseforgeApiKey });
+    if (usesCurseForge(spec)) json = JSON.stringify({ ...spec, curseforgeApiKey });
   }
   return create(ServerSpecSchema, {
     serverId: r.id, slug: r.slug, version: BigInt(r.spec_version),

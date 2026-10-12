@@ -79,7 +79,7 @@ export class ServersService {
     const conn = this.app.agents.get(row.node_id);
     if (!conn) return; // se entregará en el próximo SyncSpecs
     try {
-      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row, { curseforgeApiKey: this.app.curseforge.get() }) } }, 120_000);
+      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row, this.app.curseforge.get()) } }, 120_000);
     } catch (e) {
       this.app.log.warn({ serverId: row.id, err: e }, "ApplySpec sin éxito; el agente lo reintentará");
     }
