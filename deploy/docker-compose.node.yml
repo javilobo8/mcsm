@@ -3,6 +3,8 @@ name: mcsm-node
 services:
   agent:
     image: mcsm-agent:latest
+    # docker stop mata a los 10 s; el agente espera hasta 20 s a sus operaciones de archivos.
+    stop_grace_period: 30s
     build: { context: ../agent }
     restart: unless-stopped
     environment:
