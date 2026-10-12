@@ -58,7 +58,7 @@ export function NodeRouterForm({ node, router, onSaved }: { node: NodeDto; route
           <Input id="router-minutes" inputMode="numeric" value={form.minutes} aria-invalid={!!errors.minutes} onChange={(e) => setForm({ ...form, minutes: e.target.value })} />
           {errors.minutes && <p role="alert" className="text-xs text-red-400">{errors.minutes}</p>}
           <p className="text-xs text-muted-foreground">
-            Los servidores con hostname quedan bajo demanda: mc-router los arranca cuando alguien intenta entrar y los para tras esos minutos sin jugadores; el panel deja de arrancarlos y pararlos por su cuenta. Parar desde el panel no impide que un jugador lo vuelva a arrancar al entrar. Tras una restauración, un servidor dormido sigue dormido hasta que entre alguien.
+            Los servidores con hostname quedan bajo demanda: mc-router los arranca cuando alguien intenta entrar y los para tras esos minutos sin jugadores; el panel deja de arrancarlos y pararlos por su cuenta. Parar desde el panel no impide que un jugador lo vuelva a arrancar al entrar. Al recrearse (cambio de configuración, restauración, copia en frío) un servidor dormido arranca y mc-router lo vuelve a dormir tras esos minutos sin jugadores.
           </p>
         </div>
       )}
