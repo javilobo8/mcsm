@@ -31,6 +31,7 @@ export type MetricColumn = (typeof METRIC_COLUMNS)[number];
  * Serie agregada para una gráfica: `t` son los inicios de cubo (epoch s) y cada columna tiene
  * un valor por cubo, `null` si no hubo muestras (servidor parado, nodo caído).
  * Servidores: cpuPct con 100 = un núcleo; players*, tps y pingMs solo si el ping respondió.
+ * `memLimitBytes = 0` en un servidor significa "sin límite de memoria conocido" (no un límite de 0 bytes).
  * Nodos: cpuPct 0–100 del host, memLimitBytes = RAM total, diskBytes/diskTotalBytes de DATA_ROOT.
  */
 export type MetricSeries = { range: MetricRange; step: number; t: number[] } & Record<MetricColumn, (number | null)[]>;
