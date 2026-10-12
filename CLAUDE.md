@@ -175,4 +175,7 @@ conocer.)
   → sufijo `-2`, `-3`…
 - Tests sin `time.Sleep`/`setTimeout` para sincronizar: relojes y planificadores
   inyectables.
+- Web: el panel se sirve por HTTP en la LAN (sin contexto seguro): nada de
+  `crypto.randomUUID()` ni APIs que exijan HTTPS sin fallback; ids con
+  `crypto.getRandomValues`.
 
