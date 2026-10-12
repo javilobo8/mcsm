@@ -6,6 +6,8 @@ import { DashboardPage } from "./routes/dashboard";
 import { NodesPage } from "./routes/nodes";
 import { NewServerPage } from "./routes/new-server";
 import { ServerPage } from "./routes/server";
+import { TemplatesPage } from "./routes/templates";
+import { EditTemplatePage, NewTemplatePage } from "./routes/template-edit";
 
 const getStatus = () => api.get<AuthStatus>("/api/auth/status");
 
@@ -38,6 +40,9 @@ export const newServerRoute = createRoute({ getParentRoute: () => appRoute, path
 export const serverRoute = createRoute({ getParentRoute: () => appRoute, path: "/servers/$serverId", component: ServerPage });
 // ── plan-2 ──
 // ── plan-3 ──
+export const templatesRoute = createRoute({ getParentRoute: () => appRoute, path: "/templates", component: TemplatesPage });
+export const newTemplateRoute = createRoute({ getParentRoute: () => appRoute, path: "/templates/new", component: NewTemplatePage });
+export const templateRoute = createRoute({ getParentRoute: () => appRoute, path: "/templates/$templateId", component: EditTemplatePage });
 // ── plan-4 ──
 // ── plan-5 ──
 // ── plan-6 ──
@@ -55,6 +60,9 @@ const routeTree = rootRoute.addChildren([
     serverRoute,
     // ── plan-2 ──
     // ── plan-3 ──
+    templatesRoute,
+    newTemplateRoute,
+    templateRoute,
     // ── plan-4 ──
     // ── plan-5 ──
     // ── plan-6 ──
