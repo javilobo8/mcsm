@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -111,6 +110,11 @@ type Spec struct {
 	Backups *Backups `json:"backups,omitempty"`
 	// ── plan-5 ──
 	// ── plan-6 ──
+	// DataPath: carpeta del host montada en /data en lugar de <DATA_ROOT>/<slug>/data (importados
+	// con los datos fuera de DATA_ROOT). Vacío = ruta por defecto: contenedor y hash no cambian.
+	DataPath string `json:"dataPath,omitempty"`
+	// Adopt lo añade el panel al enviar la spec de un importado; no entra en el contenedor ni en el hash.
+	Adopt *Adopt `json:"adopt,omitempty"`
 	// ── plan-7 ──
 	// ── plan-8 ──
 	// ── plan-9 ──
@@ -241,6 +245,9 @@ func (s Spec) Validate() error {
 	}
 	// ── plan-5 ──
 	// ── plan-6 ──
+	if err := s.validateImport(); err != nil {
+		return err
+	}
 	// ── plan-7 ──
 	// ── plan-8 ──
 	// ── plan-9 ──
@@ -267,7 +274,11 @@ func BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, er
 	if tag == "" {
 		tag = "latest"
 	}
-	dataDir := filepath.Join(dataRoot, meta.Slug, "data")
+	// plan-6: dataPath de los servidores importados.
+	dataDir, err := s.dataDir(meta.Slug, dataRoot)
+	if err != nil {
+		return nil, err
+	}
 	name := ContainerName(meta.Slug)
 
 	exposed := network.PortSet{}
