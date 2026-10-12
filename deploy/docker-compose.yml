@@ -21,6 +21,8 @@ services:
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
       NODE_NAME: ${NODE_NAME:-principal}
       DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
+      # Opcional: tamaño máximo de una subida de archivo, en bytes (vacío = 4 GiB).
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
       HOST_PROC: /host/proc
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

@@ -11,6 +11,8 @@ services:
       # Opcional: vacío = el panel usa el nombre del token de alta (igual que el docker run de la UI, que no lo pasa).
       NODE_NAME: ${NODE_NAME:-}
       DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
+      # Opcional: tamaño máximo de una subida de archivo, en bytes (vacío = 4 GiB).
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
       HOST_PROC: /host/proc
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

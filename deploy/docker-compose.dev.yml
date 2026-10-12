@@ -10,6 +10,8 @@ services:
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
       NODE_NAME: dev
       DATA_ROOT: ${DATA_ROOT:?Ruta absoluta en el host, p. ej. /home/lobo/dev/mc-server-manager/deploy/data}
+      # Opcional: tamaño máximo de una subida de archivo, en bytes (vacío = 4 GiB).
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
