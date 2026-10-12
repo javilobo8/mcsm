@@ -55,6 +55,31 @@ CREATE INDEX servers_node_idx ON servers(node_id);
     sql: `ALTER TABLE enrollment_tokens ADD COLUMN data_root TEXT NOT NULL DEFAULT '/srv/minecraft';`,
   },
   // ── plan-2 ──
+  {
+    // Una fila por servidor/nodo y ventana de 10 s. La clave primaria es el índice
+    // (scope, scope_id, ts) de la spec y hace idempotente la ingesta (INSERT OR REPLACE).
+    // Sin `id` UUID (desviación consciente de §4): ~60k filas por servidor y semana.
+    name: "010_metric_samples",
+    sql: `
+CREATE TABLE metric_samples (
+  scope TEXT NOT NULL CHECK (scope IN ('server', 'node')),
+  scope_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  cpu_pct REAL,
+  mem_bytes INTEGER,
+  mem_limit_bytes INTEGER,
+  net_rx_bytes INTEGER,
+  net_tx_bytes INTEGER,
+  disk_bytes INTEGER,
+  disk_total_bytes INTEGER,
+  players_online INTEGER,
+  players_max INTEGER,
+  tps REAL,
+  ping_ms INTEGER,
+  PRIMARY KEY (scope, scope_id, ts)
+) WITHOUT ROWID;
+`,
+  },
   // ── plan-3 ──
   // ── plan-4 ──
   // ── plan-5 ──
