@@ -1,0 +1,110 @@
+import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import type { BackupTriggerName, JobDetailDto, JobDto, JobState, ServerMessage } from "./api";
+import { mergeIntoCached } from "./live";
+
+export interface JobsFilter { serverId?: string; status?: JobState }
+type NormalizedFilter = { serverId: string | null; status: JobState | null };
+type JobMsg = Extract<ServerMessage, { type: "job" }>;
+type BackupsMsg = Extract<ServerMessage, { type: "backups" }>;
+
+export const JOB_STATUS_LABEL: Record<JobState, string> = {
+  queued: "En cola", running: "En curso", ok: "Correcto", failed: "Fallido", cancelled: "Cancelado",
+};
+export const TRIGGER_LABEL: Record<BackupTriggerName, string> = {
+  manual: "Manual", scheduled: "Programada", pre_migration: "Antes de migrar", pre_restore: "Antes de restaurar",
+};
+const JOB_TYPE_LABEL: Record<string, string> = { backup: "Copia de seguridad", restore: "Restauración" };
+const MAX_LIST = 200;
+
+export const jobTypeLabel = (type: string): string => JOB_TYPE_LABEL[type] ?? type;
+export const isActive = (j: Pick<JobDto, "status">): boolean => j.status === "queued" || j.status === "running";
+
+/** Etiqueta del origen de una copia guardado en el payload del job (`trigger`), o null. */
+export function jobTriggerLabel(j: Pick<JobDto, "payload">): string | null {
+  const t = j.payload?.trigger;
+  return typeof t === "string" && t in TRIGGER_LABEL ? TRIGGER_LABEL[t as BackupTriggerName] : null;
+}
+
+export const jobsKey = (f: JobsFilter = {}): QueryKey => ["jobs", { serverId: f.serverId ?? null, status: f.status ?? null }];
+export const jobKey = (id: string): QueryKey => ["job", id];
+export const backupsKey = (serverId: string): QueryKey => ["backups", serverId];
+
+const matches = (j: JobDto, f: NormalizedFilter) => (!f.serverId || j.serverId === f.serverId) && (!f.status || j.status === f.status);
+
+/** Un evento no debe pisar un estado terminal ni uno más reciente que ya tenemos (como hace el panel). */
+const supersedes = (old: Pick<JobDto, "status" | "updatedAt">, next: Pick<JobDto, "updatedAt">) =>
+  isActive(old) && old.updatedAt <= next.updatedAt;
+
+/** Inserta o actualiza un job en una lista (más nuevos primero) respetando su filtro. */
+export function upsertJob(list: JobDto[], job: JobDto, f: NormalizedFilter): JobDto[] {
+  const existing = list.find((j) => j.id === job.id);
+  if (existing && !supersedes(existing, job)) return list;
+  const rest = list.filter((j) => j.id !== job.id);
+  if (!matches(job, f)) return rest.length === list.length ? list : rest;
+  return [...rest, job].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)).slice(0, MAX_LIST);
+}
+
+export function applyJobEvent(qc: QueryClient, msg: JobMsg): void {
+  for (const [key, data] of qc.getQueriesData<JobDto[]>({ queryKey: ["jobs"] })) {
+    if (!data) continue;
+    const f = (key[1] ?? {}) as Partial<NormalizedFilter>;
+    mergeIntoCached<JobDto[]>(qc, key, (old) => upsertJob(old, msg.job, { serverId: f.serverId ?? null, status: f.status ?? null }));
+  }
+  mergeIntoCached<JobDetailDto>(qc, jobKey(msg.job.id), (old) =>
+    supersedes(old, msg.job) ? { ...old, ...msg.job, log: old.log + msg.logChunk } : old);
+  if (!isActive(msg.job)) {
+    void qc.invalidateQueries({ queryKey: jobKey(msg.job.id) }); // log final completo
+    if (msg.job.serverId) void qc.invalidateQueries({ queryKey: backupsKey(msg.job.serverId) });
+  }
+}
+
+export function applyBackupsEvent(qc: QueryClient, msg: BackupsMsg): void {
+  void qc.invalidateQueries({ queryKey: backupsKey(msg.serverId) });
+}
+
+/** Subconjunto de `Realtime` que se usa aquí (facilita los tests). */
+export interface JobsLiveSource {
+  subscribe(topic: string, handler: (msg: ServerMessage) => void): () => void;
+  onReconnect(cb: () => void): () => void;
+}
+
+/** Conecta la caché con el topic `jobs`. Devuelve la función de limpieza. */
+export function bindJobsLive(qc: QueryClient, live: JobsLiveSource): () => void {
+  const offs = [
+    live.subscribe("jobs", (m) => {
+      if (m.type === "job") applyJobEvent(qc, m);
+      else if (m.type === "backups") applyBackupsEvent(qc, m);
+    }),
+    // Durante la desconexión se pierden avisos: recargamos.
+    live.onReconnect(() => {
+      void qc.invalidateQueries({ queryKey: ["jobs"] });
+      void qc.invalidateQueries({ queryKey: ["job"] });
+      void qc.invalidateQueries({ queryKey: ["backups"] });
+    }),
+  ];
+  return () => offs.forEach((off) => off());
+}
+
+const bindings = new WeakMap<QueryClient, { count: number; off: () => void }>();
+
+/** Como bindJobsLive pero con recuento: varias vistas montadas comparten una sola suscripción
+ * (si no, cada trozo de log se añadiría varias veces al detalle). */
+export function retainJobsLive(qc: QueryClient, live: JobsLiveSource): () => void {
+  let b = bindings.get(qc);
+  if (!b) {
+    b = { count: 0, off: bindJobsLive(qc, live) };
+    bindings.set(qc, b);
+  }
+  b.count++;
+  const binding = b;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    binding.count--;
+    if (binding.count === 0) {
+      binding.off();
+      bindings.delete(qc);
+    }
+  };
+}
