@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { afterEach, vi } from "vitest";
-import { breadcrumbs, canEdit, canStartSave, entryOpenKind, filesApi, isClean, isSaveShortcut, leaveWarning, progressPct, sortEntries, uploadClashes, uploadFile, validateNewName } from "./files";
+import { breadcrumbs, canEdit, canStartSave, downloadBlocker, entryOpenKind, filesApi, isClean, isSaveShortcut, leaveWarning, progressPct, sortEntries, uploadClashes, uploadFile, validateNewName } from "./files";
+import { ApiError } from "./api";
 
 describe("breadcrumbs", () => {
   it("raíz y rutas anidadas", () => {
@@ -146,5 +147,32 @@ describe("leaveWarning", () => {
     const w = leaveWarning({ dirty: true, uploading: true, file: null });
     expect(w?.description).toMatch(/cambios sin guardar/);
     expect(w?.description).toMatch(/se cancelará la subida/);
+  });
+});
+
+describe("downloadBlocker", () => {
+  const file = { name: "world.zip", dir: false, symlink: false, size: 10, modifiedAt: 0, mode: 0o644 };
+  it("un fichero que existe: se descarga", () => {
+    expect(downloadBlocker({ entry: file })).toBeNull();
+  });
+  it("el error de la API (nodo desconectado, no existe…) se muestra en vez de lanzar la descarga", () => {
+    expect(downloadBlocker({ error: new ApiError(409, "El nodo está desconectado") })).toBe("El nodo está desconectado");
+    expect(downloadBlocker({ error: new ApiError(404, "no existe: /world.zip") })).toBe("no existe: /world.zip");
+  });
+  it("un fallo que no es de la API da un texto genérico", () => {
+    expect(downloadBlocker({ error: new TypeError("Failed to fetch") })).toMatch(/No se pudo comprobar/);
+  });
+  it("si entretanto se convirtió en carpeta, no se descarga", () => {
+    expect(downloadBlocker({ entry: { ...file, dir: true } })).toMatch(/carpeta/);
+  });
+});
+
+describe("filesApi.stat", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+  it("pide la ruta codificada a /files/stat", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ name: "a", dir: false, symlink: false, size: 1, modifiedAt: 0, mode: 420 }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    await filesApi.stat("s1", "/mundo ñ.zip");
+    expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe("/api/servers/s1/files/stat?path=%2Fmundo%20%C3%B1.zip");
   });
 });

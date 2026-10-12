@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
-import { breadcrumbs, entryOpenKind, filesApi, isSaveShortcut, leaveWarning, progressPct, sortEntries, uploadClashes, uploadFile } from "@/lib/files";
+import { breadcrumbs, downloadBlocker, entryOpenKind, filesApi, isSaveShortcut, leaveWarning, progressPct, sortEntries, startDownload, uploadClashes, uploadFile } from "@/lib/files";
 import { NameDialog } from "./name-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useTabGuard } from "@/components/guarded-tabs";
@@ -50,6 +50,8 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
   const [replaceAsk, setReplaceAsk] = useState<{ files: File[]; clash: string[] } | null>(null);
   const [nameAction, setNameAction] = useState<NameAction>(null);
   const [toDelete, setToDelete] = useState<FileEntryDto | null>(null);
+  const [checking, setChecking] = useState<string | null>(null); // descarga en comprobación
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const lastDelete = useRef<FileEntryDto | null>(null); // el título no parpadea durante la animación de cierre
   if (toDelete) lastDelete.current = toDelete;
   const shownDelete = toDelete ?? lastDelete.current;
@@ -136,6 +138,24 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
     void startUpload(files, path);
   };
 
+  // Antes de que el navegador lance la descarga (y se trague el error), un stat comprueba que
+  // el nodo responde y el fichero sigue ahí; si no, el motivo se muestra aquí.
+  const download = async (e: FileEntryDto) => {
+    const p = joinPath(path, e.name);
+    setDownloadError(null);
+    setChecking(e.name);
+    let check: Parameters<typeof downloadBlocker>[0];
+    try {
+      check = { entry: await filesApi.stat(serverId, p) };
+    } catch (err) {
+      check = { error: err };
+    }
+    setChecking(null);
+    const problem = downloadBlocker(check);
+    if (problem) setDownloadError(`No se pudo descargar ${e.name}: ${problem}`);
+    else startDownload(filesApi.downloadUrl(serverId, p), e.name);
+  };
+
   const open = (e: FileEntryDto) => {
     const kind = entryOpenKind(e);
     if (kind === "dir") setPath(joinPath(path, e.name));
@@ -216,6 +236,12 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
       ))}
       {uploading && <div><Button size="xs" variant="secondary" onClick={() => abort.current?.abort()}><X /> Cancelar subida</Button></div>}
       {list.isError && <p role="alert" className="text-sm text-red-400">{errText(list.error)}</p>}
+      {downloadError && (
+        <div role="alert" className="flex items-center gap-2 text-sm text-red-400">
+          <span>{downloadError}</span>
+          <Button size="icon-xs" variant="ghost" aria-label="Cerrar aviso" onClick={() => setDownloadError(null)}><X /></Button>
+        </div>
+      )}
 
       <Table>
         <TableHeader>
@@ -244,9 +270,11 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
                 <TableCell className="text-muted-foreground">{new Date(e.modifiedAt).toLocaleString()}</TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
-                    {!e.dir && (offline
-                      ? <Button size="icon-xs" variant="ghost" aria-label={`Descargar ${e.name}`} disabled><Download /></Button>
-                      : <Button asChild size="icon-xs" variant="ghost" aria-label={`Descargar ${e.name}`}><a href={filesApi.downloadUrl(serverId, joinPath(path, e.name))} download={e.name}><Download /></a></Button>)}
+                    {!e.dir && (
+                      <Button size="icon-xs" variant="ghost" aria-label={`Descargar ${e.name}`} disabled={offline || checking === e.name} onClick={() => void download(e)}>
+                        {checking === e.name ? <Loader2 className="animate-spin" /> : <Download />}
+                      </Button>
+                    )}
                     <Button size="icon-xs" variant="ghost" aria-label={`Renombrar ${e.name}`} disabled={offline} onClick={() => { nameMut.reset(); setNameAction({ kind: "rename", entry: e }); }}><Pencil /></Button>
                     <Button size="icon-xs" variant="ghost" aria-label={`Borrar ${e.name}`} disabled={offline} onClick={() => { del.reset(); setToDelete(e); }}><Trash2 /></Button>
                   </div>

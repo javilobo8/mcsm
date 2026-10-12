@@ -11,6 +11,7 @@ const q = (path: string) => `path=${encodeURIComponent(path)}`;
 
 export const filesApi = {
   list: (serverId: string, path: string) => api.get<FileListDto>(`${base(serverId)}?${q(path)}`),
+  stat: (serverId: string, path: string) => api.get<FileEntryDto>(`${base(serverId)}/stat?${q(path)}`),
   read: (serverId: string, path: string) => api.get<FileContentDto>(`${base(serverId)}/content?${q(path)}`),
   write: (serverId: string, path: string, content: string) => api.post<void>(`${base(serverId)}/content`, { path, content }),
   mkdir: (serverId: string, path: string) => api.post<void>(`${base(serverId)}/mkdir`, { path }),
@@ -66,6 +67,28 @@ export function leaveWarning({ dirty, uploading, file }: { dirty: boolean; uploa
   if (dirty) return { title: "Cambios sin guardar", description: `Hay cambios sin guardar en ${what}. Si sales, se perderán.`, confirmLabel: "Salir y descartar" };
   if (uploading) return { title: "Subida en curso", description: "Hay una subida en curso. Si sales, se cancelará la subida.", confirmLabel: "Salir y cancelar la subida" };
   return null;
+}
+
+/**
+ * Comprobación previa a una descarga. El navegador la hace por su cuenta (enlace con `download`)
+ * y, si falla antes de los datos, no enseña el error a la página: muestra "descarga fallida" sin
+ * el motivo. Con el resultado de un `stat` justo antes, devuelve el mensaje que mostrar (nodo
+ * desconectado, el fichero ya no existe, ahora es una carpeta…) o null para lanzarla.
+ */
+export function downloadBlocker(check: { entry: FileEntryDto } | { error: unknown }): string | null {
+  if ("error" in check) return check.error instanceof ApiError ? check.error.message : "No se pudo comprobar el fichero antes de descargarlo";
+  if (check.entry.dir) return "Es una carpeta: no se puede descargar";
+  return null;
+}
+
+/** Lanza la descarga del navegador, como un clic en un enlace con `download`. */
+export function startDownload(url: string, name: string): void {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 /** Migas de pan de una ruta: la raíz se llama "data" como en el contenedor. */
