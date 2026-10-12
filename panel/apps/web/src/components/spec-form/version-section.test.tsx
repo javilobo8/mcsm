@@ -32,3 +32,14 @@ describe("VersionSection (render en servidor, sin DOM)", () => {
     expect(render({ ...defaultSpecInput(), type: "VANILLA" })).toContain("Vanilla no carga mods ni plugins");
   });
 });
+
+describe("VersionSection: visibilidad estable", () => {
+  it("Paper con mods vacíos pero la sección presente sigue mostrando Mods", () => {
+    const html = render({ ...defaultSpecInput(), type: "PAPER", mods: { modrinthProjects: [], curseforgeFiles: [], urls: [] } });
+    expect(html).toContain("CURSEFORGE_FILES");
+  });
+  it("Fabric con plugins vacíos pero presentes sigue mostrando Plugins", () => {
+    const html = render({ ...defaultSpecInput(), type: "FABRIC", plugins: { modrinthProjects: [], spigetResources: [], urls: [] } });
+    expect(html).toContain("SPIGET_RESOURCES");
+  });
+});

@@ -1,8 +1,9 @@
 import { MODRINTH_LOADERS, usesCurseForge } from "@mcsm/shared";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { JAVA_TAGS, SERVER_TYPES, typeKind } from "@/lib/spec-catalog";
-import { withType, type EditableSpec } from "@/lib/spec-edit";
-import { Field, ListField, OptionalSelect, RequiredSelect } from "./fields";
+import { typeChangeNotice, withType, type EditableSpec } from "@/lib/spec-edit";
+import { Field, ListField, OptionalSelect, RequiredSelect, type ReportError } from "./fields";
 import { CurseForgeKeyNotice } from "./curseforge-key";
 
 type Mods = NonNullable<EditableSpec["mods"]>;
@@ -26,12 +27,15 @@ const MODPACK_HELP: Record<string, { slug: string; slugHint: string; version: st
 };
 
 /** Sección "Versión y mods": tipo, versión, Java, modpack, mods y plugins. */
-export function VersionSection({ spec, onChange }: { spec: EditableSpec; onChange: (s: EditableSpec) => void }) {
+export function VersionSection({ spec, onChange, onError }: { spec: EditableSpec; onChange: (s: EditableSpec) => void; onError?: ReportError }) {
+  const [notice, setNotice] = useState<string | null>(null);
   const kind = typeKind(spec.type);
   const mods = spec.mods ?? EMPTY_MODS;
   const plugins = spec.plugins ?? EMPTY_PLUGINS;
-  const hasMods = Object.values(mods).some((l) => l.length > 0);
-  const hasPlugins = Object.values(plugins).some((l) => l.length > 0);
+  // La visibilidad depende de que la sección EXISTA, no de que tenga ítems: si no, al borrar el último
+  // el fieldset se desmontaría mientras se escribe (pérdida de foco y de texto).
+  const hasMods = spec.mods !== undefined;
+  const hasPlugins = spec.plugins !== undefined;
   const showMods = kind === "mods" || kind === "modpack" || kind === "other" || hasMods;
   const showPlugins = kind === "plugins" || kind === "other" || hasPlugins;
   const mp = spec.modpack;
@@ -45,10 +49,12 @@ export function VersionSection({ spec, onChange }: { spec: EditableSpec; onChang
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field id="sf-type" label="Tipo">
-          <RequiredSelect id="sf-type" value={spec.type} options={SERVER_TYPES} onChange={(t) => onChange(withType(spec, t))} />
+          <RequiredSelect id="sf-type" value={spec.type} options={SERVER_TYPES} onChange={(t) => { setNotice(typeChangeNotice(spec, t)); onChange(withType(spec, t)); }} />
+          {notice && <p role="status" className="text-xs text-amber-400">{notice}</p>}
         </Field>
         <Field id="sf-version" label="Versión de Minecraft" hint="LATEST, SNAPSHOT o una versión como 1.21.4.">
-          <Input id="sf-version" value={spec.version} onChange={(e) => onChange({ ...spec, version: e.target.value.trim() })} />
+          <Input id="sf-version" value={spec.version} onChange={(e) => onChange({ ...spec, version: e.target.value })}
+            onBlur={(e) => { if (e.target.value !== e.target.value.trim()) onChange({ ...spec, version: e.target.value.trim() }); }} />
         </Field>
         <Field id="sf-java" label="Java (etiqueta de la imagen)" hint="java21 para 1.20.5+; java17 para 1.17–1.20.4; java8 para versiones antiguas.">
           <RequiredSelect id="sf-java" value={spec.imageTag} options={JAVA_TAGS.map((t) => ({ value: t, label: t }))} onChange={(t) => onChange({ ...spec, imageTag: t })} />
@@ -59,10 +65,12 @@ export function VersionSection({ spec, onChange }: { spec: EditableSpec; onChang
         <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
           <legend className="px-1 text-sm font-medium">Modpack</legend>
           <Field id="sf-mp-slug" label={help.slug} hint={help.slugHint}>
-            <Input id="sf-mp-slug" value={mp.slugOrUrl} onChange={(e) => onChange({ ...spec, modpack: { ...mp, slugOrUrl: e.target.value.trim() } })} />
+            <Input id="sf-mp-slug" value={mp.slugOrUrl} onChange={(e) => onChange({ ...spec, modpack: { ...mp, slugOrUrl: e.target.value } })}
+              onBlur={(e) => { if (e.target.value !== e.target.value.trim()) onChange({ ...spec, modpack: { ...mp, slugOrUrl: e.target.value.trim() } }); }} />
           </Field>
           <Field id="sf-mp-version" label={help.version} hint={help.versionHint}>
-            <Input id="sf-mp-version" value={mp.versionId} onChange={(e) => onChange({ ...spec, modpack: { ...mp, versionId: e.target.value.trim() } })} />
+            <Input id="sf-mp-version" value={mp.versionId} onChange={(e) => onChange({ ...spec, modpack: { ...mp, versionId: e.target.value } })}
+              onBlur={(e) => { if (e.target.value !== e.target.value.trim()) onChange({ ...spec, modpack: { ...mp, versionId: e.target.value.trim() } }); }} />
           </Field>
           {mp.platform === "MODRINTH" && (
             <Field id="sf-mp-loader" label="Loader (opcional)" hint="Solo si el modpack publica versiones para varios loaders.">
@@ -77,11 +85,11 @@ export function VersionSection({ spec, onChange }: { spec: EditableSpec; onChang
       {showMods && (
         <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
           <legend className="px-1 text-sm font-medium">Mods</legend>
-          <ListField id="sf-mods-modrinth" label="Modrinth (MODRINTH_PROJECTS)" value={mods.modrinthProjects} placeholder={"lithium\nferritecore:beta"}
+          <ListField onError={onError} id="sf-mods-modrinth" label="Mods de Modrinth (MODRINTH_PROJECTS)" value={mods.modrinthProjects} placeholder={"lithium\nferritecore:beta"}
             hint="Slug o id por línea; «:beta» o «:versión» para fijar." onChange={(l) => setMods({ modrinthProjects: l })} />
-          <ListField id="sf-mods-cf" label="CurseForge (CURSEFORGE_FILES)" value={mods.curseforgeFiles} placeholder={"jei\njei:4593548"}
+          <ListField onError={onError} id="sf-mods-cf" label="CurseForge (CURSEFORGE_FILES)" value={mods.curseforgeFiles} placeholder={"jei\njei:4593548"}
             hint="Slug, id, slug:fichero o URL por línea." onChange={(l) => setMods({ curseforgeFiles: l })} />
-          <ListField id="sf-mods-urls" label="URLs de .jar (MODS)" value={mods.urls} placeholder="https://…/mod.jar"
+          <ListField kind="url" onError={onError} id="sf-mods-urls" label="URLs de .jar (MODS)" value={mods.urls} placeholder="https://…/mod.jar"
             hint="Una URL http(s) por línea. Quitar una URL no borra el .jar ya descargado." onChange={(l) => setMods({ urls: l })} />
         </fieldset>
       )}
@@ -89,11 +97,11 @@ export function VersionSection({ spec, onChange }: { spec: EditableSpec; onChang
       {showPlugins && (
         <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
           <legend className="px-1 text-sm font-medium">Plugins</legend>
-          <ListField id="sf-pl-modrinth" label="Modrinth (MODRINTH_PROJECTS)" value={plugins.modrinthProjects} placeholder={"luckperms\nchunky"}
+          <ListField onError={onError} id="sf-pl-modrinth" label="Plugins de Modrinth (MODRINTH_PROJECTS)" value={plugins.modrinthProjects} placeholder={"luckperms\nchunky"}
             hint="Slug o id por línea." onChange={(l) => setPlugins({ modrinthProjects: l })} />
-          <ListField id="sf-pl-spiget" label="Spiget (SPIGET_RESOURCES)" value={plugins.spigetResources} placeholder={"28140\n34315"}
+          <ListField kind="digits" onError={onError} id="sf-pl-spiget" label="Spiget (SPIGET_RESOURCES)" value={plugins.spigetResources} placeholder={"28140\n34315"}
             hint="Id numérico de SpigotMC por línea. Algunos (p. ej. EssentialsX) no permiten descarga automática." onChange={(l) => setPlugins({ spigetResources: l })} />
-          <ListField id="sf-pl-urls" label="URLs de .jar (PLUGINS)" value={plugins.urls} placeholder="https://…/plugin.jar"
+          <ListField kind="url" onError={onError} id="sf-pl-urls" label="URLs de .jar (PLUGINS)" value={plugins.urls} placeholder="https://…/plugin.jar"
             hint="Una URL http(s) por línea. Quitar una URL no borra el .jar ya descargado." onChange={(l) => setPlugins({ urls: l })} />
         </fieldset>
       )}

@@ -45,4 +45,9 @@ describe("diffSpecs", () => {
       { label: "Whitelist", before: "(sin gestionar)", after: "desactivada" },
     ]);
   });
+  it("whitelist activada con lista vacía se muestra como tal", () => {
+    expect(diffSpecs({ type: "PAPER" }, { type: "PAPER", whitelist: { enabled: true, players: [] } })).toEqual([
+      { label: "Whitelist", before: "(sin gestionar)", after: "activada" },
+    ]);
+  });
 });

@@ -3,31 +3,47 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { listToText, kvToText, parseKv, parseList } from "@/lib/spec-edit";
+import { listToText, kvToText, parseKv, parseLines, validateListItems, type ListItemKind } from "@/lib/spec-edit";
 
 /** Notifica errores de campo al formulario (null = el campo vuelve a ser válido). */
 export type ReportError = (field: string, message: string | null) => void;
 
-export function Field({ id, label, hint, children }: { id: string; label: string; hint?: React.ReactNode; children: React.ReactNode }) {
+export const hintId = (id: string) => `${id}-hint`;
+export const errId = (id: string) => `${id}-err`;
+/** Valor de aria-describedby para un campo con hint y/o error. */
+export const describedBy = (id: string, hint: unknown, error: string | null | undefined) =>
+  [hint ? hintId(id) : null, error ? errId(id) : null].filter(Boolean).join(" ") || undefined;
+
+export function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: React.ReactNode; error?: string | null; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
       {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p id={hintId(id)} className="text-xs text-muted-foreground">{hint}</p>}
+      {error && <p id={errId(id)} role="alert" className="text-xs text-red-400">{error}</p>}
     </div>
   );
 }
 
 /** Lista en un textarea (una entrada por línea). Guarda su propio texto para no comerse los saltos de línea al escribir. */
-export function ListField({ id, label, value, onChange, placeholder, hint, rows = 4 }: {
+export function ListField({ id, label, value, onChange, onError, kind = "entry", placeholder, hint, rows = 4 }: {
   id: string; label: string; value: readonly string[] | undefined; onChange: (v: string[]) => void;
-  placeholder?: string; hint?: React.ReactNode; rows?: number;
+  onError?: ReportError; kind?: ListItemKind; placeholder?: string; hint?: React.ReactNode; rows?: number;
 }) {
   const [text, setText] = useState(() => listToText(value));
+  const [error, setError] = useState<string | null>(null);
+  const update = (t: string) => {
+    setText(t);
+    const items = parseLines(t);
+    const bad = validateListItems(kind, items);
+    const msg = bad ? `${label}: ${bad}` : null;
+    setError(msg); onError?.(id, msg);
+    if (!bad) onChange(items);
+  };
   return (
-    <Field id={id} label={label} hint={hint}>
+    <Field id={id} label={label} hint={hint} error={error}>
       <Textarea id={id} rows={rows} className="font-mono text-xs" value={text} placeholder={placeholder}
-        onChange={(e) => { setText(e.target.value); onChange(parseList(e.target.value)); }} />
+        aria-invalid={!!error} aria-describedby={describedBy(id, hint, error)} onChange={(e) => update(e.target.value)} />
     </Field>
   );
 }
@@ -50,10 +66,9 @@ export function KvField({ id, label, value, onChange, onError, placeholder, hint
     }
   };
   return (
-    <Field id={id} label={label} hint={hint}>
+    <Field id={id} label={label} hint={hint} error={error}>
       <Textarea id={id} rows={rows} className="font-mono text-xs" value={text} placeholder={placeholder}
-        aria-invalid={!!error} onChange={(e) => update(e.target.value)} />
-      {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
+        aria-invalid={!!error} aria-describedby={describedBy(id, hint, error)} onChange={(e) => update(e.target.value)} />
     </Field>
   );
 }
@@ -69,8 +84,9 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
     setText(t);
     const trimmed = t.trim();
     if (trimmed === "") { setError(null); onError(id, null); onChange(undefined); return; }
-    const n = Number(trimmed.replace(",", "."));
-    const bad = !Number.isFinite(n) || (integer && !Number.isInteger(n)) || (min !== undefined && n < min) || (max !== undefined && n > max);
+    // Solo dígitos decimales (nada de "0x10" ni "1e3"); con integer=false admite un decimal con punto o coma.
+    const n = (integer ? /^[0-9]+$/ : /^[0-9]+([.,][0-9]+)?$/).test(trimmed) ? Number(trimmed.replace(",", ".")) : Number.NaN;
+    const bad = !Number.isFinite(n) || (min !== undefined && n < min) || (max !== undefined && n > max);
     if (bad) {
       const range = min !== undefined && max !== undefined ? ` entre ${min} y ${max}` : min !== undefined ? ` ≥ ${min}` : "";
       const msg = `${label}: debe ser un número${integer ? " entero" : ""}${range}`;
@@ -79,9 +95,9 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
     setError(null); onError(id, null); onChange(n);
   };
   return (
-    <Field id={id} label={label} hint={hint}>
-      <Input id={id} value={text} inputMode={integer ? "numeric" : "decimal"} placeholder={placeholder} aria-invalid={!!error} onChange={(e) => update(e.target.value)} />
-      {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
+    <Field id={id} label={label} hint={hint} error={error}>
+      <Input id={id} value={text} inputMode={integer ? "numeric" : "decimal"} placeholder={placeholder} aria-invalid={!!error}
+        aria-describedby={describedBy(id, hint, error)} onChange={(e) => update(e.target.value)} />
     </Field>
   );
 }

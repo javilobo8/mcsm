@@ -1,5 +1,5 @@
 import {
-  MODPACK_PLATFORMS, canonicalJson, formatZodError, specInputSchema, templateSpecSchema,
+  MODPACK_PLATFORMS, DIGITS_RE, ENTRY_RE, URL_RE, canonicalJson, formatZodError, specInputSchema, templateSpecSchema,
   type ModpackPlatform, type SpecInput, type SpecPatch, type TemplateSpec,
 } from "@mcsm/shared";
 import { TYPED_PROPERTY_KEYS } from "./spec-catalog";
@@ -16,6 +16,24 @@ export const FORM_KEYS = [
 /** Una entrada por línea; también acepta comas (pegar "lithium,sodium"). */
 export function parseList(text: string): string[] {
   return text.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+}
+
+/** Una entrada por línea, SIN trocear por comas (así una coma o un espacio interno se detecta como error). */
+export function parseLines(text: string): string[] {
+  return text.split("\n").map((s) => s.trim()).filter(Boolean);
+}
+
+export type ListItemKind = "entry" | "url" | "digits";
+
+/** Primer ítem inválido de una lista, con un mensaje en castellano; null si todos valen. Usa las regex de @mcsm/shared. */
+export function validateListItems(kind: ListItemKind, items: readonly string[]): string | null {
+  const re = kind === "url" ? URL_RE : kind === "digits" ? DIGITS_RE : ENTRY_RE;
+  const bad = items.find((i) => !re.test(i));
+  if (bad === undefined) return null;
+  const why = kind === "url" ? "debe empezar por http:// o https:// y no tener espacios ni comas"
+    : kind === "digits" ? "debe ser un id numérico"
+    : "no puede tener espacios ni comas";
+  return `«${bad.length > 40 ? `${bad.slice(0, 40)}…` : bad}» ${why}`;
 }
 
 export function listToText(list: readonly string[] | undefined): string {
@@ -72,10 +90,27 @@ const isPlatform = (t: string): t is ModpackPlatform => (MODPACK_PLATFORMS as re
 export function withType(spec: EditableSpec, type: string): EditableSpec {
   if (isPlatform(type)) {
     const prev = spec.modpack;
-    return { ...spec, type, modpack: { platform: type, slugOrUrl: prev?.slugOrUrl ?? "", versionId: "", loader: "" } };
+    // El slug solo se conserva dentro de la misma plataforma: un slug de Modrinth no vale en CurseForge.
+    return { ...spec, type, modpack: { platform: type, slugOrUrl: prev?.platform === type ? prev.slugOrUrl : "", versionId: prev?.platform === type ? prev.versionId : "", loader: prev?.platform === type ? prev.loader : "" } };
   }
   const { modpack: _drop, ...rest } = spec;
   return { ...rest, type };
+}
+
+/** Aviso a mostrar junto al selector de Tipo cuando cambiar a `type` descarta o crea la sección Modpack; null si no hay efecto. */
+export function typeChangeNotice(spec: EditableSpec, type: string): string | null {
+  if (type === spec.type) return null;
+  const prev = spec.modpack;
+  if (isPlatform(type)) {
+    if (prev && prev.platform !== type) {
+      return prev.slugOrUrl || prev.versionId
+        ? `Cambiar a ${type} vacía el modpack actual («${prev.slugOrUrl}»): cada plataforma usa sus propios identificadores.`
+        : `Cambiar a ${type} reinicia la sección Modpack.`;
+    }
+    return prev ? null : `Cambiar a ${type} crea una sección Modpack vacía que tendrás que rellenar.`;
+  }
+  if (prev) return `Cambiar a ${type} descarta la sección Modpack (${prev.slugOrUrl || "sin slug"}${prev.versionId ? ` @ ${prev.versionId}` : ""}).`;
+  return null;
 }
 
 /** Secciones OPCIONALES: las únicas para las que el PATCH admite `null` (eliminar). El resto se resetearía a su default. */

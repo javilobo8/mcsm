@@ -24,11 +24,14 @@ export function CurseForgeKeyNotice() {
     },
   });
   const configured = status.data?.configured;
+  const removeKey = () => {
+    if (window.confirm("Quitar la API key de CurseForge recreará los servidores de CurseForge que estén en marcha. ¿Continuar?")) save.mutate("");
+  };
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-xs">
       <KeyRound className="size-4 text-muted-foreground" />
       <span>
-        API key de CurseForge: {configured === undefined ? "…" : configured ? <strong className="text-emerald-400">configurada</strong> : <strong className="text-amber-400">sin configurar</strong>}
+        API key de CurseForge: {status.isError ? <strong role="alert" className="text-red-400">no se pudo consultar</strong> : configured === undefined ? "…" : configured ? <strong className="text-emerald-400">configurada</strong> : <strong className="text-amber-400">sin configurar</strong>}
         {configured === false && " (las imágenes java17 o superiores traen una; con java8 es obligatoria)"}
       </span>
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setKey(""); save.reset(); } }}>
@@ -46,7 +49,7 @@ export function CurseForgeKeyNotice() {
             </div>
             {save.error && <p role="alert" className="text-sm text-red-400">{save.error instanceof ApiError ? save.error.message : "Error inesperado"}</p>}
             <DialogFooter>
-              {configured && <Button type="button" variant="ghost" disabled={save.isPending} onClick={() => save.mutate("")}>Quitar la key</Button>}
+              {configured && <Button type="button" variant="ghost" disabled={save.isPending} onClick={removeKey}>Quitar la key</Button>}
               <Button type="submit" disabled={save.isPending || key.trim() === ""}>{save.isPending ? "Guardando…" : "Guardar"}</Button>
             </DialogFooter>
           </form>

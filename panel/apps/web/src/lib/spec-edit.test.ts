@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { defaultSpecInput, templateSpecSchema } from "@mcsm/shared";
 import {
   buildSpecPatch, editableFromTemplate, editableSpec, kvToText, listToText, parseKv, parseList, replaceOtherProperties,
-  setProperty, splitProperties, validateSpec, withType,
+  setProperty, splitProperties, validateSpec, withType, parseLines, validateListItems, typeChangeNotice,
 } from "./spec-edit";
 import { PROPERTY_DEFS, typeKind } from "./spec-catalog";
 
@@ -41,7 +41,7 @@ describe("withType", () => {
     const mp = withType(base, "MODRINTH");
     expect(mp.modpack).toEqual({ platform: "MODRINTH", slugOrUrl: "", versionId: "", loader: "" });
     const cf = withType({ ...mp, modpack: { ...mp.modpack!, slugOrUrl: "pack", loader: "fabric" } }, "AUTO_CURSEFORGE");
-    expect(cf.modpack).toEqual({ platform: "AUTO_CURSEFORGE", slugOrUrl: "pack", versionId: "", loader: "" });
+    expect(cf.modpack).toEqual({ platform: "AUTO_CURSEFORGE", slugOrUrl: "", versionId: "", loader: "" }); // no se arrastra el slug entre plataformas
     const paper = withType(cf, "PAPER");
     expect(paper).not.toHaveProperty("modpack");
     expect(paper.type).toBe("PAPER");
@@ -76,5 +76,31 @@ describe("validateSpec", () => {
     expect(t.ports).toEqual({ extra: [] });
     expect(validateSpec({ ...t, ports: { game: 99999, extra: [] } }, "template")).toBeNull();
     expect(validateSpec({ ...t, ports: { game: 99999, extra: [] } }, "server")).toMatch(/ports\.game/);
+  });
+});
+
+describe("parseLines y validateListItems", () => {
+  it("parseLines no trocea por comas", () => {
+    expect(parseLines("a,b\n  c \n\n")).toEqual(["a,b", "c"]);
+  });
+  it("detecta espacios, comas y URLs no http", () => {
+    expect(validateListItems("entry", ["lithium", "ferritecore:beta"])).toBeNull();
+    expect(validateListItems("entry", ["lithium sodium"])).toMatch(/lithium sodium/);
+    expect(validateListItems("entry", ["a,b"])).not.toBeNull();
+    expect(validateListItems("url", ["https://x.org/a.jar"])).toBeNull();
+    expect(validateListItems("url", ["ftp://x/a.jar"])).not.toBeNull();
+    expect(validateListItems("digits", ["28140", "abc"])).toMatch(/abc/);
+  });
+});
+
+describe("typeChangeNotice", () => {
+  const withMp = withType(defaultSpecInput(), "MODRINTH");
+  const filled = { ...withMp, modpack: { ...withMp.modpack!, slugOrUrl: "cobblemon" } };
+  it("avisa al descartar, crear o reiniciar el modpack y calla si no hay efecto", () => {
+    expect(typeChangeNotice(filled, "PAPER")).toMatch(/descarta.*cobblemon/);
+    expect(typeChangeNotice(defaultSpecInput(), "MODRINTH")).toMatch(/crea una sección Modpack vacía/);
+    expect(typeChangeNotice(filled, "AUTO_CURSEFORGE")).toMatch(/vacía el modpack actual/);
+    expect(typeChangeNotice(defaultSpecInput(), "FABRIC")).toBeNull();
+    expect(typeChangeNotice(filled, "MODRINTH")).toBeNull();
   });
 });
