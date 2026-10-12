@@ -33,9 +33,11 @@ export const templateInstantiateSchema = z.object({
 });
 export type TemplateInstantiateInput = z.infer<typeof templateInstantiateSchema>;
 
-/** Quita puertos, rconPassword y cualquier clave ajena a la plantilla. Lanza ZodError si no valida. */
+/** Quita puertos, rconPassword, el router y cualquier clave ajena a la plantilla. Lanza ZodError si no valida. */
 export function specToTemplate(spec: Record<string, unknown>): TemplateSpec {
-  return templateSpecSchema.parse(spec);
+  // plan-8: el hostname del router es de un servidor concreto (único por nodo): no viaja en plantillas.
+  const { router: _router, ...rest } = spec;
+  return templateSpecSchema.parse(rest);
 }
 
 /** "Nombre (copia)", "Nombre (copia 2)"… sin pasar de 60 caracteres. */
