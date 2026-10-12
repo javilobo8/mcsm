@@ -70,6 +70,8 @@ export interface ServerDto {
   id: string; nodeId: string; name: string; slug: string; specVersion: number; desiredState: "running" | "stopped";
   observed: ObservedDto | null; observedSpecVersion: number; observedAt: string | null; createdAt: string; updatedAt: string;
   spec: import("@mcsm/shared").SpecInput & { ports: { game: number }; rconPassword?: string };
+  /** plan-6: origen de un servidor importado (null si lo creó el panel). */
+  importedFrom: import("@mcsm/shared").ImportedFrom | null;
 }
 
 // plan-4: copias y jobs
