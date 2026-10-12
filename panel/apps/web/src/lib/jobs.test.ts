@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, retainJobsLive, upsertJob, type JobsLiveSource } from "./jobs";
+import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, jobsFilterFor, JOB_FILTER_OPTIONS, formatFinishTime, retainJobsLive, upsertJob, type JobsLiveSource } from "./jobs";
 import { topicOf } from "./ws";
 import type { JobDetailDto, JobDto, ServerMessage } from "./api";
 
@@ -136,5 +136,27 @@ describe("topicOf", () => {
   it("enruta job y backups al topic jobs", () => {
     expect(topicOf({ type: "backups", serverId: "s1" })).toBe("jobs");
     expect(topicOf({ type: "job", job: job("a", "2026-10-12T04:00:00.000Z"), logChunk: "" })).toBe("jobs");
+  });
+});
+
+describe("jobsFilterFor", () => {
+  it("Todos no filtra y el resto filtra por estado", () => {
+    expect(jobsFilterFor(null)).toEqual({});
+    expect(jobsFilterFor("failed")).toEqual({ status: "failed" });
+  });
+  it("ofrece Todos, En curso, Correctos y Fallidos, en ese orden", () => {
+    expect(JOB_FILTER_OPTIONS.map((o) => [o.label, o.value])).toEqual([
+      ["Todos", null], ["En curso", "running"], ["Correctos", "ok"], ["Fallidos", "failed"],
+    ]);
+  });
+});
+
+describe("formatFinishTime", () => {
+  it("devuelve null sin fecha o con fecha inválida", () => {
+    expect(formatFinishTime(null)).toBeNull();
+    expect(formatFinishTime("basura")).toBeNull();
+  });
+  it("formatea la hora de una fecha válida", () => {
+    expect(formatFinishTime("2026-10-12T10:05:07Z")).toMatch(/\d{1,2}:\d{2}:\d{2}/);
   });
 });

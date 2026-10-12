@@ -123,3 +123,16 @@ export function retainJobsLive(qc: QueryClient, live: JobsLiveSource): () => voi
     }
   };
 }
+
+/** Opciones del filtro de la página Jobs (`null` = Todos). */
+export const JOB_FILTER_OPTIONS: { value: JobState | null; label: string }[] = [
+  { value: null, label: "Todos" }, { value: "running", label: "En curso" }, { value: "ok", label: "Correctos" }, { value: "failed", label: "Fallidos" },
+];
+export const jobsFilterFor = (status: JobState | null): JobsFilter => (status ? { status } : {});
+
+/** Hora de fin de un job, o null si no ha terminado o la fecha no es válida. */
+export function formatFinishTime(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString("es-ES");
+}
