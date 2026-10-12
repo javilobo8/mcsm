@@ -76,6 +76,12 @@ export class RouterService {
     return spec.enabled ? spec.port : null;
   }
 
+  /** ¿Arranca y para mc-router por su cuenta los servidores con hostname del nodo (router activo con autoscale)? */
+  autoscaleOn(nodeId: string): boolean {
+    const spec = rowSpec(this.repo.get(nodeId));
+    return spec.enabled && spec.autoscale;
+  }
+
   /**
    * Quién usa ya en `nodeId` el hostname del router de `spec` (null si está libre o `spec` no lo usa): un servidor del
    * nodo con el router activo, o uno que se está migrando a ese nodo (Plan 7: su copia puede estar ya allí, con las
@@ -113,6 +119,15 @@ export class RouterService {
       const owner = portOwner(this.app.servers.list(nodeId), spec.port);
       if (owner) {
         throw new HttpError(409, `El puerto ${spec.port} lo usa el servidor «${owner.name}» de este nodo: elige otro puerto para el router o cambia el del servidor`);
+      }
+    }
+    if (spec.enabled && spec.autoscale) {
+      // Plan 7: con el autoscale, mc-router arrancaría aquí el origen parado de una migración con hostname (la migración
+      // lo exige sin autoscale al empezar: MigrationService.plan).
+      const m = this.app.migrations.openFrom(nodeId).find((o) => (JSON.parse(o.target_spec) as Spec).router?.enabled);
+      if (m) {
+        const name = this.app.servers.get(m.server_id)?.name ?? "Un servidor";
+        throw new HttpError(409, `«${name}» tiene hostname y se está migrando desde este nodo: activa el autoscale cuando termine la migración (mc-router podría arrancarlo aquí a mitad)`);
       }
     }
     const before = this.repo.get(nodeId);

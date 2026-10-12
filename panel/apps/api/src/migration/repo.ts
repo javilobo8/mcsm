@@ -140,6 +140,11 @@ export class MigrationsRepo {
     return rows.filter((r) => r.server_id !== exceptServerId).map((r) => ({ serverId: r.server_id, spec: JSON.parse(r.target_spec) as Spec }));
   }
 
+  /** Migraciones abiertas (en curso, deshaciéndose o con lo pendiente tras el commit) cuyo origen es `nodeId`. */
+  openFrom(nodeId: string): MigrationRow[] {
+    return this.listOpen().filter((m) => m.source_node_id === nodeId);
+  }
+
   /** Bloquea borrar el nodo mientras una migración que lo usa está en curso (deshaciéndose, sí se puede). */
   blockingNodeDelete(nodeId: string): MigrationRow | null {
     return this.one("SELECT * FROM migrations WHERE phase = 'running' AND (source_node_id = ? OR target_node_id = ?) ORDER BY created_at LIMIT 1", nodeId, nodeId);

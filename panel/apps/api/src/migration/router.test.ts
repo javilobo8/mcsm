@@ -92,4 +92,39 @@ describe("migración y router (Planes 7 y 8)", () => {
     app.migrations.update(m.id, { phase: "failed" });
     expect((await proposal(t.id, b.id)).statusCode).toBe(200);
   });
+
+  it("con el autoscale del router del origen, un servidor con hostname no se migra (mc-router lo podría arrancar en el origen)", async () => {
+    const { a, b, s } = await nodes(spec(25565, "survival.lan"));
+    routerRow(a.id, { enabled: true, port: 25590, autoscale: true });
+    let res = await proposal(s.id, b.id);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("«Survival» tiene hostname y el router de «nodo-a» tiene el autoscale activo: mc-router podría arrancarlo en el origen " +
+      "durante la migración. Quita el autoscale del router de «nodo-a» o desactiva el hostname del servidor antes de migrarlo");
+    res = await app.inject({ method: "POST", url: `/api/servers/${s.id}/migration`, headers: { cookie }, payload: { targetNodeId: b.id } });
+    expect(res.statusCode).toBe(409);
+    // Sin autoscale, sí.
+    routerRow(a.id, { enabled: true, port: 25590, autoscale: false });
+    expect((await proposal(s.id, b.id)).statusCode).toBe(200);
+    // Con autoscale, un servidor sin hostname activo (mc-router no lo ve) también.
+    routerRow(a.id, { enabled: true, port: 25590, autoscale: true });
+    const t = app.servers.create({ nodeId: a.id, name: "Sin", slug: "sin", spec: spec(25566, "sin.lan", false), desiredState: "stopped" });
+    expect((await proposal(t.id, b.id)).statusCode).toBe(200);
+  });
+
+  it("con una migración abierta de un servidor con hostname, el router del origen no activa el autoscale", async () => {
+    const { a, b, s } = await nodes(spec(25565, "survival.lan"));
+    const m = app.migrations.insert({
+      id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "survival", target_slug: "survival",
+      source_version: 1, target_version: 2, target_port: 25565, target_spec: JSON.stringify(spec(25565, "survival.lan")), was_running: 1, delete_source: 0,
+    });
+    const put = (payload: object) => app.inject({ method: "PUT", url: `/api/nodes/${a.id}/router`, headers: { cookie }, payload });
+    let res = await put({ enabled: true, port: 25590, autoscale: true });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("«Survival» tiene hostname y se está migrando desde este nodo: activa el autoscale cuando termine la migración " +
+      "(mc-router podría arrancarlo aquí a mitad)");
+    expect(app.routerService.get(a.id).spec.enabled).toBe(false); // no se guardó nada
+    expect((await put({ enabled: true, port: 25590 })).statusCode).toBe(200); // sin autoscale, sí (nodo desconectado: se guarda)
+    app.migrations.update(m.id, { phase: "failed" });
+    expect((await put({ enabled: true, port: 25590, autoscale: true })).statusCode).toBe(200);
+  });
 });

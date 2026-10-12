@@ -184,6 +184,14 @@ export class MigrationService {
     if (spec.dataPath) {
       throw new HttpError(409, `Los datos de «${row.name}» están en ${spec.dataPath}, fuera de DATA_ROOT, y el agente no puede copiarlos: no se puede migrar. Para migrarlo, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${row.slug}/data del nodo y vuelve a importarlo`);
     }
+    // Plan 8 (H1): con el autoscale del router del origen, mc-router arrancaría el servidor parado (tiene hostname) en
+    // cuanto un jugador intentara entrar, entre el paso 1 y la retirada: la copia quedaría desfasada o se perdería lo
+    // jugado allí. Aparcarlo (Park) no basta: al soltar la reserva de la copia se recrea y se arranca.
+    if (spec.router?.enabled && this.app.routerService.autoscaleOn(row.node_id)) {
+      const source = this.nodeName(row.node_id);
+      throw new HttpError(409, `«${row.name}» tiene hostname y el router de «${source}» tiene el autoscale activo: mc-router podría arrancarlo en el origen ` +
+        `durante la migración. Quita el autoscale del router de «${source}» o desactiva el hostname del servidor antes de migrarlo`);
+    }
     // Plan 8: el hostname del router, libre también en el destino (contando las migraciones abiertas hacia él).
     this.app.routerService.checkHostname(targetNodeId, spec, row.id, target.name);
     const targetServers: TargetServer[] = this.app.servers.list(targetNodeId).map((r) => ({ slug: r.slug, spec: JSON.parse(r.spec) as Spec }));
