@@ -23,9 +23,9 @@ var DeniedDataPaths = []string{
 	"/sbin", "/sys", "/usr", "/var/lib/docker", "/var/run",
 }
 
-// adoptIDRe: id del contenedor a adoptar. El panel envía ids completos (64 hex); se admite
-// cualquier id alfanumérico corto para los del fake de Docker en los tests.
-var adoptIDRe = regexp.MustCompile(`^[0-9A-Za-z]{1,64}$`)
+// adoptIDRe: id completo del contenedor a adoptar (64 hex, como DOCKER_ID_RE en el panel). Un nombre o
+// un prefijo no valen: Docker los resolvería, quizá a otro contenedor.
+var adoptIDRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // Adopt lo añade el panel a la spec que envía de un servidor importado; nunca se guarda en la
 // spec del panel. ContainerID es el contenedor original y Version la versión de la spec con la

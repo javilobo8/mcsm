@@ -135,7 +135,8 @@ func TestRecreateWhenSpecChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(fake.Calls, ";")
-	if !strings.Contains(joined, "Stop fake0001 1m0s;Remove fake0001;EnsureImage itzg/minecraft-server:java21;Create mcsm-alpha;Start fake0002") {
+	first, second := docker.FakeID(1), docker.FakeID(2)
+	if !strings.Contains(joined, "Stop "+first+" 1m0s;Remove "+first+";EnsureImage itzg/minecraft-server:java21;Create mcsm-alpha;Start "+second) {
 		t.Fatalf("secuencia inesperada: %v", fake.Calls)
 	}
 }

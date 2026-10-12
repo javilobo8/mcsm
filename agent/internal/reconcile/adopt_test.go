@@ -205,7 +205,7 @@ func TestAdoptChecks(t *testing.T) {
 		mk   func(t *testing.T, fake *docker.Fake, root string) string
 		want error
 	}{
-		{"no existe", func(*testing.T, *docker.Fake, string) string { return "fake0999" }, ErrAdoptNotFound},
+		{"no existe", func(*testing.T, *docker.Fake, string) string { return docker.FakeID(999) }, ErrAdoptNotFound},
 		{"ya gestionado", func(t *testing.T, f *docker.Fake, root string) string {
 			return external(t, f, "mcsm-otro", filepath.Join(root, "alpha", "data"), false, func(c *container.Config, _ *container.HostConfig) {
 				c.Labels = map[string]string{spec.LabelManaged: "true"}
@@ -324,7 +324,7 @@ func TestReadoptWithNewerSpecRecreatesAtOnce(t *testing.T) {
 
 func TestReadoptOriginalGoneCreatesManaged(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
-	put(t, st, "a", "alpha", 1, desiredRunning, string(importedSpec("fake0042", impOpts{})))
+	put(t, st, "a", "alpha", 1, desiredRunning, string(importedSpec(docker.FakeID(42), impOpts{})))
 	if err := r.Reconcile(context.Background(), "a"); err != nil {
 		t.Fatal(err)
 	}

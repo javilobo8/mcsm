@@ -63,6 +63,9 @@ type FakeContainer struct {
 	Aliases    map[string][]string // plan-6: red → alias añadidos con ConnectNetwork
 }
 
+// FakeID es el id del n-ésimo contenedor que crea el fake: 64 hex, como los de Docker.
+func FakeID(n int) string { return fmt.Sprintf("%064x", n) }
+
 func NewFake() *Fake {
 	return &Fake{Containers: map[string]*FakeContainer{}, Images: map[string]bool{}, Networks: map[string]bool{}, ImageEnvs: map[string][]string{}, logPipes: map[string][]*io.PipeWriter{}}
 }
@@ -131,7 +134,7 @@ func (f *Fake) Create(_ context.Context, name string, cfg *container.Config, hos
 		}
 	}
 	f.seq++
-	id := fmt.Sprintf("fake%04d", f.seq)
+	id := FakeID(f.seq)
 	f.Containers[id] = &FakeContainer{ID: id, Name: name, State: "created", Config: cfg, HostConfig: host, Net: net}
 	return id, nil
 }

@@ -130,7 +130,11 @@ func TestAdoptValidation(t *testing.T) {
 		ok    bool
 	}{
 		{Adopt{ContainerID: strings.Repeat("0f", 32), Version: 1}, true},
-		{Adopt{ContainerID: "fake0001", Version: 3}, true},
+		// Solo ids completos: Docker resolvería un nombre o un prefijo a otro contenedor.
+		{Adopt{ContainerID: "fake0001", Version: 3}, false},
+		{Adopt{ContainerID: "mc-viejo", Version: 1}, false},
+		{Adopt{ContainerID: strings.Repeat("0f", 6), Version: 1}, false},
+		{Adopt{ContainerID: strings.Repeat("0F", 32), Version: 1}, false},
 		{Adopt{ContainerID: "", Version: 1}, false},
 		{Adopt{ContainerID: "../containers/x", Version: 1}, false},
 		{Adopt{ContainerID: strings.Repeat("a", 65), Version: 1}, false},

@@ -88,7 +88,7 @@ func TestImportAdoptAndErrors(t *testing.T) {
 		js     []byte
 		want   string
 	}{
-		{11, "s2", "otro", adoptJSON("fake0999"), errcode.NotFound},
+		{11, "s2", "otro", adoptJSON(docker.FakeID(999)), errcode.NotFound},
 		{12, "s3", "viejo", adoptJSON(id), errcode.Exists},           // ya adoptado por s1
 		{13, "s4", "otro", adoptJSON(other), errcode.InvalidRequest}, // su /data no es DATA_ROOT/otro/data
 		{14, "s5", "Mal Slug", adoptJSON(id), errcode.InvalidSpec},
