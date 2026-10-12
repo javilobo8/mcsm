@@ -2,7 +2,7 @@
 export type FormErrors = Readonly<Record<string, string>>;
 
 /** Ids que no son un elemento del DOM (errores calculados): nunca se purgan por "no montado". */
-export const VIRTUAL_ERROR_IDS: ReadonlySet<string> = new Set(["sf-memlimit-rel", "sf-extra-ports"]);
+export const VIRTUAL_ERROR_IDS: ReadonlySet<string> = new Set(["sf-memlimit-rel", "sf-extra-ports", "sf-ops-env", "sf-whitelist-env"]);
 
 /** Fija o quita (message null) el error de un campo; devuelve el mismo objeto si no cambia nada. */
 export function applyError(prev: FormErrors, field: string, message: string | null): FormErrors {

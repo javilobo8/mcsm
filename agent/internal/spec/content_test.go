@@ -357,3 +357,24 @@ func TestCurseForgeAPIKeyValidated(t *testing.T) {
 		}
 	}
 }
+
+// Con la sección presente, el env libre no puede fijar lo que ella genera: como el env gana,
+// revocar un op o un jugador de la whitelist no tendría efecto (auditoría M1).
+func TestPlayersSectionsRejectOverridingEnv(t *testing.T) {
+	s := loadFixture(t)
+	s.Ops = []string{"Lobo"}
+	s.Env = map[string]string{"OPS": "Lobo,Pepe"}
+	err := s.Validate()
+	want := "spec: Quita la variable OPS de las variables de entorno (Avanzado): los operadores se gestionan en la sección Jugadores"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	s = loadFixture(t)
+	s.Whitelist = &Whitelist{Enabled: true}
+	s.Env = map[string]string{"ENABLE_WHITELIST": "false"}
+	err = s.Validate()
+	want = "spec: Quita la variable ENABLE_WHITELIST de las variables de entorno (Avanzado): la whitelist se gestiona en la sección Jugadores"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}

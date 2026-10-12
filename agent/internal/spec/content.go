@@ -39,6 +39,35 @@ var (
 // whitelistProps las gestiona la sección whitelist por env; no pueden ir también en properties.
 var whitelistProps = []string{"white-list", "enforce-whitelist"}
 
+// Variables que generan las secciones de Jugadores. Con la sección presente, el env libre (que
+// gana sobre lo generado) no puede fijarlas: revocar un op o un jugador no tendría efecto y la UI
+// diría lo contrario. EXISTING_*_FILE sí se admite (MERGE es una elección consciente).
+// Mismos mensajes que envSectionConflicts en el panel.
+var (
+	opsEnv       = []string{"OPS", "OPS_FILE"}
+	whitelistEnv = []string{"WHITELIST", "WHITELIST_FILE", "ENABLE_WHITELIST"}
+)
+
+func (s Spec) validateSectionEnv() error {
+	check := func(keys []string, what string) error {
+		for _, k := range keys {
+			if _, ok := s.Env[k]; ok {
+				return fmt.Errorf("spec: Quita la variable %s de las variables de entorno (Avanzado): %s en la sección Jugadores", k, what)
+			}
+		}
+		return nil
+	}
+	if s.Ops != nil {
+		if err := check(opsEnv, "los operadores se gestionan"); err != nil {
+			return err
+		}
+	}
+	if s.Whitelist != nil {
+		return check(whitelistEnv, "la whitelist se gestiona")
+	}
+	return nil
+}
+
 type Modpack struct {
 	Platform  string `json:"platform"`
 	SlugOrURL string `json:"slugOrUrl"`
@@ -112,7 +141,7 @@ func (s Spec) validateContent() error {
 			}
 		}
 	}
-	return nil
+	return s.validateSectionEnv()
 }
 
 func (s Spec) validateModpack() error {

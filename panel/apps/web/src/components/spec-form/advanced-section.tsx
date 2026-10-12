@@ -6,7 +6,7 @@ export function AdvancedSection({ spec, onChange, onError }: { spec: EditableSpe
   return (
     <KvField id="sf-env" label="Variables de entorno extra (CLAVE=valor por línea)" value={spec.env} rows={10} onError={onError} validate={validateEnv}
       placeholder={"USE_AIKAR_FLAGS=true\nENABLE_AUTOPAUSE=false\nMODRINTH_DOWNLOAD_DEPENDENCIES=required"}
-      hint="Ganan sobre lo que generan las demás secciones. No se pueden fijar EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES ni CF_API_KEY (la API key de CurseForge se configura aparte)."
+      hint="Ganan sobre lo que generan las demás secciones. No se pueden fijar EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES ni CF_API_KEY (la API key de CurseForge se configura aparte). Con los operadores o la whitelist gestionados en Jugadores tampoco OPS, OPS_FILE, WHITELIST, WHITELIST_FILE ni ENABLE_WHITELIST."
       onChange={(env) => onChange({ ...spec, env })} />
   );
 }

@@ -72,11 +72,38 @@ export const contentFields = {
 
 const WHITELIST_PROPS = ["white-list", "enforce-whitelist"];
 
+/**
+ * Variables que generan las secciones de Jugadores. Con la sección presente, el env libre (que gana
+ * sobre lo generado) no puede fijarlas: revocar un op o un jugador no tendría efecto y la UI diría lo
+ * contrario. EXISTING_*_FILE sí se admite (MERGE es una elección consciente). Espejo de opsEnv /
+ * whitelistEnv en el agente, con los mismos mensajes.
+ */
+const SECTION_ENV = [
+  { section: "ops", keys: ["OPS", "OPS_FILE"], what: "los operadores se gestionan" },
+  { section: "whitelist", keys: ["WHITELIST", "WHITELIST_FILE", "ENABLE_WHITELIST"], what: "la whitelist se gestiona" },
+] as const;
+
+export interface EnvSectionConflict { key: string; section: "ops" | "whitelist"; message: string }
+
+/** Variables del env libre que pisarían una sección de Jugadores presente (vacío si no hay ninguna). */
+export function envSectionConflicts(s: { env: Record<string, string>; ops?: unknown; whitelist?: unknown }): EnvSectionConflict[] {
+  const out: EnvSectionConflict[] = [];
+  for (const { section, keys, what } of SECTION_ENV) {
+    if (s[section] === undefined) continue;
+    for (const key of keys) {
+      if (Object.hasOwn(s.env, key)) out.push({ key, section, message: `Quita la variable ${key} de las variables de entorno (Avanzado): ${what} en la sección Jugadores` });
+    }
+  }
+  return out;
+}
+
 type ContentShape = {
   type: string;
   properties: Record<string, string>;
+  env: Record<string, string>;
   modpack?: { platform: ModpackPlatform } | undefined;
   whitelist?: unknown;
+  ops?: unknown;
 };
 
 /** Validación cruzada (tipo ↔ modpack, whitelist ↔ properties). */
@@ -95,6 +122,7 @@ export function contentCheck(s: ContentShape, ctx: z.RefinementCtx) {
       }
     }
   }
+  for (const c of envSectionConflicts(s)) ctx.addIssue({ code: "custom", path: ["env", c.key], message: c.message });
 }
 
 /** ¿La spec descarga algo de CurseForge? Solo entonces el panel le envía CF_API_KEY. */

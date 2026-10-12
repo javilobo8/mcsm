@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { EditableSpec } from "@/lib/spec-edit";
+import { playersEnvErrors, type EditableSpec } from "@/lib/spec-edit";
 import { ListField, type ReportError } from "./fields";
 
 /**
@@ -13,6 +13,13 @@ export function PlayersSection({ spec, onChange, onError }: { spec: EditableSpec
   const ops = spec.ops;
   // Solo "Dejar de gestionar" remonta el textarea (para vaciar su texto); el alta no, o se perdería el foco.
   const [resets, setResets] = useState({ wl: 0, ops: 0 });
+  // OPS/WHITELIST/ENABLE_WHITELIST… en Avanzado ganarían sobre estas listas: error de esta sección (bloquea aplicar).
+  const envErr = playersEnvErrors(spec);
+  const opsEnvErr = envErr["sf-ops-env"];
+  const wlEnvErr = envErr["sf-whitelist-env"];
+  useEffect(() => { onError?.("sf-ops-env", opsEnvErr); }, [opsEnvErr, onError]);
+  useEffect(() => { onError?.("sf-whitelist-env", wlEnvErr); }, [wlEnvErr, onError]);
+  useEffect(() => () => { onError?.("sf-ops-env", null); onError?.("sf-whitelist-env", null); }, [onError]);
   const clear = (key: "whitelist" | "ops", ids: string[]) => {
     for (const id of ids) onError?.(id, null);
     setResets((r) => ({ ...r, [key === "ops" ? "ops" : "wl"]: r[key === "ops" ? "ops" : "wl"] + 1 }));
@@ -30,12 +37,14 @@ export function PlayersSection({ spec, onChange, onError }: { spec: EditableSpec
         <ListField key={`wl-${resets.wl}`} id="sf-whitelist" label="Jugadores de la whitelist" kind="player" value={wl?.players} rows={6} onError={onError} placeholder={"Lobo\nSteve"}
           hint="Nombre de Java o UUID, uno por línea. Al arrancar, whitelist.json queda igual que esta lista: lo añadido con /whitelist add se pierde (pon EXISTING_WHITELIST_FILE=MERGE en Avanzado si prefieres sumar)."
           onChange={(players) => onChange({ ...spec, whitelist: { enabled: wl?.enabled ?? false, players } })} />
+        {wlEnvErr && <p role="alert" className="text-xs text-red-400">{wlEnvErr}</p>}
         <Gestion managed={!!wl} what="la whitelist" onStop={() => clear("whitelist", ["sf-whitelist"])} />
       </div>
       <div className="flex flex-col gap-3">
         <ListField key={`ops-${resets.ops}`} id="sf-ops" label="Operadores (OPS)" kind="player" value={ops} rows={6} onError={onError} placeholder="Lobo"
           hint="Nombre de Java o UUID, uno por línea. Con la sección gestionada, quitar a alguien le quita el op al reiniciar y una lista vacía deja ops.json sin operadores."
           onChange={(list) => onChange({ ...spec, ops: list })} />
+        {opsEnvErr && <p role="alert" className="text-xs text-red-400">{opsEnvErr}</p>}
         <Gestion managed={ops !== undefined} what="los operadores" onStop={() => clear("ops", ["sf-ops"])} />
       </div>
     </div>

@@ -162,3 +162,23 @@ describe("resincronización de campos numéricos", () => {
     expect(r({ text: "4", incoming: undefined, emitted: 4 })).toBe(true);
   });
 });
+
+describe("Jugadores frente al env libre", () => {
+  it("con la sección presente, OPS/OPS_FILE y WHITELIST/WHITELIST_FILE/ENABLE_WHITELIST del env son error de la sección", async () => {
+    const { playersEnvErrors } = await import("./spec-edit");
+    const base = defaultSpecInput();
+    expect(playersEnvErrors({ ...base, env: { OPS: "Lobo,Pepe", ENABLE_WHITELIST: "false" } })).toEqual({ "sf-ops-env": null, "sf-whitelist-env": null });
+    const both = playersEnvErrors({ ...base, ops: ["Lobo"], whitelist: { enabled: true, players: [] }, env: { OPS: "Lobo,Pepe", OPS_FILE: "x", ENABLE_WHITELIST: "false", EXISTING_OPS_FILE: "MERGE" } });
+    expect(both["sf-ops-env"]).toMatch(/OPS[\s\S]*OPS_FILE/);
+    expect(both["sf-ops-env"]).not.toMatch(/EXISTING/);
+    expect(both["sf-whitelist-env"]).toMatch(/ENABLE_WHITELIST/);
+  });
+  it("los ids son errores calculados de la pestaña Jugadores (no se purgan por no estar en el DOM)", async () => {
+    const { VIRTUAL_ERROR_IDS } = await import("./form-errors");
+    const { tabOfField } = await import("@/components/spec-form/spec-form");
+    for (const id of ["sf-ops-env", "sf-whitelist-env"]) {
+      expect(VIRTUAL_ERROR_IDS.has(id)).toBe(true);
+      expect(tabOfField(id)).toBe("players");
+    }
+  });
+});

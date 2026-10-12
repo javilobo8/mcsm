@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { specSchema, specInputSchema } from "./spec.js";
-import { CURSEFORGE_API_KEY_RE, usesCurseForge } from "./spec-content.js";
+import { CURSEFORGE_API_KEY_RE, envSectionConflicts, usesCurseForge } from "./spec-content.js";
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`../../../../proto/fixtures/${name}`, import.meta.url), "utf8"));
 const base = fixture("spec-example.json");
@@ -47,6 +47,18 @@ describe("spec con contenido", () => {
   it("CURSEFORGE_API_KEY_RE: los mismos casos que TestCurseForgeAPIKeyValidated (Go)", () => {
     for (const ok of ["$2a$10$abc/DEF.ghi", "k".repeat(200), "!~"]) expect(CURSEFORGE_API_KEY_RE.test(ok), ok).toBe(true);
     for (const bad of ["", "con espacio", "nul\u0000", "salto\n", "tab\t", "del\u007f", "clé", "k".repeat(201)]) expect(CURSEFORGE_API_KEY_RE.test(bad), bad).toBe(false);
+  });
+  it("env que pisa una sección de Jugadores: mismo mensaje que el agente y en la ruta env.<VAR>", () => {
+    const r = specSchema.safeParse({ ...base, ops: ["Lobo"], env: { OPS: "Lobo,Pepe" } });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0]?.path).toEqual(["env", "OPS"]);
+      expect(r.error.issues[0]?.message).toBe("Quita la variable OPS de las variables de entorno (Avanzado): los operadores se gestionan en la sección Jugadores");
+    }
+    expect(envSectionConflicts({ env: { ENABLE_WHITELIST: "false", OPS: "x" }, whitelist: { enabled: true } })).toEqual([
+      { key: "ENABLE_WHITELIST", section: "whitelist", message: "Quita la variable ENABLE_WHITELIST de las variables de entorno (Avanzado): la whitelist se gestiona en la sección Jugadores" },
+    ]);
+    expect(envSectionConflicts({ env: { OPS: "x", WHITELIST: "y" } })).toEqual([]);
   });
   it("usesCurseForge", () => {
     expect(usesCurseForge(base)).toBe(false);

@@ -1,6 +1,6 @@
 import {
   MODPACK_PLATFORMS, DIGITS_RE, ENTRY_RE, URL_RE, PLAYER_RE, ENV_KEY_RE, MEMORY_RE, PROPERTY_KEY_RE, RESERVED_ENV, RESERVED_PROPS,
-  canonicalJson, formatZodError, memoryToBytes, portMappingSchema, specInputSchema, templateSpecSchema,
+  canonicalJson, envSectionConflicts, formatZodError, memoryToBytes, portMappingSchema, specInputSchema, templateSpecSchema,
   type ModpackPlatform, type SpecInput, type SpecPatch, type TemplateSpec,
 } from "@mcsm/shared";
 import { PROPERTY_DEFS, TYPED_PROPERTY_KEYS } from "./spec-catalog";
@@ -172,6 +172,16 @@ export function validateEnv(kv: Record<string, string>): string | null {
     if (!ENV_KEY_RE.test(k)) return `«${quote(k)}» no es un nombre de variable válido (letras, números y _; no empieza por número)`;
   }
   return null;
+}
+
+/**
+ * Errores de la sección Jugadores por variables del env libre que la pisarían (OPS con la lista de
+ * operadores gestionada, ENABLE_WHITELIST con la whitelist…). Ids calculados: sf-ops-env y sf-whitelist-env.
+ */
+export function playersEnvErrors(spec: EditableSpec): { "sf-ops-env": string | null; "sf-whitelist-env": string | null } {
+  const conflicts = envSectionConflicts(spec);
+  const join = (section: "ops" | "whitelist") => conflicts.filter((c) => c.section === section).map((c) => c.message).join(" · ") || null;
+  return { "sf-ops-env": join("ops"), "sf-whitelist-env": join("whitelist") };
 }
 
 /** Memoria de la JVM (MEMORY): 4G, 512M… sin ceros a la izquierda. */
