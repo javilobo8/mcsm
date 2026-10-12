@@ -7,3 +7,4 @@ export * from "./templates.js";
 export * from "./spec-limits.js";
 export * from "./files.js";
 export * from "./backups.js";
+export * from "./migration.js";
