@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { Check, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,7 +87,13 @@ export function NodesPage() {
               <TableCell className="text-xs text-zinc-400">{n.hostInfo?.hostname ? `${n.hostInfo.hostname} · ${n.hostInfo.os ?? "?"}/${n.hostInfo.arch ?? "?"}` : "—"}</TableCell>
               <TableCell className="font-mono text-xs">{n.dataRoot}</TableCell>
               <TableCell className="text-xs text-zinc-400">{n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : "nunca"}</TableCell>
-              <TableCell><Button size="sm" variant="ghost" aria-label={`Eliminar nodo ${n.name}`} title="Eliminar" disabled={del.isPending} onClick={() => { if (confirm(`¿Eliminar el nodo "${n.name}"? Solo es posible si no tiene servidores.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button></TableCell>
+              <TableCell>
+                <div className="flex items-center justify-end gap-1">
+                  {/* plan-6: Nodos → Importar */}
+                  <Button size="sm" variant="secondary" asChild><Link to="/nodes/$nodeId/import" params={{ nodeId: n.id }}>Importar</Link></Button>
+                  <Button size="sm" variant="ghost" aria-label={`Eliminar nodo ${n.name}`} title="Eliminar" disabled={del.isPending} onClick={() => { if (confirm(`¿Eliminar el nodo "${n.name}"? Solo es posible si no tiene servidores.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button>
+                </div>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

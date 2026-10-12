@@ -15,6 +15,7 @@ import { ServerCharts } from "@/components/server-charts";
 import { ServerConfigForm } from "@/components/server-config-form";
 import { FileBrowser } from "@/components/files/file-browser";
 import { GuardedTabs } from "@/components/guarded-tabs";
+import { ImportNotices } from "@/components/import-notices";
 import { useServer } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
 import { api, apiPath, ApiError } from "@/lib/api";
@@ -71,6 +72,7 @@ export function ServerPage() {
           </div>
           {nodeOnline === false && <p className="mt-2 text-sm text-amber-400">El nodo «{node?.name}» está desconectado: el estado mostrado puede estar desfasado y las acciones no están disponibles.</p>}
           {o?.error && <p className="mt-2 max-w-3xl rounded-md border border-red-900 bg-red-950/40 p-2 text-sm text-red-300">{o.error}</p>}
+          <ImportNotices server={s} />
         </div>
         <div className="flex items-center gap-2">
           <PowerButtons server={s} size="default" nodeOnline={nodeOnline} />
