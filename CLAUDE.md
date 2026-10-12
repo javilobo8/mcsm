@@ -146,7 +146,8 @@ conocer.)
   reentrar. RCON con cliente Source propio (`internal/mc`), no `mcutil/rcon`.
 - Agente: las operaciones que mutan Docker o disco usan el contexto de vida del agente
   (`App.life`), no el `ctx` de la sesión WS que recibe `Handle`; el de la sesión es solo
-  para streams, transferencias y RCON. `send` sigue ligado a la sesión.
+  para streams de logs y comandos RCON cuyo resultado va a esa sesión; las
+  transferencias (escriben en disco) usan `App.life`. `send` sigue ligado a la sesión.
 - Agente: `Power` solo persiste el estado deseado si la acción Docker tiene éxito. El
   `Hello` lleva `spec_versions` y `desired_states`; el panel reenvía en `SyncSpecs` lo que
   difiera en cualquiera de los dos (`specDiffers`).
