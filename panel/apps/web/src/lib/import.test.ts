@@ -96,7 +96,7 @@ describe("serverImportView: pestañas y borrado de un servidor importado (I3, m5
 
   it("un servidor del panel: todo disponible y el texto de borrado de siempre", () => {
     const v = serverImportView(base);
-    expect(v).toMatchObject({ backups: null, files: null, deleteData: null, migrate: null });
+    expect(v).toMatchObject({ backups: null, files: null, deleteData: null, migrate: null, retire: null });
     expect(v.deleteDescription).not.toMatch(/original/);
   });
 
@@ -126,10 +126,26 @@ describe("serverImportView: pestañas y borrado de un servidor importado (I3, m5
   });
 
   it("estado desconocido (nodo sin observar): lo advierte por si aún es el original", () => {
-    expect(serverImportView({ ...base, importedFrom: from }).deleteDescription).toMatch(/si aún no se ha recreado/i);
+    const v = serverImportView({ ...base, importedFrom: from });
+    expect(v.deleteDescription).toMatch(/si aún no se ha recreado/i);
+    expect(v.retire).toMatch(/si aún no se ha recreado/i);
+    expect(v.retire).toMatch(/«mc-viejo»/);
   });
 
   it("ya recreado como mcsm-<slug>: el texto de siempre", () => {
-    expect(serverImportView({ ...base, importedFrom: from, observed: { containerId: "b".repeat(64) } as ObservedDto }).deleteDescription).not.toMatch(/original/);
+    const v = serverImportView({ ...base, importedFrom: from, observed: { containerId: "b".repeat(64) } as ObservedDto });
+    expect(v.deleteDescription).not.toMatch(/original/);
+    expect(v.retire).toBeNull();
+  });
+
+  it("aún adoptado: migrarlo elimina en el origen el contenedor original que se importó (y avisa de Compose)", () => {
+    const v = serverImportView({ ...base, importedFrom: from, observed: { containerId: ID } as ObservedDto });
+    expect(v.retire).toMatch(/original «mc-viejo»/);
+    expect(v.retire).toMatch(/se eliminará/);
+    expect(v.retire).toMatch(/Compose/);
+    expect(v.retire).toMatch(/«casa»/);
+    const noCompose = serverImportView({ ...base, importedFrom: { ...from, composeProject: "", composeService: "" }, observed: { containerId: ID } as ObservedDto });
+    expect(noCompose.retire).toMatch(/original «mc-viejo»/);
+    expect(noCompose.retire).not.toMatch(/Compose/);
   });
 });

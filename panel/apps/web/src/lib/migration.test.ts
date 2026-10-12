@@ -148,6 +148,14 @@ describe("migración en la web", () => {
     expect(del).toMatch(/se volverá a parar/);
   });
 
+  it("texto de confirmación de un importado: añade el aviso de qué contenedor se elimina en el origen (Planes 6 y 7)", () => {
+    const base = { serverName: "Survival", slug: "survival", source: "Casa", target: "Garaje", port: 25565, deleteSource: false, running: true };
+    expect(confirmText({ ...base, imported: null })).toBe(confirmText(base));
+    const t = confirmText({ ...base, imported: "AVISO DEL IMPORTADO" });
+    expect(t.startsWith(confirmText(base))).toBe(true);
+    expect(t).toMatch(/AVISO DEL IMPORTADO$/);
+  });
+
   it("detecta el final de la migración en curso", () => {
     expect(migrationFinished(null, [job({ status: "ok" })])).toBe(false);
     expect(migrationFinished("j", [job({ status: "running" })])).toBe(false);

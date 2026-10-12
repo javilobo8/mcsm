@@ -97,6 +97,8 @@ export interface ServerImportView {
   deleteData: string | null;
   /** Explicación en lugar de la pestaña Migrar (el panel respondería 409), o null si se puede migrar. */
   migrate: string | null;
+  /** Aviso para confirmar una migración: la retirada del origen elimina el contenedor original importado. O null. */
+  retire: string | null;
   /** Texto del diálogo de borrado. */
   deleteDescription: string;
 }
@@ -111,18 +113,24 @@ export function serverImportView(s: Pick<ServerDto, "importedFrom" | "observed" 
   const howTo = `Para tenerlos, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${s.slug}/data y vuelve a importarlo.`;
   const from = s.importedFrom;
   let deleteDescription = DELETE_DESCRIPTION;
+  let retire: string | null = null;
   if (from) {
     const compose = from.composeProject ? ` Si lo creó Docker Compose (proyecto «${from.composeProject}»), quita también ese servicio del compose.` : "";
+    // La retirada del origen (MigrateRetire) borra el contenedor igual que el borrado: si aún es el original, ese.
+    const composeRetire = from.composeProject ? ` Si lo creó Docker Compose (proyecto «${from.composeProject}»), quita también ese servicio del compose, o Compose lo volverá a crear en el origen.` : "";
     if (isAdopted(s)) {
       deleteDescription = `El servidor se quitará del panel y se eliminará su contenedor, que todavía es el original «${from.containerName}» que importaste: deja de existir también fuera del panel.${compose}`;
+      retire = `Sigue en el contenedor original «${from.containerName}» que importaste: al terminar, se eliminará al retirar el servidor del origen y dejará de existir también fuera del panel.${composeRetire}`;
     } else if (!s.observed?.containerId) {
       deleteDescription = `El servidor se quitará del panel y su contenedor se eliminará. Si aún no se ha recreado, ese contenedor es el original «${from.containerName}» que importaste.${compose}`;
+      retire = `Al terminar, la retirada del origen eliminará su contenedor. Si aún no se ha recreado, ese contenedor es el original «${from.containerName}» que importaste.${composeRetire}`;
     }
   }
   return {
     backups: outside && `${outside}: no tiene copias de seguridad. ${howTo}`,
     files: outside && `${outside}: no tiene navegador de archivos. ${howTo}`,
     deleteData: dataPath ? `Los datos están en ${dataPath}, fuera de DATA_ROOT: el panel no los borra (bórralos a mano si quieres).` : null,
+    retire,
     migrate: outside && `${outside}: no se puede migrar a otro nodo. Para migrarlo, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${s.slug}/data y vuelve a importarlo.`,
     deleteDescription,
   };

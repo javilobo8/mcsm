@@ -21,12 +21,12 @@ const job = (over: Partial<JobDto>): JobDto => ({
   payload: {}, createdAt: "2026-10-12T04:00:00Z", updatedAt: "", startedAt: null, finishedAt: null, ...over,
 });
 
-function render(jobs: JobDto[], migration: MigrationDto | null = null) {
+function render(jobs: JobDto[], migration: MigrationDto | null = null, s: ServerDto = server) {
   const qc = new QueryClient();
   qc.setQueryData(["nodes"], nodes);
   qc.setQueryData(jobsKey({ serverId: "s1" }), jobs);
   qc.setQueryData(migrationKey("s1"), migration);
-  return renderToString(<QueryClientProvider client={qc}><MigrateTab server={server} nodeOnline /></QueryClientProvider>);
+  return renderToString(<QueryClientProvider client={qc}><MigrateTab server={s} nodeOnline /></QueryClientProvider>);
 }
 
 describe("MigrateTab", () => {
@@ -49,6 +49,16 @@ describe("MigrateTab", () => {
     expect(html).toContain("puerto ocupado");
     expect(html).toContain("Migrar…");
     expect(html).toContain("Borrar el origen al terminar");
+  });
+
+  it("un importado aún en su contenedor original avisa de que la retirada del origen lo eliminará (Planes 6 y 7)", () => {
+    const original = "c".repeat(64);
+    const imported = {
+      ...server, observed: { containerId: original },
+      importedFrom: { containerId: original, containerName: "mc-viejo", specVersion: 1, importedAt: "", composeProject: "", composeService: "" },
+    } as unknown as ServerDto;
+    expect(render([], null, imported)).toContain("contenedor original «mc-viejo»");
+    expect(render([])).not.toContain("contenedor original");
   });
 
   it("una migración atascada enseña lo pendiente con su motivo y la acción de cerrarla a mano (M4)", () => {

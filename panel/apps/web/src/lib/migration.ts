@@ -134,8 +134,10 @@ export function closeMigrationText(m: MigrationDto, nodeName: (id: string) => st
   ].join(" ");
 }
 
-/** Texto del diálogo de confirmación. */
-export function confirmText(o: { serverName: string; slug: string; source: string; target: string; port: number; deleteSource: boolean; running: boolean }): string {
+/** Texto del diálogo de confirmación. `imported`: aviso de un servidor importado (`serverImportView(s).retire`), al final. */
+export function confirmText(o: {
+  serverName: string; slug: string; source: string; target: string; port: number; deleteSource: boolean; running: boolean; imported?: string | null;
+}): string {
   return [
     o.running ? `«${o.serverName}» se parará en «${o.source}» durante la migración.` : `«${o.serverName}» está parado en «${o.source}».`,
     "Se hará una copia de seguridad previa, se enviará al destino (comprobando su sha256) y se restaurará allí.",
@@ -144,6 +146,7 @@ export function confirmText(o: { serverName: string; slug: string; source: strin
       ? `Al terminar se BORRARÁN sus datos y sus copias en «${o.source}».`
       : `Al terminar, sus datos y copias en «${o.source}» se conservarán en ${o.slug}.migrated-… (bórralos a mano cuando ya no los necesites).`,
     `Si algo falla, el servidor sigue en «${o.source}» con su mundo intacto${o.running ? " y se vuelve a arrancar" : ""}.`,
+    ...(o.imported ? [o.imported] : []),
   ].join(" ");
 }
 
