@@ -122,6 +122,7 @@ describe("realtime", () => {
 
     const agent2 = new FakeAgent(url, nodeToken);
     await agent2.connect({ specVersions: { [s.id]: 1n } });
+    await agent2.handshake(); // el stream se reabre tras el Ack de SyncSpecs (AgentConn.ready)
     const sub2 = await agent2.waitFor("subscribeLogs");
     agent2.ack(sub2.id, sub2.id);
     expect(await b.next()).toEqual({ type: "log_reset", serverId: s.id });
@@ -186,6 +187,7 @@ describe("realtime", () => {
       expect(await b.next()).toMatchObject({ type: "stream_closed" });
       const agent2 = new FakeAgent(url, nodeToken);
       await agent2.connect({ specVersions: { [s.id]: 1n } });
+      await agent2.handshake();
       const sub2 = await agent2.waitFor("subscribeLogs");
       agent2.ack(sub2.id, sub2.id);
       expect(await b.next()).toEqual({ type: "log_reset", serverId: s.id });

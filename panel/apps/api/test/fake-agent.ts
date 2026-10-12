@@ -37,8 +37,13 @@ export class FakeAgent {
     const q = this.queue.shift();
     if (q) return Promise.resolve(q);
     return new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("fake agent: sin mensaje")), timeoutMs);
-      this.waiters.push((e) => { clearTimeout(t); resolve(e); });
+      const waiter = (e: Envelope) => { clearTimeout(t); resolve(e); };
+      // Al vencer se retira de la cola: si no, se tragaría el siguiente mensaje.
+      const t = setTimeout(() => {
+        this.waiters = this.waiters.filter((w) => w !== waiter);
+        reject(new Error("fake agent: sin mensaje"));
+      }, timeoutMs);
+      this.waiters.push(waiter);
     });
   }
 
@@ -50,6 +55,14 @@ export class FakeAgent {
       if (e.body.case === c) return e;
     }
     throw new Error(`fake agent: no llegó ${c}`);
+  }
+
+  /** Espera HelloAck y SyncSpecs y confirma este último: a partir de ahí el panel envía peticiones. */
+  async handshake(): Promise<Envelope> {
+    await this.waitFor("helloAck");
+    const sync = await this.waitFor("syncSpecs");
+    this.ack(sync.id);
+    return sync;
   }
 
   ack(id: bigint, streamId?: bigint): void {

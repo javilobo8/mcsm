@@ -127,6 +127,23 @@ describe("servidores", () => {
     expect(app.serversService.allocatePort(nodeId)).toBe(25570);
   });
 
+  it("un PATCH durante la sincronización no llega al agente hasta el Ack de SyncSpecs", async () => {
+    const s = (await post("/api/servers", { nodeId, name: "Uno" })).json(); // nodo aún desconectado
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect({ specVersions: { [s.id]: 1n } });
+    await agent.waitFor("helloAck");
+    const sync = await agent.waitFor("syncSpecs");
+    const res = await app.inject({ method: "PATCH", url: `/api/servers/${s.id}`, headers: { cookie }, payload: { spec: { memory: "3G" } } });
+    expect(res.statusCode).toBe(200);
+    await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
+    agent.ack(sync.id);
+    const apply = await agent.waitFor("applySpec");
+    if (apply.body.case !== "applySpec") throw new Error();
+    expect(apply.body.value.server!.version).toBe(2n);
+    agent.ack(apply.id);
+    agent.close();
+  });
+
   it("power: si el agente responde Error devuelve 502 y no cambia desired_state", async () => {
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();

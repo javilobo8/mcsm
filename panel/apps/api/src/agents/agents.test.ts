@@ -91,8 +91,7 @@ describe("agent hub", () => {
     const { nodeId, nodeToken } = await enrollNode();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
-    await agent.waitFor("helloAck");
-    await agent.waitFor("syncSpecs");
+    await agent.handshake();
     const conn = app.agents.get(nodeId)!;
     const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 2000);
     const req = await agent.waitFor("powerAction");
@@ -107,8 +106,7 @@ describe("agent hub", () => {
     const { nodeId, nodeToken } = await enrollNode();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
-    await agent.waitFor("helloAck");
-    await agent.waitFor("syncSpecs");
+    await agent.handshake();
     const conn = app.agents.get(nodeId)!;
     const lines: string[] = [];
     const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 200 } }, (e) => {
@@ -128,8 +126,7 @@ describe("agent hub", () => {
     const { nodeId, nodeToken } = await enrollNode();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
-    await agent.waitFor("helloAck");
-    await agent.waitFor("syncSpecs");
+    await agent.handshake();
     const conn = app.agents.get(nodeId)!;
     const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 1 } }, () => {}, () => {});
     const req = await agent.waitFor("subscribeLogs");
@@ -139,13 +136,70 @@ describe("agent hub", () => {
   });
 });
 
+describe("AgentConn.ready: nada sale al agente antes del Ack de SyncSpecs", () => {
+  async function syncing() {
+    const { nodeId, nodeToken } = await enrollNode();
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect();
+    await agent.waitFor("helloAck");
+    const sync = await agent.waitFor("syncSpecs");
+    return { nodeId, agent, sync, conn: app.agents.get(nodeId)! };
+  }
+
+  it("las peticiones esperan al Ack y salen en orden", async () => {
+    const { agent, sync, conn } = await syncing();
+    let ready = false;
+    void conn.ready.then(() => { ready = true; });
+    const p1 = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 5000);
+    const p2 = conn.request({ case: "sendCommand", value: { serverId: "x", command: "list" } }, 5000);
+    await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
+    expect(ready).toBe(false);
+    agent.ack(sync.id);
+    const r1 = await agent.next();
+    const r2 = await agent.next();
+    expect([r1.body.case, r2.body.case]).toEqual(["powerAction", "sendCommand"]);
+    expect(ready).toBe(true);
+    agent.ack(r1.id);
+    agent.send({ id: r2.id, body: { case: "commandResult", value: { output: "ok" } } });
+    expect((await p1).body.case).toBe("ack");
+    expect((await p2).body.case).toBe("commandResult");
+  });
+
+  it("openStream también espera al Ack de SyncSpecs", async () => {
+    const { agent, sync, conn } = await syncing();
+    const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 0 } }, () => {}, () => {});
+    await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
+    agent.ack(sync.id);
+    const req = await agent.waitFor("subscribeLogs");
+    agent.ack(req.id, req.id);
+    expect((await opened).streamId).toBe(req.id);
+  });
+
+  it("si el plazo vence antes del Ack la petición falla con syncing y no llega a salir", async () => {
+    const { agent, sync, conn } = await syncing();
+    await expect(conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 100)).rejects.toMatchObject({ code: "syncing" });
+    agent.ack(sync.id);
+    await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
+  });
+
+  it("si SyncSpecs falla se cierra la conexión y ready se rechaza", async () => {
+    const { agent, sync, conn } = await syncing();
+    const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 5000);
+    agent.send({ id: sync.id, body: { case: "error", value: { code: "apply_failed", message: "boom" } } });
+    await expect(conn.ready).rejects.toMatchObject({ code: "disconnected" });
+    await expect(p).rejects.toMatchObject({ code: "disconnected" });
+    const end = Date.now() + 2000;
+    while (!agent.closed && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
+    expect(agent.closed).toBe(true);
+  });
+});
+
 describe("robustez del hub", () => {
   async function connected(name = "nas") {
     const { nodeId, nodeToken } = await enrollNode(name);
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
-    await agent.waitFor("helloAck");
-    await agent.waitFor("syncSpecs");
+    await agent.handshake();
     return { nodeId, nodeToken, agent, conn: app.agents.get(nodeId)! };
   }
   const waitUntil = async (fn: () => boolean, ms = 2000) => {

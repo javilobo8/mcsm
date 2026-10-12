@@ -98,9 +98,14 @@ export class AgentService {
     const removedIds = [...known].filter((id) => !rows.some((r) => r.id === id));
     try {
       await conn.request({ case: "syncSpecs", value: { servers, removedIds } }, 120_000);
-      this.app.log.info({ nodeId, sent: servers.length, removed: removedIds.length }, "specs sincronizadas");
     } catch (e) {
-      this.app.log.warn({ nodeId, err: e }, "SyncSpecs sin confirmación");
+      // Sin la foto del panel el agente no debe recibir nada más: se corta y, al reconectar,
+      // el agente repite Hello y SyncSpecs.
+      this.app.log.warn({ nodeId, err: e }, "SyncSpecs sin confirmación; se cierra la conexión");
+      conn.terminate();
+      return;
     }
+    conn.markReady();
+    this.app.log.info({ nodeId, sent: servers.length, removed: removedIds.length }, "specs sincronizadas");
   }
 }

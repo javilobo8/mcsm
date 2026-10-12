@@ -38,6 +38,15 @@ export class AgentConn {
   private lastActivity: number;
   private heartbeat: NodeJS.Timeout;
   private disposed = false;
+  private isReady = false;
+  private resolveReady!: () => void;
+  private rejectReady!: (e: Error) => void;
+  /**
+   * Se resuelve con el Ack de SyncSpecs (`markReady`) y se rechaza con `disconnected` si la
+   * conexión cae antes. `request`/`openStream` lo esperan: ninguna petición sale al agente
+   * antes de que tenga la foto del panel (salvo el propio SyncSpecs).
+   */
+  readonly ready: Promise<void>;
 
   constructor(
     readonly nodeId: string,
@@ -45,6 +54,8 @@ export class AgentConn {
     private hub: AgentHub,
     private opts: ResolvedOptions,
   ) {
+    this.ready = new Promise<void>((resolve, reject) => { this.resolveReady = resolve; this.rejectReady = reject; });
+    this.ready.catch(() => {}); // nadie está obligado a esperarla: sin rechazo no manejado
     this.lastActivity = opts.now();
     // Cualquier mensaje o ping del agente (lo envía cada 15 s) cuenta como actividad.
     socket.on("message", (data: Buffer) => {
@@ -70,6 +81,18 @@ export class AgentConn {
     return id;
   }
 
+  /** Marca la sesión como sincronizada (Ack de SyncSpecs): libera las peticiones retenidas. */
+  markReady() {
+    if (this.disposed || this.isReady) return;
+    this.isReady = true;
+    this.resolveReady();
+  }
+
+  /**
+   * Envía una petición y espera su respuesta (Ack, Error o CommandResult con el mismo id).
+   * Hasta `ready` la petición queda retenida (salvo `syncSpecs`); `timeoutMs` cuenta desde
+   * la llamada: si vence retenida falla con `syncing`, si vence ya enviada con `timeout`.
+   */
   request(body: Body, timeoutMs = 30_000): Promise<Envelope> {
     return this.requestWithId(this.nextId++, body, timeoutMs);
   }
@@ -80,18 +103,28 @@ export class AgentConn {
         reject(new AgentError("disconnected", "El nodo no está conectado"));
         return;
       }
-      try {
-        this.send(body, { id });
-      } catch {
-        reject(new AgentError("disconnected", "No se pudo enviar al nodo"));
-        return;
-      }
+      let sent = false;
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new AgentError("timeout", "El agente no respondió a tiempo"));
+        reject(sent
+          ? new AgentError("timeout", "El agente no respondió a tiempo")
+          : new AgentError("syncing", "El nodo se está sincronizando; inténtalo de nuevo en unos segundos"));
       }, timeoutMs);
       timer.unref();
       this.pending.set(id, { resolve, reject, timer });
+      const go = () => {
+        if (!this.pending.has(id)) return; // venció el plazo o la conexión cayó mientras esperaba
+        try {
+          this.send(body, { id });
+          sent = true;
+        } catch {
+          clearTimeout(timer);
+          this.pending.delete(id);
+          reject(new AgentError("disconnected", "No se pudo enviar al nodo"));
+        }
+      };
+      if (this.isReady || body.case === "syncSpecs") go();
+      else this.ready.then(go, () => { /* dispose ya rechazó la pendiente */ });
     });
   }
 
@@ -173,6 +206,7 @@ export class AgentConn {
     if (this.disposed) return;
     this.disposed = true;
     clearInterval(this.heartbeat);
+    this.rejectReady(new AgentError("disconnected", "El nodo se desconectó"));
     for (const [id, p] of this.pending) {
       clearTimeout(p.timer);
       p.reject(new AgentError("disconnected", "El nodo se desconectó"));
