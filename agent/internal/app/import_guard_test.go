@@ -2,12 +2,14 @@ package app
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
+	"mcsm/agent/internal/backup"
 	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/stats"
@@ -90,5 +92,62 @@ func TestApplyUnverifiedDataPathIsBadSpec(t *testing.T) {
 	}
 	if len(fake.Containers) != 0 {
 		t.Fatalf("no se crea nada: %v", fake.Calls)
+	}
+}
+
+// m3: con dataPath el agente no ve la carpeta de datos (solo monta DATA_ROOT): la recuperación al
+// arrancar, el inventario de pre-restore y el barrido de temporales no la tocan.
+func putDataPathSpec(t *testing.T, a *App, dataPath string) {
+	t.Helper()
+	js := strings.Replace(dataPathSpec, "/mcsm-test-noexiste/externo/data", dataPath, 1)
+	if err := a.st.PutSpec(&mcsmv1.ServerSpec{ServerId: "e", Slug: "externo", Version: 1, SpecJson: []byte(js)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRecoverAtStartSkipsDataPath(t *testing.T) {
+	a, _, _ := newApp(t)
+	putDataPathSpec(t, a, "/mcsm-test-noexiste/externo/data")
+	called := false
+	a.bk.recoverDisk = func(string, string, string) (backup.Recovery, error) { called = true; return backup.Recovery{}, nil }
+	a.bk.recoverServer("e")
+	if called {
+		t.Fatal("no se recupera una carpeta que el agente no ve")
+	}
+}
+
+func TestInventorySkipsDataPathPreRestore(t *testing.T) {
+	a, _, _ := newApp(t)
+	dataPath := filepath.Join(t.TempDir(), "mundo", "data")
+	pre := filepath.Join(filepath.Dir(dataPath), backup.PreRestoreName(dataPath, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)))
+	if err := os.MkdirAll(pre, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	putDataPathSpec(t, a, dataPath)
+	infos, err := a.bk.listing("e")
+	if err != nil || len(infos) != 0 {
+		t.Fatalf("listing = %v, %v", infos, err)
+	}
+}
+
+func TestSweepTempsSkipsDataPath(t *testing.T) {
+	a, _, _ := newApp(t)
+	putDataPathSpec(t, a, "/mcsm-test-noexiste/externo/data")
+	// <DATA_ROOT>/<slug>/data no es la carpeta de este servidor: lo que haya ahí no se toca.
+	dir := filepath.Join(a.cfg.DataRoot, "externo", "data")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tmp := filepath.Join(dir, ".mcsm-tmp-0123456789abcdef")
+	if err := os.WriteFile(tmp, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(tmp, old, old); err != nil {
+		t.Fatal(err)
+	}
+	a.sweepTemps(context.Background())
+	if _, err := os.Stat(tmp); err != nil {
+		t.Fatalf("no se barre: %v", err)
 	}
 }

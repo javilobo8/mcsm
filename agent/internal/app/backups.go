@@ -244,6 +244,9 @@ func (b *backupService) recoverServer(serverID string) {
 		b.a.log.Warn("recuperar copias y restauraciones", "server", serverID, "err", err)
 		return
 	}
+	if t.spec.DataPath != "" { // plan-6 (m3): el agente no ve esa carpeta y nunca copia ni restaura ahí
+		return
+	}
 	rec, err := b.recoverDisk(t.backupsDir, t.dataDir, t.slug)
 	for _, p := range rec.Removed {
 		b.a.log.Info("resto de una copia o restauración interrumpida borrado", "server", t.slug, "path", p)
@@ -923,9 +926,11 @@ func (b *backupService) listing(serverID string) ([]*mcsmv1.BackupInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	pre, err := backup.ListPreRestore(t.dataDir)
-	if err != nil {
-		return nil, err
+	var pre []backup.Meta
+	if t.spec.DataPath == "" { // plan-6 (m3): con dataPath no hay restauraciones ni el agente ve la carpeta
+		if pre, err = backup.ListPreRestore(t.dataDir); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*mcsmv1.BackupInfo, 0, len(archives)+len(pre))
 	for _, m := range append(archives, pre...) {

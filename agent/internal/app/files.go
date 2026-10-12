@@ -15,6 +15,7 @@ import (
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/files"
 	"mcsm/agent/internal/reconcile"
+	"mcsm/agent/internal/spec"
 )
 
 const (
@@ -257,6 +258,9 @@ func (a *App) sweepTemps(ctx context.Context) {
 		return
 	}
 	for _, sp := range specs {
+		if p, err := spec.Parse(sp.SpecJson); err == nil && p.DataPath != "" {
+			continue // plan-6 (m3): sus datos no están en DATA_ROOT/<slug>/data
+		}
 		root, err := files.Root(a.cfg.DataRoot, sp.Slug)
 		if err != nil {
 			continue
