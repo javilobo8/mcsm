@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Field } from "@/components/spec-form/fields";
 import { api, ApiError, type ServerDto, type TemplateDto } from "@/lib/api";
+import { dialogSubmit } from "@/lib/dialog-form";
 
 /** "Guardar como plantilla": copia la spec APLICADA del servidor sin puertos ni rconPassword (lo quita el panel). */
 export function SaveTemplateDialog({ server }: { server: ServerDto }) {
@@ -36,14 +37,7 @@ export function SaveTemplateDialog({ server }: { server: ServerDto }) {
             </DialogFooter>
           </div>
         ) : (
-          <form
-            className="flex flex-col gap-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              e.stopPropagation(); // el diálogo es un portal dentro del <form> de la configuración: el submit burbujea por el árbol de React
-              save.mutate();
-            }}
-          >
+          <form className="flex flex-col gap-3" onSubmit={dialogSubmit(() => save.mutate())}>
             <Field id="stpl-name" label="Nombre"><Input id="stpl-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></Field>
             <Field id="stpl-desc" label="Descripción (opcional)"><Textarea id="stpl-desc" rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
             {save.error && <p role="alert" className="text-sm text-red-400">{save.error instanceof ApiError ? save.error.message : "Error inesperado"}</p>}

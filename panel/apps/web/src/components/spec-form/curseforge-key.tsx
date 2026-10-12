@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { api, ApiError } from "@/lib/api";
+import { dialogSubmit } from "@/lib/dialog-form";
 
 interface KeyStatus { configured: boolean }
 
@@ -41,7 +42,7 @@ export function CurseForgeKeyNotice() {
             <DialogTitle>API key de CurseForge</DialogTitle>
             <DialogDescription>Es global para todos los servidores. Al cambiarla se recrean los que descargan de CurseForge.</DialogDescription>
           </DialogHeader>
-          <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); save.mutate(key.trim()); }}>
+          <form className="flex flex-col gap-3" onSubmit={dialogSubmit(() => save.mutate(key.trim()))}>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="cf-api-key">Nueva API key</Label>
               <Input id="cf-api-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="$2a$10$…" />
