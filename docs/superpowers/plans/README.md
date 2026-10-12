@@ -9,14 +9,14 @@ sus criterios de aceptación para que no haya que volver a diseñar.
 | # | Plan | Spec | Estado |
 |---|------|------|--------|
 | 1 | [Fundamentos](2026-10-12-01-fundamentos.md): protocolo, agente reconciliador, panel con nodos/servidores, logs y consola, UI básica, despliegue | §3, §4, §5, §6.1–6.3, §7, §8, §9, §10, §12 | hecho (rama `feat/plan-1`) |
-| 2 | [Métricas](2026-10-12-02-metricas.md) | §4 `metric_samples`, §6.4, §8 (gráficas) | hecho (rama `feat/wave-a`) |
-| 3 | [Configuración completa y plantillas](2026-10-12-03-configuracion-plantillas.md) | §4.1 completa, §4 `templates`, §8 (formulario por secciones, asistente) | hecho (rama `feat/wave-a`) |
-| 4 | [Backups](2026-10-12-04-backups.md) | §4 `backups`/`jobs`, §6.5, §7 `JobService`/`BackupService`, §8 (pestañas Backups e Historial) | hecho (rama `feat/wave-a`) |
-| 5 | [Archivos](2026-10-12-05-archivos.md) | §6.6, transferencias HTTP §5.1, §8 (pestaña Archivos) | hecho (rama `feat/wave-a`) |
-| 6 | [Importación de servidores existentes](2026-10-12-06-importacion.md) | §6.7, §7 `ImportService`, §8 (Nodos → Importar) | escrito |
-| 7 | [Migración entre nodos](2026-10-12-07-migracion.md) | §7 `MigrationService` | escrito |
-| 8 | [mc-router](2026-10-12-08-mc-router.md) | §4 `router_deployments`, §7 `RouterService` | escrito |
-| 9 | Pruebas de interfaz y pulido | §11 (Playwright), §8 (Ajustes) | pendiente |
+| 2 | [Métricas](2026-10-12-02-metricas.md) | §4 `metric_samples`, §6.4, §8 (gráficas) | hecho (rama `feat/wave-b`) |
+| 3 | [Configuración completa y plantillas](2026-10-12-03-configuracion-plantillas.md) | §4.1 completa, §4 `templates`, §8 (formulario por secciones, asistente) | hecho (rama `feat/wave-b`) |
+| 4 | [Backups](2026-10-12-04-backups.md) | §4 `backups`/`jobs`, §6.5, §7 `JobService`/`BackupService`, §8 (pestañas Backups e Historial) | hecho (rama `feat/wave-b`) |
+| 5 | [Archivos](2026-10-12-05-archivos.md) | §6.6, transferencias HTTP §5.1, §8 (pestaña Archivos) | hecho (rama `feat/wave-b`) |
+| 6 | [Importación de servidores existentes](2026-10-12-06-importacion.md) | §6.7, §7 `ImportService`, §8 (Nodos → Importar) | hecho (rama `feat/wave-b`) |
+| 7 | [Migración entre nodos](2026-10-12-07-migracion.md) | §7 `MigrationService` | hecho (rama `feat/wave-b`) |
+| 8 | [mc-router](2026-10-12-08-mc-router.md) | §4 `router_deployments`, §7 `RouterService` | hecho (rama `feat/wave-b`) |
+| 9 | Pruebas de interfaz y pulido | §11 (Playwright), §8 (Ajustes) | aplazado: lista en `.superpowers/sdd/plan-9-inputs.md` (local) |
 
 Ejecución en oleadas paralelas: ver [COORDINATION.md](COORDINATION.md).
 
