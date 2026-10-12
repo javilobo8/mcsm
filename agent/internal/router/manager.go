@@ -169,28 +169,52 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 		}
 		existing = nil
 	}
-	if existing == nil {
-		if err := m.eng.EnsureImage(ctx, b.Config.Image); err != nil {
-			return fmt.Errorf("descargar %s: %w", b.Config.Image, err)
-		}
-		id, err := m.eng.Create(ctx, b.Name, b.Config, b.HostConfig, b.Networking)
-		if err != nil {
-			return fmt.Errorf("crear el contenedor %s: %w", b.Name, err)
-		}
-		existing = &docker.Container{ID: id, Name: b.Name, State: "created"}
-	}
-	if existing.State != "running" && existing.State != "restarting" {
-		if err := m.eng.Start(ctx, existing.ID); err != nil {
-			// Docker (29.x) arranca SIN publicar puertos un contenedor cuyo arranque anterior falló por
-			// el puerto del host: se borra para que el reintento lo cree de nuevo y vuelva a fallar
-			// mientras el puerto siga ocupado, en vez de quedar «en marcha» e inalcanzable.
-			if rerr := m.eng.Remove(ctx, existing.ID); rerr != nil && !errors.Is(rerr, docker.ErrNotFound) {
-				return fmt.Errorf("arrancar el router en el puerto %d del host: %w (y no se pudo borrar: %v)", sp.HostPort, err, rerr)
+	// Docker (29.7.2) arranca SIN publicar puertos, y así lo deja aunque se pare y se arranque, un
+	// contenedor cuyo arranque anterior falló por el puerto del host (también si el arranque fallido
+	// fue de la política de reinicio). Un router en marcha sin su puerto se borra y se crea de nuevo;
+	// uno que arranca sin él, igual, una vez por pasada.
+	for recreated := false; ; {
+		if existing != nil && existing.State == "running" {
+			ins, err := m.eng.Inspect(ctx, existing.ID)
+			if err != nil && !errors.Is(err, docker.ErrNotFound) {
+				return fmt.Errorf("inspeccionar el router: %w", err)
 			}
-			return fmt.Errorf("arrancar el router en el puerto %d del host: %w", sp.HostPort, err)
+			if err == nil && !ins.PortsMissing {
+				return nil
+			}
+			if err == nil && recreated {
+				return fmt.Errorf("el router arrancó sin publicar el puerto %d del host (fallo de Docker)", sp.HostPort)
+			}
+			if err := m.remove(ctx, existing); err != nil {
+				return err
+			}
+			existing, recreated = nil, true
+		}
+		if existing == nil {
+			if err := m.eng.EnsureImage(ctx, b.Config.Image); err != nil {
+				return fmt.Errorf("descargar %s: %w", b.Config.Image, err)
+			}
+			id, err := m.eng.Create(ctx, b.Name, b.Config, b.HostConfig, b.Networking)
+			if err != nil {
+				return fmt.Errorf("crear el contenedor %s: %w", b.Name, err)
+			}
+			existing = &docker.Container{ID: id, Name: b.Name, State: "created"}
+		}
+		if existing.State == "restarting" {
+			return nil
+		}
+		if existing.State != "running" {
+			if err := m.eng.Start(ctx, existing.ID); err != nil {
+				// Se borra para que el reintento lo cree de nuevo y vuelva a fallar mientras el puerto
+				// siga ocupado, en vez de quedar «en marcha» e inalcanzable.
+				if rerr := m.eng.Remove(ctx, existing.ID); rerr != nil && !errors.Is(rerr, docker.ErrNotFound) {
+					return fmt.Errorf("arrancar el router en el puerto %d del host: %w (y no se pudo borrar: %v)", sp.HostPort, err, rerr)
+				}
+				return fmt.Errorf("arrancar el router en el puerto %d del host: %w", sp.HostPort, err)
+			}
+			existing.State = "running"
 		}
 	}
-	return nil
 }
 
 // remove para y borra el contenedor del router.

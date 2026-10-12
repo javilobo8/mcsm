@@ -281,3 +281,37 @@ func TestReconcileConcurrent(t *testing.T) {
 		t.Fatalf("creados = %d", n)
 	}
 }
+
+// Docker 29.7.2: si la política de reinicio (o alguien) intentó arrancar el router con el puerto
+// ocupado, los arranques siguientes no publican el puerto. El router se recrea, tanto si lo
+// encuentra parado (lo arrancaría sin puerto) como si ya está en marcha sin él.
+func TestReconcileRecreatesRouterLeftWithoutPorts(t *testing.T) {
+	for _, alreadyRunning := range []bool{false, true} {
+		m, fake, _ := newManager(t)
+		ctx := context.Background()
+		_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
+		first := m.Reconcile(ctx).ContainerId
+		_ = fake.Stop(ctx, first, time.Second) // el host se reinicia
+		port := network.MustParsePort("25565/tcp")
+		other, _ := fake.Create(ctx, "ajeno", &container.Config{Image: "x"},
+			&container.HostConfig{PortBindings: network.PortMap{port: {{HostPort: "25565"}}}}, nil)
+		_ = fake.Start(ctx, other)
+		if err := fake.Start(ctx, first); err == nil { // unless-stopped con el puerto ocupado
+			t.Fatal("el puerto está ocupado")
+		}
+		_ = fake.Stop(ctx, other, time.Second)
+		if alreadyRunning {
+			_ = fake.Start(ctx, first) // la política lo vuelve a intentar: en marcha, sin puerto
+		}
+		obs := m.Reconcile(ctx)
+		if obs.State != "running" || obs.Error != "" || obs.ContainerId == first {
+			t.Fatalf("en marcha=%v: %+v", alreadyRunning, obs)
+		}
+		if ins, _ := fake.Inspect(ctx, obs.ContainerId); ins.PortsMissing {
+			t.Fatalf("en marcha=%v: el router nuevo publica el puerto", alreadyRunning)
+		}
+		if _, ok := fake.Containers[first]; ok {
+			t.Fatalf("en marcha=%v: el contaminado se borra", alreadyRunning)
+		}
+	}
+}
