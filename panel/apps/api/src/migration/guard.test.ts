@@ -99,6 +99,25 @@ describe("MigrationsRepo", () => {
     expect((app.servers.get(s.id) as unknown as Record<string, unknown>).imported_from).toBeNull();
   });
 
+  it("blockingServer y blockingNodeCreate solo mientras puede haber conflicto (I2)", async () => {
+    const a = await enroll("a"); const b = await enroll("b");
+    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
+    const cases: [Parameters<typeof app.migrations.update>[1], boolean, boolean][] = [
+      // patch, bloquea el servidor, bloquea crear en el destino
+      [{ phase: "rolling_back", source_pending: 1, target_pending: 1, target_started: 0 }, true, true],
+      [{ phase: "rolling_back", source_pending: 0, target_pending: 1, target_started: 1 }, true, true],
+      [{ phase: "rolling_back", source_pending: 0, target_pending: 1, target_started: 0 }, false, true],
+      [{ phase: "rolling_back", source_pending: 1, target_pending: 0, target_started: 1 }, true, false],
+      [{ phase: "rolling_back", source_pending: 0, target_pending: 0, target_started: 1 }, false, false],
+    ];
+    for (const [patch, server, create] of cases) {
+      app.migrations.update(m.id, patch);
+      expect(app.migrations.blockingServer(s.id) !== null, JSON.stringify(patch)).toBe(server);
+      expect(app.migrations.blockingNodeCreate(b.nodeId) !== null, JSON.stringify(patch)).toBe(create);
+    }
+  });
+
   it("interruptRunning, protects y las consultas de bloqueo", async () => {
     const a = await enroll("a"); const b = await enroll("b"); const c = await enroll("c");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
@@ -157,9 +176,18 @@ describe("guarda de acciones", () => {
     expect(create.json().error).toMatch(/participa en una migración/);
     expect((await call("DELETE", `/api/nodes/${b.nodeId}`)).statusCode).toBe(409);
 
-    // Deshaciéndose: el servidor sigue bloqueado, pero el nodo destino se puede borrar (escapatoria).
-    app.migrations.update(m.id, { phase: "rolling_back", target_pending: 1 });
+    // Deshaciéndose con el origen aún por arrancar: bloqueado (lo arranca la migración).
+    app.migrations.update(m.id, { phase: "rolling_back", target_pending: 1, source_pending: 1 });
     expect((await call("POST", `/api/servers/${s.id}/power`, { action: "start" })).json().error).toMatch(/deshaciendo/);
+    // La copia del destino llegó a arrancar y no se ha limpiado: bloqueado aunque el origen ya no esté pendiente.
+    app.migrations.update(m.id, { source_pending: 0, target_started: 1 });
+    expect((await call("POST", `/api/servers/${s.id}/power`, { action: "start" })).json().error).toMatch(/deshaciendo/);
+    // I2: solo falta limpiar un destino que nunca arrancó: el servidor se usa en el origen aunque el destino no vuelva.
+    app.migrations.update(m.id, { target_started: 0 });
+    const usable = await call("POST", `/api/servers/${s.id}/power`, { action: "start" });
+    expect(usable.json().error).toMatch(/desconectado/); // llega al servicio (el nodo de pruebas no está conectado)
+    expect((await call("POST", "/api/servers", { nodeId: b.nodeId, name: "Nuevo", spec: {} })).statusCode).toBe(409); // el destino, aún sucio
+    // Y el nodo destino se puede borrar (escapatoria).
     expect((await call("DELETE", `/api/nodes/${b.nodeId}`)).statusCode).toBe(204);
     expect(app.migrations.get(m.id)).toBeNull(); // en cascada
     // Sin migración, la orden llega al servicio (el nodo no está conectado).

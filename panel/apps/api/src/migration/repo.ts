@@ -24,7 +24,14 @@ export type NewMigration = Pick<MigrationRow,
 export type MigrationPatch = Partial<Pick<MigrationRow, "phase" | "target_touched" | "target_started" | "source_pending" | "target_pending" | "error">>;
 
 const OPEN = "('running', 'rolling_back', 'committed')";
-const BLOCKING = "('running', 'rolling_back')";
+/**
+ * Puede haber conflicto con lo que haga el usuario sobre el servidor: los pasos están en curso, o se deshace y falta
+ * arrancar el origen (lo hace la migración) o limpiar una copia del destino que llegó a arrancar (el origen no debe
+ * arrancar hasta entonces). Solo con la limpieza de un destino que nunca arrancó pendiente, el servidor ya es usable.
+ */
+const SERVER_BLOCKING = `(phase = 'running' OR (phase = 'rolling_back' AND (source_pending = 1 OR (target_started = 1 AND target_pending = 1))))`;
+/** El destino puede tener algo de la migración: pasos en curso o limpieza pendiente. */
+const TARGET_BUSY = `(phase = 'running' OR (phase = 'rolling_back' AND target_pending = 1))`;
 const PATCHABLE = ["phase", "target_touched", "target_started", "source_pending", "target_pending", "error"] as const;
 /** Fases tras el commit: el servidor ya es del destino. */
 const CONFIRMED: ReadonlySet<MigrationPhase> = new Set<MigrationPhase>(["committed", "done"]);
@@ -91,14 +98,14 @@ export class MigrationsRepo {
     return this.get(id)!;
   }
 
-  /** Bloquea las acciones del usuario sobre el servidor: pasos en curso o deshaciéndose. */
+  /** Bloquea las acciones del usuario sobre el servidor mientras pueden chocar con la migración (SERVER_BLOCKING). */
   blockingServer(serverId: string): MigrationRow | null {
-    return this.one(`SELECT * FROM migrations WHERE server_id = ? AND phase IN ${BLOCKING} ORDER BY created_at DESC LIMIT 1`, serverId);
+    return this.one(`SELECT * FROM migrations WHERE server_id = ? AND ${SERVER_BLOCKING} ORDER BY created_at DESC LIMIT 1`, serverId);
   }
 
-  /** Bloquea crear servidores en el nodo: destino sin confirmar, u origen con la retirada pendiente (su slug). */
+  /** Bloquea crear servidores en el nodo: destino con algo de la migración, u origen con la retirada pendiente (su slug). */
   blockingNodeCreate(nodeId: string): MigrationRow | null {
-    return this.one(`SELECT * FROM migrations WHERE (target_node_id = ? AND phase IN ${BLOCKING}) OR (source_node_id = ? AND phase = 'committed')
+    return this.one(`SELECT * FROM migrations WHERE (target_node_id = ? AND ${TARGET_BUSY}) OR (source_node_id = ? AND phase = 'committed' AND source_pending = 1)
       ORDER BY created_at LIMIT 1`, nodeId, nodeId);
   }
 
