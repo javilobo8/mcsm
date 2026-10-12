@@ -282,6 +282,12 @@ func (s *Sampler) measure(ctx context.Context, now time.Time, t *target) {
 	if t.err != nil || !hasData(t.cur) || !t.hasPrev {
 		return
 	}
+	if t.cur.CPUTotalNs < t.prev.CPUTotalNs && t.probe != nil {
+		// Reinicio en el sitio (mismo id, Stop+Start o restart policy): es otro proceso,
+		// igual que una recreación. Se descarta la sesión RCON y el TPS anterior.
+		*t.probe = tpsProbe{container: t.probe.container, password: t.probe.password, conn: t.probe.conn}
+		t.probe.close()
+	}
 	pct, ok := ContainerCPUPercent(t.prev, t.cur)
 	if !ok { // contadores reiniciados: esta ventana se omite
 		return

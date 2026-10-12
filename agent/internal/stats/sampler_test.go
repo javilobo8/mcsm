@@ -741,3 +741,28 @@ func TestRunAlignsTicksSendsAndClosesSessions(t *testing.T) {
 		t.Fatal("Run cierra las sesiones RCON al terminar")
 	}
 }
+
+func TestTPSSessionResetWhenCPUCountersGoBackwards(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	cid := w.server("p", "papel", "PAPER", true)
+	w.setOnline("papel", 0, 20, 1)
+	for i := 0; i <= 1; i++ {
+		w.eng.SetStats(cid, st(uint64(5+i)*1e9, uint64(10+10*i)*1e9))
+		w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second))
+	}
+	// Reinicio en el sitio: mismo id, contadores de CPU a cero.
+	w.rcon = func() *fakeRcon { return &fakeRcon{outputs: []string{"TPS from last 1m, 5m, 15m: 17.0, 20.0, 20.0"}} }
+	w.eng.SetStats(cid, st(1e8, 30e9))
+	if m := find(w.s.Sample(ctx, t0.Add(20*time.Second)), "p"); m != nil {
+		t.Fatalf("ventana con contadores reiniciados: %+v", m)
+	}
+	if !w.conns[0].closed {
+		t.Fatal("la sesión RCON del proceso anterior debe cerrarse")
+	}
+	w.eng.SetStats(cid, st(2e8, 40e9))
+	m := find(w.s.Sample(ctx, t0.Add(30*time.Second)), "p")
+	if m == nil || m.Tps == nil || *m.Tps != 17 || len(w.dials) != 2 {
+		t.Fatalf("TPS del proceso nuevo: %+v dials=%v", m, w.dials)
+	}
+}
