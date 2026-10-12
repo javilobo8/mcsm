@@ -43,8 +43,8 @@ export function ServerCharts({ serverId }: { serverId: string }) {
       {s && data && hasData(s.cpuPct) && (
         // key=range: al cambiar de rango se destruyen las gráficas y se recrean.
         <div key={range} className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <TimeSeriesChart title="Jugadores" data={data.players} lines={PLAYERS} format={formatCount} />
-          <TimeSeriesChart title="CPU (100 % = 1 núcleo)" data={data.cpu} lines={CPU} format={formatCpu} />
+          <TimeSeriesChart title="Jugadores" data={data.players} lines={PLAYERS} format={formatCount} axis="count" />
+          <TimeSeriesChart title="CPU (100 % = 1 núcleo)" data={data.cpu} lines={CPU} format={formatCpu} axis="percent" />
           <TimeSeriesChart title="Memoria" data={data.mem} lines={MEM} format={formatMem} />
           {hasData(s.tps) && <TimeSeriesChart title="TPS" data={data.tps} lines={TPS} format={formatTps} yRange={TPS_RANGE} />}
         </div>
