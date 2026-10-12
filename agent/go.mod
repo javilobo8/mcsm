@@ -3,6 +3,7 @@ module mcsm/agent
 go 1.27.2
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/containerd/errdefs v1.0.0
 	github.com/docker/go-units v0.5.0
 	github.com/mcstatus-io/mcutil/v4 v4.3.1
