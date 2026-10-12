@@ -86,7 +86,7 @@ export function NodesPage() {
               <TableCell className="text-xs text-zinc-400">{n.hostInfo?.hostname ? `${n.hostInfo.hostname} · ${n.hostInfo.os ?? "?"}/${n.hostInfo.arch ?? "?"}` : "—"}</TableCell>
               <TableCell className="font-mono text-xs">{n.dataRoot}</TableCell>
               <TableCell className="text-xs text-zinc-400">{n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : "nunca"}</TableCell>
-              <TableCell><Button size="sm" variant="ghost" aria-label={`Eliminar nodo ${n.name}`} title="Eliminar" disabled={del.isPending} onClick={() => { if (confirm(`¿Eliminar el nodo "${n.name}"? Solo es posible si no tiene servidores.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button></TableCell>
+              <TableCell><Button size="sm" variant="ghost" aria-label={`Eliminar nodo ${n.name}`} title="Eliminar" disabled={del.isPending} onClick={() => { if (confirm(`¿Eliminar el nodo "${n.name}"? Solo es posible si no tiene servidores. Si participa en una migración a medias, el panel la olvida: si el nodo solo está aislado de la red, la copia del servidor puede seguir en marcha allí; compruébalo antes de arrancar el servidor en su nodo de origen.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button></TableCell>
             </TableRow>
           ))}
         </TableBody>

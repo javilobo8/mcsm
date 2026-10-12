@@ -22,7 +22,8 @@ import {
 export const PENDING_EVERY_MS = 30_000;
 export const INTERRUPTED = "interrumpido: el panel se reinició durante la migración";
 /** La migración desapareció mientras se deshacía: se borró uno de sus nodos (sus filas caen en cascada). */
-const GONE = "Se borró uno de los nodos durante la migración: el servidor sigue en su nodo de origen, quizá parado (arráncalo a mano)";
+const GONE = "Se borró uno de los nodos durante la migración: el servidor sigue en su nodo de origen, quizá parado. Antes de arrancarlo a mano, " +
+  "comprueba que la copia del destino no siga en marcha (si el nodo solo estaba aislado de la red, su contenedor puede seguir vivo)";
 
 /** Lo pendiente de una migración que se deshace o ya se confirmó; su nombre encabeza `pending_error`. */
 type PendingKind = "abort" | "restart" | "confirm" | "retire";
