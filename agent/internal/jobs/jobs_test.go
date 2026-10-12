@@ -451,3 +451,36 @@ func TestSlowSendCannotBeOvertakenByTerminal(t *testing.T) {
 		t.Fatalf("orden de avisos = %v", order)
 	}
 }
+
+// m3: el recorte a inventoryJobs nunca deja fuera un job en curso: el panel lo daría por
+// perdido mientras sigue en marcha.
+func TestInventoryAlwaysIncludesRunning(t *testing.T) {
+	tr, st, _, c := setup(t)
+	if _, _, err := tr.Begin("en-curso", "s1", TypeBackup); err != nil { // el más antiguo
+		t.Fatal(err)
+	}
+	for i := 0; i < inventoryJobs+5; i++ {
+		c.t = c.t.Add(time.Second)
+		if err := st.PutJob(&mcsmv1.JobRecord{JobId: fmt.Sprintf("hecho-%03d", i), ServerId: "s1", Type: TypeBackup,
+			Status: mcsmv1.JobStatus_JOB_STATUS_OK, StartedUnixMs: c.t.UnixMilli(), FinishedUnixMs: c.t.UnixMilli()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inv, err := tr.Inventory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inv) != inventoryJobs {
+		t.Fatalf("len = %d", len(inv))
+	}
+	found := false
+	for _, r := range inv {
+		found = found || r.JobId == "en-curso"
+	}
+	if !found {
+		t.Fatal("el job en curso debe estar en el inventario")
+	}
+	if inv[0].JobId != "hecho-204" {
+		t.Fatalf("el resto, los más recientes primero: %s", inv[0].JobId)
+	}
+}

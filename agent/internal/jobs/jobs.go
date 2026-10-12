@@ -137,7 +137,7 @@ func (t *Tracker) FailInterrupted() error {
 }
 
 // Inventory devuelve los jobs recientes para el panel (los más nuevos primero, como mucho
-// 200 y con el log recortado a 4 KiB) tras olvidar los terminados hace más de KeepFor.
+// 200 más los RUNNING que no quepan, y con el log recortado a 4 KiB) tras olvidar los terminados hace más de KeepFor.
 // serverID vacío = todos.
 func (t *Tracker) Inventory(serverID string) ([]*mcsmv1.JobRecord, error) {
 	if _, err := t.st.PruneJobs(t.now().Add(-KeepFor)); err != nil {
@@ -155,7 +155,25 @@ func (t *Tracker) Inventory(serverID string) ([]*mcsmv1.JobRecord, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].StartedUnixMs > out[j].StartedUnixMs })
 	if len(out) > inventoryJobs {
-		out = out[:inventoryJobs]
+		// Los RUNNING entran siempre (el panel daría por perdido uno que sigue en marcha); el
+		// resto, los más recientes hasta completar inventoryJobs. Se conserva el orden.
+		running := 0
+		for _, r := range out {
+			if r.Status == mcsmv1.JobStatus_JOB_STATUS_RUNNING {
+				running++
+			}
+		}
+		room := max(inventoryJobs-running, 0)
+		kept := out[:0]
+		for _, r := range out {
+			if r.Status == mcsmv1.JobStatus_JOB_STATUS_RUNNING {
+				kept = append(kept, r)
+			} else if room > 0 {
+				kept = append(kept, r)
+				room--
+			}
+		}
+		out = kept
 	}
 	for _, r := range out {
 		r.Log = tail(r.Log, inventoryLog)
