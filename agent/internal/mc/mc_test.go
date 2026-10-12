@@ -22,6 +22,12 @@ func splitAddr(t *testing.T, ln net.Listener) (string, uint16) {
 // paquete = int32 longitud, int32 id, int32 tipo, cuerpo\0, \0
 func fakeRcon(t *testing.T, password string) (host string, port uint16) {
 	t.Helper()
+	return startFakeRcon(t, password, nil)
+}
+
+// startFakeRcon es fakeRcon contando las conexiones aceptadas en accepted (si no es nil).
+func startFakeRcon(t *testing.T, password string, accepted *atomic.Int32) (host string, port uint16) {
+	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +38,9 @@ func fakeRcon(t *testing.T, password string) (host string, port uint16) {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
+			}
+			if accepted != nil {
+				accepted.Add(1)
 			}
 			go func(c net.Conn) {
 				defer c.Close()

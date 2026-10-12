@@ -37,7 +37,7 @@ function invalidateServersThrottled(qc: QueryClient) {
  * está en REFETCH se cancela (para que la respuesta vieja no pise el evento) y se escribe cuando la
  * cancelación, que revierte de forma asíncrona, ha terminado.
  */
-function mergeIntoCached<T>(qc: QueryClient, queryKey: readonly unknown[], update: (old: T) => T): void {
+export function mergeIntoCached<T>(qc: QueryClient, queryKey: readonly unknown[], update: (old: T) => T): void {
   if (qc.getQueryData<T>(queryKey) === undefined) return;
   const write = () => qc.setQueryData<T>(queryKey, (old) => (old === undefined ? old : update(old)));
   if (qc.isFetching({ queryKey, exact: true }) === 0) return void write();

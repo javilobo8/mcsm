@@ -4,11 +4,8 @@ package mc
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
-	"net"
-	"strconv"
 	"time"
 
 	"github.com/mcstatus-io/mcutil/v4/options"
@@ -71,55 +68,12 @@ func latencyMs(d time.Duration) uint32 {
 // mcutil/rcon: ese cliente (v4.3.1) tiene una data race entre Login y Close,
 // imprime errores por stdout, deja NULs en la salida y no admite cancelación.
 func Rcon(ctx context.Context, host string, port uint16, password, command string) (string, error) {
-	d := net.Dialer{Timeout: rconTimeout}
-	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(int(port))))
+	c, err := DialRcon(ctx, host, port, password)
 	if err != nil {
-		return "", fmt.Errorf("rcon: conectar: %w", err)
+		return "", err
 	}
-	defer conn.Close()
-	deadline := time.Now().Add(rconTimeout)
-	if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
-		deadline = dl
-	}
-	_ = conn.SetDeadline(deadline)
-	// Cancelación explícita: cerrar la conexión desbloquea las lecturas.
-	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
-	defer stop()
-
-	const (
-		typeCommandResp = 0
-		typeCommand     = 2
-		typeAuthResp    = 2
-		typeAuth        = 3
-	)
-	if err := writePacket(conn, 1, typeAuth, password); err != nil {
-		return "", fmt.Errorf("rcon: login: %w", err)
-	}
-	for { // el servidor puede enviar antes un paquete de respuesta vacío
-		id, typ, _, err := readPacket(conn)
-		if err != nil {
-			return "", fmt.Errorf("rcon: login: %w", err)
-		}
-		if typ != typeAuthResp {
-			continue
-		}
-		if id == -1 {
-			return "", errors.New("rcon: login: contraseña incorrecta")
-		}
-		break
-	}
-	if err := writePacket(conn, 2, typeCommand, command); err != nil {
-		return "", fmt.Errorf("rcon: ejecutar: %w", err)
-	}
-	for {
-		id, typ, body, err := readPacket(conn)
-		if err != nil {
-			return "", fmt.Errorf("rcon: ejecutar: %w", err)
-		}
-		if typ == typeCommandResp && id == 2 {
-			return body, nil
-		}
-	}
+	defer c.Close()
+	return c.Command(ctx, command)
 }
 
 func writePacket(w io.Writer, id, typ int32, body string) error {

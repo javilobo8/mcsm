@@ -70,6 +70,13 @@ export class AgentService {
         return;
       }
       // ── plan-2 ──
+      case "metricBatch": // no solicitado (id=0)
+        try {
+          this.app.metrics.ingest(nodeId, env.body.value);
+        } catch (e) {
+          this.app.log.warn({ nodeId, err: e }, "fallo guardando un MetricBatch");
+        }
+        return;
       // ── plan-3 ──
       // ── plan-4 ──
       // ── plan-5 ──

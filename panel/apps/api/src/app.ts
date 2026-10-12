@@ -14,6 +14,7 @@ import { AgentService } from "./agents/service.js";
 import { ServersRepo } from "./servers/repo.js";
 import { serverRoutes } from "./servers/routes.js";
 import { realtimeRoutes } from "./realtime/routes.js";
+import { metricsPlugin } from "./metrics/plugin.js";
 import { errorHandler } from "./lib/http.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
@@ -44,6 +45,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(serverRoutes);
   await app.register(realtimeRoutes);
   // ── plan-2 ──
+  await app.register(metricsPlugin);
   // ── plan-3 ──
   // ── plan-4 ──
   // ── plan-5 ──

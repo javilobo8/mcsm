@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { StateBadge } from "@/components/state-badge";
 import { PowerButtons } from "@/components/power-buttons";
 import { Console } from "@/components/console";
+import { ServerCharts } from "@/components/server-charts";
 import { ServerConfigForm } from "@/components/server-config-form";
 import { useServer } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
@@ -93,6 +94,7 @@ export function ServerPage() {
           <Stat label="Healthcheck" value={o?.health || "—"} />
           <Stat label="Último exit code" value={o && o.state !== "running" ? o.exitCode : "—"} />
           <Stat label="Spec" value={applying ? `v${s.specVersion} (aplicando; actual v${s.observedSpecVersion})` : `v${s.specVersion} (aplicada)`} />
+          <div className="col-span-2 mt-2 md:col-span-4"><ServerCharts serverId={s.id} /></div>
         </TabsContent>
         <TabsContent value="console"><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
         <TabsContent value="config"><ServerConfigForm key={s.id} server={s} /></TabsContent>

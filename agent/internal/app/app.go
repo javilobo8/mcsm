@@ -149,6 +149,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// §6.1: primero el WS; la primera pasada de reconciliación va en segundo plano.
 	go a.reconcileAll(ctx)
 	// ── plan-2 ──
+	go a.runMetrics(ctx)
 	// ── plan-3 ──
 	// ── plan-4 ──
 	// ── plan-5 ──

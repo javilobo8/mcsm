@@ -25,6 +25,8 @@ type Fake struct {
 	Calls      []string
 	CreateErr  error
 	StartErr   error
+	StatsErr   error            // si no es nil, Stats lo devuelve
+	stats      map[string]Stats // lecturas fijadas con SetStats, por id de contenedor
 	logPipes   map[string][]*io.PipeWriter
 	subs       []*eventSub
 }
