@@ -217,9 +217,18 @@ func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string
 		return errcode.InvalidSpec, err
 	}
 	if err := a.rec.Apply(ctx, sp); err != nil {
-		return errcode.ApplyFailed, err
+		return busyOr(err, errcode.ApplyFailed), err
 	}
 	return "", nil
+}
+
+// busyOr devuelve errcode.Busy (409 en el panel) si err es un servidor reservado por una
+// copia o restauración (reconcile.ErrBusy), y fallback en otro caso.
+func busyOr(err error, fallback string) string {
+	if errors.Is(err, reconcile.ErrBusy) {
+		return errcode.Busy
+	}
+	return fallback
 }
 
 // syncSpecs aplica la foto del panel al reconectar (spec §3: el panel es la verdad).
@@ -300,7 +309,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	case *mcsmv1.Envelope_RemoveServer:
 		if err := a.rec.Remove(life, b.RemoveServer.ServerId, b.RemoveServer.DeleteData); err != nil {
-			_ = send(errMsg(env.Id, errcode.RemoveFailed, err))
+			_ = send(errMsg(env.Id, busyOr(err, errcode.RemoveFailed), err))
 			return
 		}
 		a.hub.Reset(b.RemoveServer.ServerId)
@@ -308,7 +317,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	case *mcsmv1.Envelope_PowerAction:
 		if err := a.rec.Power(life, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
-			_ = send(errMsg(env.Id, errcode.PowerFailed, err))
+			_ = send(errMsg(env.Id, busyOr(err, errcode.PowerFailed), err))
 			return
 		}
 		_ = send(ack(env.Id))
@@ -514,22 +523,25 @@ func (a *App) observeAsync(ctx context.Context, id string) {
 	a.dispatch(ctx, "obs:"+id, func() { a.rec.Observe(ctx, id) })
 }
 
-// reconcileAll reconcilia cada servidor por separado y sin esperar a ninguno, y reintenta
-// los borrados de servidores retirados que fallaron (lápidas del reconciliador).
+// reconcileAll ejecuta una pasada de reconciliación sin bloquear al llamador. Primero
+// reintenta los borrados pendientes de servidores retirados (lápidas; acotados por pasada
+// y con backoff en el reconciliador): un slug retirado y recreado con otro id reutiliza el
+// nombre del contenedor. Después reconcilia cada servidor por separado y sin esperar a
+// ninguno.
 func (a *App) reconcileAll(ctx context.Context) {
-	a.dispatch(ctx, "removals", func() {
+	a.dispatch(ctx, "reconcile-all", func() {
 		for _, id := range a.rec.RetryRemovals(ctx) {
 			a.hub.Reset(id)
 		}
+		specs, err := a.st.ListSpecs()
+		if err != nil {
+			a.log.Error("listar specs", "err", err)
+			return
+		}
+		for _, sp := range specs {
+			a.reconcileAsync(ctx, sp.ServerId, false)
+		}
 	})
-	specs, err := a.st.ListSpecs()
-	if err != nil {
-		a.log.Error("listar specs", "err", err)
-		return
-	}
-	for _, sp := range specs {
-		a.reconcileAsync(ctx, sp.ServerId, false)
-	}
 }
 
 // reconcileAsync reconcilia un servidor con el despachador por servidor. Con force se
