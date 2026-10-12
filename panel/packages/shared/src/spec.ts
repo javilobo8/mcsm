@@ -1,6 +1,6 @@
 import { z } from "zod";
 import "./zod-locale.js";
-import { specPatchSchema } from "./spec-patch.js";
+import { specPatchSchema, type SpecPatch } from "./spec-patch.js";
 import { contentCheck, contentFields } from "./spec-content.js";
 
 export const RESERVED_ENV = new Set([
@@ -133,6 +133,24 @@ export type PowerActionName = z.infer<typeof powerActionSchema>["action"];
  */
 export const templateSpecSchema = z.object({ ...baseFields }).superRefine(specChecks);
 export type TemplateSpec = z.infer<typeof templateSpecSchema>;
+
+/** ¿Puede el PATCH borrar la clave con `null`? Solo las secciones opcionales (sin valor por defecto) y las desconocidas (no-op). */
+function nullableInPatch(key: string): boolean {
+  const field = (specInputSchema.shape as Record<string, z.ZodType | undefined>)[key];
+  if (!field) return true;
+  const r = field.safeParse(undefined);
+  return r.success && r.data === undefined;
+}
+
+/**
+ * PATCH de spec (servidor o plantilla): `null` en una clave obligatoria o con valor por defecto
+ * (type, version, memory, ports, properties…) la resetearía en silencio (un FABRIC pasaría a PAPER y
+ * se recrearía sobre un mundo con mods). Devuelve el mensaje del 400 o null si el PATCH es válido.
+ */
+export function specPatchNullError(patch: SpecPatch): string | null {
+  const key = Object.keys(patch).find((k) => patch[k] === null && !nullableInPatch(k));
+  return key === undefined ? null : `La clave «${key}» de la spec es obligatoria: no se puede borrar con null (envía su valor)`;
+}
 // ── plan-4 ──
 // ── plan-5 ──
 // ── plan-6 ──

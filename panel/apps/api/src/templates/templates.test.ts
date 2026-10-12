@@ -106,3 +106,15 @@ describe("plantillas", () => {
     expect((await app.inject({ method: "GET", url: "/api/templates" })).statusCode).toBe(401);
   });
 });
+
+describe("PATCH de plantilla: null en claves obligatorias", () => {
+  it("responde 400 y conserva la spec", async () => {
+    const { ports: _p, ...spec } = fullSpec;
+    const tpl = (await req("POST", "/api/templates", { name: "T", spec })).json();
+    const res = await req("PATCH", `/api/templates/${tpl.id}`, { spec: { type: null } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("«type»");
+    expect((await req("GET", `/api/templates/${tpl.id}`)).json().spec.type).toBe("FABRIC");
+    expect((await req("PATCH", `/api/templates/${tpl.id}`, { spec: { whitelist: null } })).json().spec).not.toHaveProperty("whitelist");
+  });
+});

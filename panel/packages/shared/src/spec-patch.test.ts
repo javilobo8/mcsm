@@ -47,3 +47,15 @@ describe("mergeSpecPatch: secciones opcionales", () => {
     expect(mergeSpecPatch({ type: "PAPER" }, { ops: [] })).toHaveProperty("ops", []);
   });
 });
+
+describe("specPatchNullError: null solo en secciones opcionales", () => {
+  it("rechaza null en las claves con valor por defecto u obligatorias; admite las opcionales y las desconocidas", async () => {
+    const { specPatchNullError } = await import("./spec.js");
+    for (const k of ["type", "version", "memory", "ports", "imageTag", "properties", "env", "resources", "restartPolicy"]) {
+      expect(specPatchNullError({ [k]: null }), k).toMatch(new RegExp(k));
+    }
+    for (const k of ["modpack", "mods", "plugins", "whitelist", "ops", "desconocida"]) expect(specPatchNullError({ [k]: null }), k).toBeNull();
+    expect(specPatchNullError({ type: "FABRIC", memory: "4G" })).toBeNull();
+    expect(specPatchNullError({})).toBeNull();
+  });
+});

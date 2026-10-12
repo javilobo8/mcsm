@@ -96,3 +96,20 @@ describe("PATCH: ausente, null y [] en ops/whitelist", () => {
     expect(res.json().specVersion).toBe(4);
   });
 });
+
+describe("PATCH: null en claves obligatorias", () => {
+  it("responde 400 nombrando la clave y no resetea nada (un FABRIC no pasa a PAPER)", async () => {
+    const s = await create({ type: "FABRIC" });
+    for (const k of ["type", "version", "memory", "ports", "properties", "env", "resources", "restartPolicy", "imageTag"]) {
+      const res = await patch(s.id, { spec: { [k]: null } });
+      expect(res.statusCode, k).toBe(400);
+      expect(res.json().error, k).toContain(`«${k}»`);
+    }
+    const row = app.servers.get(s.id)!;
+    expect(row.spec_version).toBe(1);
+    expect(JSON.parse(row.spec).type).toBe("FABRIC");
+    // Las secciones opcionales sí se borran con null.
+    expect((await patch(s.id, { spec: { ops: [] } })).statusCode).toBe(200);
+    expect((await patch(s.id, { spec: { ops: null, mods: null } })).statusCode).toBe(200);
+  });
+});

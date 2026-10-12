@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
-  copyName, formatZodError, mergeSpecPatch, serverCreateSchema, specToTemplate, templateCreateSchema,
+  copyName, formatZodError, mergeSpecPatch, serverCreateSchema, specPatchNullError, specToTemplate, templateCreateSchema,
   templateInstantiateSchema, templatePatchSchema, type Spec, type TemplateSpec,
 } from "@mcsm/shared";
 import { HttpError } from "../servers/service.js";
@@ -54,6 +54,8 @@ export async function templateRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string } }>("/api/templates/:id", async (req) => {
     const row = requireTemplate(req.params.id);
     const input = templatePatchSchema.parse(req.body);
+    const nullErr = input.spec ? specPatchNullError(input.spec) : null;
+    if (nullErr) throw new HttpError(400, nullErr);
     const name = input.name ?? row.name;
     ensureFreeName(name, row.id);
     const spec = input.spec ? toTemplateSpec(mergeSpecPatch(JSON.parse(row.spec) as Record<string, unknown>, input.spec)) : (JSON.parse(row.spec) as TemplateSpec);

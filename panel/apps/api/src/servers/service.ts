@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { PowerActionType } from "@mcsm/proto";
 import {
-  canonicalJson, formatZodError, mergeSpecPatch, specInputSchema, usesCurseForge, specSchema, slugify,
+  canonicalJson, formatZodError, mergeSpecPatch, specInputSchema, specPatchNullError, usesCurseForge, specSchema, slugify,
   type ServerCreateInput, type Spec, type SpecInput, type SpecPatch, type PowerActionName,
 } from "@mcsm/shared";
 import type { z } from "zod";
@@ -115,6 +115,8 @@ export class ServersService {
     let updated = row;
     let spec: Spec | null = null;
     if (input.spec) {
+      const nullErr = specPatchNullError(input.spec);
+      if (nullErr) throw new HttpError(400, nullErr);
       const previous = JSON.parse(row.spec) as Spec;
       const { rconPassword: _secret, ...previousInput } = previous;
       const merged = specInputSchema.safeParse(mergeSpecPatch(previousInput, input.spec));
