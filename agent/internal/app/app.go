@@ -154,6 +154,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-3 ──
 	// ── plan-4 ──
 	// ── plan-5 ──
+	go a.sweepTemps(ctx) // temporales huérfanos de subidas cortadas (kill -9, corte de luz)
 	// ── plan-6 ──
 	// ── plan-7 ──
 	// ── plan-8 ──

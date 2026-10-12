@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +19,8 @@ import (
 const (
 	// filesShutdownWait es el tope de la espera a los Files* en curso al cerrar el agente.
 	filesShutdownWait = 20 * time.Second
+	// orphanTempAge: al arrancar se borran los temporales de subidas sin tocar desde hace más.
+	orphanTempAge = time.Hour
 	// maxTransfers acota las subidas y descargas simultáneas del nodo (descriptores, temporales
 	// y conexiones). La siguiente recibe busy al instante, sin consumir su transferencia.
 	maxTransfers = 4
@@ -241,6 +244,36 @@ func (a *App) serverFS(serverID string) (*files.FS, error) {
 		return nil, err
 	}
 	return files.New(root), nil
+}
+
+// sweepTemps borra los temporales huérfanos de subidas (files.SweepTemps) en los data de los
+// servidores de este nodo. Se lanza al arrancar, en segundo plano: recorrer un mundo grande lleva
+// su tiempo y las subidas nuevas no esperan (sus temporales son recientes y no se tocan).
+func (a *App) sweepTemps(ctx context.Context) {
+	specs, err := a.st.ListSpecs()
+	if err != nil {
+		a.log.Warn("barrido de temporales: no se pudieron listar los servidores", "err", err)
+		return
+	}
+	for _, sp := range specs {
+		root, err := files.Root(a.cfg.DataRoot, sp.Slug)
+		if err != nil {
+			continue
+		}
+		if _, err := os.Stat(root); err != nil {
+			continue // servidor sin datos todavía
+		}
+		n, err := files.New(root).SweepTemps(ctx, orphanTempAge, time.Now())
+		if err != nil && ctx.Err() == nil {
+			a.log.Warn("barrido de temporales fallido", "server", sp.ServerId, "err", err)
+		}
+		if n > 0 {
+			a.log.Info("borrados temporales huérfanos de subidas", "server", sp.ServerId, "n", n)
+		}
+		if ctx.Err() != nil {
+			return
+		}
+	}
 }
 
 // transfers crea el cliente HTTP de transferencias con el token guardado del nodo.

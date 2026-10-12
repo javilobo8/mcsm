@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -82,5 +84,28 @@ func TestFilesRefusedWhileClosing(t *testing.T) {
 	e := call(t, a, &mcsmv1.Envelope{Id: 32, Body: &mcsmv1.Envelope_FilesList{FilesList: &mcsmv1.FilesList{ServerId: "a", Path: "/"}}})
 	if errCode(e) != "busy" || !strings.Contains(e.GetError().GetMessage(), "cerrando") {
 		t.Fatalf("resp = %+v", e)
+	}
+}
+
+// Al arrancar se barren los temporales huérfanos (más de 1 h) de los data de los servidores.
+func TestStartupSweepsOrphanTemps(t *testing.T) {
+	a, root := filesApp(t)
+	old := filepath.Join(root, "mods", ".mcsm-tmp-0123456789abcdef")
+	recent := filepath.Join(root, ".mcsm-tmp-fedcba9876543210")
+	for _, p := range []string{old, recent} {
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	past := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(old, past, past); err != nil {
+		t.Fatal(err)
+	}
+	a.sweepTemps(context.Background())
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Fatalf("el temporal viejo sigue ahí (err %v)", err)
+	}
+	if _, err := os.Stat(recent); err != nil {
+		t.Fatalf("el temporal reciente se borró: %v", err)
 	}
 }
