@@ -179,3 +179,26 @@ conocer.)
   `crypto.randomUUID()` ni APIs que exijan HTTPS sin fallback; ids con
   `crypto.getRandomValues`.
 
+- PATCH de spec = merge de primer nivel: `null` solo borra secciones opcionales; `null` en una
+  clave obligatoria es 400. Una sección ausente ≠ presente y vacía (`[]` emite SYNCHRONIZE).
+  Una sección presente (ops/whitelist) prohíbe en `env` las variables que genera.
+- Topes de la spec iguales en Go y zod (listas ≤ 1000, strings ≤ 4 KiB, URLs ≤ 2 KiB) y
+  spec serializada ≤ 64 KiB en el panel tras el merge. Divergencias Go/zod solo en la
+  dirección segura (zod igual o más estricto) y con fixture compartida en `proto/fixtures/`.
+- `toServerSpecMessage(row, curseforgeApiKey)`: la key es obligatoria en todo emisor de
+  `ApplySpec`/`SyncSpecs` (si falta, los servidores CurseForge se recrean en bucle).
+- Web: un `<form>` dentro de un diálogo anidado en otro formulario hace `stopPropagation`
+  en su submit (React propaga por el árbol aunque el diálogo esté en un portal).
+- `routes/server.tsx` tiene DOS anclas por plan: la primera (dentro de `<TabsList>`) solo
+  para `TabsTrigger`; la segunda (tras `</TabsList>` y el último `TabsContent`) para
+  `TabsContent`. Comprueba con `grep -n` que ningún `TabsContent` queda dentro de `TabsList`.
+- Web: vitest corre en node sin jsdom; la lógica de UI va en funciones puras con test. Cachés
+  con `mergeIntoCached` y, al resincronizar formularios, no pisar ediciones sin guardar
+  (decisión pura con test, patrón `shouldResyncNumber`).
+- Relojes: el panel acepta el `ts` del agente con ±45 s (`MAX_CLOCK_SKEW_SECONDS` en shared);
+  la frescura en la web se mide con la hora de llegada local.
+- Cron: solo ASCII imprimible y espacio/tab, igual en Go y zod (fixture `cron-cases.json`).
+- E2E con Docker en esta máquina: nftables descarta contenedor → host, así que el panel
+  corre como contenedor `mcsm-test-panel` en la red `mcsm` (imagen de
+  `deploy/panel.Dockerfile`) y el agente usa `PANEL_URL=http://mcsm-test-panel:8080`. El
+  navegador automatizado no abre `localhost:8080`: las comprobaciones visuales son manuales.
