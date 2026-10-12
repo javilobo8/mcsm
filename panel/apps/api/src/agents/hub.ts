@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { WebSocket } from "ws";
 import { create, fromBinary, toBinary, type MessageInitShape } from "@bufbuild/protobuf";
@@ -23,9 +24,11 @@ export interface HubOptions {
   idleTimeoutMs?: number;
   /** Cada cuánto se comprueba la actividad. */
   checkIntervalMs?: number;
+  /** Primer id de envelope del panel (tests). Por defecto, aleatorio: ver `AgentHub.allocateId`. */
+  firstId?: bigint;
 }
 
-type ResolvedOptions = Required<Omit<HubOptions, "log">> & { log: HubLogger };
+type ResolvedOptions = Required<Omit<HubOptions, "log" | "firstId">> & { log: HubLogger };
 
 /**
  * Cuerpos que son respuesta a una petición del panel: solo estos resuelven `pending`.
@@ -39,7 +42,6 @@ interface Pending { resolve: (e: Envelope) => void; reject: (e: Error) => void; 
 interface Stream { onFrame: (e: Envelope) => void; onClose: (reason: string) => void }
 
 export class AgentConn {
-  private nextId = 2n; // 1 lo usa el Hello del agente
   private pending = new Map<bigint, Pending>();
   private streams = new Map<bigint, Stream>();
   private lastActivity: number;
@@ -82,7 +84,7 @@ export class AgentConn {
   }
 
   send(body: Body, opts: { id?: bigint; streamId?: bigint } = {}): bigint {
-    const id = opts.id ?? this.nextId++;
+    const id = opts.id ?? this.hub.allocateId();
     const env = create(EnvelopeSchema, { id, streamId: opts.streamId ?? 0n, body });
     this.socket.send(toBinary(EnvelopeSchema, env));
     return id;
@@ -101,7 +103,17 @@ export class AgentConn {
    * la llamada: si vence retenida falla con `syncing`, si vence ya enviada con `timeout`.
    */
   request(body: Body, timeoutMs = 30_000): Promise<Envelope> {
-    return this.requestWithId(this.nextId++, body, timeoutMs);
+    return this.requestTracked(body, timeoutMs).response;
+  }
+
+  /**
+   * Como `request`, pero devuelve también el id del envelope, ya fijado al volver: sirve para
+   * correlacionar un mensaje no solicitado que lo cita (BackupInventory.request_id), que
+   * puede llegar antes que la respuesta.
+   */
+  requestTracked(body: Body, timeoutMs = 30_000): { id: bigint; response: Promise<Envelope> } {
+    const id = this.hub.allocateId();
+    return { id, response: this.requestWithId(id, body, timeoutMs) };
   }
 
   private requestWithId(id: bigint, body: Body, timeoutMs: number): Promise<Envelope> {
@@ -138,7 +150,7 @@ export class AgentConn {
   async openStream(body: Body, onFrame: (e: Envelope) => void, onClose: (reason: string) => void): Promise<{ streamId: bigint; close(): void }> {
     // El protocolo fija stream_id = id de la petición: se registra ANTES de enviar, porque
     // el Ack y las primeras líneas pueden llegar en el mismo trozo y emitirse sin ceder el turno.
-    const streamId = this.nextId++;
+    const streamId = this.hub.allocateId();
     this.streams.set(streamId, { onFrame, onClose });
     try {
       const ack = await this.requestWithId(streamId, body, 30_000);
@@ -232,10 +244,24 @@ export class AgentConn {
 export class AgentHub extends EventEmitter {
   private conns = new Map<string, AgentConn>();
   private opts: ResolvedOptions;
+  private nextId: bigint;
 
   constructor(opts: HubOptions = {}) {
     super();
-    this.opts = { now: Date.now, idleTimeoutMs: 45_000, checkIntervalMs: 5_000, log: { warn: () => {} }, ...opts };
+    const { firstId, ...rest } = opts;
+    this.opts = { now: Date.now, idleTimeoutMs: 45_000, checkIntervalMs: 5_000, log: { warn: () => {} }, ...rest };
+    // 0 es «no solicitado» y 1 lo usa el Hello del agente. Muy por debajo de 2^53.
+    this.nextId = firstId ?? 2n + BigInt(randomInt(0, 2 ** 47));
+  }
+
+  /**
+   * Id para un envelope del panel. Un solo contador para todas las sesiones del proceso, y
+   * cada proceso empieza en un punto aleatorio: un id nunca se repite entre sesiones, así que
+   * lo que el agente encoló en una sesión anterior (o para un panel anterior) y entrega en la
+   * actual nunca cita una petición de esta (ver BackupInventory.request_id).
+   */
+  allocateId(): bigint {
+    return this.nextId++;
   }
 
   attach(nodeId: string, socket: WebSocket): AgentConn {

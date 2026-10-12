@@ -34,10 +34,13 @@ export function infoToInput(b: BackupInfo): BackupInput {
 
 /** Copias de seguridad (spec §7 BackupService): tabla `backups`, órdenes al agente e inventario. */
 export class BackupService {
-  /** Inicio de la última petición de inventario por nodo: solo se dan por perdidos los jobs anteriores. */
   /** Idempotency-Key de POST /backups → job (en memoria, acotado). */
   private keys = new Map<string, string>();
-  private syncStartedAt = new Map<string, string>();
+  /**
+   * Última petición de inventario por nodo: id del BackupList (los ids no se repiten entre sesiones,
+   * ver `AgentHub.allocateId`) y su inicio. Se sustituye en cada Hello, así que es la de la sesión vigente.
+   */
+  private lastList = new Map<string, { id: bigint; since: string }>();
 
   constructor(private app: FastifyInstance, private repo: BackupsRepo) {}
 
@@ -57,9 +60,12 @@ export class BackupService {
   async sync(nodeId: string): Promise<void> {
     const conn = this.app.agents.get(nodeId);
     if (!conn) return;
-    this.syncStartedAt.set(nodeId, nowIso());
+    const since = nowIso();
+    const { id, response } = conn.requestTracked({ case: "backupList", value: { serverId: "" } }, 30_000);
+    // Antes de esperar: el inventario va por la cola de avisos del agente y puede adelantar al Ack.
+    this.lastList.set(nodeId, { id, since });
     try {
-      await conn.request({ case: "backupList", value: { serverId: "" } }, 30_000);
+      await response;
     } catch (e) {
       // Una desconexión es normal (el WS parpadea): el siguiente Hello vuelve a pedirlo.
       if (e instanceof AgentError && e.code === AgentErrorCode.Disconnected) {
@@ -191,13 +197,18 @@ export class BackupService {
   }
 
   /**
-   * Inventario del agente: tras cada petición (`sync`) y, sin pedirlo, cada 10 min. `since` es el inicio de la
-   * última petición de este nodo: el agente calculó el inventario después, así que lo creado antes y ausente ya
-   * no existe (copias) o se perdió (jobs), y lo creado después no se toca (carreras con avisos que cruzan el
-   * inventario). Sin petición conocida solo se aplica lo positivo (altas y estados de jobs).
+   * Inventario del agente: tras cada petición (`sync`) y, sin pedirlo, cada 10 min. Lo positivo (altas de copias y
+   * estados de jobs) se aplica siempre. La vía negativa (copias borradas, jobs perdidos) solo si el inventario
+   * contesta a la última petición de este nodo (`request_id`): el agente lo calculó después de recibirla, así que lo
+   * creado antes de `since` y ausente ya no existe (copias) o se perdió (jobs), y lo creado después no se toca
+   * (carreras con avisos que cruzan el inventario). El periódico (request_id 0) y uno de una petición anterior
+   * (encolado en otra sesión y entregado tras el Hello de esta) pueden ser anteriores a un job vivo: solo lo
+   * positivo. Por eso una copia cuyo BackupDeleted se descartó (cola del agente llena) sigue listada hasta el
+   * siguiente Hello.
    */
   private onInventory(nodeId: string, inv: BackupInventory) {
-    const since = this.syncStartedAt.get(nodeId);
+    const last = this.lastList.get(nodeId);
+    const since = last && inv.requestId !== 0n && inv.requestId === last.id ? last.since : undefined;
     for (const serverId of inv.serverIds) {
       if (!this.ownServer(nodeId, serverId)) continue;
       const mine = inv.backups.filter((b) => b.serverId === serverId);

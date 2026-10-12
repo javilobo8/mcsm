@@ -370,3 +370,34 @@ describe("heartbeat del agente", () => {
     }
   });
 });
+
+describe("ids de las peticiones del panel", () => {
+  function fakeSocket() {
+    const socket = new EventEmitter() as EventEmitter & { terminate(): void; send(): void; readyState: number; OPEN: number };
+    socket.terminate = () => { socket.emit("close"); };
+    socket.send = () => {};
+    socket.OPEN = 1;
+    socket.readyState = 1;
+    return socket as unknown as WebSocket;
+  }
+
+  it("no se repiten entre sesiones del mismo nodo: un mensaje que cita un id de la sesión anterior no coincide con la nueva", () => {
+    const hub = new AgentHub({ firstId: 100n });
+    const c1 = hub.attach("n1", fakeSocket());
+    expect(c1.send({ case: "helloAck", value: {} })).toBe(100n);
+    const { id, response } = c1.requestTracked({ case: "backupList", value: { serverId: "" } }, 1000);
+    response.catch(() => {}); // la sesión se reemplaza enseguida: disconnected
+    expect(id).toBe(101n);
+    const c2 = hub.attach("n1", fakeSocket()); // reemplaza a la primera
+    expect(c2.send({ case: "helloAck", value: {} })).toBe(102n);
+  });
+
+  it("cada proceso del panel empieza en un punto aleatorio (lo que el agente aún tenga en cola de un panel anterior no coincide)", () => {
+    const firsts = new Set(Array.from({ length: 8 }, () => new AgentHub().attach("n", fakeSocket()).send({ case: "helloAck", value: {} })));
+    expect(firsts.size).toBe(8);
+    for (const id of firsts) {
+      expect(id).toBeGreaterThan(1n); // 0: no solicitado; 1: el Hello del agente
+      expect(id).toBeLessThan(2n ** 53n); // margen hasta 2^53 aunque el proceso viva años
+    }
+  });
+});

@@ -103,7 +103,7 @@ describe("inventario y avisos del agente", () => {
     let { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     let changed = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
-    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], backups: [info(s.id, "uno-20261012T040000.000Z-1.tar.zst")], jobs: [] } } });
+    agent.send({ body: { case: "backupInventory", value: { requestId: list.id, serverIds: [s.id], backups: [info(s.id, "uno-20261012T040000.000Z-1.tar.zst")], jobs: [] } } });
     await changed;
     expect(await getBackups(s.id)).toHaveLength(1);
     const lost = app.jobs.create({ type: "backup", serverId: s.id, nodeId, status: "running" });
@@ -113,7 +113,7 @@ describe("inventario y avisos del agente", () => {
     const late = app.jobs.create({ type: "backup", serverId: s.id, nodeId, status: "running" }); // posterior a la petición
     changed = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
-    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], backups: [], jobs: [] } } });
+    agent.send({ body: { case: "backupInventory", value: { requestId: list.id, serverIds: [s.id], backups: [], jobs: [] } } });
     await changed;
     expect(await getBackups(s.id)).toEqual([]);
     expect(app.jobs.get(lost.id)).toMatchObject({ status: "failed", message: expect.stringMatching(/interrumpido/) });
@@ -212,9 +212,46 @@ describe("inventario y avisos del agente", () => {
     await changed;
     changed = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
-    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], backups: [], jobs: [] } } }); // calculado antes
+    agent.send({ body: { case: "backupInventory", value: { requestId: list.id, serverIds: [s.id], backups: [], jobs: [] } } }); // calculado antes
     await changed;
     expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["uno-20261012T040000.000Z-1.tar.zst"]);
+    agent.close();
+  });
+
+  it("M1: un inventario que no contesta al último BackupList de la sesión vigente (anterior o periódico) solo aplica lo positivo", async () => {
+    const { nodeId, nodeToken } = await enrollNode("nas");
+    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const kept = "uno-20261012T040000.000Z-1.tar.zst";
+    let { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    const firstList = list.id;
+    let changed = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.ack(list.id);
+    agent.send({ body: { case: "backupInventory", value: { requestId: list.id, serverIds: [s.id], backups: [info(s.id, kept)], jobs: [] } } });
+    await changed;
+    // Sesión 1: el usuario pide una restauración y el agente la empieza; luego el enlace se cae.
+    const live = app.jobs.create({ type: "restore", serverId: s.id, nodeId, status: "running" });
+    agent.close();
+
+    // Sesión 2: la cola del agente entrega inventarios calculados antes de la restauración.
+    ({ agent, list } = await connectAgent(nodeToken, { [s.id]: 1n }));
+    expect(list.id).not.toBe(firstList); // los ids no se repiten entre sesiones
+    agent.ack(list.id);
+    const fresh = "uno-20261012T050000.000Z-1.tar.zst";
+    for (const requestId of [firstList, 0n]) {
+      changed = nextEvent(app.events, "backups", (id) => id === s.id);
+      agent.send({ body: { case: "backupInventory", value: { requestId, serverIds: [s.id], backups: [info(s.id, fresh)], jobs: [] } } });
+      await changed;
+      expect(app.jobs.get(live.id)).toMatchObject({ status: "running" });
+      // Lo positivo sí: la copia nueva aparece y la que falta no se da por borrada.
+      expect((await getBackups(s.id)).map((b: any) => b.filename).sort()).toEqual([kept, fresh]);
+    }
+
+    // El que contesta al BackupList vigente sí aplica la vía negativa.
+    changed = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.send({ body: { case: "backupInventory", value: { requestId: list.id, serverIds: [s.id], backups: [info(s.id, fresh)], jobs: [] } } });
+    await changed;
+    expect(app.jobs.get(live.id)).toMatchObject({ status: "failed", message: expect.stringMatching(/interrumpido/) });
+    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual([fresh]);
     agent.close();
   });
 
