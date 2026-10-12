@@ -18,6 +18,9 @@ export function observedToDto(o: RouterObserved): RouterObservedDto {
   };
 }
 
+/** Un agente sin el Plan 8 no tiene router: activarlo ahí no se guarda (ver `put`). */
+export const ROUTER_UNSUPPORTED = "El agente de este nodo está desactualizado y no admite el router (mc-router): actualízalo. No se ha guardado el cambio.";
+
 /**
  * mc-router de cada nodo (spec §7 RouterService). La fila de `router_deployments` es la verdad: tras el
  * handshake de un nodo con fila se le reenvía (RouterApply si está activo, RouterRemove si no) y cada
@@ -53,6 +56,20 @@ export class RouterService {
     return rowSpec(this.repo.get(nodeId)).enabled;
   }
 
+  /**
+   * Por qué no se puede borrar el nodo por su router (null si se puede): activo, o desactivado pero el
+   * agente conectado aún no ha confirmado que lo retiró. Desconectado se permite: si no, el nodo de una
+   * máquina perdida no se podría borrar nunca; un router huérfano lo retira el agente que vuelva a
+   * arrancar en esa máquina (sin spec de router, o al darse de alta de nuevo) o `docker rm -f mcsm-router`.
+   */
+  deleteBlock(nodeId: string): string | null {
+    const row = this.repo.get(nodeId);
+    if (rowSpec(row).enabled) return "Desactiva el router del nodo antes de borrarlo";
+    const observed = toRouterDto(nodeId, row).observed;
+    if (observed?.configured && this.app.agents.get(nodeId)) return "El router de este nodo todavía se está retirando: espera unos segundos y vuelve a intentarlo";
+    return null;
+  }
+
   /** Puerto del host que ocupa el router activo del nodo; null si no está activo. */
   reservedPort(nodeId: string): number | null {
     const spec = rowSpec(this.repo.get(nodeId));
@@ -77,11 +94,19 @@ export class RouterService {
         throw new HttpError(409, `El puerto ${spec.port} lo usa el servidor «${owner.name}» de este nodo: elige otro puerto para el router o cambia el del servidor`);
       }
     }
+    const before = this.repo.get(nodeId);
     const row = this.repo.upsertSpec(nodeId, spec);
     this.app.events.emit("router", nodeId, toRouterDto(nodeId, row));
     try {
       await this.push(nodeId);
     } catch (e) {
+      if (e instanceof AgentError && e.code === AgentErrorCode.Unsupported) {
+        // Un agente sin router no tiene nada que retirar: desactivar se guarda. Activar no: quedaría un
+        // puerto reservado, un nodo sin poder borrarse y un reenvío en cada handshake para nada.
+        if (!spec.enabled) return toRouterDto(nodeId, this.repo.get(nodeId));
+        if (this.repo.revert(nodeId, before, row)) this.app.events.emit("router", nodeId, toRouterDto(nodeId, this.repo.get(nodeId)));
+        throw new HttpError(409, ROUTER_UNSUPPORTED);
+      }
       if (!(e instanceof AgentError && TRANSIENT.has(e.code))) throw agentErrorToHttp(e, "El agente no pudo aplicar el router");
     }
     return toRouterDto(nodeId, this.repo.get(nodeId));

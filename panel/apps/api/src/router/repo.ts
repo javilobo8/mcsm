@@ -34,6 +34,19 @@ export class RouterRepo {
     return this.get(nodeId)!;
   }
 
+  /**
+   * Deshace un `upsertSpec` (`written`) volviendo a la fila previa (`before`; sin ella, sin
+   * configurar), solo si nadie la ha cambiado después. Devuelve si la deshizo.
+   */
+  revert(nodeId: string, before: RouterRow | null, written: RouterRow): boolean {
+    const res = before
+      ? this.db.prepare("UPDATE router_deployments SET spec = ?, updated_at = ? WHERE node_id = ? AND spec = ? AND updated_at IS ?")
+        .run(before.spec, before.updated_at, nodeId, written.spec, written.updated_at)
+      : this.db.prepare("UPDATE router_deployments SET spec = ?, updated_at = NULL WHERE node_id = ? AND spec = ? AND updated_at IS ?")
+        .run(JSON.stringify(defaultRouterDeploymentSpec()), nodeId, written.spec, written.updated_at);
+    return Number(res.changes) > 0;
+  }
+
   /** Guarda el último estado observado (crea la fila, desactivada, si no existe). */
   setObserved(nodeId: string, observed: RouterObservedDto): RouterRow {
     this.db.prepare(`INSERT INTO router_deployments (node_id, spec, observed, observed_at) VALUES (?, ?, ?, ?)

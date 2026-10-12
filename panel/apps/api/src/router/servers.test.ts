@@ -98,6 +98,37 @@ describe("servidores y nodos con router", () => {
     expect(app.db.prepare("SELECT COUNT(*) AS n FROM router_deployments").get()).toEqual({ n: 0 });
   });
 
+  it("borrar un nodo con el router retirándose: 409 conectado; desconectado se permite (lo retira el próximo agente)", async () => {
+    const put = async (payload: object) => await app.inject({ method: "PUT", url: `/api/nodes/${nodeId}/router`, headers: { cookie }, payload });
+    const del = async () => await app.inject({ method: "DELETE", url: `/api/nodes/${nodeId}`, headers: { cookie } });
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect();
+    await agent.handshake();
+    await app.agents.get(nodeId)!.ready;
+    const on = put({ enabled: true, port: 25590 });
+    agent.ack((await agent.waitFor("routerApply")).id);
+    await on;
+    const observed = (configured: boolean) => new Promise<void>((r) => {
+      app.events.once("router", () => r());
+      agent.send({ body: { case: "routerObserved", value: { configured, state: configured ? "running" : "missing", hostPort: configured ? 25590 : 0 } } });
+    });
+    await observed(true);
+    const off = put({ enabled: false, port: 25590 });
+    agent.ack((await agent.waitFor("routerRemove")).id);
+    await off;
+    // El agente aún no ha informado de que lo retiró.
+    let res = await del();
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("El router de este nodo todavía se está retirando: espera unos segundos y vuelve a intentarlo");
+    // Desconectado con el router aún desplegado: se permite (si no, un nodo de una máquina perdida no se
+    // podría borrar nunca); el router huérfano lo retira el agente que vuelva a arrancar allí.
+    const gone = new Promise<void>((r) => app.agents.once("detached", () => r()));
+    agent.close();
+    await gone;
+    res = await del();
+    expect(res.statusCode).toBe(204);
+  });
+
   it("una plantilla guardada desde un servidor no lleva el router", async () => {
     const s = (await post("/api/servers", { nodeId, name: "Survival", spec: routed("survival.lan") })).json();
     const res = await post("/api/templates", { name: "Base", fromServerId: s.id });

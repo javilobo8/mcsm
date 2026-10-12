@@ -81,16 +81,33 @@ describe("router de un nodo: agente", () => {
     agent.close();
   });
 
-  it("un agente desactualizado (unsupported) es 409; la configuración queda guardada", async () => {
+  it("un agente desactualizado (unsupported): activar es 409 y no se guarda; desactivar sí", async () => {
     const agent = await connect();
+    const unsupported = (a: FakeAgent, id: bigint) => a.send({ id, body: { case: "error", value: { code: "unsupported", message: "mensaje desconocido: actualiza el agente" } } });
     const put = putRouter({ enabled: true, port: 25590 });
-    const apply = await agent.waitFor("routerApply");
-    agent.send({ id: apply.id, body: { case: "error", value: { code: "unsupported", message: "mensaje desconocido: actualiza el agente" } } });
+    unsupported(agent, (await agent.waitFor("routerApply")).id);
     const res = await put;
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toMatch(/desactualizado/);
-    expect((await getRouter()).json().spec.enabled).toBe(true);
+    expect(res.json().error).toBe("El agente de este nodo está desactualizado y no admite el router (mc-router): actualízalo. No se ha guardado el cambio.");
+    // Sin fila previa vuelve a «sin configurar»: el puerto no queda reservado ni el nodo bloqueado.
+    expect((await getRouter()).json()).toMatchObject({ spec: { enabled: false, port: 25565 }, updatedAt: null });
+    // Con una configuración previa (guardada con el nodo desconectado), vuelve a ella.
+    const gone = new Promise<void>((r) => app.agents.once("detached", () => r()));
     agent.close();
+    await gone;
+    expect((await putRouter({ enabled: false, port: 25600 })).statusCode).toBe(200);
+    const again = await connect();
+    unsupported(again, (await again.waitFor("routerRemove")).id); // reenvío tras el handshake
+    const put2 = putRouter({ enabled: true, port: 25591 });
+    unsupported(again, (await again.waitFor("routerApply")).id);
+    expect((await put2).statusCode).toBe(409);
+    expect((await getRouter()).json().spec).toMatchObject({ enabled: false, port: 25600 });
+    // Desactivar en un agente sin router no tiene nada que retirar: se guarda.
+    const off = putRouter({ enabled: false, port: 25601 });
+    unsupported(again, (await again.waitFor("routerRemove")).id);
+    expect((await off).statusCode).toBe(200);
+    expect((await getRouter()).json().spec.port).toBe(25601);
+    again.close();
   });
 
   it("tras el handshake se reenvía la configuración guardada; sin fila no se envía nada", async () => {
