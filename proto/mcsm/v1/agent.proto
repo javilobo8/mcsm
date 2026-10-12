@@ -148,6 +148,23 @@ message ServerObserved {
 
 message Ack {}
 
+// Respuesta de error a una petición (mismo id). Catálogo de `code`, con su traducción a
+// HTTP en el panel (agentErrorToHttp en panel/apps/api/src/lib/http.ts). Constantes:
+// agent/internal/errcode (Go) y panel/apps/api/src/agents/error-codes.ts (TS); un código
+// nuevo se añade en los tres sitios. Un código desconocido para el panel es 502.
+//   invalid_spec     spec inválida (server_id o slug)                  400
+//   invalid_request  petición mal formada                              400
+//   unknown_server   el nodo no conoce ese servidor                    404
+//   not_found        recurso inexistente (fichero, copia…)            404
+//   busy             el servidor está ocupado con otra operación       409
+//   exists           ya existe                                         409
+//   unsupported      el agente no entiende el cuerpo: desactualizado   409
+//   too_large        demasiado grande                                  413
+//   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
+//                    del agente o de Docker (spec §10)
+// Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
+// timeout (504), protocol (502).
+// El agente nunca responde a un Ack o un Error recibidos.
 message Error {
   string code = 1;
   string message = 2;

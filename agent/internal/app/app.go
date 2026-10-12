@@ -18,6 +18,7 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/conn"
 	"mcsm/agent/internal/docker"
+	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/logs"
 	"mcsm/agent/internal/mc"
 	"mcsm/agent/internal/reconcile"
@@ -208,10 +209,10 @@ func validSpecMsg(sp *mcsmv1.ServerSpec) error {
 // applySpec valida y aplica una spec del panel (guarda de versión incluida en el reconciliador).
 func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string, err error) {
 	if err := validSpecMsg(sp); err != nil {
-		return "invalid_spec", err
+		return errcode.InvalidSpec, err
 	}
 	if err := a.rec.Apply(ctx, sp); err != nil {
-		return "apply_failed", err
+		return errcode.ApplyFailed, err
 	}
 	return "", nil
 }
@@ -294,7 +295,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	case *mcsmv1.Envelope_RemoveServer:
 		if err := a.rec.Remove(life, b.RemoveServer.ServerId, b.RemoveServer.DeleteData); err != nil {
-			_ = send(errMsg(env.Id, "remove_failed", err))
+			_ = send(errMsg(env.Id, errcode.RemoveFailed, err))
 			return
 		}
 		a.hub.Reset(b.RemoveServer.ServerId)
@@ -302,7 +303,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	case *mcsmv1.Envelope_PowerAction:
 		if err := a.rec.Power(life, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
-			_ = send(errMsg(env.Id, "power_failed", err))
+			_ = send(errMsg(env.Id, errcode.PowerFailed, err))
 			return
 		}
 		_ = send(ack(env.Id))
@@ -310,26 +311,26 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	case *mcsmv1.Envelope_SendCommand:
 		sp, err := a.st.GetSpec(b.SendCommand.ServerId)
 		if err != nil || sp == nil {
-			_ = send(errMsg(env.Id, "unknown_server", errors.New("servidor desconocido")))
+			_ = send(errMsg(env.Id, errcode.UnknownServer, errors.New("servidor desconocido")))
 			return
 		}
 		parsed, err := spec.Parse(sp.SpecJson)
 		if err != nil {
-			_ = send(errMsg(env.Id, "bad_spec", err))
+			_ = send(errMsg(env.Id, errcode.BadSpec, err))
 			return
 		}
 		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		out, err := a.rcon(cctx, spec.ContainerName(sp.Slug), uint16(spec.RconPort), parsed.RconPassword, b.SendCommand.Command)
 		cancel()
 		if err != nil {
-			_ = send(errMsg(env.Id, "rcon_failed", err))
+			_ = send(errMsg(env.Id, errcode.RconFailed, err))
 			return
 		}
 		_ = send(&mcsmv1.Envelope{Id: env.Id, Body: &mcsmv1.Envelope_CommandResult{CommandResult: &mcsmv1.CommandResult{Output: validUTF8(out)}}})
 
 	case *mcsmv1.Envelope_SubscribeLogs:
 		if sp, err := a.st.GetSpec(b.SubscribeLogs.ServerId); err != nil || sp == nil {
-			_ = send(errMsg(env.Id, "unknown_server", errors.New("servidor desconocido")))
+			_ = send(errMsg(env.Id, errcode.UnknownServer, errors.New("servidor desconocido")))
 			return
 		}
 		a.startLogStream(ctx, env.Id, b.SubscribeLogs, send)
@@ -342,6 +343,11 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		}
 		a.mu.Unlock()
 
+	case *mcsmv1.Envelope_Ack, *mcsmv1.Envelope_Error:
+		// El agente no hace peticiones al panel: nada espera estas respuestas, y contestar
+		// un Error con otro Error podría encadenar un bucle. Se ignoran.
+		a.log.Debug("respuesta del panel ignorada", "type", fmt.Sprintf("%T", env.Body), "id", env.Id)
+
 	// ── plan-2 ──
 	// ── plan-3 ──
 	// ── plan-4 ──
@@ -352,9 +358,15 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	// ── plan-9 ──
 
 	default:
-		a.log.Warn("mensaje no soportado", "type", fmt.Sprintf("%T", env.Body))
+		// Body nil: un panel más nuevo envió un cuerpo que este agente no conoce (protobuf lo
+		// deja en campos desconocidos). Si no, es un cuerpo conocido que el panel no envía.
+		msg := "mensaje desconocido: actualiza el agente"
+		if env.Body != nil {
+			msg = fmt.Sprintf("mensaje no soportado por el agente: %T", env.Body)
+		}
+		a.log.Warn(msg, "id", env.Id)
 		if env.Id != 0 {
-			_ = send(errMsg(env.Id, "unsupported", fmt.Errorf("mensaje no soportado: %T", env.Body)))
+			_ = send(errMsg(env.Id, errcode.Unsupported, errors.New(msg)))
 		}
 	}
 }

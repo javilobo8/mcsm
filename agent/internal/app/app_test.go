@@ -10,10 +10,12 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/docker"
+	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/store"
 )
 
@@ -349,12 +351,46 @@ func TestSubscribeLogsUnknownServer(t *testing.T) {
 	}
 }
 
-func TestUnsupportedMessageWithIDGetsError(t *testing.T) {
+// Un panel más nuevo puede enviar un cuerpo que este agente no conoce: protobuf lo deja
+// en campos desconocidos y Body llega nil. Se responde unsupported pidiendo actualizar.
+func TestUnknownBodyGetsUnsupportedError(t *testing.T) {
+	a, _, _ := newApp(t)
+	s := newSink()
+	raw := protowire.AppendTag(nil, 1, protowire.VarintType)
+	raw = protowire.AppendVarint(raw, 12)
+	raw = protowire.AppendTag(raw, 99, protowire.BytesType) // campo del oneof que este agente no tiene
+	raw = protowire.AppendBytes(raw, []byte{0x0a, 0x01, 'x'})
+	env := &mcsmv1.Envelope{}
+	if err := proto.Unmarshal(raw, env); err != nil || env.Body != nil {
+		t.Fatalf("env = %+v err = %v", env, err)
+	}
+	a.Handle(context.Background(), env, s.send)
+	e := s.next(t)
+	if e.Id != 12 || e.GetError() == nil || e.GetError().Code != errcode.Unsupported || !strings.Contains(e.GetError().Message, "actualiza el agente") {
+		t.Fatalf("resp = %+v", e)
+	}
+}
+
+// Ack y Error del panel nunca se contestan: el agente no hace peticiones y responder a
+// un Error con otro Error podría encadenar un bucle.
+func TestAckAndErrorFromPanelAreNotAnswered(t *testing.T) {
 	a, _, _ := newApp(t)
 	s := newSink()
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 12, Body: &mcsmv1.Envelope_Ack{Ack: &mcsmv1.Ack{}}}, s.send)
-	e := s.next(t)
-	if e.Id != 12 || e.GetError() == nil || e.GetError().Code != "unsupported" {
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 13, Body: &mcsmv1.Envelope_Error{Error: &mcsmv1.Error{Code: "x", Message: "y"}}}, s.send)
+	select {
+	case e := <-s.ch:
+		t.Fatalf("no debe responder: %+v", e)
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+// Un cuerpo conocido pero que el panel no debe enviar (Hello) se rechaza como no soportado.
+func TestUnexpectedKnownBodyGetsUnsupported(t *testing.T) {
+	a, _, _ := newApp(t)
+	s := newSink()
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 14, Body: &mcsmv1.Envelope_Hello{Hello: &mcsmv1.Hello{}}}, s.send)
+	if e := s.next(t); e.Id != 14 || e.GetError().GetCode() != errcode.Unsupported {
 		t.Fatalf("resp = %+v", e)
 	}
 }
