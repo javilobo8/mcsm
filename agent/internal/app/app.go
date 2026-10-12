@@ -419,6 +419,17 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	case *mcsmv1.Envelope_ImportAdopt:
 		a.handleImportAdopt(env.Id, b.ImportAdopt, send) // muta Docker y store: a.life dentro
 	// ── plan-7 ──
+	case *mcsmv1.Envelope_BackupPush:
+		// Disco y transferencia con el contexto de vida: un corte del WS no la aborta.
+		a.handleBackupPush(life, env.Id, b.BackupPush, send)
+	case *mcsmv1.Envelope_MigrateReceive:
+		a.bk.handleMigrateReceive(env.Id, b.MigrateReceive, send)
+	case *mcsmv1.Envelope_MigrateAbort:
+		a.bk.handleMigrateAbort(env.Id, b.MigrateAbort, send)
+	case *mcsmv1.Envelope_MigrateRetire:
+		a.bk.handleMigrateRetire(env.Id, b.MigrateRetire, send)
+	case *mcsmv1.Envelope_MigrateConfirm:
+		a.bk.handleMigrateConfirm(env.Id, b.MigrateConfirm, send)
 	// ── plan-8 ──
 	// ── plan-9 ──
 

@@ -150,6 +150,9 @@ export async function transferRoutes(app: FastifyInstance) {
       await finishedAsync(body);
     } catch {
       claimed.fail(new TransferError("aborted", CUT));
+      // El cuerpo se cortó sin leerse entero (p. ej. el panel lo rechazó a mitad): la conexión no se puede reutilizar,
+      // y sin cerrarla quedaría abierta esperando el resto (y retendría el cierre del panel).
+      reply.header("connection", "close");
       throw new HttpError(400, CUT);
     } finally {
       claimed.signal.removeEventListener("abort", onAbort);

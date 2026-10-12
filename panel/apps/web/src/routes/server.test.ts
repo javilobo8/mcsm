@@ -12,7 +12,7 @@ describe("pestañas del servidor", () => {
   const tabs = tabContents(src);
 
   it("encuentra todas las pestañas", () => {
-    expect(tabs.map(([v]) => v)).toEqual(["overview", "console", "config", "backups", "history", "files"]);
+    expect(tabs.map(([v]) => v)).toEqual(["overview", "console", "config", "backups", "history", "files", "migrate"]);
   });
   it.each(tabs)("%s: su contenido con estado lleva key={s.id}", (_v, block) => {
     expect(block).toContain("key={s.id}");

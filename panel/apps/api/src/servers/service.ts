@@ -39,6 +39,7 @@ export class ServersService {
 
   allocatePort(nodeId: string, exclude = new Set<number>()): number {
     const used = this.app.servers.usedGamePorts(nodeId);
+    for (const p of this.app.migrations.reservedPorts(nodeId)) used.add(p); // plan-7: migraciones hacia el nodo
     const { from, to } = this.app.config.gamePortRange;
     for (let p = from; p <= to; p++) if (!used.has(p) && !exclude.has(p)) return p;
     throw new HttpError(409, `No quedan puertos libres entre ${from} y ${to} en este nodo`);
@@ -56,6 +57,7 @@ export class ServersService {
 
   /** Puertos de la spec libres en el nodo (lo usa también la importación, plan-6). */
   checkPorts(nodeId: string, spec: Spec, selfId?: string) {
+    const reserved = this.app.migrations.reservedPorts(nodeId, selfId); // plan-7: migraciones hacia el nodo
     const used = new Set<number>();
     for (const r of this.app.servers.list(nodeId)) {
       if (r.id === selfId) continue;
@@ -65,6 +67,7 @@ export class ServersService {
     }
     const mine = [spec.ports.game, ...spec.ports.extra.map((e) => e.host)];
     for (const p of mine) if (used.has(p)) throw new HttpError(409, `El puerto ${p} ya lo usa otro servidor de este nodo`);
+    for (const p of mine) if (reserved.has(p)) throw new HttpError(409, `El puerto ${p} lo reserva una migración en curso hacia este nodo`);
     if (new Set(mine).size !== mine.length) throw new HttpError(400, "La spec repite un puerto");
   }
 

@@ -52,6 +52,12 @@ message Envelope {
     ImportScanResult import_scan_result = 91;
     ImportAdopt import_adopt = 92;
     // ── plan-7 ──
+    BackupPush backup_push = 100;
+    BackupPushResult backup_push_result = 101;
+    MigrateReceive migrate_receive = 102;
+    MigrateAbort migrate_abort = 103;
+    MigrateRetire migrate_retire = 104;
+    MigrateConfirm migrate_confirm = 105;
     // ── plan-8 ──
     // ── plan-9 ──
   }
@@ -515,5 +521,88 @@ message ImportAdopt {
   ServerSpec server = 1;
 }
 // ── plan-7 ──
+// Migración entre nodos (spec §7 MigrationService). La orquesta el panel; el agente ejecuta
+// pasos idempotentes sobre su disco y su Docker. Origen: BackupPush y MigrateRetire. Destino:
+// MigrateReceive y MigrateAbort.
+
+// Panel → agente (origen). Sube una copia .tar.zst de <slug>/backups/ al panel con
+// PUT /agent/transfer/{transfer_id}. Respuesta: BackupPushResult cuando el panel la ha recibido
+// entera, o Error (unknown_server | invalid_request | busy | transfer_failed | backup_failed: la
+// copia no existe o no tiene sha256 en su .json, que se lee primero | not_found: el .json existe
+// pero el .tar.zst no).
+message BackupPush {
+  string server_id = 1;
+  string filename = 2;
+  string transfer_id = 3;
+}
+
+// Metadatos de la copia enviada, de su .json: el panel compara tamaño y sha256 con lo que ha
+// recibido y con el BackupCreated del job.
+message BackupPushResult {
+  uint64 size_bytes = 1;
+  string sha256 = 2;
+  uint64 data_bytes = 3; // contenido sin comprimir; 0 si la copia no lo anotó
+}
+
+// Panel → agente (destino). Job (type "migrate_in"): descarga la copia con
+// GET /agent/transfer/{transfer_id} a <DATA_ROOT>/<slug>/backups/<filename>, comprueba que
+// llegan size_bytes bytes con ese sha256 y la restaura como <DATA_ROOT>/<slug>/data.
+// <DATA_ROOT>/<slug> no puede existir: lo crea con el marcador .mcsm-migration (contiene
+// migration_id) y, si algo falla, lo borra entero. El servidor no puede estar en este nodo.
+// Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error (invalid_request | exists |
+// busy | too_large: no cabe con el margen). Un job_id repetido reenvía su estado.
+message MigrateReceive {
+  string server_id = 1;
+  string slug = 2; // slug en el destino
+  string job_id = 3;
+  string migration_id = 4;
+  string transfer_id = 5;
+  string filename = 6; // <slug>-<ts>-<versión>.tar.zst, con el slug del destino
+  uint64 size_bytes = 7;
+  string sha256 = 8;
+  uint64 data_bytes = 9; // 0 = desconocido (se reserva el tamaño comprimido)
+}
+
+// Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
+// olvida la spec del servidor (si la tiene) y borra su contenedor y, ya sin él, borra
+// <DATA_ROOT>/<slug> solo si lleva el marcador de migration_id sin confirmar y ningún otro
+// servidor del nodo usa ese slug. El marcador se lee ANTES de tocar la spec: si el servidor está
+// en este nodo y <slug> no lleva el marcador sin confirmar de esta migración (p. ej. ya llegó
+// MigrateConfirm), no toca nada. Idempotente. Respuesta: Ack o Error (busy: hay una recepción en
+// curso o el contenedor aún no se pudo borrar; el panel reintenta. invalid_request: otro slug,
+// otro servidor lo usa, o el servidor de este nodo no es una copia sin confirmar de esta migración).
+message MigrateAbort {
+  string server_id = 1;
+  string slug = 2;
+  string migration_id = 3;
+}
+
+// Panel → agente (origen), tras confirmar la migración. Comprueba que la spec guardada es la
+// versión source_version (la que se migró: un servidor que volvió después a este nodo trae otra),
+// marca <slug> con .mcsm-retiring (migration_id), para el contenedor si sigue en marcha, olvida la
+// spec y borra el contenedor y, solo entonces, aparta <DATA_ROOT>/<slug> (datos y copias) a
+// <DATA_ROOT>/<slug>.migrated-<ts> o, con delete_data, lo borra. Un reintento sin spec solo toca un
+// <slug> con el .mcsm-retiring de esta migración. Idempotente. Respuesta: Ack o Error
+// (invalid_request: otro slug, otra versión, otro servidor del nodo usa ese slug o <slug> no es el
+// de esta retirada (p. ej. una recepción en curso: marcador de migración sin confirmar); busy:
+// reintentar, p. ej. el contenedor aún no se pudo borrar).
+message MigrateRetire {
+  string server_id = 1;
+  string slug = 2;
+  string migration_id = 3;
+  bool delete_data = 4;
+  uint64 source_version = 5; // versión de la spec en el origen al empezar la migración
+}
+
+// Panel → agente (destino), tras confirmar la migración (y reintentado hasta el Ack). Reescribe
+// el marcador <DATA_ROOT>/<slug>/.mcsm-migration de migration_id como «committed <migration_id>»:
+// desde entonces ningún MigrateAbort (p. ej. de un panel restaurado desde una foto anterior al
+// commit) borra el servidor. Idempotente. Respuesta: Ack (también si ya estaba confirmado o no
+// hay marcador) o Error (invalid_request: otro slug, o el marcador es de otra migración; busy).
+message MigrateConfirm {
+  string server_id = 1;
+  string slug = 2;
+  string migration_id = 3;
+}
 // ── plan-8 ──
 // ── plan-9 ──

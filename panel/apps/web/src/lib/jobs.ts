@@ -14,7 +14,9 @@ export const JOB_STATUS_LABEL: Record<JobState, string> = {
 export const TRIGGER_LABEL: Record<BackupTriggerName, string> = {
   manual: "Manual", scheduled: "Programada", pre_migration: "Antes de migrar", pre_restore: "Antes de restaurar",
 };
-const JOB_TYPE_LABEL: Record<string, string> = { backup: "Copia de seguridad", restore: "Restauración" };
+const JOB_TYPE_LABEL: Record<string, string> = {
+  backup: "Copia de seguridad", restore: "Restauración", migrate: "Migración", migrate_in: "Recepción de migración",
+};
 const MAX_LIST = 200;
 
 export const jobTypeLabel = (type: string): string => JOB_TYPE_LABEL[type] ?? type;

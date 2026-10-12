@@ -124,8 +124,10 @@ type backupService struct {
 	closed  bool                             // wait empezó: no se lanzan tareas nuevas
 	blocked map[string]func(context.Context) // servidores sin datos → su reserva (ver block)
 
-	wg    sync.WaitGroup // copias, restauraciones y liberaciones en curso (los tests esperan con wg.Wait)
-	loops sync.WaitGroup // bucles de start
+	wg sync.WaitGroup // copias, restauraciones y liberaciones en curso (los tests esperan con wg.Wait)
+	// plan-7: MigrateAbort, MigrateRetire y MigrateConfirm de un mismo servidor, de uno en uno.
+	migLocks keyedLocks
+	loops    sync.WaitGroup // bucles de start
 }
 
 func newBackupService(a *App, clock backup.Clock) *backupService {
@@ -545,6 +547,18 @@ func (b *backupService) startBackup(jobID, serverID, trigger string) error {
 	if err != nil {
 		b.finish(j, err, "")
 		return err
+	}
+	if trigger == backup.TriggerPreMigration {
+		// plan-7: la copia que se migra se hace en frío y sin escrituras a medias (como una
+		// restauración): un arranque o una subida que llegaran después del paso 1 la dejarían
+		// desfasada respecto a lo que siga escribiendo el origen.
+		if err := b.preMigrationReady(serverID, j); err != nil {
+			// En línea, como al fallar el lanzamiento: el servidor está parado o sin cambios (la
+			// reconciliación es inmediata) y el panel lo vuelve a arrancar en cuanto recibe el error.
+			release(b.a.life)
+			b.finish(j, err, "")
+			return err
+		}
 	}
 	return b.launchBackup(j, serverID, trigger, release)
 }

@@ -91,7 +91,7 @@ export function NodesPage() {
                 <div className="flex items-center justify-end gap-1">
                   {/* plan-6: Nodos → Importar */}
                   <Button size="sm" variant="secondary" asChild><Link to="/nodes/$nodeId/import" params={{ nodeId: n.id }}>Importar</Link></Button>
-                  <Button size="sm" variant="ghost" aria-label={`Eliminar nodo ${n.name}`} title="Eliminar" disabled={del.isPending} onClick={() => { if (confirm(`¿Eliminar el nodo "${n.name}"? Solo es posible si no tiene servidores.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button>
+                  <Button size="sm" variant="ghost" aria-label={`Eliminar nodo ${n.name}`} title="Eliminar" disabled={del.isPending} onClick={() => { if (confirm(`¿Eliminar el nodo "${n.name}"? Solo es posible si no tiene servidores. Si participa en una migración a medias, el panel la olvida: si el nodo solo está aislado de la red, la copia del servidor puede seguir en marcha allí; compruébalo antes de arrancar el servidor en su nodo de origen.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button>
                 </div>
               </TableCell>
             </TableRow>

@@ -121,7 +121,9 @@ export class AgentService {
     const known = new Set(Object.keys(hello.specVersions));
     const curseforgeApiKey = this.app.curseforge.get();
     const servers = rows.filter((r) => specDiffers(r, hello)).map((r) => toServerSpecMessage(r, curseforgeApiKey));
-    const removedIds = [...known].filter((id) => !rows.some((r) => r.id === id));
+    // plan-7: un servidor con una migración abierta que pasa por este nodo no se retira por un Hello (copia del
+    // destino aún sin confirmar u origen pendiente de retirar): lo limpia la migración.
+    const removedIds = [...known].filter((id) => !rows.some((r) => r.id === id) && !this.app.migrations.protects(nodeId, id));
     try {
       await conn.request({ case: "syncSpecs", value: { servers, removedIds } }, 120_000);
     } catch (e) {

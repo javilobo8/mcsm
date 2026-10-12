@@ -16,6 +16,8 @@ import { ServerConfigForm } from "@/components/server-config-form";
 import { FileBrowser } from "@/components/files/file-browser";
 import { GuardedTabs } from "@/components/guarded-tabs";
 import { ExternalDataNote, ImportNotices } from "@/components/import-notices";
+import { MigrateTab } from "@/components/migrate-tab";
+import { MigrationBanner } from "@/components/migration-banner";
 import { useServer } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
 import { api, apiPath, ApiError } from "@/lib/api";
@@ -81,6 +83,7 @@ export function ServerPage() {
           <Button variant="ghost" aria-label={`Eliminar ${s.name}`} title="Eliminar servidor" onClick={() => { del.reset(); setDeleteData(false); setConfirmDel(true); }}><Trash2 className="size-4" /></Button>
         </div>
       </header>
+      <MigrationBanner key={s.id} serverId={s.id} />
 
       <GuardedTabs defaultValue="overview">
         <TabsList><TabsTrigger value="overview">Resumen</TabsTrigger><TabsTrigger value="console">Consola</TabsTrigger><TabsTrigger value="config">Configuración</TabsTrigger>
@@ -93,6 +96,7 @@ export function ServerPage() {
           <TabsTrigger value="files">Archivos</TabsTrigger>
           {/* ── plan-6 ── */}
           {/* ── plan-7 ── */}
+          <TabsTrigger value="migrate">Migrar</TabsTrigger>
           {/* ── plan-8 ── */}
           {/* ── plan-9 ── */}
         </TabsList>
@@ -107,7 +111,7 @@ export function ServerPage() {
           <Stat label="Spec" value={applying ? `v${s.specVersion} (aplicando; actual v${s.observedSpecVersion})` : `v${s.specVersion} (aplicada)`} />
           <div className="col-span-2 mt-2 md:col-span-4"><ServerCharts key={s.id} serverId={s.id} /></div>
         </TabsContent>
-        <TabsContent value="console"><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="console" key={s.nodeId}><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
         <TabsContent value="config"><ServerConfigForm key={s.id} server={s} /></TabsContent>
         {/* ── plan-2 ── */}
         {/* ── plan-3 ── */}
@@ -118,6 +122,7 @@ export function ServerPage() {
         <TabsContent value="files">{iv.files ? <ExternalDataNote text={iv.files} /> : <FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} />}</TabsContent>
         {/* ── plan-6 ── */}
         {/* ── plan-7 ── */}
+        <TabsContent value="migrate"><MigrateTab key={s.id} server={s} nodeOnline={nodeOnline} /></TabsContent>
         {/* ── plan-8 ── */}
         {/* ── plan-9 ── */}
       </GuardedTabs>

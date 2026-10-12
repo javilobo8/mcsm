@@ -9,3 +9,4 @@ export * from "./files.js";
 export * from "./backups.js";
 export * from "./data-path.js";
 export * from "./import.js";
+export * from "./migration.js";

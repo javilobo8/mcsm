@@ -4,8 +4,9 @@ import { nowIso } from "../lib/time.js";
 import { JobsRepo, toJobDetailDto, toJobDto, type JobDetailDto, type JobDto, type JobListFilter, type JobRow, type JobState } from "./repo.js";
 
 export const FINAL_STATES: ReadonlySet<JobState> = new Set<JobState>(["ok", "failed", "cancelled"]);
-/** Jobs que ejecuta el agente: sobreviven a un reinicio del panel; el agente informa al reconectar (spec §10). */
-export const AGENT_JOB_TYPES = ["backup", "restore"] as const;
+/** Jobs que ejecuta el agente: sobreviven a un reinicio del panel; el agente informa al reconectar (spec §10).
+ *  migrate_in: la recepción de una migración en el nodo destino (Plan 7). */
+export const AGENT_JOB_TYPES = ["backup", "restore", "migrate_in"] as const;
 export const MAX_JOB_LOG = 256 * 1024;
 export const INTERRUPTED = "interrumpido: el panel se reinició durante el job";
 

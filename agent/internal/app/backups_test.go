@@ -404,6 +404,7 @@ func TestBackupNowOnStoppedServerCopiesDirectly(t *testing.T) {
 
 func TestBackupNowPreMigrationTrigger(t *testing.T) {
 	e := newBackupEnv(t, specJSON)
+	stopServer(t, e, 9) // la copia previa a una migración exige el servidor parado
 	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1", Trigger: mcsmv1.BackupTrigger_BACKUP_TRIGGER_PRE_MIGRATION})
 	e.settle(t)
 	if cr := e.col.created(); len(cr) != 1 || cr[0].Trigger != mcsmv1.BackupTrigger_BACKUP_TRIGGER_PRE_MIGRATION {

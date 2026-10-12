@@ -25,6 +25,8 @@ import { errorHandler } from "./lib/http.js";
 import { backupRoutes } from "./backups/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
 import { importRoutes } from "./import/routes.js";
+import { migrationGuard } from "./migration/guard.js";
+import { migrationRoutes } from "./migration/routes.js";
 
 /** `logger`: true en producción; los tests pueden pasar opciones de pino (p. ej. un `stream` para capturar los logs). */
 export interface AppOptions { db: Db; logger?: FastifyServerOptions["logger"]; config?: Partial<Config> }
@@ -45,6 +47,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(websocket, { options: { maxPayload: 4 * 1024 * 1024 } });
   await app.register(authPlugin);
   await app.register(authRoutes);
+  await app.register(migrationGuard); // plan-7 (fuera de ancla): guarda de migraciones ANTES de las rutas que protege
   await app.register(nodeRoutes);
   app.decorate("events", new EventEmitter());
   app.decorate("agents", new AgentHub({ log: app.log }));
@@ -70,6 +73,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // ── plan-6 ──
   await app.register(importRoutes);
   // ── plan-7 ──
+  await app.register(migrationRoutes);
   // ── plan-8 ──
   // ── plan-9 ──
   if (cfg.webDist) {
