@@ -65,5 +65,9 @@ func TestFilesAndBackupsRefusedWithDataPath(t *testing.T) {
 		if e.GetError() == nil || e.GetError().Code != errcode.ExternalData || !strings.Contains(e.GetError().Message, "/mcsm-test-noexiste/externo/data") {
 			t.Errorf("%T: respuesta = %v", env.Body, e)
 		}
+		// Quitar dataPath recrearía el servidor sobre una carpeta vacía: el camino es volver a importarlo.
+		if msg := e.GetError().GetMessage(); !strings.Contains(msg, "vuelve a importarlo") || strings.Contains(msg, "quita dataPath") {
+			t.Errorf("%T: mensaje = %q", env.Body, msg)
+		}
 	}
 }

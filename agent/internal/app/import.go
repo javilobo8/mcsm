@@ -95,8 +95,8 @@ func externalDataSpec(s spec.Spec) error {
 		return nil
 	}
 	return fmt.Errorf("%w: los datos de este servidor están en %s, fuera de DATA_ROOT, y el agente no los ve; "+
-		"no hay copias de seguridad ni archivos. Para tenerlos, para el servidor, mueve esa carpeta a DATA_ROOT/<slug>/data "+
-		"y quita dataPath de su configuración", errExternalData, s.DataPath)
+		"no hay copias de seguridad ni archivos. Para tenerlos, elimina el servidor sin borrar datos, mueve esa carpeta "+
+		"a DATA_ROOT/<slug>/data y vuelve a importarlo", errExternalData, s.DataPath)
 }
 
 // externalData es externalDataSpec para un servidor del store; nil si no existe o su spec no se lee
