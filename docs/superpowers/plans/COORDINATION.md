@@ -16,7 +16,7 @@ anclas reservados en los ficheros compartidos.
 
 | Plan | `Envelope.body` (números de campo) | Migraciones (`name`) |
 |---|---|---|
-| 1 | 10–23 (usados) | `001_*`, `002_*` (usadas) |
+| 1 | 10–23 (usados); 24–29 reservados a arreglos transversales (24 = `Event`, Plan 9) | `001_*`, `002_*` (usadas); `003_*`–`009_*` arreglos transversales |
 | 2 Métricas | 30–39 | `010_*`–`019_*` |
 | 3 Configuración y plantillas | 40–49 | `020_*`–`029_*` |
 | 4 Backups (incluye jobs) | 50–69 | `030_*`–`039_*` |

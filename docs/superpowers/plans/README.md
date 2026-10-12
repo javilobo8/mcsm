@@ -96,7 +96,7 @@ Aceptación: con DNS local `*.lan` apuntando al nodo, `survival.lan` y `creativo
 
 ## Plan 9 — Pruebas de interfaz y pulido
 
-Alcance: Playwright sobre `deploy/docker-compose.yml` + agente real: login, crear servidor, consola,
+Alcance: detección de bucles de crash (§10: >3 reinicios por hora → parar y avisar) y mensaje `Event` del agente (§5.3, campo 24 del `Envelope`) con su vista en la web; Playwright sobre `deploy/docker-compose.yml` + agente real: login, crear servidor, consola,
 backup y restauración, migración entre dos agentes en la misma máquina (dos `DATA_ROOT`). Página de
 Ajustes (contraseña, URL pública, API key de CurseForge, rango de puertos). Rotación de token de nodo.
 Aceptación: la suite E2E pasa en CI local en < 15 min; `pnpm test`, `go test ./...` y `buf breaking`

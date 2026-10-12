@@ -345,8 +345,9 @@ el usuario pida el primer cambio de spec; mientras tanto se gestiona por `import
   spec se comparten con la web desde `packages/proto-ts` y un paquete `packages/shared`
   con los esquemas zod de spec y la función que valida combinaciones (p. ej. `modpack`
   solo con `type` compatible).
-- **Servicios**: `NodeRegistry` (conexiones WS activas, cola de mensajes por nodo
-  desconectado con TTL de 24 h), `SpecService` (versionado, diff, asignación de puertos
+- **Servicios**: `NodeRegistry` (conexiones WS activas; sin cola de mensajes para nodos
+  desconectados: la enmienda del 2026-10-12 la sustituye por `SyncSpecs` al reconectar, que
+  entrega versión y estado deseado de cada servidor), `SpecService` (versionado, diff, asignación de puertos
   libres por nodo dentro del rango configurado), `JobService`, `BackupService`,
   `MigrationService`, `MetricsService` (ingesta por lotes, purga cada hora, agregación
   en consulta), `ImportService`, `RouterService`, `TemplateService`.
