@@ -112,6 +112,15 @@ export type Envelope = Message<"mcsm.v1.Envelope"> & {
     case: "ack";
   } | {
     /**
+     * ── plan-2 ──
+     * ── plan-3 ──
+     * ── plan-4 ──
+     * ── plan-5 ──
+     * ── plan-6 ──
+     * ── plan-7 ──
+     * ── plan-8 ──
+     * ── plan-9 ──
+     *
      * @generated from field: mcsm.v1.Error error = 23;
      */
     value: Error;

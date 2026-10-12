@@ -50,6 +50,14 @@ const baseFields = {
   env: envSchema.default({}),
   resources: resourcesSchema.prefault({}),
   restartPolicy: z.enum(["no", "always", "unless-stopped", "on-failure"]).default("unless-stopped"),
+  // ── plan-2 ──
+  // ── plan-3 ──
+  // ── plan-4 ──
+  // ── plan-5 ──
+  // ── plan-6 ──
+  // ── plan-7 ──
+  // ── plan-8 ──
+  // ── plan-9 ──
 };
 
 function memLimitCheck(s: { memory: string; resources: { memLimit: string } }, ctx: z.RefinementCtx) {
@@ -97,3 +105,12 @@ export const serverPatchSchema = z.object({
 });
 export const powerActionSchema = z.object({ action: z.enum(["start", "stop", "restart", "kill"]) });
 export type PowerActionName = z.infer<typeof powerActionSchema>["action"];
+
+// ── plan-2 ──
+// ── plan-3 ──
+// ── plan-4 ──
+// ── plan-5 ──
+// ── plan-6 ──
+// ── plan-7 ──
+// ── plan-8 ──
+// ── plan-9 ──

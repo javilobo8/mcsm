@@ -57,6 +57,14 @@ export class AgentService {
         this.app.events.emit("observed", serverId, dto);
         return;
       }
+      // ── plan-2 ──
+      // ── plan-3 ──
+      // ── plan-4 ──
+      // ── plan-5 ──
+      // ── plan-6 ──
+      // ── plan-7 ──
+      // ── plan-8 ──
+      // ── plan-9 ──
       default:
         this.app.log.warn({ nodeId, type: env.body.case }, "mensaje de agente no esperado");
     }

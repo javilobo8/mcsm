@@ -72,6 +72,14 @@ type Spec struct {
 	Resources     Resources         `json:"resources"`
 	RestartPolicy string            `json:"restartPolicy"`
 	RconPassword  string            `json:"rconPassword"`
+	// ── plan-2 ──
+	// ── plan-3 ──
+	// ── plan-4 ──
+	// ── plan-5 ──
+	// ── plan-6 ──
+	// ── plan-7 ──
+	// ── plan-8 ──
+	// ── plan-9 ──
 }
 
 type Ports struct {
@@ -182,6 +190,14 @@ func (s Spec) Validate() error {
 			return fmt.Errorf("spec: la propiedad %s no puede tener saltos de línea en el valor", k)
 		}
 	}
+	// ── plan-2 ──
+	// ── plan-3 ──
+	// ── plan-4 ──
+	// ── plan-5 ──
+	// ── plan-6 ──
+	// ── plan-7 ──
+	// ── plan-8 ──
+	// ── plan-9 ──
 	return nil
 }
 
@@ -274,6 +290,14 @@ func (s Spec) envList() []string {
 		}
 		m["CUSTOM_SERVER_PROPERTIES"] = strings.Join(lines, "\n")
 	}
+	// ── plan-2 ──
+	// ── plan-3 ──
+	// ── plan-4 ──
+	// ── plan-5 ──
+	// ── plan-6 ──
+	// ── plan-7 ──
+	// ── plan-8 ──
+	// ── plan-9 ──
 	for k, v := range s.Env {
 		m[k] = v
 	}

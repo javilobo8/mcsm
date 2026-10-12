@@ -134,6 +134,14 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	go a.tickers(ctx)
 	// §6.1: primero el WS; la primera pasada de reconciliación va en segundo plano.
 	go a.reconcileAll(ctx)
+	// ── plan-2 ──
+	// ── plan-3 ──
+	// ── plan-4 ──
+	// ── plan-5 ──
+	// ── plan-6 ──
+	// ── plan-7 ──
+	// ── plan-8 ──
+	// ── plan-9 ──
 	client.Run(ctx)
 	return nil
 }
@@ -259,6 +267,15 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 			delete(a.streams, env.StreamId)
 		}
 		a.mu.Unlock()
+
+	// ── plan-2 ──
+	// ── plan-3 ──
+	// ── plan-4 ──
+	// ── plan-5 ──
+	// ── plan-6 ──
+	// ── plan-7 ──
+	// ── plan-8 ──
+	// ── plan-9 ──
 
 	default:
 		a.log.Warn("mensaje no soportado", "type", fmt.Sprintf("%T", env.Body))

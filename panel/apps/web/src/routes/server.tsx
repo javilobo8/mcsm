@@ -74,7 +74,16 @@ export function ServerPage() {
       </header>
 
       <Tabs defaultValue="overview">
-        <TabsList><TabsTrigger value="overview">Resumen</TabsTrigger><TabsTrigger value="console">Consola</TabsTrigger><TabsTrigger value="config">Configuración</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="overview">Resumen</TabsTrigger><TabsTrigger value="console">Consola</TabsTrigger><TabsTrigger value="config">Configuración</TabsTrigger>
+          {/* ── plan-2 ── */}
+          {/* ── plan-3 ── */}
+          {/* ── plan-4 ── */}
+          {/* ── plan-5 ── */}
+          {/* ── plan-6 ── */}
+          {/* ── plan-7 ── */}
+          {/* ── plan-8 ── */}
+          {/* ── plan-9 ── */}
+        </TabsList>
         <TabsContent value="overview" className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Stat label="Jugadores" value={o?.mc.online ? `${o.mc.playersOnline} / ${o.mc.playersMax}` : "—"} />
           <Stat label="Versión detectada" value={o?.mc.version || "—"} />
@@ -87,6 +96,14 @@ export function ServerPage() {
         </TabsContent>
         <TabsContent value="console"><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
         <TabsContent value="config"><ServerConfigForm key={s.id} server={s} /></TabsContent>
+        {/* ── plan-2 ── */}
+        {/* ── plan-3 ── */}
+        {/* ── plan-4 ── */}
+        {/* ── plan-5 ── */}
+        {/* ── plan-6 ── */}
+        {/* ── plan-7 ── */}
+        {/* ── plan-8 ── */}
+        {/* ── plan-9 ── */}
       </Tabs>
 
       <Dialog open={confirmDel} onOpenChange={(o) => { if (!del.isPending) setConfirmDel(o); }}>

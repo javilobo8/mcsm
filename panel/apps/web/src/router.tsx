@@ -36,8 +36,33 @@ export const dashboardRoute = createRoute({ getParentRoute: () => appRoute, path
 export const nodesRoute = createRoute({ getParentRoute: () => appRoute, path: "/nodes", component: NodesPage });
 export const newServerRoute = createRoute({ getParentRoute: () => appRoute, path: "/servers/new", component: NewServerPage });
 export const serverRoute = createRoute({ getParentRoute: () => appRoute, path: "/servers/$serverId", component: ServerPage });
+// ── plan-2 ──
+// ── plan-3 ──
+// ── plan-4 ──
+// ── plan-5 ──
+// ── plan-6 ──
+// ── plan-7 ──
+// ── plan-8 ──
+// ── plan-9 ──
 
-const routeTree = rootRoute.addChildren([loginRoute, appRoute.addChildren([dashboardRoute, nodesRoute, newServerRoute, serverRoute])]);
+
+const routeTree = rootRoute.addChildren([
+  loginRoute,
+  appRoute.addChildren([
+    dashboardRoute,
+    nodesRoute,
+    newServerRoute,
+    serverRoute,
+    // ── plan-2 ──
+    // ── plan-3 ──
+    // ── plan-4 ──
+    // ── plan-5 ──
+    // ── plan-6 ──
+    // ── plan-7 ──
+    // ── plan-8 ──
+    // ── plan-9 ──
+  ]),
+]);
 export const router = createRouter({ routeTree });
 
 declare module "@tanstack/react-router" {

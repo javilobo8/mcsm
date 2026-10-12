@@ -54,4 +54,12 @@ CREATE INDEX servers_node_idx ON servers(node_id);
     name: "002_enrollment_data_root",
     sql: `ALTER TABLE enrollment_tokens ADD COLUMN data_root TEXT NOT NULL DEFAULT '/srv/minecraft';`,
   },
+  // ── plan-2 ──
+  // ── plan-3 ──
+  // ── plan-4 ──
+  // ── plan-5 ──
+  // ── plan-6 ──
+  // ── plan-7 ──
+  // ── plan-8 ──
+  // ── plan-9 ──
 ];

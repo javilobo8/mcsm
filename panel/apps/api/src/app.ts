@@ -40,6 +40,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.addHook("onReady", async () => app.nodes.markAllOffline());
   await app.register(serverRoutes);
   await app.register(realtimeRoutes);
+  // ── plan-2 ──
+  // ── plan-3 ──
+  // ── plan-4 ──
+  // ── plan-5 ──
+  // ── plan-6 ──
+  // ── plan-7 ──
+  // ── plan-8 ──
+  // ── plan-9 ──
   if (cfg.webDist) {
     await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
     // El notFoundHandler no pasa por el guard de sesión (no hay ruta enrutada): solo debe servir
