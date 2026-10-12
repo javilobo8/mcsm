@@ -8,6 +8,7 @@ import type { ObservedDto } from "../servers/repo.js";
 import { FakeAgent } from "../../test/fake-agent.js";
 import { guardSubject } from "./guard.js";
 import type { NewMigration } from "./repo.js";
+import { targetRow } from "./steps.js";
 
 let app: FastifyInstance; let url: string; let cookie: string;
 
@@ -83,6 +84,19 @@ describe("MigrationsRepo", () => {
     expect(JSON.parse(row.spec).ports.game).toBe(25570);
     expect(JSON.parse(row.observed!).containerId).toBe("c1");
     expect(app.migrations.get(m2.id)).toMatchObject({ phase: "committed", source_pending: 1 });
+  });
+
+  it("commit: un servidor importado (columna imported_from del Plan 6) deja de seguir a su contenedor original", async () => {
+    app.db.exec("ALTER TABLE servers ADD COLUMN imported_from TEXT");
+    const a = await enroll("a"); const b = await enroll("b");
+    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    app.db.prepare("UPDATE servers SET imported_from = ? WHERE id = ?").run("contenedor-original", s.id);
+    const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
+    const row = { ...app.servers.get(s.id)! } as Record<string, unknown>;
+    expect(row.imported_from).toBe("contenedor-original");
+    expect((targetRow(app.servers.get(s.id)!, m, "stopped") as unknown as Record<string, unknown>).imported_from).toBeNull();
+    expect(app.migrations.commit(m, "running", null)).toBe(true);
+    expect((app.servers.get(s.id) as unknown as Record<string, unknown>).imported_from).toBeNull();
   });
 
   it("interruptRunning, protects y las consultas de bloqueo", async () => {
