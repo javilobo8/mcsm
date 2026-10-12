@@ -3,12 +3,11 @@ import { PowerActionType } from "@mcsm/proto";
 import { specSchema, slugify, type ServerCreateInput, type Spec, type SpecInput, type PowerActionName } from "@mcsm/shared";
 import type { z } from "zod";
 import { randomToken } from "../lib/tokens.js";
-import { AgentError } from "../agents/hub.js";
+import { HttpError, agentErrorToHttp } from "../lib/http.js";
 import { toServerDto, toServerSpecMessage, type ServerRow } from "./repo.js";
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
+// HttpError vive en lib/http.ts; se re-exporta para el código que lo importa desde aquí.
+export { HttpError };
 
 const POWER: Record<PowerActionName, PowerActionType> = {
   start: PowerActionType.START, stop: PowerActionType.STOP, restart: PowerActionType.RESTART, kill: PowerActionType.KILL,
@@ -116,7 +115,7 @@ export class ServersService {
     try {
       await conn.request({ case: "powerAction", value: { serverId: id, action: POWER[action] } }, 90_000);
     } catch (e) {
-      throw new HttpError(502, e instanceof AgentError ? e.message : "Fallo al ejecutar la acción");
+      throw agentErrorToHttp(e, "Fallo al ejecutar la acción");
     }
     // Solo tras el Ack del agente, para que panel y agente no diverjan.
     this.app.servers.setDesiredState(id, action === "start" || action === "restart" ? "running" : "stopped");
@@ -130,7 +129,7 @@ export class ServersService {
       const res = await conn.request({ case: "sendCommand", value: { serverId: id, command } }, 20_000);
       return { output: res.body.case === "commandResult" ? res.body.value.output : "" };
     } catch (e) {
-      throw new HttpError(502, e instanceof AgentError ? e.message : "Fallo al enviar el comando");
+      throw agentErrorToHttp(e, "Fallo al enviar el comando");
     }
   }
 
@@ -141,7 +140,7 @@ export class ServersService {
       try {
         await conn.request({ case: "removeServer", value: { serverId: id, deleteData } }, 120_000);
       } catch (e) {
-        throw new HttpError(502, e instanceof AgentError ? e.message : "El agente no pudo eliminar el servidor");
+        throw agentErrorToHttp(e, "El agente no pudo eliminar el servidor");
       }
     } else if (deleteData) {
       throw new HttpError(409, "El nodo está desconectado: no se pueden borrar los datos ahora. Borra sin datos o espera a que vuelva.");

@@ -2,10 +2,12 @@ import { EventEmitter } from "node:events";
 import type { WebSocket } from "ws";
 import { create, fromBinary, toBinary, type MessageInitShape } from "@bufbuild/protobuf";
 import { EnvelopeSchema, type Envelope } from "@mcsm/proto";
+import { AgentErrorCode } from "./error-codes.js";
 
 /** Cuerpo del envelope en forma de inicializador: admite objetos planos sin $typeName. */
 export type Body = NonNullable<MessageInitShape<typeof EnvelopeSchema>["body"]>;
 
+/** Fallo de una petición al agente. `code`: catálogo en ./error-codes.ts (string: el agente puede enviar códigos nuevos). */
 export class AgentError extends Error {
   constructor(public code: string, message: string) { super(message); this.name = "AgentError"; }
 }
@@ -100,15 +102,15 @@ export class AgentConn {
   private requestWithId(id: bigint, body: Body, timeoutMs: number): Promise<Envelope> {
     return new Promise((resolve, reject) => {
       if (this.disposed || this.socket.readyState !== this.socket.OPEN) {
-        reject(new AgentError("disconnected", "El nodo no está conectado"));
+        reject(new AgentError(AgentErrorCode.Disconnected, "El nodo no está conectado"));
         return;
       }
       let sent = false;
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(sent
-          ? new AgentError("timeout", "El agente no respondió a tiempo")
-          : new AgentError("syncing", "El nodo se está sincronizando; inténtalo de nuevo en unos segundos"));
+          ? new AgentError(AgentErrorCode.Timeout, "El agente no respondió a tiempo")
+          : new AgentError(AgentErrorCode.Syncing, "El nodo se está sincronizando; inténtalo de nuevo en unos segundos"));
       }, timeoutMs);
       timer.unref();
       this.pending.set(id, { resolve, reject, timer });
@@ -120,7 +122,7 @@ export class AgentConn {
         } catch {
           clearTimeout(timer);
           this.pending.delete(id);
-          reject(new AgentError("disconnected", "No se pudo enviar al nodo"));
+          reject(new AgentError(AgentErrorCode.Disconnected, "No se pudo enviar al nodo"));
         }
       };
       if (this.isReady || body.case === "syncSpecs") go();
@@ -135,7 +137,7 @@ export class AgentConn {
     this.streams.set(streamId, { onFrame, onClose });
     try {
       const ack = await this.requestWithId(streamId, body, 30_000);
-      if (ack.streamId !== streamId) throw new AgentError("protocol", "El agente no devolvió stream_id");
+      if (ack.streamId !== streamId) throw new AgentError(AgentErrorCode.Protocol, "El agente no devolvió stream_id");
     } catch (e) {
       this.streams.delete(streamId);
       throw e;
@@ -206,10 +208,10 @@ export class AgentConn {
     if (this.disposed) return;
     this.disposed = true;
     clearInterval(this.heartbeat);
-    this.rejectReady(new AgentError("disconnected", "El nodo se desconectó"));
+    this.rejectReady(new AgentError(AgentErrorCode.Disconnected, "El nodo se desconectó"));
     for (const [id, p] of this.pending) {
       clearTimeout(p.timer);
-      p.reject(new AgentError("disconnected", "El nodo se desconectó"));
+      p.reject(new AgentError(AgentErrorCode.Disconnected, "El nodo se desconectó"));
       this.pending.delete(id);
     }
     for (const [id, s] of this.streams) {

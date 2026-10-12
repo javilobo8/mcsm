@@ -14,12 +14,15 @@ import { AgentService } from "./agents/service.js";
 import { ServersRepo } from "./servers/repo.js";
 import { serverRoutes } from "./servers/routes.js";
 import { realtimeRoutes } from "./realtime/routes.js";
+import { errorHandler } from "./lib/http.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const cfg: Config = { ...config, ...opts.config };
   const app = Fastify({ logger: opts.logger ?? false });
+  // Antes de registrar nada: los plugins heredan el manejador (formato { error }, 5xx genéricos).
+  app.setErrorHandler(errorHandler(app));
   app.decorate("db", opts.db);
   app.decorate("config", cfg);
   app.decorate("nodes", new NodesRepo(opts.db));
