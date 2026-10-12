@@ -737,7 +737,10 @@ func (b *backupService) startRestore(jobID, serverID, filename string) error {
 		return err
 	}
 	if err := b.drainFileWrites(serverID, j); err != nil {
-		release(b.a.life)
+		// La respuesta no espera a la liberación: reconcilia y aplicaría (pull incluido) una
+		// spec que llegó durante la espera, más allá del plazo con que el panel espera esta
+		// respuesta.
+		b.releaseAsync(release)
 		b.finish(j, err, "")
 		return err
 	}
@@ -747,6 +750,15 @@ func (b *backupService) startRestore(jobID, serverID, filename string) error {
 		return errClosing
 	}
 	return nil
+}
+
+// releaseAsync libera una reserva en segundo plano con el contexto de vida del agente,
+// contada en wg (la espera del cierre la incluye). Si el agente ya se cierra, libera en línea:
+// con el contexto cancelado la reconciliación no espera, y el siguiente arranque la completa.
+func (b *backupService) releaseAsync(release func(context.Context)) {
+	if !b.spawn(func() { release(b.a.life) }) {
+		release(b.a.life)
+	}
 }
 
 // drainFileWrites espera, como mucho drainWait, a que terminen las escrituras de archivos

@@ -614,6 +614,103 @@ func TestRestoreBusyWhenFileWritesDoNotDrain(t *testing.T) {
 	}
 }
 
+// gatedPullEngine bloquea EnsureImage (el pull) mientras haya una barrera puesta con block.
+type gatedPullEngine struct {
+	*docker.Fake
+	mu   sync.Mutex
+	gate chan struct{}
+}
+
+func (e *gatedPullEngine) block() (unblock func()) {
+	ch := make(chan struct{})
+	e.mu.Lock()
+	e.gate = ch
+	e.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			e.mu.Lock()
+			e.gate = nil
+			e.mu.Unlock()
+			close(ch)
+		})
+	}
+}
+
+func (e *gatedPullEngine) EnsureImage(ctx context.Context, ref string) error {
+	e.mu.Lock()
+	gate := e.gate
+	e.mu.Unlock()
+	if gate != nil {
+		select {
+		case <-gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return e.Fake.EnsureImage(ctx, ref)
+}
+
+// triggerClock es un manualClock cuyo Until solo se dispara cuando el test envía por fire.
+type triggerClock struct {
+	*manualClock
+	fire chan time.Time
+}
+
+func (c *triggerClock) Until(time.Time) <-chan time.Time { return c.fire }
+
+// m-e: si las escrituras de archivos no drenan, la restauración responde busy enseguida. La
+// liberación de la reserva, que aplica la spec que llegó durante la espera (pull incluido),
+// sigue en segundo plano con el contexto de vida del agente.
+func TestRestoreDrainTimeoutReleasesInBackground(t *testing.T) {
+	fake := docker.NewFake()
+	eng := &gatedPullEngine{Fake: fake}
+	e := newBackupEnvEngine(t, eng, fake, specJSON)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	name := e.col.created()[0].Filename
+	leave := e.a.fileWrites.enter("a")
+	defer leave()
+	fire := make(chan time.Time, 1)
+	e.a.bk.clock = &triggerClock{manualClock: e.clk, fire: fire}
+	resp := make(chan *mcsmv1.Envelope, 1)
+	go func() { resp <- e.handle(20, &mcsmv1.BackupRestore{ServerId: "a", Filename: name, JobId: "job-r"}) }()
+	e.col.waitFor(t, "la restauración esperando a las escrituras de archivos", func() bool {
+		for _, env := range e.col.all() {
+			if p := env.GetJobProgress(); p != nil && p.JobId == "job-r" && strings.Contains(p.Message, "Esperando") {
+				return true
+			}
+		}
+		return false
+	})
+	spec2 := strings.Replace(specJSON, `"memory":"2G"`, `"memory":"3G"`, 1)
+	if r := e.handle(30, &mcsmv1.ApplySpec{Server: &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(spec2)}}); r.GetAck() == nil {
+		t.Fatalf("ApplySpec durante la espera = %+v", r)
+	}
+	unblock := eng.block()
+	defer unblock()
+	fire <- time.Time{} // vence el drenado
+	select {
+	case r := <-resp:
+		if r.GetError().GetCode() != errcode.Busy {
+			t.Fatalf("resp = %+v", r)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("la respuesta busy esperó a la liberación de la reserva (spec aplazada con pull)")
+	}
+	unblock()
+	e.settle(t)
+	if e.a.rec.Held("a") {
+		t.Fatal("la reserva debe liberarse en segundo plano")
+	}
+	if v, _ := e.st.Applied("a"); v != 2 {
+		t.Fatalf("applied = %d; la liberación aplica la spec aplazada", v)
+	}
+	if fin := e.col.final("job-r"); fin == nil || fin.Status != jobFailed {
+		t.Fatalf("final = %+v", fin)
+	}
+}
+
 func TestRestoreRejectsBadName(t *testing.T) {
 	e := newBackupEnv(t, specJSON)
 	r := e.handle(20, &mcsmv1.BackupRestore{ServerId: "a", Filename: "../../etc/passwd", JobId: "job-r"})
