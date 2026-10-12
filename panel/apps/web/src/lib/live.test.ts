@@ -29,6 +29,42 @@ describe("applyObservedEvent", () => {
     expect(list[1]!.observed).toBeNull();
     expect(qc.getQueryData<ServerDto>(["server", "a"])!.observedSpecVersion).toBe(3);
   });
+  it("ignora un evento más antiguo que el observedAt en caché", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(["servers"], [{ ...server("a"), observed: obs({ state: "exited" }), observedAt: "2026-01-02T00:00:00Z" }]);
+    qc.setQueryData(["server", "a"], { ...server("a"), observed: obs({ state: "exited" }), observedAt: "2026-01-02T00:00:00Z" });
+    applyObservedEvent(qc, observedMsg("a")); // observedAt 2026-01-01
+    expect(qc.getQueryData<ServerDto[]>(["servers"])![0]!.observed?.state).toBe("exited");
+    expect(qc.getQueryData<ServerDto>(["server", "a"])!.observed?.state).toBe("exited");
+  });
+  it("aplica un evento más nuevo", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(["servers"], [{ ...server("a"), observed: obs({ state: "exited" }), observedAt: "2025-12-31T00:00:00Z" }]);
+    applyObservedEvent(qc, observedMsg("a"));
+    expect(qc.getQueryData<ServerDto[]>(["servers"])![0]!.observed?.state).toBe("running");
+  });
+  it("cancela refetches en vuelo antes de escribir", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(["servers"], [server("a")]);
+    const spy = vi.spyOn(qc, "cancelQueries");
+    applyObservedEvent(qc, observedMsg("a"));
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["servers"] });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["server", "a"] });
+  });
+  it("limita la invalidación por servidor desconocido a una por segundo", () => {
+    vi.useFakeTimers();
+    try {
+      const qc = new QueryClient();
+      qc.setQueryData(["servers"], [server("a")]);
+      const spy = vi.spyOn(qc, "invalidateQueries");
+      applyObservedEvent(qc, observedMsg("x"));
+      applyObservedEvent(qc, observedMsg("y"));
+      expect(spy).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1100);
+      applyObservedEvent(qc, observedMsg("z"));
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally { vi.useRealTimers(); }
+  });
   it("invalida la lista si el servidor es desconocido (creado desde otra pestaña)", () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);

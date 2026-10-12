@@ -20,3 +20,11 @@ export function stateLabel(o: { state: string; health: string; error: string } |
   if (o.state === "restarting") return { text: "Reiniciando", tone: "warn" };
   return { text: "Parado", tone: "muted" };
 }
+
+/** Estado a mostrar: con el nodo caído el último observed es obsoleto. `undefined` = nodo aún desconocido. */
+export function displayState(o: { state: string; health: string; error: string } | null, desired: string, nodeOnline: boolean | undefined) {
+  if (nodeOnline === false) return { text: "Nodo desconectado", tone: "muted" as const };
+  return stateLabel(o, desired);
+}
+/** La API responde 409 a las acciones de energía con el nodo desconectado. */
+export const canPower = (nodeOnline: boolean | undefined): boolean => nodeOnline !== false;

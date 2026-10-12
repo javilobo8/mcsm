@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
+import { validateDataRoot } from "@/lib/nodes";
 import { useNodes } from "@/hooks/use-nodes";
 
 interface EnrollResp { token: string; expiresAt: string; dockerRun: string }
@@ -21,9 +22,13 @@ export function NodesPage() {
   const [result, setResult] = useState<EnrollResp | null>(null);
   const [copied, setCopied] = useState<"ok" | "fail" | null>(null);
 
+  const openRef = useRef(false);
+  openRef.current = open;
+  const rootError = validateDataRoot(dataRoot);
   const gen = useMutation({
     mutationFn: () => api.post<EnrollResp>("/api/nodes/enrollment-tokens", { nameHint: nameHint.trim() || "nodo", dataRoot }),
-    onSuccess: setResult,
+    // Si el diálogo se cerró con la petición en curso, el token no debe reaparecer al reabrir.
+    onSuccess: (r) => { if (openRef.current) setResult(r); },
   });
   const del = useMutation({
     mutationFn: (id: string) => api.del(`/api/nodes/${id}`),
@@ -45,10 +50,10 @@ export function NodesPage() {
               <DialogDescription>Genera un comando de alta de un solo uso para la máquina nueva.</DialogDescription>
             </DialogHeader>
             {!result ? (
-              <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); gen.mutate(); }}>
-                <div className="flex flex-col gap-1.5"><Label htmlFor="node-name">Nombre</Label><Input id="node-name" value={nameHint} onChange={(e) => setNameHint(e.target.value)} placeholder="nas, salon, torre…" maxLength={40} /></div>
-                <div className="flex flex-col gap-1.5"><Label htmlFor="node-root">Directorio de datos en esa máquina</Label><Input id="node-root" value={dataRoot} onChange={(e) => setDataRoot(e.target.value)} className="font-mono" /><p className="text-xs text-muted-foreground">Ruta absoluta; se monta con la misma ruta dentro del agente.</p></div>
-                <Button type="submit" disabled={gen.isPending}>{gen.isPending ? "Generando…" : "Generar comando"}</Button>
+              <form className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); if (!rootError) gen.mutate(); }}>
+                <div className="flex flex-col gap-1.5"><Label htmlFor="node-name">Nombre</Label><Input id="node-name" value={nameHint} onChange={(e) => setNameHint(e.target.value)} placeholder="nas, salon, torre…" maxLength={40} />{!nameHint.trim() && <p className="text-xs text-amber-400">Sin nombre se usará «nodo»; elige uno distinto si ya tienes otros nodos.</p>}</div>
+                <div className="flex flex-col gap-1.5"><Label htmlFor="node-root">Directorio de datos en esa máquina</Label><Input id="node-root" value={dataRoot} onChange={(e) => setDataRoot(e.target.value)} className="font-mono" aria-invalid={!!rootError} />{rootError ? <p role="alert" className="text-xs text-red-400">{rootError}</p> : <p className="text-xs text-muted-foreground">Ruta absoluta; se monta con la misma ruta dentro del agente.</p>}</div>
+                <Button type="submit" disabled={gen.isPending || !!rootError}>{gen.isPending ? "Generando…" : "Generar comando"}</Button>
                 {gen.error && <p role="alert" className="text-sm text-red-400">{gen.error.message}</p>}
               </form>
             ) : (

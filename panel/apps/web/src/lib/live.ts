@@ -10,16 +10,30 @@ export interface LiveSource {
   onReconnect(cb: () => void): () => void;
 }
 
-const withObserved = (s: ServerDto, m: ObservedMsg): ServerDto => ({
-  ...s, observed: m.observed, observedSpecVersion: m.observed.appliedVersion, observedAt: m.observedAt,
-});
+const ts = (iso: string | null | undefined) => (iso ? Date.parse(iso) || 0 : 0);
+
+/** Un evento más antiguo que lo que ya tenemos en caché no debe pisarlo. */
+const isStale = (s: ServerDto, m: ObservedMsg) => ts(m.observedAt) < ts(s.observedAt);
+
+const withObserved = (s: ServerDto, m: ObservedMsg): ServerDto =>
+  isStale(s, m) ? s : { ...s, observed: m.observed, observedSpecVersion: m.observed.appliedVersion, observedAt: m.observedAt };
+
+const lastUnknownInvalidate = new WeakMap<QueryClient, number>();
+const UNKNOWN_THROTTLE_MS = 1000;
 
 export function applyObservedEvent(qc: QueryClient, msg: ObservedMsg): void {
   const list = qc.getQueryData<ServerDto[]>(["servers"]);
   if (list && !list.some((s) => s.id === msg.serverId)) {
-    // Servidor creado desde otra pestaña/cliente: no hay datos para construirlo, se recarga.
-    void qc.invalidateQueries({ queryKey: ["servers"] });
+    // Servidor creado desde otra pestaña/cliente: no hay datos para construirlo, se recarga (con límite).
+    const now = Date.now();
+    if (now - (lastUnknownInvalidate.get(qc) ?? 0) >= UNKNOWN_THROTTLE_MS) {
+      lastUnknownInvalidate.set(qc, now);
+      void qc.invalidateQueries({ queryKey: ["servers"] });
+    }
   }
+  // Un refetch en vuelo podría resolver después y restaurar datos más viejos que el evento.
+  void qc.cancelQueries({ queryKey: ["servers"] });
+  void qc.cancelQueries({ queryKey: ["server", msg.serverId] });
   qc.setQueryData<ServerDto[]>(["servers"], (old) => old?.map((s) => (s.id === msg.serverId ? withObserved(s, msg) : s)));
   qc.setQueryData<ServerDto>(["server", msg.serverId], (old) => (old ? withObserved(old, msg) : old));
 }

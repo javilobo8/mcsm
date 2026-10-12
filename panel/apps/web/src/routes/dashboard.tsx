@@ -12,7 +12,7 @@ export function DashboardPage() {
   const servers = useServers();
   const nodes = useNodes();
   const nodeName = (id: string) => nodes.data?.find((n) => n.id === id)?.name ?? "—";
-  const nodeOnline = (id: string) => nodes.data?.find((n) => n.id === id)?.status === "online";
+  const nodeOnline = (id: string): boolean | undefined => { const n = nodes.data?.find((x) => x.id === id); return n ? n.status === "online" : undefined; };
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -44,15 +44,14 @@ export function DashboardPage() {
               <TableRow key={s.id} data-testid={`server-row-${s.slug}`}>
                 <TableCell><Link to="/servers/$serverId" params={{ serverId: s.id }} className="font-medium hover:underline">{s.name}</Link><div className="text-xs text-zinc-500">{s.slug}</div></TableCell>
                 <TableCell>
-                  <StateBadge observed={s.observed} desired={s.desiredState} />
+                  <StateBadge observed={s.observed} desired={s.desiredState} nodeOnline={nodeOnline(s.nodeId)} />
                   {s.observedSpecVersion !== s.specVersion && <span className="ml-2 text-xs text-amber-400">aplicando v{s.specVersion}…</span>}
-                  {!nodeOnline(s.nodeId) && nodes.data && <span className="ml-2 text-xs text-zinc-500">nodo desconectado</span>}
-                </TableCell>
+                                  </TableCell>
                 <TableCell>{s.observed?.mc.online ? <span className="flex items-center gap-1"><Users className="size-3" /> {s.observed.mc.playersOnline}/{s.observed.mc.playersMax}</span> : <span className="text-zinc-500">—</span>}</TableCell>
                 <TableCell>{s.observed?.mc.version || `${s.spec.type} ${s.spec.version}`}</TableCell>
                 <TableCell>{nodeName(s.nodeId)}</TableCell>
                 <TableCell className="font-mono text-sm">{s.spec.ports.game}</TableCell>
-                <TableCell><PowerButtons server={s} /></TableCell>
+                <TableCell><PowerButtons server={s} nodeOnline={nodeOnline(s.nodeId)} /></TableCell>
               </TableRow>
             ))}
             {servers.data?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-zinc-400">No hay servidores. <Link to="/servers/new" className="underline">Crea el primero</Link>.</TableCell></TableRow>}

@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { stateLabel } from "@/lib/format";
+import { displayState } from "@/lib/format";
 import type { ObservedDto } from "@/lib/api";
 
 const tones = {
@@ -9,7 +9,7 @@ const tones = {
   muted: "bg-zinc-800 text-zinc-400 border-zinc-700",
 };
 
-export function StateBadge({ observed, desired }: { observed: ObservedDto | null; desired: string }) {
-  const { text, tone } = stateLabel(observed, desired);
+export function StateBadge({ observed, desired, nodeOnline }: { observed: ObservedDto | null; desired: string; nodeOnline?: boolean }) {
+  const { text, tone } = displayState(observed, desired, nodeOnline);
   return <Badge variant="outline" className={tones[tone]} title={observed?.error || undefined}>{text}</Badge>;
 }

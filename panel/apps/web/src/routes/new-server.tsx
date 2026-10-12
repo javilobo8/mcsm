@@ -33,6 +33,7 @@ export function NewServerPage() {
     },
   });
 
+  const selected = nodes.data?.find((n) => n.id === form.nodeId);
   const online = nodes.data?.filter((n) => n.status === "online") ?? [];
   return (
     <div className="p-6">
@@ -43,9 +44,10 @@ export function NewServerPage() {
             <div className="flex flex-col gap-1.5"><Label htmlFor="ns-node">Nodo</Label>
               <Select value={form.nodeId} onValueChange={(v) => set("nodeId", v)}>
                 <SelectTrigger id="ns-node"><SelectValue placeholder={nodes.isPending ? "Cargando nodos…" : "Elige un nodo"} /></SelectTrigger>
-                <SelectContent>{nodes.data?.map((n) => <SelectItem key={n.id} value={n.id}>{n.name}{n.status !== "online" ? " (desconectado)" : ""}</SelectItem>)}</SelectContent>
+                <SelectContent>{nodes.data?.map((n) => <SelectItem key={n.id} value={n.id}>{n.name}{n.status !== "online" ? " (desconectado, se creará al volver)" : ""}</SelectItem>)}</SelectContent>
               </Select>
               {nodes.isError && <p role="alert" className="text-xs text-red-400">No se pudieron cargar los nodos: {nodes.error.message}</p>}
+              {nodes.data && selected && selected.status !== "online" && <p className="text-xs text-amber-400">El nodo «{selected.name}» está desconectado: el servidor se creará pero no arrancará hasta que vuelva.</p>}
               {nodes.data && online.length === 0 && <p className="text-xs text-amber-400">Ningún nodo conectado: el servidor se creará cuando el nodo vuelva.</p>}
             </div>
             <div className="flex flex-col gap-1.5"><Label htmlFor="ns-name">Nombre</Label><Input id="ns-name" value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Supervivencia 2026" maxLength={60} required /></div>

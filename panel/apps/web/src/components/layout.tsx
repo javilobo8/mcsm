@@ -3,6 +3,7 @@ import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { LayoutDashboard, Server, LogOut, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { useLive } from "@/hooks/use-live";
 
 const nav = [
   { to: "/", label: "Servidores", icon: LayoutDashboard },
@@ -10,6 +11,7 @@ const nav = [
 ] as const;
 
 export function Layout() {
+  useLive(); // un único bind del tiempo real para toda la app autenticada
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const logout = async () => {
