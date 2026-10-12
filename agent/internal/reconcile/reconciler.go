@@ -597,7 +597,11 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 		obs.Mc = r.status(ctx, spec.ContainerName(c.Labels[spec.LabelSlug]), uint16(spec.GamePort))
 	}
 	if ins.PortsMissing && obs.Error == "" { // plan-8: lo arrancó otro (política de reinicio, mc-router)
-		obs.Error = errPortsMissing.Error() + ": pulsa Reiniciar para recrear el contenedor"
+		hint := "pulsa Reiniciar para recrear el contenedor"
+		if c.Adopted { // plan-6: Reiniciar no borra el original del usuario
+			hint = adoptedPortsHint
+		}
+		obs.Error = errPortsMissing.Error() + ": " + hint
 	}
 	return obs
 }
@@ -609,11 +613,14 @@ var (
 	errDiscarded    = errors.New("contenedor descartado: se recreará")
 )
 
+// adoptedPortsHint: qué hacer con un adoptado (plan-6) en marcha sin sus puertos, que no se descarta.
+const adoptedPortsHint = "es el contenedor original del importado y el agente no lo borra; guarda un cambio en la configuración del servidor para que se recree con sus puertos"
+
 // startOrDiscard arranca el contenedor y comprueba que publica sus puertos. Si el arranque falla, o
 // arranca sin puertos (lo contaminó un arranque fallido de otro: la política de reinicio, mc-router),
 // lo borra (force) y devuelve el error envuelto en errDiscarded: los datos están en el bind y la
 // siguiente pasada lo recrea con el backoff de §6.2 (Power lo recrea al momento). Con ctx cancelado
-// no se descarta nada: el Start pudo llegar a Docker.
+// no se descarta nada: el Start pudo llegar a Docker. Un adoptado (plan-6) nunca se descarta.
 func (r *Reconciler) startOrDiscard(ctx context.Context, c *docker.Container) error {
 	err := r.eng.Start(ctx, c.ID)
 	if err == nil {
@@ -626,8 +633,14 @@ func (r *Reconciler) startOrDiscard(ctx context.Context, c *docker.Container) er
 	if ctx.Err() != nil {
 		return err
 	}
-	// Punto de enganche del Plan 6: un contenedor adoptado (Adopted, el original del usuario) no se
-	// borra nunca; ahí solo se devuelve el error, sin descartarlo.
+	// plan-6: el contenedor adoptado es el original del usuario y no se borra nunca: solo se informa.
+	// El primer cambio de spec lo sustituye por uno gestionado (reconcileLocked), con sus puertos.
+	if c.Adopted {
+		if errors.Is(err, errPortsMissing) {
+			return fmt.Errorf("%w: %s", err, adoptedPortsHint)
+		}
+		return err
+	}
 	if rerr := r.eng.Remove(ctx, c.ID); rerr != nil && !errors.Is(rerr, docker.ErrNotFound) {
 		return fmt.Errorf("%w (y no se pudo descartar el contenedor: %v)", err, rerr)
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
@@ -602,5 +603,54 @@ func TestAdoptPausedLeavesItPaused(t *testing.T) {
 	}
 	if o := rec.get("a"); o == nil || o.State != "paused" || o.Error != "" {
 		t.Fatalf("observed = %+v", o)
+	}
+}
+
+// plan-6 × plan-8 (I1): el contenedor adoptado es el original del usuario. Aunque no arranque (puerto
+// ocupado; Docker 29.7.2 lo deja contaminado) o arranque sin publicar sus puertos, startOrDiscard no lo
+// borra, ni desde la reconciliación ni desde «Arrancar»/«Reiniciar»: solo informa del error.
+func TestAdoptedIsNeverDiscardedOnStart(t *testing.T) {
+	r, st, fake, rec, root := setup(t)
+	ctx := context.Background()
+	id := external(t, fake, "mc-viejo", filepath.Join(root, "alpha", "data"), false)
+	blocker := blockPort(t, fake, "25570")
+	fake.Calls = nil // solo cuenta lo que hace el agente
+	// Adoptar con el deseado en marcha lo intenta arrancar: el puerto está ocupado.
+	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
+		t.Fatal(err)
+	}
+	kept := func(when string) {
+		t.Helper()
+		if _, ok := fake.Containers[id]; !ok || calls(fake, "Remove "+id) != 0 || calls(fake, "Create") != 0 {
+			t.Fatalf("%s: el original no se borra ni se sustituye: %v", when, fake.Calls)
+		}
+		if c := serverContainer(t, r, "a"); c == nil || c.ID != id || !c.Adopted {
+			t.Fatalf("%s: el servidor sigue en su original: %+v", when, c)
+		}
+	}
+	kept("al adoptar")
+	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "already allocated") || strings.Contains(o.Error, "se recreará") {
+		t.Fatalf("observed = %+v", o)
+	}
+	// Reintento tras el backoff: arranca, pero contaminado (sin publicar el puerto). Se informa.
+	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) }
+	r.ReconcileAll(ctx)
+	kept("en el tick")
+	if o := rec.get("a"); o.State != "running" || !strings.Contains(o.Error, "sin publicar sus puertos") || !strings.Contains(o.Error, "original del importado") {
+		t.Fatalf("observed = %+v", o)
+	}
+	// Liberado el puerto, «Reiniciar» no lo arregla (sigue contaminado) y tampoco lo borra.
+	_ = fake.Stop(ctx, blocker, time.Second)
+	err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART)
+	if err == nil || !strings.Contains(err.Error(), "sin publicar sus puertos") || errors.Is(err, errDiscarded) {
+		t.Fatalf("Reiniciar = %v", err)
+	}
+	kept("al reiniciar")
+	if d := desired(t, st, "a"); d != desiredRunning {
+		t.Fatalf("desired = %v", d)
+	}
+	obs := r.Observe(ctx, "a")
+	if obs.State != "running" || !strings.Contains(obs.Error, "sin publicar sus puertos") || strings.Contains(obs.Error, "Reiniciar") {
+		t.Fatalf("observed = %+v", obs)
 	}
 }
