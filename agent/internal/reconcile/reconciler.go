@@ -231,16 +231,27 @@ func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData boo
 	if err != nil {
 		return err
 	}
-	if err := r.st.DeleteSpec(serverID); err != nil {
-		return err
-	}
-	r.clearFailure(serverID)
 	slug := ""
 	if sp != nil {
 		slug = sp.Slug
 	} else if c != nil {
 		slug = c.Labels[spec.LabelSlug]
 	}
+	if sp == nil && c == nil {
+		return nil // ya borrado: idempotente (el panel reenvía removed_ids al reconectar)
+	}
+	// Validar antes de tocar nada: un slug inválido no debe dejar el borrado a medias.
+	var target string
+	if deleteData {
+		target, err = r.dataPath(slug)
+		if err != nil {
+			return err
+		}
+	}
+	if err := r.st.DeleteSpec(serverID); err != nil {
+		return err
+	}
+	r.clearFailure(serverID)
 	if c != nil {
 		if err := r.eng.Stop(ctx, c.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			r.log.Warn("parada limpia fallida antes de borrar", "server", slug, "err", err)
@@ -250,10 +261,6 @@ func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData boo
 		}
 	}
 	if deleteData {
-		target, err := r.dataPath(slug)
-		if err != nil {
-			return err
-		}
 		if err := os.RemoveAll(target); err != nil {
 			return fmt.Errorf("borrar datos: %w", err)
 		}

@@ -430,3 +430,32 @@ func TestNeverDeletesUnknownManagedContainer(t *testing.T) {
 		t.Fatalf("no debe tocar contenedores sin spec: %v", fake.Calls)
 	}
 }
+
+func TestRemoveIsIdempotent(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	_ = r.Reconcile(ctx, "a")
+	for i := 0; i < 2; i++ {
+		if err := r.Remove(ctx, "a", true); err != nil {
+			t.Fatalf("Remove #%d: %v", i+1, err)
+		}
+	}
+}
+
+func TestRemoveInvalidSlugTouchesNothing(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	_ = r.Reconcile(ctx, "a")
+	put(t, st, "a", "..", 2, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	if err := r.Remove(ctx, "a", true); err == nil {
+		t.Fatal("esperaba error")
+	}
+	if sp, _ := st.GetSpec("a"); sp == nil {
+		t.Fatal("no debe borrar la spec")
+	}
+	if list, _ := fake.ListManaged(ctx); len(list) != 1 || calls(fake, "Remove") != 0 {
+		t.Fatalf("no debe borrar el contenedor: %v", fake.Calls)
+	}
+}
