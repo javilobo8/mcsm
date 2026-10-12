@@ -302,3 +302,23 @@ func TestFakeEmitEventNeverBlocks(t *testing.T) {
 		t.Fatal("EmitEvent se bloqueó")
 	}
 }
+
+func TestFakeSubscribed(t *testing.T) {
+	f := NewFake()
+	sub := f.Subscribed()
+	select {
+	case <-sub:
+		t.Fatal("sin suscriptores no está cerrado")
+	default:
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.Events(ctx)
+	select {
+	case <-sub:
+	default:
+		t.Fatal("con un suscriptor se cierra")
+	}
+	f.Events(ctx) // un segundo suscriptor no lo vuelve a cerrar (no hay pánico)
+	<-f.Subscribed()
+}

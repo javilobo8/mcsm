@@ -29,6 +29,7 @@ type Fake struct {
 	stats      map[string]Stats // lecturas fijadas con SetStats, por id de contenedor
 	logPipes   map[string][]*io.PipeWriter
 	subs       []*eventSub
+	subscribed chan struct{} // se cierra con el primer suscriptor de Events (Subscribed)
 }
 
 // eventSub es un suscriptor de Events.
@@ -269,6 +270,12 @@ func (f *Fake) Events(ctx context.Context) (<-chan Event, <-chan error) {
 	sub := &eventSub{ch: make(chan Event, eventBuffer), errs: make(chan error, 1)}
 	f.mu.Lock()
 	f.subs = append(f.subs, sub)
+	f.subscribedLocked() // crea el canal si hace falta
+	select {
+	case <-f.subscribed:
+	default:
+		close(f.subscribed)
+	}
 	f.mu.Unlock()
 	go func() {
 		<-ctx.Done()
@@ -283,6 +290,21 @@ func (f *Fake) Events(ctx context.Context) (<-chan Event, <-chan error) {
 		close(sub.ch)
 	}()
 	return sub.ch, sub.errs
+}
+
+// Subscribed devuelve un canal que se cierra en cuanto alguien se suscribe a Events: los tests
+// esperan a él antes de EmitEvent (que descarta los eventos sin suscriptores) sin reintentar.
+func (f *Fake) Subscribed() <-chan struct{} {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.subscribedLocked()
+}
+
+func (f *Fake) subscribedLocked() chan struct{} {
+	if f.subscribed == nil {
+		f.subscribed = make(chan struct{})
+	}
+	return f.subscribed
 }
 
 // EmitEvent entrega un evento a todos los suscriptores activos de Events. Nunca

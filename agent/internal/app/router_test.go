@@ -101,21 +101,14 @@ func TestRouterRecreatedAfterManualDelete(t *testing.T) {
 	first := waitRouter(t, s, func(o *mcsmv1.RouterObserved) bool { return o.State == "running" }).ContainerId
 	waitBackground(t, a)
 	go a.eventLoop(ctx)
-	_ = fake.Remove(ctx, first) // docker rm -f mcsm-router
-	ev := docker.Event{Action: "destroy", ContainerID: first, Labels: map[string]string{"mcsm.managed": "true", router.LabelRouter: "true"}}
-	deadline := time.After(3 * time.Second)
-	for {
-		fake.EmitEvent(ev) // el bucle de eventos puede no estar suscrito aún: se repite
-		select {
-		case e := <-s.ch:
-			if o := e.GetRouterObserved(); o != nil && o.State == "running" && o.ContainerId != first {
-				return
-			}
-		case <-time.After(10 * time.Millisecond):
-		case <-deadline:
-			t.Fatal("el evento destroy no recreó el router")
-		}
+	select { // el bucle de eventos ya está suscrito: el evento no se pierde
+	case <-fake.Subscribed():
+	case <-time.After(3 * time.Second):
+		t.Fatal("el bucle de eventos no se suscribió")
 	}
+	_ = fake.Remove(ctx, first) // docker rm -f mcsm-router
+	fake.EmitEvent(docker.Event{Action: "destroy", ContainerID: first, Labels: map[string]string{"mcsm.managed": "true", router.LabelRouter: "true"}})
+	waitRouter(t, s, func(o *mcsmv1.RouterObserved) bool { return o.State == "running" && o.ContainerId != first })
 }
 
 const routedSpecJSON = `{"imageTag":"java21","type":"PAPER","version":"1.21.4","memory":"2G","ports":{"game":25570},"restartPolicy":"unless-stopped","rconPassword":"abcdefgh","router":{"enabled":true,"hostname":"survival.lan"}}`
