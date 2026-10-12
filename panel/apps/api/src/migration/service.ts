@@ -15,7 +15,7 @@ import { toMigrationDto, type MigrationPatch, type MigrationRow } from "./repo.j
 import { JobReporter, type Reporter } from "./report.js";
 import {
   abortTarget, applyOnTarget, backupSource, confirmTarget, DEFAULT_TIMINGS, pushToPanel, receiveOnTarget, restartSource, retireSource,
-  startAndVerify, stopSource, stopTarget, type MigrationTimings, type StepDeps,
+  StagingBudget, startAndVerify, stopSource, stopTarget, type MigrationTimings, type StepDeps,
 } from "./steps.js";
 
 /** Cada cuánto se reintenta lo pendiente (deshacer, retirar el origen), además de tras cada Hello. */
@@ -46,6 +46,8 @@ export class MigrationService {
   /** Temporizadores de las esperas (los tests ponen ManualTimers). */
   timers: Timers = realTimers;
   timings: MigrationTimings = { ...DEFAULT_TIMINGS };
+  /** Bytes por escribir en el staging de las copias que se están subiendo (todas las migraciones, ver StagingBudget). */
+  private budget = new StagingBudget();
   /** Migraciones con trabajo en curso en este proceso (pasos o pendientes): nunca dos tareas a la vez sobre una. */
   private busy = new Set<string>();
   private tick: NodeJS.Timeout | undefined;
@@ -165,7 +167,7 @@ export class MigrationService {
   }
 
   private deps(report: Reporter): StepDeps {
-    return { app: this.app, timers: this.timers, timings: this.timings, report };
+    return { app: this.app, timers: this.timers, timings: this.timings, report, budget: this.budget };
   }
 
   /** Comprueba que se puede migrar y calcula slug, puerto y spec en el destino. Lanza HttpError. */

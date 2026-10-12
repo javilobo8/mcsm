@@ -10,7 +10,7 @@ import { newId } from "../lib/ids.js";
 import { toServerSpecMessage, type ObservedDto, type ServerRow } from "../servers/repo.js";
 import type { StagedFile } from "../transfers/staging.js";
 import { errorText, StepError } from "./errors.js";
-import { requiredSpace, retargetFilename } from "./propose.js";
+import { requiredSpace, retargetFilename, SPACE_MARGIN_MIN } from "./propose.js";
 import type { MigrationRow } from "./repo.js";
 import type { Reporter } from "./report.js";
 import { onAgentMessage, waitJob, waitObserved } from "./wait.js";
@@ -24,6 +24,8 @@ export interface MigrationTimings {
   receiveAttempts: number;
   /** Espacio libre en bytes del sistema de ficheros de dir. */
   freeSpace: (dir: string) => Promise<number>;
+  /** Cada cuántos bytes recibidos se vuelve a mirar el espacio libre del panel mientras se guarda la copia. */
+  spaceCheckEveryBytes: number;
 }
 
 export const DEFAULT_TIMINGS: MigrationTimings = {
@@ -34,9 +36,37 @@ export const DEFAULT_TIMINGS: MigrationTimings = {
     const s = await statfs(dir);
     return Number(s.bavail) * Number(s.bsize);
   },
+  spaceCheckEveryBytes: 64 * 1024 * 1024,
 };
 
-export interface StepDeps { app: FastifyInstance; timers: Timers; timings: MigrationTimings; report: Reporter }
+/**
+ * Lo que aún falta por escribir en el staging del panel de las copias que se están subiendo (todas las migraciones del
+ * proceso). La comprobación previa de cada subida lo descuenta y las comprobaciones durante la escritura lo exigen libre:
+ * dos migraciones grandes a la vez no llenan el disco del panel (el mismo de su SQLite). Las comprobaciones previas van
+ * de una en una para que cada una vea lo que reservó la anterior.
+ */
+export class StagingBudget {
+  /** Bytes por escribir de las subidas en curso. */
+  pendingBytes = 0;
+  private turn: Promise<void> = Promise.resolve();
+
+  /** Ejecuta `check(pendingBytes)` en exclusiva y, si no lanza, reserva `bytes`. Devuelve cómo ir descontando. */
+  async reserve(bytes: number, check: (pending: number) => Promise<void>): Promise<{ wrote(n: number): void; release(): void }> {
+    const run = this.turn.then(async () => {
+      await check(this.pendingBytes);
+      this.pendingBytes += bytes;
+    });
+    this.turn = run.catch(() => {});
+    await run;
+    let left = bytes;
+    return {
+      wrote: (n) => { const k = Math.min(n, left); left -= k; this.pendingBytes -= k; },
+      release: () => { this.pendingBytes -= left; left = 0; },
+    };
+  }
+}
+
+export interface StepDeps { app: FastifyInstance; timers: Timers; timings: MigrationTimings; report: Reporter; budget: StagingBudget }
 export interface BackupMade { filename: string; sizeBytes: number; sha256: string }
 export interface Pushed { staged: StagedFile; dataBytes: number }
 
@@ -114,7 +144,7 @@ export async function backupSource(d: StepDeps, m: MigrationRow): Promise<Backup
   });
   const wait = waitJob(app, jobId, {
     idleMs: d.timings.jobIdleMs, timers: d.timers, idleMessage: "La copia previa lleva demasiado tiempo sin avanzar",
-    onProgress: (j) => d.report.within(2, j.progress / 100, j.message || "copiando"),
+    onProgress: (j) => safely(() => d.report.within(2, j.progress / 100, j.message || "copiando")),
   });
   try {
     try {
@@ -146,10 +176,15 @@ export async function backupSource(d: StepDeps, m: MigrationRow): Promise<Backup
  */
 export async function pushToPanel(d: StepDeps, m: MigrationRow, made: BackupMade): Promise<Pushed> {
   const { app } = d;
-  const free = await d.timings.freeSpace(app.config.dataDir).catch(() => null);
-  if (free !== null && free < requiredSpace(made.sizeBytes)) {
-    throw new StepError(`No hay espacio en el panel para la copia: hacen falta ${fmtBytes(requiredSpace(made.sizeBytes))} y quedan ${fmtBytes(free)} libres`);
-  }
+  const dir = app.config.dataDir;
+  const need = requiredSpace(made.sizeBytes);
+  const budget = await d.budget.reserve(made.sizeBytes, async (pending) => {
+    const free = await d.timings.freeSpace(dir).catch(() => null);
+    if (free !== null && free - pending < need) {
+      const others = pending > 0 ? ` (${fmtBytes(pending)} los reservan otras migraciones que están subiendo su copia)` : "";
+      throw new StepError(`No hay espacio en el panel para la copia: hacen falta ${fmtBytes(need)} y quedan ${fmtBytes(Math.max(free - pending, 0))} libres${others}`);
+    }
+  });
   const conn = connOf(app, m.source_node_id);
   const t = app.transfers.inbound(m.source_node_id);
   const req = conn.request({ case: "backupPush", value: { serverId: m.server_id, filename: made.filename, transferId: t.id } }, NO_DEADLINE_MS);
@@ -165,12 +200,28 @@ export async function pushToPanel(d: StepDeps, m: MigrationRow, made: BackupMade
     }
     const hash = createHash("sha256");
     let received = 0;
+    let nextCheck = d.timings.spaceCheckEveryBytes;
+    const progress = throttled((detail: string, fraction: number) => d.report.within(3, fraction, detail));
     const meter = new Transform({
       transform(chunk: Buffer, _enc, cb) {
         hash.update(chunk);
         received += chunk.length;
-        d.report.within(3, received / Math.max(made.sizeBytes, 1), `subiendo (${fmtBytes(received)} de ${fmtBytes(made.sizeBytes)})`);
-        cb(null, chunk);
+        budget.wrote(chunk.length);
+        progress(received, `subiendo (${fmtBytes(received)} de ${fmtBytes(made.sizeBytes)})`, received / Math.max(made.sizeBytes, 1));
+        if (received < nextCheck) {
+          cb(null, chunk);
+          return;
+        }
+        // Cada N MiB: lo que falta de todas las subidas en curso más el margen debe seguir cabiendo (spec: «vigila
+        // durante la escritura»); el disco del panel es también el de su SQLite.
+        nextCheck = received + d.timings.spaceCheckEveryBytes;
+        d.timings.freeSpace(dir).then((free) => {
+          if (free < d.budget.pendingBytes + SPACE_MARGIN_MIN) {
+            cb(new StepError(`El disco del panel se está llenando (quedan ${fmtBytes(free)} libres): se corta la copia para no llenarlo`));
+          } else {
+            cb(null, chunk);
+          }
+        }, () => cb(null, chunk));
       },
     });
     const guard = idleGuard(IDLE_TIMEOUT_MS, () => {
@@ -191,7 +242,37 @@ export async function pushToPanel(d: StepDeps, m: MigrationRow, made: BackupMade
     t.cancel("migración fallida");
     if (staged) await app.staging.remove(staged).catch(() => {});
     throw e;
+  } finally {
+    budget.release();
   }
+}
+
+/** Avances de la subida: como mucho uno cada PROGRESS_EVERY_BYTES o PROGRESS_EVERY_MS (y el primero). */
+const PROGRESS_EVERY_BYTES = 8 * 1024 * 1024;
+const PROGRESS_EVERY_MS = 2_000;
+
+/**
+ * Avance de un paso desde un flujo (Transform) o un manejador de eventos: acotado (m7: cada avance es una escritura en
+ * SQLite y un evento por WebSocket) y sin lanzar nunca. Una excepción dentro de transform() o de un emisor tumbaría el
+ * proceso o cortaría a los demás oyentes; con el disco del panel lleno, jobs.update lanza SQLITE_FULL.
+ */
+function throttled(report: (detail: string, fraction: number) => void): (bytes: number, detail: string, fraction: number) => void {
+  let lastBytes = -Infinity;
+  let lastAt = -Infinity;
+  return (bytes, detail, fraction) => {
+    const now = Date.now();
+    if (bytes - lastBytes < PROGRESS_EVERY_BYTES && now - lastAt < PROGRESS_EVERY_MS) return;
+    lastBytes = bytes;
+    lastAt = now;
+    safely(() => report(detail, fraction));
+  };
+}
+
+/** Ejecuta un aviso de avance sin dejar escapar excepciones (ver throttled). */
+function safely(fn: () => void): void {
+  try {
+    fn();
+  } catch { /* el avance es informativo: un fallo al guardarlo no corta la migración */ }
 }
 
 /**
@@ -227,7 +308,7 @@ export async function receiveOnTarget(d: StepDeps, m: MigrationRow, pushed: Push
     out.done.catch(() => {});
     const wait = waitJob(app, jobId, {
       idleMs: d.timings.jobIdleMs, timers: d.timers, idleMessage: "La recepción en el destino lleva demasiado tiempo sin avanzar",
-      onProgress: (j) => d.report.within(4, j.progress / 100, j.message || "recibiendo"),
+      onProgress: (j) => safely(() => d.report.within(4, j.progress / 100, j.message || "recibiendo")),
     });
     try {
       try {
@@ -277,7 +358,7 @@ export async function startAndVerify(d: StepDeps, m: MigrationRow): Promise<Obse
   const conn = connOf(d.app, m.target_node_id);
   const w = waitObserved(d.app.agents, m.target_node_id, m.server_id, {
     timeoutMs: d.timings.verifyTimeoutMs, timers: d.timers,
-    onObserved: (o) => d.report.within(6, 0.5, `estado ${o.state}${o.health ? `, healthcheck ${o.health}` : ""}`),
+    onObserved: (o) => safely(() => d.report.within(6, 0.5, `estado ${o.state}${o.health ? `, healthcheck ${o.health}` : ""}`)),
   });
   try {
     await conn.request({ case: "powerAction", value: { serverId: m.server_id, action: PowerActionType.START } }, 90_000);

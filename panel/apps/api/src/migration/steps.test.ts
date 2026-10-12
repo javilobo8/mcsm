@@ -13,7 +13,8 @@ import { newId } from "../lib/ids.js";
 import { FakeNode, sha256 } from "../../test/fake-node.js";
 import { ManualTimers } from "../../test/manual-timers.js";
 import type { MigrationRow } from "./repo.js";
-import { abortTarget, DEFAULT_TIMINGS, pushToPanel, receiveOnTarget, startAndVerify, stagingId, type StepDeps } from "./steps.js";
+import { requiredSpace } from "./propose.js";
+import { abortTarget, DEFAULT_TIMINGS, pushToPanel, receiveOnTarget, startAndVerify, stagingId, StagingBudget, type StepDeps } from "./steps.js";
 import { waitJob } from "./wait.js";
 
 let app: FastifyInstance; let url: string; let cookie: string; let dataDir: string;
@@ -48,7 +49,7 @@ async function setup(): Promise<{ a: FakeNode; b: FakeNode; m: MigrationRow; d: 
   });
   const timers = new ManualTimers();
   const d: StepDeps = {
-    app, timers, timings: { ...DEFAULT_TIMINGS, freeSpace: async () => 1e12 },
+    app, timers, timings: { ...DEFAULT_TIMINGS, freeSpace: async () => 1e12 }, budget: new StagingBudget(),
     report: { step: () => {}, within: () => {}, message: () => {}, log: () => {} },
   };
   return { a, b, m, d, timers };
@@ -87,6 +88,60 @@ describe("pushToPanel", () => {
     d.timings = { ...d.timings, freeSpace: async () => 1024 };
     await expect(pushToPanel(d, m, { filename: NAME, sizeBytes: 10, sha256: "ab".repeat(32) })).rejects.toThrow(/espacio en el panel/);
     await a.nothingFor(200);
+  });
+});
+
+describe("pushToPanel: espacio del panel (M3) y avances (m7)", () => {
+  async function push(a: FakeNode, payload: Buffer, sent: Buffer = payload) {
+    const msg = await a.next("backupPush");
+    if (msg.body.case !== "backupPush") throw new Error();
+    const status = await a.put(msg.body.value.transferId, sent).catch(() => 0);
+    if (status === 204) {
+      a.send({ id: msg.id, body: { case: "backupPushResult", value: { sizeBytes: BigInt(payload.length), sha256: sha256(payload), dataBytes: 0n } } });
+    } else {
+      a.fail(msg, "transfer_failed", `PUT ${status}`); // como el agente cuando el panel corta la subida
+    }
+    return status;
+  }
+
+  it("la comprobación previa descuenta lo que ya se está subiendo de otras migraciones", async () => {
+    const { a, m, d } = await setup();
+    const payload = randomBytes(50_000);
+    const made = { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) };
+    d.timings = { ...d.timings, freeSpace: async () => requiredSpace(payload.length) + payload.length / 2 };
+    const first = pushToPanel(d, m, made);
+    const second = pushToPanel(d, { ...m, id: newId() }, made); // otra migración a la vez
+    await expect(second).rejects.toThrow(/espacio en el panel.*otras migraciones/);
+    await push(a, payload);
+    await expect(first).resolves.toMatchObject({ dataBytes: 0 });
+    expect(d.budget.pendingBytes).toBe(0);
+    await a.nothingFor(100); // la segunda no pidió nada al origen
+  });
+
+  it("vuelve a mirar el espacio mientras escribe y corta si el disco del panel se llena", async () => {
+    const { a, m, d } = await setup();
+    const payload = randomBytes(600_000);
+    let calls = 0;
+    d.timings = { ...d.timings, spaceCheckEveryBytes: 128 * 1024, freeSpace: async () => (++calls === 1 ? 1e12 : 1024) };
+    const pushing = pushToPanel(d, m, { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) });
+    pushing.catch(() => {});
+    await push(a, payload);
+    await expect(pushing).rejects.toThrow(/disco del panel se está llenando/);
+    expect(calls).toBeGreaterThan(1);
+    expect(stagingFiles()).toEqual([]);
+    expect(d.budget.pendingBytes).toBe(0);
+  });
+
+  it("un avance que falla al guardarse (p. ej. SQLITE_FULL) no tumba la subida; los avances van acotados", async () => {
+    const { a, m, d } = await setup();
+    const payload = randomBytes(3 * 1024 * 1024);
+    let within = 0;
+    d.report = { ...d.report, within: () => { within++; throw new Error("database or disk is full"); } };
+    const pushing = pushToPanel(d, m, { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) });
+    expect(await push(a, payload)).toBe(204);
+    await expect(pushing).resolves.toMatchObject({ dataBytes: 0 });
+    expect(within).toBeGreaterThan(0);
+    expect(within).toBeLessThanOrEqual(3); // como mucho uno cada 8 MiB o cada 2 s (y el inicial)
   });
 });
 
