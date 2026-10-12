@@ -8,7 +8,8 @@ const AUTH_CLOSE_CODES = new Set([1008, 4401]);
 // Topics del panel: "servers", "nodes" y "server:<id>:logs".
 export function topicOf(msg: ServerMessage): string | null {
   switch (msg.type) {
-    case "node": return "nodes";
+    case "node":
+    case "node_metrics": return "nodes";
     case "observed": return "servers";
     case "log":
     case "log_reset":

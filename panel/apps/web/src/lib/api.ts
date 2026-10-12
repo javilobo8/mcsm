@@ -75,4 +75,5 @@ export type ServerMessage =
   | { type: "log_reset"; serverId: string }
   | { type: "log_dropped"; serverId: string; count: number }
   | { type: "stream_closed"; serverId: string; reason: string }
+  | { type: "node_metrics"; nodeId: string; sample: import("@mcsm/shared").NodeLiveSample }
   | { type: "error"; message: string };
