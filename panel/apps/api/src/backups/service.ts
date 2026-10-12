@@ -1,12 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { BackupTrigger, JobStatus, type BackupCreated, type BackupDeleted, type BackupInfo, type BackupInventory, type Envelope, type JobProgress } from "@mcsm/proto";
-import { specSchema, type Spec } from "@mcsm/shared";
 import { AgentError, type AgentConn, type Body } from "../agents/hub.js";
 import { AgentErrorCode } from "../agents/error-codes.js";
 import type { JobDto, JobState } from "../jobs/repo.js";
 import { agentErrorToHttp } from "../lib/http.js";
 import { nowIso } from "../lib/time.js";
-import { toServerDto, type ServerRow } from "../servers/repo.js";
+import type { ServerRow } from "../servers/repo.js";
 import { HttpError } from "../servers/service.js";
 import { BackupsRepo, toBackupDto, type BackupDto, type BackupInput, type BackupTriggerName } from "./repo.js";
 
@@ -130,14 +129,13 @@ export class BackupService {
   /** Cambia `spec.backups` (programación y retención) y la envía al agente como una spec nueva. El cuerpo REEMPLAZA
    * `backups` entero (lo omitido vuelve a sus valores por defecto). No es acción inmediata: con el nodo desconectado
    * se guarda y versiona sin 409, y la spec llega en el próximo SyncSpecs. */
-  async updateSchedule(serverId: string, input: unknown) {
-    const row = this.requireServer(serverId);
-    const current = JSON.parse(row.spec) as Spec;
-    const parsed = specSchema.safeParse({ ...current, backups: input });
-    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Programación de copias inválida");
-    const updated = this.app.servers.updateSpec(serverId, parsed.data);
-    void this.app.serversService.push(updated);
-    return toServerDto(updated, { includeSecrets: true });
+  /**
+   * Sustituye la sección `backups` con el PATCH de spec del Plan 3 (merge de primer nivel): mismos
+   * topes, errores de zod en castellano con la ruta del campo, comprobación de puertos y, si nada
+   * cambia, sin versión nueva ni ApplySpec.
+   */
+  async updateSchedule(serverId: string, input: Record<string, unknown>) {
+    return this.app.serversService.patch(serverId, { spec: { backups: input } });
   }
 
   // Internos

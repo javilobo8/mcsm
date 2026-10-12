@@ -31,7 +31,7 @@ async function backupRoutesInner(app: FastifyInstance) {
 
   app.patch<{ Params: { id: string } }>("/api/servers/:id/backups/schedule", async (req) => {
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) throw new HttpError(400, "Falta la programación de copias");
-    return svc.updateSchedule(req.params.id, req.body);
+    return svc.updateSchedule(req.params.id, req.body as Record<string, unknown>);
   });
 }
 

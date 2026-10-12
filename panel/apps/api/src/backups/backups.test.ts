@@ -369,6 +369,21 @@ describe("acciones sobre copias", () => {
     expect(res.json()).toMatchObject({ specVersion: 3, spec: { memory: "3G", backups: { cron: "0 */6 * * *" } } });
     agent.close();
   });
+  it("la programación pasa por el PATCH de la spec: sin cambios no versiona y los errores llevan la ruta del campo", async () => {
+    const { s } = await setup();
+    const patch = (payload: object) => app.inject({ method: "PATCH", url: `/api/servers/${s.id}/backups/schedule`, headers: { cookie }, payload });
+    let res = await patch({ enabled: true, cron: "0 4 * * *" });
+    expect(res.json()).toMatchObject({ specVersion: 2 });
+    res = await patch({ enabled: true, cron: "0 4 * * *" }); // los mismos valores (con sus defectos): nada que aplicar
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ specVersion: 2, spec: { backups: { enabled: true, cron: "0 4 * * *" } } });
+    expect(app.servers.get(s.id)!.spec_version).toBe(2);
+    res = await patch({ enabled: true, cron: "0 4 * * MON" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/^backups\.cron: /);
+    expect(app.servers.get(s.id)!.spec_version).toBe(2);
+  });
+
   it("PATCH de la spec: backups null borra la programación y llega al agente sin la sección; ausente se conserva", async () => {
     const { nodeToken, s } = await setup();
     const patch = (u: string, payload: object) => app.inject({ method: "PATCH", url: u, headers: { cookie }, payload });
