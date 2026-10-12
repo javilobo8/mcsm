@@ -49,6 +49,11 @@ message Envelope {
     FilesUpload files_upload = 81;
     // ── plan-6 ──
     // ── plan-7 ──
+    BackupPush backup_push = 100;
+    BackupPushResult backup_push_result = 101;
+    MigrateReceive migrate_receive = 102;
+    MigrateAbort migrate_abort = 103;
+    MigrateRetire migrate_retire = 104;
     // ── plan-8 ──
     // ── plan-9 ──
   }
@@ -453,5 +458,67 @@ message FilesUpload {
 }
 // ── plan-6 ──
 // ── plan-7 ──
+// Migración entre nodos (spec §7 MigrationService). La orquesta el panel; el agente ejecuta
+// pasos idempotentes sobre su disco y su Docker. Origen: BackupPush y MigrateRetire. Destino:
+// MigrateReceive y MigrateAbort.
+
+// Panel → agente (origen). Sube una copia .tar.zst de <slug>/backups/ al panel con
+// PUT /agent/transfer/{transfer_id}. Respuesta: BackupPushResult cuando el panel la ha recibido
+// entera, o Error (unknown_server | invalid_request | not_found | busy | transfer_failed |
+// backup_failed: la copia no tiene sha256 en su .json).
+message BackupPush {
+  string server_id = 1;
+  string filename = 2;
+  string transfer_id = 3;
+}
+
+// Metadatos de la copia enviada, de su .json: el panel compara tamaño y sha256 con lo que ha
+// recibido y con el BackupCreated del job.
+message BackupPushResult {
+  uint64 size_bytes = 1;
+  string sha256 = 2;
+  uint64 data_bytes = 3; // contenido sin comprimir; 0 si la copia no lo anotó
+}
+
+// Panel → agente (destino). Job (type "migrate_in"): descarga la copia con
+// GET /agent/transfer/{transfer_id} a <DATA_ROOT>/<slug>/backups/<filename>, comprueba que
+// llegan size_bytes bytes con ese sha256 y la restaura como <DATA_ROOT>/<slug>/data.
+// <DATA_ROOT>/<slug> no puede existir: lo crea con el marcador .mcsm-migration (contiene
+// migration_id) y, si algo falla, lo borra entero. El servidor no puede estar en este nodo.
+// Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error (invalid_request | exists |
+// busy | too_large: no cabe con el margen). Un job_id repetido reenvía su estado.
+message MigrateReceive {
+  string server_id = 1;
+  string slug = 2; // slug en el destino
+  string job_id = 3;
+  string migration_id = 4;
+  string transfer_id = 5;
+  string filename = 6; // <slug>-<ts>-<versión>.tar.zst, con el slug del destino
+  uint64 size_bytes = 7;
+  string sha256 = 8;
+  uint64 data_bytes = 9; // 0 = desconocido (se reserva el tamaño comprimido)
+}
+
+// Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
+// olvida la spec del servidor (si la tiene) y borra su contenedor, y borra <DATA_ROOT>/<slug>
+// solo si lleva el marcador de migration_id. Idempotente. Respuesta: Ack o Error (busy: hay una
+// recepción en curso o el contenedor aún no se pudo borrar; el panel reintenta).
+message MigrateAbort {
+  string server_id = 1;
+  string slug = 2;
+  string migration_id = 3;
+}
+
+// Panel → agente (origen), tras confirmar la migración. Para el contenedor si sigue en marcha,
+// aparta <DATA_ROOT>/<slug> (datos y copias) a <DATA_ROOT>/<slug>.migrated-<ts> (con
+// delete_data, lo borra una vez borrado el contenedor), olvida la spec y borra el contenedor.
+// Idempotente.
+// Respuesta: Ack o Error (invalid_request: el servidor tiene otro slug aquí; busy: reintentar).
+message MigrateRetire {
+  string server_id = 1;
+  string slug = 2;
+  string migration_id = 3;
+  bool delete_data = 4;
+}
 // ── plan-8 ──
 // ── plan-9 ──

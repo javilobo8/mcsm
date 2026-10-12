@@ -275,6 +275,11 @@ type Envelope struct {
 	//	*Envelope_FilesDelete
 	//	*Envelope_FilesDownload
 	//	*Envelope_FilesUpload
+	//	*Envelope_BackupPush
+	//	*Envelope_BackupPushResult
+	//	*Envelope_MigrateReceive
+	//	*Envelope_MigrateAbort
+	//	*Envelope_MigrateRetire
 	Body          isEnvelope_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -646,6 +651,51 @@ func (x *Envelope) GetFilesUpload() *FilesUpload {
 	return nil
 }
 
+func (x *Envelope) GetBackupPush() *BackupPush {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupPush); ok {
+			return x.BackupPush
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetBackupPushResult() *BackupPushResult {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupPushResult); ok {
+			return x.BackupPushResult
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetMigrateReceive() *MigrateReceive {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_MigrateReceive); ok {
+			return x.MigrateReceive
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetMigrateAbort() *MigrateAbort {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_MigrateAbort); ok {
+			return x.MigrateAbort
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetMigrateRetire() *MigrateRetire {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_MigrateRetire); ok {
+			return x.MigrateRetire
+		}
+	}
+	return nil
+}
+
 type isEnvelope_Body interface {
 	isEnvelope_Body()
 }
@@ -794,6 +844,28 @@ type Envelope_FilesUpload struct {
 	FilesUpload *FilesUpload `protobuf:"bytes,81,opt,name=files_upload,json=filesUpload,proto3,oneof"`
 }
 
+type Envelope_BackupPush struct {
+	// ── plan-6 ──
+	// ── plan-7 ──
+	BackupPush *BackupPush `protobuf:"bytes,100,opt,name=backup_push,json=backupPush,proto3,oneof"`
+}
+
+type Envelope_BackupPushResult struct {
+	BackupPushResult *BackupPushResult `protobuf:"bytes,101,opt,name=backup_push_result,json=backupPushResult,proto3,oneof"`
+}
+
+type Envelope_MigrateReceive struct {
+	MigrateReceive *MigrateReceive `protobuf:"bytes,102,opt,name=migrate_receive,json=migrateReceive,proto3,oneof"`
+}
+
+type Envelope_MigrateAbort struct {
+	MigrateAbort *MigrateAbort `protobuf:"bytes,103,opt,name=migrate_abort,json=migrateAbort,proto3,oneof"`
+}
+
+type Envelope_MigrateRetire struct {
+	MigrateRetire *MigrateRetire `protobuf:"bytes,104,opt,name=migrate_retire,json=migrateRetire,proto3,oneof"`
+}
+
 func (*Envelope_Hello) isEnvelope_Body() {}
 
 func (*Envelope_HelloAck) isEnvelope_Body() {}
@@ -863,6 +935,16 @@ func (*Envelope_FilesDelete) isEnvelope_Body() {}
 func (*Envelope_FilesDownload) isEnvelope_Body() {}
 
 func (*Envelope_FilesUpload) isEnvelope_Body() {}
+
+func (*Envelope_BackupPush) isEnvelope_Body() {}
+
+func (*Envelope_BackupPushResult) isEnvelope_Body() {}
+
+func (*Envelope_MigrateReceive) isEnvelope_Body() {}
+
+func (*Envelope_MigrateAbort) isEnvelope_Body() {}
+
+func (*Envelope_MigrateRetire) isEnvelope_Body() {}
 
 type HostInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3702,11 +3784,389 @@ func (x *FilesUpload) GetSize() int64 {
 	return 0
 }
 
+// Panel → agente (origen). Sube una copia .tar.zst de <slug>/backups/ al panel con
+// PUT /agent/transfer/{transfer_id}. Respuesta: BackupPushResult cuando el panel la ha recibido
+// entera, o Error (unknown_server | invalid_request | not_found | busy | transfer_failed |
+// backup_failed: la copia no tiene sha256 en su .json).
+type BackupPush struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	TransferId    string                 `protobuf:"bytes,3,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupPush) Reset() {
+	*x = BackupPush{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupPush) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupPush) ProtoMessage() {}
+
+func (x *BackupPush) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupPush.ProtoReflect.Descriptor instead.
+func (*BackupPush) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *BackupPush) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *BackupPush) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *BackupPush) GetTransferId() string {
+	if x != nil {
+		return x.TransferId
+	}
+	return ""
+}
+
+// Metadatos de la copia enviada, de su .json: el panel compara tamaño y sha256 con lo que ha
+// recibido y con el BackupCreated del job.
+type BackupPushResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SizeBytes     uint64                 `protobuf:"varint,1,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	Sha256        string                 `protobuf:"bytes,2,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	DataBytes     uint64                 `protobuf:"varint,3,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"` // contenido sin comprimir; 0 si la copia no lo anotó
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupPushResult) Reset() {
+	*x = BackupPushResult{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupPushResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupPushResult) ProtoMessage() {}
+
+func (x *BackupPushResult) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupPushResult.ProtoReflect.Descriptor instead.
+func (*BackupPushResult) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *BackupPushResult) GetSizeBytes() uint64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *BackupPushResult) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+func (x *BackupPushResult) GetDataBytes() uint64 {
+	if x != nil {
+		return x.DataBytes
+	}
+	return 0
+}
+
+// Panel → agente (destino). Job (type "migrate_in"): descarga la copia con
+// GET /agent/transfer/{transfer_id} a <DATA_ROOT>/<slug>/backups/<filename>, comprueba que
+// llegan size_bytes bytes con ese sha256 y la restaura como <DATA_ROOT>/<slug>/data.
+// <DATA_ROOT>/<slug> no puede existir: lo crea con el marcador .mcsm-migration (contiene
+// migration_id) y, si algo falla, lo borra entero. El servidor no puede estar en este nodo.
+// Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error (invalid_request | exists |
+// busy | too_large: no cabe con el margen). Un job_id repetido reenvía su estado.
+type MigrateReceive struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Slug          string                 `protobuf:"bytes,2,opt,name=slug,proto3" json:"slug,omitempty"` // slug en el destino
+	JobId         string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	MigrationId   string                 `protobuf:"bytes,4,opt,name=migration_id,json=migrationId,proto3" json:"migration_id,omitempty"`
+	TransferId    string                 `protobuf:"bytes,5,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
+	Filename      string                 `protobuf:"bytes,6,opt,name=filename,proto3" json:"filename,omitempty"` // <slug>-<ts>-<versión>.tar.zst, con el slug del destino
+	SizeBytes     uint64                 `protobuf:"varint,7,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	Sha256        string                 `protobuf:"bytes,8,opt,name=sha256,proto3" json:"sha256,omitempty"`
+	DataBytes     uint64                 `protobuf:"varint,9,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"` // 0 = desconocido (se reserva el tamaño comprimido)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MigrateReceive) Reset() {
+	*x = MigrateReceive{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MigrateReceive) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MigrateReceive) ProtoMessage() {}
+
+func (x *MigrateReceive) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MigrateReceive.ProtoReflect.Descriptor instead.
+func (*MigrateReceive) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *MigrateReceive) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *MigrateReceive) GetSlug() string {
+	if x != nil {
+		return x.Slug
+	}
+	return ""
+}
+
+func (x *MigrateReceive) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *MigrateReceive) GetMigrationId() string {
+	if x != nil {
+		return x.MigrationId
+	}
+	return ""
+}
+
+func (x *MigrateReceive) GetTransferId() string {
+	if x != nil {
+		return x.TransferId
+	}
+	return ""
+}
+
+func (x *MigrateReceive) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *MigrateReceive) GetSizeBytes() uint64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *MigrateReceive) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+func (x *MigrateReceive) GetDataBytes() uint64 {
+	if x != nil {
+		return x.DataBytes
+	}
+	return 0
+}
+
+// Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
+// olvida la spec del servidor (si la tiene) y borra su contenedor, y borra <DATA_ROOT>/<slug>
+// solo si lleva el marcador de migration_id. Idempotente. Respuesta: Ack o Error (busy: hay una
+// recepción en curso o el contenedor aún no se pudo borrar; el panel reintenta).
+type MigrateAbort struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Slug          string                 `protobuf:"bytes,2,opt,name=slug,proto3" json:"slug,omitempty"`
+	MigrationId   string                 `protobuf:"bytes,3,opt,name=migration_id,json=migrationId,proto3" json:"migration_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MigrateAbort) Reset() {
+	*x = MigrateAbort{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MigrateAbort) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MigrateAbort) ProtoMessage() {}
+
+func (x *MigrateAbort) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MigrateAbort.ProtoReflect.Descriptor instead.
+func (*MigrateAbort) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *MigrateAbort) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *MigrateAbort) GetSlug() string {
+	if x != nil {
+		return x.Slug
+	}
+	return ""
+}
+
+func (x *MigrateAbort) GetMigrationId() string {
+	if x != nil {
+		return x.MigrationId
+	}
+	return ""
+}
+
+// Panel → agente (origen), tras confirmar la migración. Para el contenedor si sigue en marcha,
+// aparta <DATA_ROOT>/<slug> (datos y copias) a <DATA_ROOT>/<slug>.migrated-<ts> (con
+// delete_data, lo borra una vez borrado el contenedor), olvida la spec y borra el contenedor.
+// Idempotente.
+// Respuesta: Ack o Error (invalid_request: el servidor tiene otro slug aquí; busy: reintentar).
+type MigrateRetire struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Slug          string                 `protobuf:"bytes,2,opt,name=slug,proto3" json:"slug,omitempty"`
+	MigrationId   string                 `protobuf:"bytes,3,opt,name=migration_id,json=migrationId,proto3" json:"migration_id,omitempty"`
+	DeleteData    bool                   `protobuf:"varint,4,opt,name=delete_data,json=deleteData,proto3" json:"delete_data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MigrateRetire) Reset() {
+	*x = MigrateRetire{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MigrateRetire) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MigrateRetire) ProtoMessage() {}
+
+func (x *MigrateRetire) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MigrateRetire.ProtoReflect.Descriptor instead.
+func (*MigrateRetire) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *MigrateRetire) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *MigrateRetire) GetSlug() string {
+	if x != nil {
+		return x.Slug
+	}
+	return ""
+}
+
+func (x *MigrateRetire) GetMigrationId() string {
+	if x != nil {
+		return x.MigrationId
+	}
+	return ""
+}
+
+func (x *MigrateRetire) GetDeleteData() bool {
+	if x != nil {
+		return x.DeleteData
+	}
+	return false
+}
+
 var File_mcsm_v1_agent_proto protoreflect.FileDescriptor
 
 const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xb5\x10\n" +
+	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xfb\x12\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tstream_id\x18\x02 \x01(\x04R\bstreamId\x12&\n" +
@@ -3754,7 +4214,13 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\ffiles_rename\x18N \x01(\v2\x14.mcsm.v1.FilesRenameH\x00R\vfilesRename\x129\n" +
 	"\ffiles_delete\x18O \x01(\v2\x14.mcsm.v1.FilesDeleteH\x00R\vfilesDelete\x12?\n" +
 	"\x0efiles_download\x18P \x01(\v2\x16.mcsm.v1.FilesDownloadH\x00R\rfilesDownload\x129\n" +
-	"\ffiles_upload\x18Q \x01(\v2\x14.mcsm.v1.FilesUploadH\x00R\vfilesUploadB\x06\n" +
+	"\ffiles_upload\x18Q \x01(\v2\x14.mcsm.v1.FilesUploadH\x00R\vfilesUpload\x126\n" +
+	"\vbackup_push\x18d \x01(\v2\x13.mcsm.v1.BackupPushH\x00R\n" +
+	"backupPush\x12I\n" +
+	"\x12backup_push_result\x18e \x01(\v2\x19.mcsm.v1.BackupPushResultH\x00R\x10backupPushResult\x12B\n" +
+	"\x0fmigrate_receive\x18f \x01(\v2\x17.mcsm.v1.MigrateReceiveH\x00R\x0emigrateReceive\x12<\n" +
+	"\rmigrate_abort\x18g \x01(\v2\x15.mcsm.v1.MigrateAbortH\x00R\fmigrateAbort\x12?\n" +
+	"\x0emigrate_retire\x18h \x01(\v2\x16.mcsm.v1.MigrateRetireH\x00R\rmigrateRetireB\x06\n" +
 	"\x04body\"\x86\x01\n" +
 	"\bHostInfo\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x12\n" +
@@ -3974,7 +4440,42 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x1f\n" +
 	"\vtransfer_id\x18\x03 \x01(\tR\n" +
 	"transferId\x12\x12\n" +
-	"\x04size\x18\x04 \x01(\x03R\x04size*c\n" +
+	"\x04size\x18\x04 \x01(\x03R\x04size\"f\n" +
+	"\n" +
+	"BackupPush\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x1f\n" +
+	"\vtransfer_id\x18\x03 \x01(\tR\n" +
+	"transferId\"h\n" +
+	"\x10BackupPushResult\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x01 \x01(\x04R\tsizeBytes\x12\x16\n" +
+	"\x06sha256\x18\x02 \x01(\tR\x06sha256\x12\x1d\n" +
+	"\n" +
+	"data_bytes\x18\x03 \x01(\x04R\tdataBytes\"\x8e\x02\n" +
+	"\x0eMigrateReceive\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04slug\x18\x02 \x01(\tR\x04slug\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\x12!\n" +
+	"\fmigration_id\x18\x04 \x01(\tR\vmigrationId\x12\x1f\n" +
+	"\vtransfer_id\x18\x05 \x01(\tR\n" +
+	"transferId\x12\x1a\n" +
+	"\bfilename\x18\x06 \x01(\tR\bfilename\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\a \x01(\x04R\tsizeBytes\x12\x16\n" +
+	"\x06sha256\x18\b \x01(\tR\x06sha256\x12\x1d\n" +
+	"\n" +
+	"data_bytes\x18\t \x01(\x04R\tdataBytes\"b\n" +
+	"\fMigrateAbort\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04slug\x18\x02 \x01(\tR\x04slug\x12!\n" +
+	"\fmigration_id\x18\x03 \x01(\tR\vmigrationId\"\x84\x01\n" +
+	"\rMigrateRetire\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04slug\x18\x02 \x01(\tR\x04slug\x12!\n" +
+	"\fmigration_id\x18\x03 \x01(\tR\vmigrationId\x12\x1f\n" +
+	"\vdelete_data\x18\x04 \x01(\bR\n" +
+	"deleteData*c\n" +
 	"\fDesiredState\x12\x1d\n" +
 	"\x19DESIRED_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15DESIRED_STATE_RUNNING\x10\x01\x12\x19\n" +
@@ -4012,7 +4513,7 @@ func file_mcsm_v1_agent_proto_rawDescGZIP() []byte {
 }
 
 var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
+var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
 var file_mcsm_v1_agent_proto_goTypes = []any{
 	(DesiredState)(0),          // 0: mcsm.v1.DesiredState
 	(PowerActionType)(0),       // 1: mcsm.v1.PowerActionType
@@ -4063,8 +4564,13 @@ var file_mcsm_v1_agent_proto_goTypes = []any{
 	(*FilesDelete)(nil),        // 46: mcsm.v1.FilesDelete
 	(*FilesDownload)(nil),      // 47: mcsm.v1.FilesDownload
 	(*FilesUpload)(nil),        // 48: mcsm.v1.FilesUpload
-	nil,                        // 49: mcsm.v1.Hello.SpecVersionsEntry
-	nil,                        // 50: mcsm.v1.Hello.DesiredStatesEntry
+	(*BackupPush)(nil),         // 49: mcsm.v1.BackupPush
+	(*BackupPushResult)(nil),   // 50: mcsm.v1.BackupPushResult
+	(*MigrateReceive)(nil),     // 51: mcsm.v1.MigrateReceive
+	(*MigrateAbort)(nil),       // 52: mcsm.v1.MigrateAbort
+	(*MigrateRetire)(nil),      // 53: mcsm.v1.MigrateRetire
+	nil,                        // 54: mcsm.v1.Hello.SpecVersionsEntry
+	nil,                        // 55: mcsm.v1.Hello.DesiredStatesEntry
 }
 var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	6,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
@@ -4102,32 +4608,37 @@ var file_mcsm_v1_agent_proto_depIdxs = []int32{
 	46, // 32: mcsm.v1.Envelope.files_delete:type_name -> mcsm.v1.FilesDelete
 	47, // 33: mcsm.v1.Envelope.files_download:type_name -> mcsm.v1.FilesDownload
 	48, // 34: mcsm.v1.Envelope.files_upload:type_name -> mcsm.v1.FilesUpload
-	5,  // 35: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
-	49, // 36: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
-	50, // 37: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
-	0,  // 38: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
-	8,  // 39: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
-	8,  // 40: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
-	1,  // 41: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
-	18, // 42: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
-	19, // 43: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
-	24, // 44: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
-	25, // 45: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
-	2,  // 46: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
-	2,  // 47: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
-	26, // 48: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
-	35, // 49: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
-	26, // 50: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
-	3,  // 51: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
-	3,  // 52: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
-	36, // 53: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
-	36, // 54: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
-	0,  // 55: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
-	56, // [56:56] is the sub-list for method output_type
-	56, // [56:56] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	49, // 35: mcsm.v1.Envelope.backup_push:type_name -> mcsm.v1.BackupPush
+	50, // 36: mcsm.v1.Envelope.backup_push_result:type_name -> mcsm.v1.BackupPushResult
+	51, // 37: mcsm.v1.Envelope.migrate_receive:type_name -> mcsm.v1.MigrateReceive
+	52, // 38: mcsm.v1.Envelope.migrate_abort:type_name -> mcsm.v1.MigrateAbort
+	53, // 39: mcsm.v1.Envelope.migrate_retire:type_name -> mcsm.v1.MigrateRetire
+	5,  // 40: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
+	54, // 41: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
+	55, // 42: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
+	0,  // 43: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
+	8,  // 44: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
+	8,  // 45: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
+	1,  // 46: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
+	18, // 47: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
+	19, // 48: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
+	24, // 49: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
+	25, // 50: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
+	2,  // 51: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
+	2,  // 52: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
+	26, // 53: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
+	35, // 54: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
+	26, // 55: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
+	3,  // 56: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
+	3,  // 57: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
+	36, // 58: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
+	36, // 59: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
+	0,  // 60: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	61, // [61:61] is the sub-list for method output_type
+	61, // [61:61] is the sub-list for method input_type
+	61, // [61:61] is the sub-list for extension type_name
+	61, // [61:61] is the sub-list for extension extendee
+	0,  // [0:61] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }
@@ -4171,6 +4682,11 @@ func file_mcsm_v1_agent_proto_init() {
 		(*Envelope_FilesDelete)(nil),
 		(*Envelope_FilesDownload)(nil),
 		(*Envelope_FilesUpload)(nil),
+		(*Envelope_BackupPush)(nil),
+		(*Envelope_BackupPushResult)(nil),
+		(*Envelope_MigrateReceive)(nil),
+		(*Envelope_MigrateAbort)(nil),
+		(*Envelope_MigrateRetire)(nil),
 	}
 	file_mcsm_v1_agent_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
@@ -4179,7 +4695,7 @@ func file_mcsm_v1_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mcsm_v1_agent_proto_rawDesc), len(file_mcsm_v1_agent_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   47,
+			NumMessages:   52,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

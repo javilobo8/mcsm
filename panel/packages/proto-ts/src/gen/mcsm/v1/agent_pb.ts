@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mcsm/v1/agent.proto.
  */
 export const file_mcsm_v1_agent: GenFile = /*@__PURE__*/
-  fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIukMCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAEiwKDG1ldHJpY19iYXRjaBgeIAEoCzIULm1jc20udjEuTWV0cmljQmF0Y2hIABIoCgpiYWNrdXBfbm93GDIgASgLMhIubWNzbS52MS5CYWNrdXBOb3dIABIwCg5iYWNrdXBfcmVzdG9yZRgzIAEoCzIWLm1jc20udjEuQmFja3VwUmVzdG9yZUgAEi4KDWJhY2t1cF9kZWxldGUYNCABKAsyFS5tY3NtLnYxLkJhY2t1cERlbGV0ZUgAEioKC2JhY2t1cF9saXN0GDUgASgLMhMubWNzbS52MS5CYWNrdXBMaXN0SAASNAoQYmFja3VwX2ludmVudG9yeRg2IAEoCzIYLm1jc20udjEuQmFja3VwSW52ZW50b3J5SAASMAoOYmFja3VwX2NyZWF0ZWQYNyABKAsyFi5tY3NtLnYxLkJhY2t1cENyZWF0ZWRIABIwCg5iYWNrdXBfZGVsZXRlZBg4IAEoCzIWLm1jc20udjEuQmFja3VwRGVsZXRlZEgAEiwKDGpvYl9wcm9ncmVzcxg5IAEoCzIULm1jc20udjEuSm9iUHJvZ3Jlc3NIABIoCgpmaWxlc19saXN0GEYgASgLMhIubWNzbS52MS5GaWxlc0xpc3RIABI1ChFmaWxlc19saXN0X3Jlc3VsdBhHIAEoCzIYLm1jc20udjEuRmlsZXNMaXN0UmVzdWx0SAASKAoKZmlsZXNfc3RhdBhIIAEoCzISLm1jc20udjEuRmlsZXNTdGF0SAASNQoRZmlsZXNfc3RhdF9yZXN1bHQYSSABKAsyGC5tY3NtLnYxLkZpbGVzU3RhdFJlc3VsdEgAEigKCmZpbGVzX3JlYWQYSiABKAsyEi5tY3NtLnYxLkZpbGVzUmVhZEgAEjUKEWZpbGVzX3JlYWRfcmVzdWx0GEsgASgLMhgubWNzbS52MS5GaWxlc1JlYWRSZXN1bHRIABIqCgtmaWxlc193cml0ZRhMIAEoCzITLm1jc20udjEuRmlsZXNXcml0ZUgAEioKC2ZpbGVzX21rZGlyGE0gASgLMhMubWNzbS52MS5GaWxlc01rZGlySAASLAoMZmlsZXNfcmVuYW1lGE4gASgLMhQubWNzbS52MS5GaWxlc1JlbmFtZUgAEiwKDGZpbGVzX2RlbGV0ZRhPIAEoCzIULm1jc20udjEuRmlsZXNEZWxldGVIABIwCg5maWxlc19kb3dubG9hZBhQIAEoCzIWLm1jc20udjEuRmlsZXNEb3dubG9hZEgAEiwKDGZpbGVzX3VwbG9hZBhRIAEoCzIULm1jc20udjEuRmlsZXNVcGxvYWRIAEIGCgRib2R5Il0KCEhvc3RJbmZvEhAKCGhvc3RuYW1lGAEgASgJEgwKBGNwdXMYAiABKA0SFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEgoKAm9zGAQgASgJEgwKBGFyY2gYBSABKAkizQIKBUhlbGxvEhUKDWFnZW50X3ZlcnNpb24YASABKAkSFgoOZG9ja2VyX3ZlcnNpb24YAiABKAkSHwoEaG9zdBgDIAEoCzIRLm1jc20udjEuSG9zdEluZm8SNwoNc3BlY192ZXJzaW9ucxgEIAMoCzIgLm1jc20udjEuSGVsbG8uU3BlY1ZlcnNpb25zRW50cnkSOQoOZGVzaXJlZF9zdGF0ZXMYBSADKAsyIS5tY3NtLnYxLkhlbGxvLkRlc2lyZWRTdGF0ZXNFbnRyeRozChFTcGVjVmVyc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBGksKEkRlc2lyZWRTdGF0ZXNFbnRyeRILCgNrZXkYASABKAkSJAoFdmFsdWUYAiABKA4yFS5tY3NtLnYxLkRlc2lyZWRTdGF0ZToCOAEiGwoISGVsbG9BY2sSDwoHbm9kZV9pZBgBIAEoCSJ/CgpTZXJ2ZXJTcGVjEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEg8KB3ZlcnNpb24YAyABKAQSLAoNZGVzaXJlZF9zdGF0ZRgEIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlEhEKCXNwZWNfanNvbhgFIAEoDCJGCglTeW5jU3BlY3MSJAoHc2VydmVycxgBIAMoCzITLm1jc20udjEuU2VydmVyU3BlYxITCgtyZW1vdmVkX2lkcxgCIAMoCSIwCglBcHBseVNwZWMSIwoGc2VydmVyGAEgASgLMhMubWNzbS52MS5TZXJ2ZXJTcGVjIjYKDFJlbW92ZVNlcnZlchIRCglzZXJ2ZXJfaWQYASABKAkSEwoLZGVsZXRlX2RhdGEYAiABKAgiSgoLUG93ZXJBY3Rpb24SEQoJc2VydmVyX2lkGAEgASgJEigKBmFjdGlvbhgCIAEoDjIYLm1jc20udjEuUG93ZXJBY3Rpb25UeXBlIjEKC1NlbmRDb21tYW5kEhEKCXNlcnZlcl9pZBgBIAEoCRIPCgdjb21tYW5kGAIgASgJIh8KDUNvbW1hbmRSZXN1bHQSDgoGb3V0cHV0GAEgASgJIjAKDVN1YnNjcmliZUxvZ3MSEQoJc2VydmVyX2lkGAEgASgJEgwKBHRhaWwYAiABKA0iPgoHTG9nTGluZRIRCglzZXJ2ZXJfaWQYASABKAkSEgoKdHNfdW5peF9tcxgCIAEoAxIMCgRsaW5lGAMgASgJIh0KC1N0cmVhbUNsb3NlEg4KBnJlYXNvbhgBIAEoCSJsCghNY1N0YXR1cxIOCgZvbmxpbmUYASABKAgSFgoOcGxheWVyc19vbmxpbmUYAiABKA0SEwoLcGxheWVyc19tYXgYAyABKA0SDwoHdmVyc2lvbhgEIAEoCRISCgpsYXRlbmN5X21zGAUgASgNIrIBCghPYnNlcnZlZBIUCgxjb250YWluZXJfaWQYASABKAkSDQoFc3RhdGUYAiABKAkSDgoGaGVhbHRoGAMgASgJEhcKD3N0YXJ0ZWRfYXRfdW5peBgEIAEoAxIRCglleGl0X2NvZGUYBSABKAUSFwoPYXBwbGllZF92ZXJzaW9uGAYgASgEEg0KBWVycm9yGAcgASgJEh0KAm1jGAggASgLMhEubWNzbS52MS5NY1N0YXR1cyJcCg5TZXJ2ZXJPYnNlcnZlZBIRCglzZXJ2ZXJfaWQYASABKAkSIwoIb2JzZXJ2ZWQYAiABKAsyES5tY3NtLnYxLk9ic2VydmVkEhIKCnRzX3VuaXhfbXMYAyABKAMiBQoDQWNrIiYKBUVycm9yEgwKBGNvZGUYASABKAkSDwoHbWVzc2FnZRgCIAEoCSJ1CgtNZXRyaWNCYXRjaBIPCgd0c191bml4GAEgASgDEicKBGhvc3QYAiABKAsyGS5tY3NtLnYxLkhvc3RNZXRyaWNTYW1wbGUSLAoHc2VydmVycxgDIAMoCzIbLm1jc20udjEuU2VydmVyTWV0cmljU2FtcGxlIocBChBIb3N0TWV0cmljU2FtcGxlEg8KB2NwdV9wY3QYASABKAESFgoObWVtX3VzZWRfYnl0ZXMYAiABKAQSFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEhcKD2Rpc2tfdXNlZF9ieXRlcxgEIAEoBBIYChBkaXNrX3RvdGFsX2J5dGVzGAUgASgEIvsBChJTZXJ2ZXJNZXRyaWNTYW1wbGUSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NwdV9wY3QYAiABKAESEQoJbWVtX2J5dGVzGAMgASgEEhcKD21lbV9saW1pdF9ieXRlcxgEIAEoBBIUCgxuZXRfcnhfYnl0ZXMYBSABKAQSFAoMbmV0X3R4X2J5dGVzGAYgASgEEhEKCW1jX29ubGluZRgHIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgIIAEoDRITCgtwbGF5ZXJzX21heBgJIAEoDRIPCgdwaW5nX21zGAogASgNEhAKA3RwcxgLIAEoAUgAiAEBQgYKBF90cHMixwEKCkJhY2t1cEluZm8SEQoJc2VydmVyX2lkGAEgASgJEhAKCGZpbGVuYW1lGAIgASgJEhIKCnNpemVfYnl0ZXMYAyABKAQSDgoGc2hhMjU2GAQgASgJEhQKDHNwZWNfdmVyc2lvbhgFIAEoBBInCgd0cmlnZ2VyGAYgASgOMhYubWNzbS52MS5CYWNrdXBUcmlnZ2VyEhcKD3N0YXJ0ZWRfdW5peF9tcxgHIAEoAxIYChBmaW5pc2hlZF91bml4X21zGAggASgDIlcKCUJhY2t1cE5vdxIRCglzZXJ2ZXJfaWQYASABKAkSDgoGam9iX2lkGAIgASgJEicKB3RyaWdnZXIYAyABKA4yFi5tY3NtLnYxLkJhY2t1cFRyaWdnZXIiRAoNQmFja3VwUmVzdG9yZRIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkSDgoGam9iX2lkGAMgASgJIjMKDEJhY2t1cERlbGV0ZRIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkiHwoKQmFja3VwTGlzdBIRCglzZXJ2ZXJfaWQYASABKAkigQEKD0JhY2t1cEludmVudG9yeRISCgpzZXJ2ZXJfaWRzGAEgAygJEiQKB2JhY2t1cHMYAiADKAsyEy5tY3NtLnYxLkJhY2t1cEluZm8SIAoEam9icxgDIAMoCzISLm1jc20udjEuSm9iUmVjb3JkEhIKCnJlcXVlc3RfaWQYBCABKAQiRAoNQmFja3VwQ3JlYXRlZBIjCgZiYWNrdXAYASABKAsyEy5tY3NtLnYxLkJhY2t1cEluZm8SDgoGam9iX2lkGAIgASgJIkQKDUJhY2t1cERlbGV0ZWQSEQoJc2VydmVyX2lkGAEgASgJEhAKCGZpbGVuYW1lGAIgASgJEg4KBnJlYXNvbhgDIAEoCSKsAQoLSm9iUHJvZ3Jlc3MSDgoGam9iX2lkGAEgASgJEhEKCXNlcnZlcl9pZBgCIAEoCRIMCgR0eXBlGAMgASgJEiIKBnN0YXR1cxgEIAEoDjISLm1jc20udjEuSm9iU3RhdHVzEhAKCHByb2dyZXNzGAUgASgNEg8KB21lc3NhZ2UYBiABKAkSEQoJbG9nX2NodW5rGAcgASgJEhIKCnRzX3VuaXhfbXMYCCABKAMiwwEKCUpvYlJlY29yZBIOCgZqb2JfaWQYASABKAkSEQoJc2VydmVyX2lkGAIgASgJEgwKBHR5cGUYAyABKAkSIgoGc3RhdHVzGAQgASgOMhIubWNzbS52MS5Kb2JTdGF0dXMSEAoIcHJvZ3Jlc3MYBSABKA0SDwoHbWVzc2FnZRgGIAEoCRILCgNsb2cYByABKAkSFwoPc3RhcnRlZF91bml4X21zGAggASgDEhgKEGZpbmlzaGVkX3VuaXhfbXMYCSABKAMibQoJRmlsZUVudHJ5EgwKBG5hbWUYASABKAkSCwoDZGlyGAIgASgIEg8KB3N5bWxpbmsYAyABKAgSDAoEc2l6ZRgEIAEoBBIYChBtb2RfdGltZV91bml4X21zGAUgASgDEgwKBG1vZGUYBiABKA0iLAoJRmlsZXNMaXN0EhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJIkkKD0ZpbGVzTGlzdFJlc3VsdBIjCgdlbnRyaWVzGAEgAygLMhIubWNzbS52MS5GaWxlRW50cnkSEQoJdHJ1bmNhdGVkGAIgASgIIiwKCUZpbGVzU3RhdBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCSI0Cg9GaWxlc1N0YXRSZXN1bHQSIQoFZW50cnkYASABKAsyEi5tY3NtLnYxLkZpbGVFbnRyeSI/CglGaWxlc1JlYWQSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkSEQoJbWF4X2J5dGVzGAMgASgNIjAKD0ZpbGVzUmVhZFJlc3VsdBIPCgdjb250ZW50GAEgASgMEgwKBHNpemUYAiABKAQiPgoKRmlsZXNXcml0ZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIPCgdjb250ZW50GAMgASgMIi0KCkZpbGVzTWtkaXISEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiOgoLRmlsZXNSZW5hbWUSEQoJc2VydmVyX2lkGAEgASgJEgwKBGZyb20YAiABKAkSCgoCdG8YAyABKAkiLgoLRmlsZXNEZWxldGUSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiRQoNRmlsZXNEb3dubG9hZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCSJRCgtGaWxlc1VwbG9hZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCRIMCgRzaXplGAQgASgDKmMKDERlc2lyZWRTdGF0ZRIdChlERVNJUkVEX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVREVTSVJFRF9TVEFURV9SVU5OSU5HEAESGQoVREVTSVJFRF9TVEFURV9TVE9QUEVEEAIqqAEKD1Bvd2VyQWN0aW9uVHlwZRIhCh1QT1dFUl9BQ1RJT05fVFlQRV9VTlNQRUNJRklFRBAAEhsKF1BPV0VSX0FDVElPTl9UWVBFX1NUQVJUEAESGgoWUE9XRVJfQUNUSU9OX1RZUEVfU1RPUBACEh0KGVBPV0VSX0FDVElPTl9UWVBFX1JFU1RBUlQQAxIaChZQT1dFUl9BQ1RJT05fVFlQRV9LSUxMEAQqqgEKDUJhY2t1cFRyaWdnZXISHgoaQkFDS1VQX1RSSUdHRVJfVU5TUEVDSUZJRUQQABIZChVCQUNLVVBfVFJJR0dFUl9NQU5VQUwQARIcChhCQUNLVVBfVFJJR0dFUl9TQ0hFRFVMRUQQAhIgChxCQUNLVVBfVFJJR0dFUl9QUkVfTUlHUkFUSU9OEAMSHgoaQkFDS1VQX1RSSUdHRVJfUFJFX1JFU1RPUkUQBCppCglKb2JTdGF0dXMSGgoWSk9CX1NUQVRVU19VTlNQRUNJRklFRBAAEhYKEkpPQl9TVEFUVVNfUlVOTklORxABEhEKDUpPQl9TVEFUVVNfT0sQAhIVChFKT0JfU1RBVFVTX0ZBSUxFRBADQnUKC2NvbS5tY3NtLnYxQgpBZ2VudFByb3RvUAFaHW1jc20vYWdlbnQvZ2VuL21jc20vdjE7bWNzbXYxogIDTVhYqgIHTWNzbS5WMcoCB01jc21cVjHiAhNNY3NtXFYxXEdQQk1ldGFkYXRh6gIITWNzbTo6VjFiBnByb3RvMw");
+  fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIuQOCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAEiwKDG1ldHJpY19iYXRjaBgeIAEoCzIULm1jc20udjEuTWV0cmljQmF0Y2hIABIoCgpiYWNrdXBfbm93GDIgASgLMhIubWNzbS52MS5CYWNrdXBOb3dIABIwCg5iYWNrdXBfcmVzdG9yZRgzIAEoCzIWLm1jc20udjEuQmFja3VwUmVzdG9yZUgAEi4KDWJhY2t1cF9kZWxldGUYNCABKAsyFS5tY3NtLnYxLkJhY2t1cERlbGV0ZUgAEioKC2JhY2t1cF9saXN0GDUgASgLMhMubWNzbS52MS5CYWNrdXBMaXN0SAASNAoQYmFja3VwX2ludmVudG9yeRg2IAEoCzIYLm1jc20udjEuQmFja3VwSW52ZW50b3J5SAASMAoOYmFja3VwX2NyZWF0ZWQYNyABKAsyFi5tY3NtLnYxLkJhY2t1cENyZWF0ZWRIABIwCg5iYWNrdXBfZGVsZXRlZBg4IAEoCzIWLm1jc20udjEuQmFja3VwRGVsZXRlZEgAEiwKDGpvYl9wcm9ncmVzcxg5IAEoCzIULm1jc20udjEuSm9iUHJvZ3Jlc3NIABIoCgpmaWxlc19saXN0GEYgASgLMhIubWNzbS52MS5GaWxlc0xpc3RIABI1ChFmaWxlc19saXN0X3Jlc3VsdBhHIAEoCzIYLm1jc20udjEuRmlsZXNMaXN0UmVzdWx0SAASKAoKZmlsZXNfc3RhdBhIIAEoCzISLm1jc20udjEuRmlsZXNTdGF0SAASNQoRZmlsZXNfc3RhdF9yZXN1bHQYSSABKAsyGC5tY3NtLnYxLkZpbGVzU3RhdFJlc3VsdEgAEigKCmZpbGVzX3JlYWQYSiABKAsyEi5tY3NtLnYxLkZpbGVzUmVhZEgAEjUKEWZpbGVzX3JlYWRfcmVzdWx0GEsgASgLMhgubWNzbS52MS5GaWxlc1JlYWRSZXN1bHRIABIqCgtmaWxlc193cml0ZRhMIAEoCzITLm1jc20udjEuRmlsZXNXcml0ZUgAEioKC2ZpbGVzX21rZGlyGE0gASgLMhMubWNzbS52MS5GaWxlc01rZGlySAASLAoMZmlsZXNfcmVuYW1lGE4gASgLMhQubWNzbS52MS5GaWxlc1JlbmFtZUgAEiwKDGZpbGVzX2RlbGV0ZRhPIAEoCzIULm1jc20udjEuRmlsZXNEZWxldGVIABIwCg5maWxlc19kb3dubG9hZBhQIAEoCzIWLm1jc20udjEuRmlsZXNEb3dubG9hZEgAEiwKDGZpbGVzX3VwbG9hZBhRIAEoCzIULm1jc20udjEuRmlsZXNVcGxvYWRIABIqCgtiYWNrdXBfcHVzaBhkIAEoCzITLm1jc20udjEuQmFja3VwUHVzaEgAEjcKEmJhY2t1cF9wdXNoX3Jlc3VsdBhlIAEoCzIZLm1jc20udjEuQmFja3VwUHVzaFJlc3VsdEgAEjIKD21pZ3JhdGVfcmVjZWl2ZRhmIAEoCzIXLm1jc20udjEuTWlncmF0ZVJlY2VpdmVIABIuCg1taWdyYXRlX2Fib3J0GGcgASgLMhUubWNzbS52MS5NaWdyYXRlQWJvcnRIABIwCg5taWdyYXRlX3JldGlyZRhoIAEoCzIWLm1jc20udjEuTWlncmF0ZVJldGlyZUgAQgYKBGJvZHkiXQoISG9zdEluZm8SEAoIaG9zdG5hbWUYASABKAkSDAoEY3B1cxgCIAEoDRIXCg9tZW1fdG90YWxfYnl0ZXMYAyABKAQSCgoCb3MYBCABKAkSDAoEYXJjaBgFIAEoCSLNAgoFSGVsbG8SFQoNYWdlbnRfdmVyc2lvbhgBIAEoCRIWCg5kb2NrZXJfdmVyc2lvbhgCIAEoCRIfCgRob3N0GAMgASgLMhEubWNzbS52MS5Ib3N0SW5mbxI3Cg1zcGVjX3ZlcnNpb25zGAQgAygLMiAubWNzbS52MS5IZWxsby5TcGVjVmVyc2lvbnNFbnRyeRI5Cg5kZXNpcmVkX3N0YXRlcxgFIAMoCzIhLm1jc20udjEuSGVsbG8uRGVzaXJlZFN0YXRlc0VudHJ5GjMKEVNwZWNWZXJzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoBDoCOAEaSwoSRGVzaXJlZFN0YXRlc0VudHJ5EgsKA2tleRgBIAEoCRIkCgV2YWx1ZRgCIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlOgI4ASIbCghIZWxsb0FjaxIPCgdub2RlX2lkGAEgASgJIn8KClNlcnZlclNwZWMSEQoJc2VydmVyX2lkGAEgASgJEgwKBHNsdWcYAiABKAkSDwoHdmVyc2lvbhgDIAEoBBIsCg1kZXNpcmVkX3N0YXRlGAQgASgOMhUubWNzbS52MS5EZXNpcmVkU3RhdGUSEQoJc3BlY19qc29uGAUgASgMIkYKCVN5bmNTcGVjcxIkCgdzZXJ2ZXJzGAEgAygLMhMubWNzbS52MS5TZXJ2ZXJTcGVjEhMKC3JlbW92ZWRfaWRzGAIgAygJIjAKCUFwcGx5U3BlYxIjCgZzZXJ2ZXIYASABKAsyEy5tY3NtLnYxLlNlcnZlclNwZWMiNgoMUmVtb3ZlU2VydmVyEhEKCXNlcnZlcl9pZBgBIAEoCRITCgtkZWxldGVfZGF0YRgCIAEoCCJKCgtQb3dlckFjdGlvbhIRCglzZXJ2ZXJfaWQYASABKAkSKAoGYWN0aW9uGAIgASgOMhgubWNzbS52MS5Qb3dlckFjdGlvblR5cGUiMQoLU2VuZENvbW1hbmQSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NvbW1hbmQYAiABKAkiHwoNQ29tbWFuZFJlc3VsdBIOCgZvdXRwdXQYASABKAkiMAoNU3Vic2NyaWJlTG9ncxIRCglzZXJ2ZXJfaWQYASABKAkSDAoEdGFpbBgCIAEoDSI+CgdMb2dMaW5lEhEKCXNlcnZlcl9pZBgBIAEoCRISCgp0c191bml4X21zGAIgASgDEgwKBGxpbmUYAyABKAkiHQoLU3RyZWFtQ2xvc2USDgoGcmVhc29uGAEgASgJImwKCE1jU3RhdHVzEg4KBm9ubGluZRgBIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgCIAEoDRITCgtwbGF5ZXJzX21heBgDIAEoDRIPCgd2ZXJzaW9uGAQgASgJEhIKCmxhdGVuY3lfbXMYBSABKA0isgEKCE9ic2VydmVkEhQKDGNvbnRhaW5lcl9pZBgBIAEoCRINCgVzdGF0ZRgCIAEoCRIOCgZoZWFsdGgYAyABKAkSFwoPc3RhcnRlZF9hdF91bml4GAQgASgDEhEKCWV4aXRfY29kZRgFIAEoBRIXCg9hcHBsaWVkX3ZlcnNpb24YBiABKAQSDQoFZXJyb3IYByABKAkSHQoCbWMYCCABKAsyES5tY3NtLnYxLk1jU3RhdHVzIlwKDlNlcnZlck9ic2VydmVkEhEKCXNlcnZlcl9pZBgBIAEoCRIjCghvYnNlcnZlZBgCIAEoCzIRLm1jc20udjEuT2JzZXJ2ZWQSEgoKdHNfdW5peF9tcxgDIAEoAyIFCgNBY2siJgoFRXJyb3ISDAoEY29kZRgBIAEoCRIPCgdtZXNzYWdlGAIgASgJInUKC01ldHJpY0JhdGNoEg8KB3RzX3VuaXgYASABKAMSJwoEaG9zdBgCIAEoCzIZLm1jc20udjEuSG9zdE1ldHJpY1NhbXBsZRIsCgdzZXJ2ZXJzGAMgAygLMhsubWNzbS52MS5TZXJ2ZXJNZXRyaWNTYW1wbGUihwEKEEhvc3RNZXRyaWNTYW1wbGUSDwoHY3B1X3BjdBgBIAEoARIWCg5tZW1fdXNlZF9ieXRlcxgCIAEoBBIXCg9tZW1fdG90YWxfYnl0ZXMYAyABKAQSFwoPZGlza191c2VkX2J5dGVzGAQgASgEEhgKEGRpc2tfdG90YWxfYnl0ZXMYBSABKAQi+wEKElNlcnZlck1ldHJpY1NhbXBsZRIRCglzZXJ2ZXJfaWQYASABKAkSDwoHY3B1X3BjdBgCIAEoARIRCgltZW1fYnl0ZXMYAyABKAQSFwoPbWVtX2xpbWl0X2J5dGVzGAQgASgEEhQKDG5ldF9yeF9ieXRlcxgFIAEoBBIUCgxuZXRfdHhfYnl0ZXMYBiABKAQSEQoJbWNfb25saW5lGAcgASgIEhYKDnBsYXllcnNfb25saW5lGAggASgNEhMKC3BsYXllcnNfbWF4GAkgASgNEg8KB3BpbmdfbXMYCiABKA0SEAoDdHBzGAsgASgBSACIAQFCBgoEX3RwcyLHAQoKQmFja3VwSW5mbxIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkSEgoKc2l6ZV9ieXRlcxgDIAEoBBIOCgZzaGEyNTYYBCABKAkSFAoMc3BlY192ZXJzaW9uGAUgASgEEicKB3RyaWdnZXIYBiABKA4yFi5tY3NtLnYxLkJhY2t1cFRyaWdnZXISFwoPc3RhcnRlZF91bml4X21zGAcgASgDEhgKEGZpbmlzaGVkX3VuaXhfbXMYCCABKAMiVwoJQmFja3VwTm93EhEKCXNlcnZlcl9pZBgBIAEoCRIOCgZqb2JfaWQYAiABKAkSJwoHdHJpZ2dlchgDIAEoDjIWLm1jc20udjEuQmFja3VwVHJpZ2dlciJECg1CYWNrdXBSZXN0b3JlEhEKCXNlcnZlcl9pZBgBIAEoCRIQCghmaWxlbmFtZRgCIAEoCRIOCgZqb2JfaWQYAyABKAkiMwoMQmFja3VwRGVsZXRlEhEKCXNlcnZlcl9pZBgBIAEoCRIQCghmaWxlbmFtZRgCIAEoCSIfCgpCYWNrdXBMaXN0EhEKCXNlcnZlcl9pZBgBIAEoCSKBAQoPQmFja3VwSW52ZW50b3J5EhIKCnNlcnZlcl9pZHMYASADKAkSJAoHYmFja3VwcxgCIAMoCzITLm1jc20udjEuQmFja3VwSW5mbxIgCgRqb2JzGAMgAygLMhIubWNzbS52MS5Kb2JSZWNvcmQSEgoKcmVxdWVzdF9pZBgEIAEoBCJECg1CYWNrdXBDcmVhdGVkEiMKBmJhY2t1cBgBIAEoCzITLm1jc20udjEuQmFja3VwSW5mbxIOCgZqb2JfaWQYAiABKAkiRAoNQmFja3VwRGVsZXRlZBIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkSDgoGcmVhc29uGAMgASgJIqwBCgtKb2JQcm9ncmVzcxIOCgZqb2JfaWQYASABKAkSEQoJc2VydmVyX2lkGAIgASgJEgwKBHR5cGUYAyABKAkSIgoGc3RhdHVzGAQgASgOMhIubWNzbS52MS5Kb2JTdGF0dXMSEAoIcHJvZ3Jlc3MYBSABKA0SDwoHbWVzc2FnZRgGIAEoCRIRCglsb2dfY2h1bmsYByABKAkSEgoKdHNfdW5peF9tcxgIIAEoAyLDAQoJSm9iUmVjb3JkEg4KBmpvYl9pZBgBIAEoCRIRCglzZXJ2ZXJfaWQYAiABKAkSDAoEdHlwZRgDIAEoCRIiCgZzdGF0dXMYBCABKA4yEi5tY3NtLnYxLkpvYlN0YXR1cxIQCghwcm9ncmVzcxgFIAEoDRIPCgdtZXNzYWdlGAYgASgJEgsKA2xvZxgHIAEoCRIXCg9zdGFydGVkX3VuaXhfbXMYCCABKAMSGAoQZmluaXNoZWRfdW5peF9tcxgJIAEoAyJtCglGaWxlRW50cnkSDAoEbmFtZRgBIAEoCRILCgNkaXIYAiABKAgSDwoHc3ltbGluaxgDIAEoCBIMCgRzaXplGAQgASgEEhgKEG1vZF90aW1lX3VuaXhfbXMYBSABKAMSDAoEbW9kZRgGIAEoDSIsCglGaWxlc0xpc3QSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiSQoPRmlsZXNMaXN0UmVzdWx0EiMKB2VudHJpZXMYASADKAsyEi5tY3NtLnYxLkZpbGVFbnRyeRIRCgl0cnVuY2F0ZWQYAiABKAgiLAoJRmlsZXNTdGF0EhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJIjQKD0ZpbGVzU3RhdFJlc3VsdBIhCgVlbnRyeRgBIAEoCzISLm1jc20udjEuRmlsZUVudHJ5Ij8KCUZpbGVzUmVhZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIRCgltYXhfYnl0ZXMYAyABKA0iMAoPRmlsZXNSZWFkUmVzdWx0Eg8KB2NvbnRlbnQYASABKAwSDAoEc2l6ZRgCIAEoBCI+CgpGaWxlc1dyaXRlEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEg8KB2NvbnRlbnQYAyABKAwiLQoKRmlsZXNNa2RpchIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCSI6CgtGaWxlc1JlbmFtZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEZnJvbRgCIAEoCRIKCgJ0bxgDIAEoCSIuCgtGaWxlc0RlbGV0ZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCSJFCg1GaWxlc0Rvd25sb2FkEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEhMKC3RyYW5zZmVyX2lkGAMgASgJIlEKC0ZpbGVzVXBsb2FkEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEhMKC3RyYW5zZmVyX2lkGAMgASgJEgwKBHNpemUYBCABKAMiRgoKQmFja3VwUHVzaBIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkSEwoLdHJhbnNmZXJfaWQYAyABKAkiSgoQQmFja3VwUHVzaFJlc3VsdBISCgpzaXplX2J5dGVzGAEgASgEEg4KBnNoYTI1NhgCIAEoCRISCgpkYXRhX2J5dGVzGAMgASgEIrYBCg5NaWdyYXRlUmVjZWl2ZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEc2x1ZxgCIAEoCRIOCgZqb2JfaWQYAyABKAkSFAoMbWlncmF0aW9uX2lkGAQgASgJEhMKC3RyYW5zZmVyX2lkGAUgASgJEhAKCGZpbGVuYW1lGAYgASgJEhIKCnNpemVfYnl0ZXMYByABKAQSDgoGc2hhMjU2GAggASgJEhIKCmRhdGFfYnl0ZXMYCSABKAQiRQoMTWlncmF0ZUFib3J0EhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEhQKDG1pZ3JhdGlvbl9pZBgDIAEoCSJbCg1NaWdyYXRlUmV0aXJlEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEhQKDG1pZ3JhdGlvbl9pZBgDIAEoCRITCgtkZWxldGVfZGF0YRgEIAEoCCpjCgxEZXNpcmVkU3RhdGUSHQoZREVTSVJFRF9TVEFURV9VTlNQRUNJRklFRBAAEhkKFURFU0lSRURfU1RBVEVfUlVOTklORxABEhkKFURFU0lSRURfU1RBVEVfU1RPUFBFRBACKqgBCg9Qb3dlckFjdGlvblR5cGUSIQodUE9XRVJfQUNUSU9OX1RZUEVfVU5TUEVDSUZJRUQQABIbChdQT1dFUl9BQ1RJT05fVFlQRV9TVEFSVBABEhoKFlBPV0VSX0FDVElPTl9UWVBFX1NUT1AQAhIdChlQT1dFUl9BQ1RJT05fVFlQRV9SRVNUQVJUEAMSGgoWUE9XRVJfQUNUSU9OX1RZUEVfS0lMTBAEKqoBCg1CYWNrdXBUcmlnZ2VyEh4KGkJBQ0tVUF9UUklHR0VSX1VOU1BFQ0lGSUVEEAASGQoVQkFDS1VQX1RSSUdHRVJfTUFOVUFMEAESHAoYQkFDS1VQX1RSSUdHRVJfU0NIRURVTEVEEAISIAocQkFDS1VQX1RSSUdHRVJfUFJFX01JR1JBVElPThADEh4KGkJBQ0tVUF9UUklHR0VSX1BSRV9SRVNUT1JFEAQqaQoJSm9iU3RhdHVzEhoKFkpPQl9TVEFUVVNfVU5TUEVDSUZJRUQQABIWChJKT0JfU1RBVFVTX1JVTk5JTkcQARIRCg1KT0JfU1RBVFVTX09LEAISFQoRSk9CX1NUQVRVU19GQUlMRUQQA0J1Cgtjb20ubWNzbS52MUIKQWdlbnRQcm90b1ABWh1tY3NtL2FnZW50L2dlbi9tY3NtL3YxO21jc212MaICA01YWKoCB01jc20uVjHKAgdNY3NtXFYx4gITTWNzbVxWMVxHUEJNZXRhZGF0YeoCCE1jc206OlYxYgZwcm90bzM");
 
 /**
  * Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
@@ -245,15 +245,46 @@ export type Envelope = Message<"mcsm.v1.Envelope"> & {
     case: "filesDownload";
   } | {
     /**
-     * ── plan-6 ──
-     * ── plan-7 ──
-     * ── plan-8 ──
-     * ── plan-9 ──
-     *
      * @generated from field: mcsm.v1.FilesUpload files_upload = 81;
      */
     value: FilesUpload;
     case: "filesUpload";
+  } | {
+    /**
+     * ── plan-6 ──
+     * ── plan-7 ──
+     *
+     * @generated from field: mcsm.v1.BackupPush backup_push = 100;
+     */
+    value: BackupPush;
+    case: "backupPush";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.BackupPushResult backup_push_result = 101;
+     */
+    value: BackupPushResult;
+    case: "backupPushResult";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.MigrateReceive migrate_receive = 102;
+     */
+    value: MigrateReceive;
+    case: "migrateReceive";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.MigrateAbort migrate_abort = 103;
+     */
+    value: MigrateAbort;
+    case: "migrateAbort";
+  } | {
+    /**
+     * ── plan-8 ──
+     * ── plan-9 ──
+     *
+     * @generated from field: mcsm.v1.MigrateRetire migrate_retire = 104;
+     */
+    value: MigrateRetire;
+    case: "migrateRetire";
   } | { case: undefined; value?: undefined };
 };
 
@@ -1653,6 +1684,211 @@ export type FilesUpload = Message<"mcsm.v1.FilesUpload"> & {
  */
 export const FilesUploadSchema: GenMessage<FilesUpload> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 44);
+
+/**
+ * Panel → agente (origen). Sube una copia .tar.zst de <slug>/backups/ al panel con
+ * PUT /agent/transfer/{transfer_id}. Respuesta: BackupPushResult cuando el panel la ha recibido
+ * entera, o Error (unknown_server | invalid_request | not_found | busy | transfer_failed |
+ * backup_failed: la copia no tiene sha256 en su .json).
+ *
+ * @generated from message mcsm.v1.BackupPush
+ */
+export type BackupPush = Message<"mcsm.v1.BackupPush"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string filename = 2;
+   */
+  filename: string;
+
+  /**
+   * @generated from field: string transfer_id = 3;
+   */
+  transferId: string;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupPush.
+ * Use `create(BackupPushSchema)` to create a new message.
+ */
+export const BackupPushSchema: GenMessage<BackupPush> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 45);
+
+/**
+ * Metadatos de la copia enviada, de su .json: el panel compara tamaño y sha256 con lo que ha
+ * recibido y con el BackupCreated del job.
+ *
+ * @generated from message mcsm.v1.BackupPushResult
+ */
+export type BackupPushResult = Message<"mcsm.v1.BackupPushResult"> & {
+  /**
+   * @generated from field: uint64 size_bytes = 1;
+   */
+  sizeBytes: bigint;
+
+  /**
+   * @generated from field: string sha256 = 2;
+   */
+  sha256: string;
+
+  /**
+   * contenido sin comprimir; 0 si la copia no lo anotó
+   *
+   * @generated from field: uint64 data_bytes = 3;
+   */
+  dataBytes: bigint;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupPushResult.
+ * Use `create(BackupPushResultSchema)` to create a new message.
+ */
+export const BackupPushResultSchema: GenMessage<BackupPushResult> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 46);
+
+/**
+ * Panel → agente (destino). Job (type "migrate_in"): descarga la copia con
+ * GET /agent/transfer/{transfer_id} a <DATA_ROOT>/<slug>/backups/<filename>, comprueba que
+ * llegan size_bytes bytes con ese sha256 y la restaura como <DATA_ROOT>/<slug>/data.
+ * <DATA_ROOT>/<slug> no puede existir: lo crea con el marcador .mcsm-migration (contiene
+ * migration_id) y, si algo falla, lo borra entero. El servidor no puede estar en este nodo.
+ * Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error (invalid_request | exists |
+ * busy | too_large: no cabe con el margen). Un job_id repetido reenvía su estado.
+ *
+ * @generated from message mcsm.v1.MigrateReceive
+ */
+export type MigrateReceive = Message<"mcsm.v1.MigrateReceive"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * slug en el destino
+   *
+   * @generated from field: string slug = 2;
+   */
+  slug: string;
+
+  /**
+   * @generated from field: string job_id = 3;
+   */
+  jobId: string;
+
+  /**
+   * @generated from field: string migration_id = 4;
+   */
+  migrationId: string;
+
+  /**
+   * @generated from field: string transfer_id = 5;
+   */
+  transferId: string;
+
+  /**
+   * <slug>-<ts>-<versión>.tar.zst, con el slug del destino
+   *
+   * @generated from field: string filename = 6;
+   */
+  filename: string;
+
+  /**
+   * @generated from field: uint64 size_bytes = 7;
+   */
+  sizeBytes: bigint;
+
+  /**
+   * @generated from field: string sha256 = 8;
+   */
+  sha256: string;
+
+  /**
+   * 0 = desconocido (se reserva el tamaño comprimido)
+   *
+   * @generated from field: uint64 data_bytes = 9;
+   */
+  dataBytes: bigint;
+};
+
+/**
+ * Describes the message mcsm.v1.MigrateReceive.
+ * Use `create(MigrateReceiveSchema)` to create a new message.
+ */
+export const MigrateReceiveSchema: GenMessage<MigrateReceive> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 47);
+
+/**
+ * Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
+ * olvida la spec del servidor (si la tiene) y borra su contenedor, y borra <DATA_ROOT>/<slug>
+ * solo si lleva el marcador de migration_id. Idempotente. Respuesta: Ack o Error (busy: hay una
+ * recepción en curso o el contenedor aún no se pudo borrar; el panel reintenta).
+ *
+ * @generated from message mcsm.v1.MigrateAbort
+ */
+export type MigrateAbort = Message<"mcsm.v1.MigrateAbort"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string slug = 2;
+   */
+  slug: string;
+
+  /**
+   * @generated from field: string migration_id = 3;
+   */
+  migrationId: string;
+};
+
+/**
+ * Describes the message mcsm.v1.MigrateAbort.
+ * Use `create(MigrateAbortSchema)` to create a new message.
+ */
+export const MigrateAbortSchema: GenMessage<MigrateAbort> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 48);
+
+/**
+ * Panel → agente (origen), tras confirmar la migración. Para el contenedor si sigue en marcha,
+ * aparta <DATA_ROOT>/<slug> (datos y copias) a <DATA_ROOT>/<slug>.migrated-<ts> (con
+ * delete_data, lo borra una vez borrado el contenedor), olvida la spec y borra el contenedor.
+ * Idempotente.
+ * Respuesta: Ack o Error (invalid_request: el servidor tiene otro slug aquí; busy: reintentar).
+ *
+ * @generated from message mcsm.v1.MigrateRetire
+ */
+export type MigrateRetire = Message<"mcsm.v1.MigrateRetire"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string slug = 2;
+   */
+  slug: string;
+
+  /**
+   * @generated from field: string migration_id = 3;
+   */
+  migrationId: string;
+
+  /**
+   * @generated from field: bool delete_data = 4;
+   */
+  deleteData: boolean;
+};
+
+/**
+ * Describes the message mcsm.v1.MigrateRetire.
+ * Use `create(MigrateRetireSchema)` to create a new message.
+ */
+export const MigrateRetireSchema: GenMessage<MigrateRetire> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 49);
 
 /**
  * @generated from enum mcsm.v1.DesiredState
