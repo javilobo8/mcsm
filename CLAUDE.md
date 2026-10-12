@@ -209,19 +209,25 @@ conocer.)
   la mutación hace `enter` antes de mirar `Held`; la restauración hace `Hold` antes de
   `drained` (≤ 10 s, si no drena → busy). Toda operación nueva que escriba en `data`
   (importación, migración) usa el mismo contador y la misma comprobación.
-- Copias: el excluder se construye con `backup.NewExcluder` (excluye `files.TempGlob`); nunca
-  `nil`. Toda sección de la spec cambia vía `serversService.patch` (p. ej. la programación es
+- Copias: los temporales de subida (`files.TempGlob` = `.mcsm-tmp-` + 16 hex, `files.IsTempName`)
+  quedan fuera siempre, también con un `Excluder` nil; un `.mcsm-tmp-x` del usuario es normal. Toda sección de la spec cambia vía `serversService.patch` (p. ej. la programación es
   `patch(id, {spec:{backups}})`), nunca `servers.updateSpec` directo desde otro servicio.
 - Cierre del agente: esperas en paralelo con `waitAll`, total ≤ 25 s frente a
   `stop_grace_period: 30s` / `--stop-timeout 30`; una espera nueva entra en `waitAll`.
 - Avisos de copias (`BackupCreated`/`BackupDeleted`/inventario) van por la `outbox` FIFO, no
   por el `send` de la sesión; lo encolado puede llegar tras el siguiente `Hello`: no
   interpretes un mensaje no solicitado con el estado de la sesión actual sin correlacionarlo.
-  El panel solo marca borradas/perdidas filas con `created_at < since`.
+  El panel aplica la vía negativa del inventario (borradas/perdidas) solo si
+  `BackupInventory.request_id` coincide con su último `BackupList` del nodo y a filas con
+  `created_at < since`; el periódico (0) o uno viejo solo aplican lo positivo. Los ids de
+  envelope del panel salen de `AgentHub.allocateId` (no se repiten entre sesiones); para
+  correlacionar, `conn.requestTracked`.
 - Reserva y jobs: como mucho 2 copias/restauraciones por nodo (`withSlot`, antes de
   `save-off`/`Stop`); mientras esperan, el servidor sigue reservado (Power 409, Files busy).
   Sondas de Docker en operaciones peligrosas con `rec.Container` (devuelve error), nunca
   `ContainerID`.
+  `reconcile.ErrBusy` es neutro («servidor ocupado o reservado»): envuélvelo con
+  `reconcile.Busy(reason)`; `rec.HeldReason(id)` da el motivo de la reserva.
 - Espacio: lo que escribe mucho en el nodo (copias, restauraciones, importación, migración)
   exige estimación + `max(5 %, 256 MiB)` libres y vigila durante la escritura.
 - Topes encadenados: `maxPayload` 4 MiB ↔ inventario 3 MiB ↔ `readLimit` del agente 4 MiB ↔
