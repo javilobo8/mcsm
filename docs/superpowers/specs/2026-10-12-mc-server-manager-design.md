@@ -481,7 +481,9 @@ Cada paso deja el sistema usable y probado antes del siguiente.
   `ports.game` es el puerto del host.
 - Las `properties` de la spec se pasan a la imagen con `CUSTOM_SERVER_PROPERTIES` (pares
   `clave=valor` separados por salto de línea), que admite cualquier clave de `server.properties`.
-- Ping de estado y RCON: `github.com/mcstatus-io/mcutil/v4` (`status.Modern`, `rcon.Dial`).
+- Ping de estado: `github.com/mcstatus-io/mcutil/v4` (`status.Modern` con `ReceiveLimitBytes` y `Ping: true`).
+  RCON: cliente Source RCON propio en `agent/internal/mc` (enmienda 2026-10-12: `mcutil/rcon` v4.3.1
+  tiene una carrera de datos entre `Login` y `Close`, escribe por stdout e ignora `context`).
 - WebSocket en Go: `github.com/coder/websocket`. Store del agente: `go.etcd.io/bbolt`.
 - Protobuf: `buf` 1.73 con plugins remotos `buf.build/protocolbuffers/go` y `buf.build/bufbuild/es` (v2, `@bufbuild/protobuf` 2.16).
 - Toolchain fijada en `mise.toml`: Go 1.27.2, buf 1.73.0; Node 26 y pnpm 12 ya instalados globalmente.
