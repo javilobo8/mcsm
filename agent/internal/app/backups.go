@@ -43,8 +43,14 @@ const (
 	// maxInventoryBytes deja margen bajo el maxPayload de 4 MiB del WS del panel: un mensaje
 	// mayor cerraría la conexión, y cada reconexión volvería a pedir el inventario.
 	maxInventoryBytes = 3 << 20
-	// pruneReason es el motivo de los BackupDeleted de la poda.
-	pruneReason = "poda"
+	// pruneReason es el motivo de los BackupDeleted de la poda; deleteReason, el de los
+	// borrados que pide el panel.
+	pruneReason  = "poda"
+	deleteReason = "borrada"
+	// inventoryEvery: cada cuánto el agente manda el inventario sin que se lo pidan (además de
+	// tras cada Hello, cuando lo pide el panel). Repone avisos descartados por la cola (un job
+	// que se quedaría «running» en el panel) y un BackupList que falló y nadie reintenta.
+	inventoryEvery = 10 * time.Minute
 	// maxParallelJobs: copias y restauraciones a la vez en el nodo (comprimen, leen y escriben
 	// el disco entero; varias copias a la misma hora tendrían N mundos en save-off a la vez).
 	// Las demás esperan en cola, con su servidor reservado y su mundo guardando con normalidad.
@@ -99,6 +105,13 @@ type backupService struct {
 	freeSpace      func(dir string) (uint64, error) // nil: statfs
 	releaseWait    time.Duration
 	inventoryLimit int
+
+	// invMu ordena el inventario respecto a los avisos de copias: se calcula y se encola bajo
+	// invMu, y BackupCreated/BackupDeleted también se encolan bajo invMu, en la misma cola
+	// FIFO. Así el panel nunca recibe antes que el inventario el aviso de un cambio que el
+	// listado ya no vio (una copia nueva que el inventario daría por borrada) ni, después, un
+	// inventario que aún lista una copia ya borrada y anunciada (que la resucitaría).
+	invMu sync.Mutex
 
 	mu      sync.Mutex
 	closed  bool                             // wait empezó: no se lanzan tareas nuevas
@@ -307,7 +320,7 @@ func (b *backupService) unblock(serverID string) {
 }
 
 // start arranca la cola de avisos al panel, el programador y su refresco cada 15 s (que
-// también revisa los servidores bloqueados). recoverAtStart va antes.
+// también revisa los servidores bloqueados) y el inventario periódico. recoverAtStart va antes.
 func (b *backupService) start(ctx context.Context) {
 	b.refreshSchedules()
 	b.loop(func() { b.out.run(ctx) })
@@ -320,6 +333,16 @@ func (b *backupService) start(ctx context.Context) {
 			case <-b.clock.Until(b.clock.Now().Add(scheduleRefreshEvery)):
 				b.refreshSchedules()
 				b.checkBlocked()
+			}
+		}
+	})
+	b.loop(func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-b.clock.Until(b.clock.Now().Add(inventoryEvery)):
+				b.periodicInventory()
 			}
 		}
 	})
@@ -447,15 +470,39 @@ func (b *backupService) handleBackupDelete(id uint64, m *mcsmv1.BackupDelete, se
 	_ = send(ack(id))
 }
 
-// handleBackupList responde Ack y después el inventario como mensaje no solicitado (id 0).
+// handleBackupList encola el inventario como mensaje no solicitado (id 0) y responde Ack. Va
+// por la cola de avisos (ver invMu), así que puede llegar antes o después del Ack.
 func (b *backupService) handleBackupList(id uint64, m *mcsmv1.BackupList, send func(*mcsmv1.Envelope) error) {
-	inv, err := b.inventory(m.GetServerId())
-	if err != nil {
+	if err := b.postInventory(m.GetServerId()); err != nil {
 		_ = send(errMsg(id, backupErrCode(err), err))
 		return
 	}
 	_ = send(ack(id))
-	_ = send(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupInventory{BackupInventory: inv}})
+}
+
+// postInventory calcula el inventario y lo encola, todo bajo invMu.
+func (b *backupService) postInventory(serverID string) error {
+	b.invMu.Lock()
+	defer b.invMu.Unlock()
+	inv, err := b.inventory(serverID)
+	if err != nil {
+		return err
+	}
+	return b.out.post(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupInventory{BackupInventory: inv}})
+}
+
+// periodicInventory manda el inventario de todo el nodo sin que lo pidan (cada inventoryEvery).
+func (b *backupService) periodicInventory() {
+	if err := b.postInventory(""); err != nil {
+		b.a.log.Warn("inventario periódico de copias", "err", err)
+	}
+}
+
+// postChange encola un aviso de copia (BackupCreated, BackupDeleted) bajo invMu.
+func (b *backupService) postChange(e *mcsmv1.Envelope) {
+	b.invMu.Lock()
+	defer b.invMu.Unlock()
+	_ = b.out.post(e)
 }
 
 // startBackup registra el job, reserva el servidor y lanza la copia en segundo plano. Con
@@ -629,7 +676,7 @@ func errCheckContainer(err error) error {
 
 // announce avisa al panel de una copia nueva (también de los datos pre-restore).
 func (b *backupService) announce(m backup.Meta, serverID, jobID string) {
-	_ = b.out.post(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupCreated{BackupCreated: &mcsmv1.BackupCreated{Backup: m.Info(serverID), JobId: jobID}}})
+	b.postChange(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupCreated{BackupCreated: &mcsmv1.BackupCreated{Backup: m.Info(serverID), JobId: jobID}}})
 }
 
 // prune aplica keepDays/keepCount a las copias programadas tras cada copia (spec §6.5).
@@ -648,7 +695,7 @@ func (b *backupService) prune(t *target) {
 			b.a.log.Warn("podar copia", "server", t.slug, "file", name, "err", err)
 			continue
 		}
-		_ = b.out.post(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupDeleted{BackupDeleted: &mcsmv1.BackupDeleted{
+		b.postChange(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupDeleted{BackupDeleted: &mcsmv1.BackupDeleted{
 			ServerId: t.serverID, Filename: name, Reason: pruneReason,
 		}}})
 	}
@@ -753,7 +800,14 @@ func (b *backupService) deleteBackup(serverID, filename string) error {
 	if b.a.rec.Held(serverID) {
 		return fmt.Errorf("%w: espera a que termine para borrar copias", reconcile.ErrBusy)
 	}
-	return backup.Delete(t.backupsDir, t.dataDir, t.slug, filename)
+	if err := backup.Delete(t.backupsDir, t.dataDir, t.slug, filename); err != nil {
+		return err
+	}
+	// Por la cola, detrás de un inventario que aún la listara (el Ack puede adelantarse a él).
+	b.postChange(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupDeleted{BackupDeleted: &mcsmv1.BackupDeleted{
+		ServerId: serverID, Filename: filename, Reason: deleteReason,
+	}}})
+	return nil
 }
 
 // inventory lista copias (y datos pre-restore) y jobs recientes; serverID vacío = todo el

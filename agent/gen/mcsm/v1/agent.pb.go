@@ -2007,8 +2007,8 @@ func (x *BackupDelete) GetFilename() string {
 	return ""
 }
 
-// Panel → agente. Respuesta: Ack y después un BackupInventory no solicitado (id 0).
-// server_id vacío = todos los servidores del nodo.
+// Panel → agente. Respuesta: Ack y un BackupInventory no solicitado (id 0), que puede llegar
+// antes o después del Ack. server_id vacío = todos los servidores del nodo.
 type BackupList struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -2053,8 +2053,11 @@ func (x *BackupList) GetServerId() string {
 	return ""
 }
 
-// Agente → panel (id 0). `server_ids` son los servidores cuyo listado está completo: el
-// panel marca como borradas las copias de esos servidores que no aparezcan en `backups`.
+// Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
+// son los servidores cuyo listado está completo: el panel marca como borradas las copias de
+// esos servidores que no aparezcan en `backups` (solo las que ya conocía antes de pedir el
+// inventario). El agente lo envía en orden con BackupCreated y BackupDeleted: un cambio que el
+// listado no vio llega después.
 type BackupInventory struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerIds     []string               `protobuf:"bytes,1,rep,name=server_ids,json=serverIds,proto3" json:"server_ids,omitempty"`
@@ -2168,7 +2171,8 @@ func (x *BackupCreated) GetJobId() string {
 	return ""
 }
 
-// Agente → panel (id 0): copia borrada por el propio agente (poda).
+// Agente → panel (id 0): copia borrada en el nodo, por la poda (reason "poda") o porque la
+// pidió el panel con BackupDelete (reason "borrada").
 type BackupDeleted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`

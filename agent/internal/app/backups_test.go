@@ -604,6 +604,7 @@ func TestBackupListSendsInventory(t *testing.T) {
 	if r := e.handle(30, &mcsmv1.BackupList{}); r.GetAck() == nil {
 		t.Fatalf("resp = %+v", r)
 	}
+	e.settle(t) // el inventario va por la cola de avisos (mismo orden que BackupCreated/Deleted)
 	inv := e.col.inventory()
 	if inv == nil || len(inv.ServerIds) != 1 || inv.ServerIds[0] != "a" || len(inv.Backups) != 1 {
 		t.Fatalf("inventario = %+v", inv)
@@ -630,6 +631,7 @@ func TestBackupInventoryOmitsServersOverLimit(t *testing.T) {
 	e.settle(t)
 	e.a.bk.inventoryLimit = 1
 	e.handle(30, &mcsmv1.BackupList{})
+	e.settle(t)
 	if inv := e.col.inventory(); inv == nil || len(inv.ServerIds) != 0 || len(inv.Backups) != 0 || len(inv.Jobs) != 1 {
 		t.Fatalf("inventario = %+v", inv)
 	}
@@ -653,6 +655,12 @@ func TestBackupDelete(t *testing.T) {
 	}
 	if _, err := os.Stat(e.dataDir()); err != nil {
 		t.Fatal("los datos no se tocan")
+	}
+	// El borrado también sale por la cola de avisos, detrás de un inventario que aún lo listara:
+	// el panel no lo resucita.
+	e.settle(t)
+	if d := e.col.deleted(); len(d) != 1 || d[0].Filename != name || d[0].Reason != "borrada" {
+		t.Fatalf("BackupDeleted = %+v", d)
 	}
 	if r := e.handle(51, &mcsmv1.BackupDelete{ServerId: "otro", Filename: name}); r.GetError().GetCode() != errcode.UnknownServer {
 		t.Fatalf("servidor ajeno = %+v", r)
@@ -1338,5 +1346,48 @@ func TestBackupsQueueBeyondNodeLimit(t *testing.T) {
 	}
 	if got := strings.Join(rc.list("mcsm-gamma"), ","); got != "save-off,save-all flush,save-on" {
 		t.Fatalf("gamma RCON = %s", got)
+	}
+}
+
+// Inventario periódico: el agente lo manda sin que se lo pidan (id 0), con el estado real de
+// los jobs. Repone un aviso terminal descartado (job «running» para siempre en el panel) y
+// cubre un BackupList fallido que el panel no reintenta hasta el siguiente Hello.
+func TestPeriodicInventoryCarriesJobsAndBackups(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	e.a.bk.periodicInventory()
+	e.settle(t)
+	inv := e.col.inventory()
+	if inv == nil || len(inv.ServerIds) != 1 || len(inv.Backups) != 1 || len(inv.Jobs) != 1 || inv.Jobs[0].Status != jobOK {
+		t.Fatalf("inventario = %+v", inv)
+	}
+}
+
+// La cola de avisos es FIFO y el inventario se calcula y se encola bajo el mismo mutex que
+// BackupCreated/BackupDeleted: con el envío atascado, lo que entra después del inventario
+// sale después de él.
+func TestInventoryAndNoticesShareTheQueue(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	name := e.col.created()[0].Filename
+	unstall := e.col.stall()
+	defer unstall()
+	e.a.bk.periodicInventory()
+	e.handle(20, &mcsmv1.BackupDelete{ServerId: "a", Filename: name})
+	unstall()
+	e.settle(t)
+	invAt, delAt := -1, -1
+	for i, env := range e.col.all() {
+		if env.GetBackupInventory() != nil {
+			invAt = i
+		}
+		if d := env.GetBackupDeleted(); d != nil && d.Filename == name {
+			delAt = i
+		}
+	}
+	if invAt < 0 || delAt < invAt {
+		t.Fatalf("el inventario (que aún lista la copia) debe llegar antes que su BackupDeleted: inv=%d del=%d", invAt, delAt)
 	}
 }
