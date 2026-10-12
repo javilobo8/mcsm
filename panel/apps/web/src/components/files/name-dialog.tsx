@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { validateNewName } from "@/lib/files";
 
 interface Props {
@@ -30,8 +30,8 @@ export function NameDialog({ open, title, confirmLabel, initial = "", existing, 
     <Dialog open={open} onOpenChange={(o) => { if (!pending) onOpenChange(o); }}>
       <DialogContent>
         <form onSubmit={submit} className="flex flex-col gap-3">
-          <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={name !== "" && !!invalid} />
+          <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>Sin barras ni «..». El nombre se aplica en la carpeta actual.</DialogDescription></DialogHeader>
+          <Input aria-label="Nombre" autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={name !== "" && !!invalid} />
           {name !== "" && invalid && <p className="text-sm text-red-400">{invalid}</p>}
           {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
           <DialogFooter>

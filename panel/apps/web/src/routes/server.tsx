@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Trash2 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,7 +11,7 @@ import { PowerButtons } from "@/components/power-buttons";
 import { Console } from "@/components/console";
 import { ServerConfigForm } from "@/components/server-config-form";
 import { FileBrowser } from "@/components/files/file-browser";
-import { ConfirmDialog } from "@/components/files/confirm-dialog";
+import { GuardedTabs } from "@/components/guarded-tabs";
 import { useServer } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
 import { api, apiPath, ApiError } from "@/lib/api";
@@ -29,10 +29,6 @@ export function ServerPage() {
   const qc = useQueryClient();
   const [confirmDel, setConfirmDel] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
-  const [tab, setTab] = useState("overview");
-  const [pendingTab, setPendingTab] = useState<string | null>(null);
-  // Archivos: el editor tiene cambios sin guardar (cambiar de pestaña desmontaría el editor y los perdería).
-  const [filesDirty, setFilesDirty] = useState(false);
   const del = useMutation({
     mutationFn: () => api.del(apiPath`/api/servers/${serverId}?deleteData=${deleteData}`),
     onSuccess: () => {
@@ -79,13 +75,12 @@ export function ServerPage() {
         </div>
       </header>
 
-      <Tabs value={tab} onValueChange={(v) => { if (filesDirty && tab === "files" && v !== "files") setPendingTab(v); else setTab(v); }}>
+      <GuardedTabs defaultValue="overview">
         <TabsList><TabsTrigger value="overview">Resumen</TabsTrigger><TabsTrigger value="console">Consola</TabsTrigger><TabsTrigger value="config">Configuración</TabsTrigger>
           {/* ── plan-2 ── */}
           {/* ── plan-3 ── */}
           {/* ── plan-4 ── */}
           {/* ── plan-5 ── */}
-        <TabsContent value="files"><FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} onDirtyChange={setFilesDirty} /></TabsContent>
           <TabsTrigger value="files">Archivos</TabsTrigger>
           {/* ── plan-6 ── */}
           {/* ── plan-7 ── */}
@@ -108,20 +103,12 @@ export function ServerPage() {
         {/* ── plan-3 ── */}
         {/* ── plan-4 ── */}
         {/* ── plan-5 ── */}
+        <TabsContent value="files"><FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
         {/* ── plan-6 ── */}
         {/* ── plan-7 ── */}
         {/* ── plan-8 ── */}
         {/* ── plan-9 ── */}
-      </Tabs>
-
-      <ConfirmDialog
-        open={pendingTab !== null}
-        title="Cambios sin guardar"
-        description="Hay cambios sin guardar en el editor de archivos. Si cambias de pestaña se perderán."
-        confirmLabel="Descartar y cambiar"
-        onConfirm={() => { if (pendingTab) { setFilesDirty(false); setTab(pendingTab); } setPendingTab(null); }}
-        onCancel={() => setPendingTab(null)}
-      />
+      </GuardedTabs>
 
       <Dialog open={confirmDel} onOpenChange={(o) => { if (!del.isPending) setConfirmDel(o); }}>
         <DialogContent>

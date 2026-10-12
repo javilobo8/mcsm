@@ -35,7 +35,6 @@ export function FileEditor({ serverId, path, onClose, onDirtyChange }: { serverI
     save.mutate(view.current.state.doc.toString());
   };
   // El padre decide si cerrar con cambios sin guardar (diálogo propio, no window.confirm).
-  const close = onClose;
   const report = useRef(onDirtyChange);
   useEffect(() => { report.current = onDirtyChange; });
   useEffect(() => { report.current?.(dirty); }, [dirty]);
@@ -53,7 +52,7 @@ export function FileEditor({ serverId, path, onClose, onDirtyChange }: { serverI
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" disabled={!dirty || save.isPending || !file.data} onClick={doSave}>{save.isPending ? <Loader2 className="animate-spin" /> : <Save />} Guardar</Button>
-          <Button size="sm" variant="ghost" onClick={close}><X /> Cerrar</Button>
+          <Button size="sm" variant="ghost" onClick={onClose}><X /> Cerrar</Button>
         </div>
       </div>
       {name === "server.properties" && (

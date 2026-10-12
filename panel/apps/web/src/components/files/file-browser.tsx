@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
 import { Download, File, FileText, Folder, FolderPlus, Link2, Loader2, Pencil, RefreshCw, Trash2, Upload, X } from "lucide-react";
@@ -9,7 +9,8 @@ import { ApiError } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
 import { breadcrumbs, entryOpenKind, filesApi, isSaveShortcut, progressPct, sortEntries, uploadClashes, uploadFile } from "@/lib/files";
 import { NameDialog } from "./name-dialog";
-import { ConfirmDialog } from "./confirm-dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useTabGuard } from "@/components/guarded-tabs";
 
 // CodeMirror pesa: solo se descarga al abrir un fichero.
 const FileEditor = lazy(() => import("./file-editor").then((m) => ({ default: m.FileEditor })));
@@ -19,14 +20,27 @@ type NameAction = { kind: "mkdir" } | { kind: "rename"; entry: FileEntryDto } | 
 
 const errText = (e: unknown) => (e instanceof ApiError ? e.message : "Error inesperado");
 
+/** Si falla la descarga del chunk del editor, lo dice en vez de quedarse cargando. */
+class EditorBoundary extends Component<{ children: ReactNode; onClose(): void }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div role="alert" className="flex flex-col items-start gap-2 text-sm text-red-400">
+        <p>No se pudo cargar el editor.</p>
+        <Button size="sm" variant="secondary" onClick={this.props.onClose}>Volver a la lista</Button>
+      </div>
+    );
+  }
+}
+
 interface Props {
   serverId: string;
   nodeOnline?: boolean;
-  /** Avisa al padre de que hay cambios sin guardar en el editor (para proteger el cambio de pestaña). */
-  onDirtyChange?(dirty: boolean): void;
 }
 
-export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
+export function FileBrowser({ serverId, nodeOnline }: Props) {
   const [path, setPath] = useState("/");
   const [editing, setEditing] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -36,6 +50,9 @@ export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
   const [replaceAsk, setReplaceAsk] = useState<{ files: File[]; clash: string[] } | null>(null);
   const [nameAction, setNameAction] = useState<NameAction>(null);
   const [toDelete, setToDelete] = useState<FileEntryDto | null>(null);
+  const lastDelete = useRef<FileEntryDto | null>(null); // el título no parpadea durante la animación de cierre
+  if (toDelete) lastDelete.current = toDelete;
+  const shownDelete = toDelete ?? lastDelete.current;
   const fileInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
   const qc = useQueryClient();
@@ -44,10 +61,7 @@ export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
   // Cambios sin guardar: bloquea la navegación del router (diálogo) y avisa al cerrar/recargar la pestaña del navegador.
   const blocker = useBlocker({ shouldBlockFn: () => true, disabled: !dirty, enableBeforeUnload: () => dirty, withResolver: true });
 
-  const report = useRef(onDirtyChange);
-  useEffect(() => { report.current = onDirtyChange; });
-  useEffect(() => { report.current?.(dirty); }, [dirty]);
-  useEffect(() => () => report.current?.(false), []);
+  useTabGuard(dirty); // también protege el cambio de pestaña
   // Al desmontar (cambio de pestaña) se cancela lo que siga subiéndose.
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -58,6 +72,14 @@ export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [editing]);
+
+  // Mientras la pestaña está montada, soltar un fichero fuera de la zona no abre el fichero en el navegador.
+  useEffect(() => {
+    const stop = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", stop);
+    window.addEventListener("drop", stop);
+    return () => { window.removeEventListener("dragover", stop); window.removeEventListener("drop", stop); };
+  }, []);
 
   const list = useQuery({
     queryKey: ["files", serverId, path],
@@ -102,7 +124,7 @@ export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
   };
 
   const upload = (picked: FileList | null) => {
-    if (!picked?.length || uploading || offline) return;
+    if (!picked?.length || uploading || offline || !list.data) return; // sin listado no se pueden detectar reemplazos
     const files = [...picked];
     const clash = uploadClashes(files.map((f) => f.name), names);
     if (clash.length) return setReplaceAsk({ files, clash });
@@ -142,9 +164,11 @@ export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
   if (editing) {
     return (
       <>
+        <EditorBoundary onClose={closeEditor}>
         <Suspense fallback={<div className="flex items-center gap-2 p-4 text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Cargando editor…</div>}>
           <FileEditor key={editing} serverId={serverId} path={editing} onDirtyChange={setDirty} onClose={() => (dirty ? setAskClose(true) : closeEditor())} />
         </Suspense>
+        </EditorBoundary>
         {dialogs}
       </>
     );
@@ -167,7 +191,7 @@ export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
         </nav>
         <div className="flex items-center gap-2">
           <input ref={fileInput} type="file" multiple hidden onChange={(e) => { upload(e.target.files); e.target.value = ""; }} />
-          <Button size="sm" variant="secondary" disabled={offline || uploading} onClick={() => fileInput.current?.click()}><Upload /> Subir</Button>
+          <Button size="sm" variant="secondary" disabled={offline || uploading || !list.data} onClick={() => fileInput.current?.click()}><Upload /> Subir</Button>
           <Button size="sm" variant="secondary" disabled={offline} onClick={() => { nameMut.reset(); setNameAction({ kind: "mkdir" }); }}><FolderPlus /> Nueva carpeta</Button>
           <Button size="icon-sm" variant="ghost" aria-label="Refrescar" disabled={offline} onClick={() => void refresh()}><RefreshCw /></Button>
         </div>
@@ -215,9 +239,11 @@ export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
                 <TableCell className="text-muted-foreground">{new Date(e.modifiedAt).toLocaleString()}</TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
-                    {!e.dir && <Button asChild size="icon-xs" variant="ghost" aria-label={`Descargar ${e.name}`}><a href={filesApi.downloadUrl(serverId, joinPath(path, e.name))} download={e.name}><Download /></a></Button>}
-                    <Button size="icon-xs" variant="ghost" aria-label={`Renombrar ${e.name}`} onClick={() => { nameMut.reset(); setNameAction({ kind: "rename", entry: e }); }}><Pencil /></Button>
-                    <Button size="icon-xs" variant="ghost" aria-label={`Borrar ${e.name}`} onClick={() => { del.reset(); setToDelete(e); }}><Trash2 /></Button>
+                    {!e.dir && (offline
+                      ? <Button size="icon-xs" variant="ghost" aria-label={`Descargar ${e.name}`} disabled><Download /></Button>
+                      : <Button asChild size="icon-xs" variant="ghost" aria-label={`Descargar ${e.name}`}><a href={filesApi.downloadUrl(serverId, joinPath(path, e.name))} download={e.name}><Download /></a></Button>)}
+                    <Button size="icon-xs" variant="ghost" aria-label={`Renombrar ${e.name}`} disabled={offline} onClick={() => { nameMut.reset(); setNameAction({ kind: "rename", entry: e }); }}><Pencil /></Button>
+                    <Button size="icon-xs" variant="ghost" aria-label={`Borrar ${e.name}`} disabled={offline} onClick={() => { del.reset(); setToDelete(e); }}><Trash2 /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -240,8 +266,8 @@ export function FileBrowser({ serverId, nodeOnline, onDirtyChange }: Props) {
       />
       <ConfirmDialog
         open={toDelete !== null}
-        title={toDelete ? `Borrar «${toDelete.name}»` : "Borrar"}
-        description={toDelete?.dir ? "Se borrará la carpeta y todo su contenido. No se puede deshacer." : "Se borrará el fichero. No se puede deshacer."}
+        title={shownDelete ? `Borrar «${shownDelete.name}»` : "Borrar"}
+        description={shownDelete?.dir ? "Se borrará la carpeta y todo su contenido. No se puede deshacer." : "Se borrará el fichero. No se puede deshacer."}
         confirmLabel="Borrar"
         pending={del.isPending}
         error={del.error ? errText(del.error) : null}
