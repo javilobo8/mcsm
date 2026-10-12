@@ -16,6 +16,8 @@ export function dockerRunSnippet(publicUrl: string, token: string, dataRoot = "/
   return [
     "docker network create mcsm 2>/dev/null || true",
     "docker run -d --name mcsm-agent --restart unless-stopped \\",
+    // Al pararse, el agente espera hasta 25 s a las copias en curso para enviar save-on.
+    "  --stop-timeout 30 \\",
     "  --network mcsm \\",
     "  -v /var/run/docker.sock:/var/run/docker.sock \\",
     `  -v ${shellArg(dataRoot)}:${shellArg(dataRoot)} \\`,

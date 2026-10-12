@@ -24,6 +24,8 @@ describe("nodos y alta", () => {
     expect(dockerRun).toContain("ENROLL_TOKEN=" + token);
     expect(dockerRun).toContain("PANEL_URL=http://panel.lan:8080");
     expect(dockerRun).toContain("/var/run/docker.sock");
+    // El agente espera hasta 25 s a las copias en curso (save-on) al pararse: Docker solo da 10 s por defecto.
+    expect(dockerRun).toContain("--stop-timeout 30");
     expect(new Date(expiresAt).getTime()).toBeGreaterThan(Date.now());
 
     res = await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: token, nameHint: "nas", agentVersion: "0.1.0" } });
