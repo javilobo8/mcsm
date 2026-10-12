@@ -88,6 +88,11 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 
 // Run es el punto de entrada del binario.
 func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
+	// §6.1: sin el montaje espejo de DATA_ROOT el agente trabajaría sobre su propio
+	// contenedor sin enterarse; mejor no arrancar.
+	if err := checkDataRoot(cfg.DataRoot, hostProbe, log); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(cfg.AgentData, 0o700); err != nil {
 		return err
 	}
