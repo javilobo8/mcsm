@@ -10,7 +10,11 @@ export class AgentError extends Error {
   constructor(public code: string, message: string) { super(message); this.name = "AgentError"; }
 }
 
+export interface HubLogger { warn(obj: object, msg: string): void }
+
 export interface HubOptions {
+  /** Logger para fallos de callbacks y mensajes ilegibles. */
+  log?: HubLogger;
   /** Reloj inyectable (ms). */
   now?: () => number;
   /** Sin actividad durante este tiempo el agente se considera caído (spec §5.1). */
@@ -18,6 +22,11 @@ export interface HubOptions {
   /** Cada cuánto se comprueba la actividad. */
   checkIntervalMs?: number;
 }
+
+type ResolvedOptions = Required<Omit<HubOptions, "log">> & { log: HubLogger };
+
+/** Cuerpos que son respuesta a una petición del panel: solo estos resuelven `pending`. */
+const RESPONSE_CASES = new Set(["ack", "error", "commandResult"]);
 
 interface Pending { resolve: (e: Envelope) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
 interface Stream { onFrame: (e: Envelope) => void; onClose: (reason: string) => void }
@@ -34,7 +43,7 @@ export class AgentConn {
     readonly nodeId: string,
     private socket: WebSocket,
     private hub: AgentHub,
-    private opts: Required<HubOptions>,
+    private opts: ResolvedOptions,
   ) {
     this.lastActivity = opts.now();
     // Cualquier mensaje o ping del agente (lo envía cada 15 s) cuenta como actividad.
@@ -67,11 +76,21 @@ export class AgentConn {
 
   private requestWithId(id: bigint, body: Body, timeoutMs: number): Promise<Envelope> {
     return new Promise((resolve, reject) => {
-      this.send(body, { id });
+      if (this.disposed || this.socket.readyState !== this.socket.OPEN) {
+        reject(new AgentError("disconnected", "El nodo no está conectado"));
+        return;
+      }
+      try {
+        this.send(body, { id });
+      } catch {
+        reject(new AgentError("disconnected", "No se pudo enviar al nodo"));
+        return;
+      }
       const timer = setTimeout(() => {
         this.pending.delete(id);
         reject(new AgentError("timeout", "El agente no respondió a tiempo"));
       }, timeoutMs);
+      timer.unref();
       this.pending.set(id, { resolve, reject, timer });
     });
   }
@@ -104,28 +123,50 @@ export class AgentConn {
     try {
       env = fromBinary(EnvelopeSchema, new Uint8Array(data));
     } catch {
+      this.opts.log.warn({ nodeId: this.nodeId }, "mensaje protobuf ilegible del agente");
       return;
     }
-    if (env.streamId !== 0n && env.body.case !== "ack") {
+    try {
+      this.dispatch(env);
+    } catch (e) {
+      this.opts.log.warn({ nodeId: this.nodeId, err: e, type: env.body.case }, "fallo procesando mensaje del agente");
+    }
+  }
+
+  private dispatch(env: Envelope) {
+    // Solo las respuestas (con id != 0) resuelven peticiones; un mensaje no solicitado
+    // con el mismo id (hello, serverObserved, logLine...) nunca las consume.
+    if (env.id !== 0n && RESPONSE_CASES.has(env.body.case ?? "")) {
+      const p = this.pending.get(env.id);
+      if (p) {
+        this.pending.delete(env.id);
+        clearTimeout(p.timer);
+        if (env.body.case === "error") p.reject(new AgentError(env.body.value.code, env.body.value.message));
+        else p.resolve(env);
+        return;
+      }
+    }
+    if (env.streamId !== 0n) {
       const s = this.streams.get(env.streamId);
       if (!s) return;
       if (env.body.case === "streamClose") {
         this.streams.delete(env.streamId);
-        s.onClose(env.body.value.reason);
+        const reason = env.body.value.reason;
+        this.safe(() => s.onClose(reason), "onClose de stream");
       } else {
-        s.onFrame(env);
+        this.safe(() => s.onFrame(env), "onFrame de stream");
       }
       return;
     }
-    const p = this.pending.get(env.id);
-    if (p) {
-      this.pending.delete(env.id);
-      clearTimeout(p.timer);
-      if (env.body.case === "error") p.reject(new AgentError(env.body.value.code, env.body.value.message));
-      else p.resolve(env);
-      return;
-    }
     this.hub.emit("message", this.nodeId, env);
+  }
+
+  private safe(fn: () => void, what: string) {
+    try {
+      fn();
+    } catch (e) {
+      this.opts.log.warn({ nodeId: this.nodeId, err: e }, `fallo en ${what}`);
+    }
   }
 
   private dispose(reason: string) {
@@ -139,7 +180,7 @@ export class AgentConn {
     }
     for (const [id, s] of this.streams) {
       this.streams.delete(id);
-      s.onClose(reason);
+      this.safe(() => s.onClose(reason), "onClose de stream");
     }
     this.hub.detach(this.nodeId, this);
   }
@@ -149,11 +190,11 @@ export class AgentConn {
 
 export class AgentHub extends EventEmitter {
   private conns = new Map<string, AgentConn>();
-  private opts: Required<HubOptions>;
+  private opts: ResolvedOptions;
 
   constructor(opts: HubOptions = {}) {
     super();
-    this.opts = { now: Date.now, idleTimeoutMs: 45_000, checkIntervalMs: 5_000, ...opts };
+    this.opts = { now: Date.now, idleTimeoutMs: 45_000, checkIntervalMs: 5_000, log: { warn: () => {} }, ...opts };
   }
 
   attach(nodeId: string, socket: WebSocket): AgentConn {

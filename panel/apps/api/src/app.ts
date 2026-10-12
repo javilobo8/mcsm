@@ -26,7 +26,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(authRoutes);
   await app.register(nodeRoutes);
   app.decorate("events", new EventEmitter());
-  app.decorate("agents", new AgentHub());
+  app.decorate("agents", new AgentHub({ log: app.log }));
   app.decorate("servers", new ServersRepo(opts.db));
   await app.register(agentRoutes);
   new AgentService(app).start();

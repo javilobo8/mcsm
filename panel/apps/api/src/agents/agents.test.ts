@@ -3,7 +3,7 @@ import type { WebSocket } from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { create } from "@bufbuild/protobuf";
-import { ObservedSchema, ServerObservedSchema, LogLineSchema } from "@mcsm/proto";
+import { HelloSchema, ObservedSchema, ServerObservedSchema, LogLineSchema } from "@mcsm/proto";
 import { AgentHub } from "./hub.js";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
@@ -136,6 +136,133 @@ describe("agent hub", () => {
     agent.send({ id: req.id, body: { case: "error", value: { code: "unknown_server", message: "no existe" } } });
     await expect(opened).rejects.toMatchObject({ code: "unknown_server" });
     expect((conn as unknown as { streams: Map<bigint, unknown> }).streams.size).toBe(0);
+  });
+});
+
+describe("robustez del hub", () => {
+  async function connected(name = "nas") {
+    const { nodeId, nodeToken } = await enrollNode(name);
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect();
+    await agent.waitFor("helloAck");
+    await agent.waitFor("syncSpecs");
+    return { nodeId, nodeToken, agent, conn: app.agents.get(nodeId)! };
+  }
+  const waitUntil = async (fn: () => boolean, ms = 2000) => {
+    const end = Date.now() + ms;
+    while (!fn() && Date.now() < end) await new Promise((r) => setTimeout(r, 10));
+    expect(fn()).toBe(true);
+  };
+
+  it("un Hello de un nodo borrado cierra la conexión sin promesas sin manejar", async () => {
+    const { nodeId, agent } = await connected();
+    app.nodes.delete(nodeId);
+    agent.send({ id: 1n, body: { case: "hello", value: create(HelloSchema, { agentVersion: "x" }) } });
+    await waitUntil(() => agent.closed);
+  });
+
+  it("DELETE /api/nodes/:id desconecta al agente vivo", async () => {
+    const { nodeId, agent } = await connected();
+    const res = await app.inject({ method: "DELETE", url: `/api/nodes/${nodeId}`, headers: { cookie } });
+    expect(res.statusCode).toBe(204);
+    await waitUntil(() => agent.closed);
+    expect(app.agents.isOnline(nodeId)).toBe(false);
+  });
+
+  it("un callback o listener que lanza no tumba el proceso ni cierra la conexión", async () => {
+    const { agent, conn } = await connected();
+    const frames: string[] = [];
+    const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 0 } }, (e) => {
+      if (e.body.case === "logLine") { frames.push(e.body.value.line); throw new Error("boom"); }
+    }, () => {});
+    const req = await agent.waitFor("subscribeLogs");
+    agent.ack(req.id, req.id);
+    await opened;
+    const log = (line: string) => agent.send({ streamId: req.id, body: { case: "logLine", value: create(LogLineSchema, { serverId: "x", tsUnixMs: 1n, line }) } });
+    log("a"); log("b");
+    await waitUntil(() => frames.length === 2);
+    const listener = () => { throw new Error("listener"); };
+    app.agents.on("message", listener);
+    agent.send({ id: 77n, body: { case: "serverObserved", value: create(ServerObservedSchema, { serverId: "nada" }) } });
+    await new Promise((r) => setTimeout(r, 50));
+    app.agents.off("message", listener);
+    expect(agent.closed).toBe(false);
+    expect(app.agents.isOnline(conn.nodeId)).toBe(true);
+  });
+
+  it("un mensaje no solicitado con el id de una petición pendiente no la consume", async () => {
+    const { nodeId, nodeToken, agent, conn } = await connected();
+    const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    void nodeToken;
+    const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 2000);
+    const req = await agent.waitFor("powerAction");
+    const seen = new Promise((resolve) => app.events.once("observed", (id) => resolve(id)));
+    agent.send({ id: req.id, body: { case: "serverObserved", value: create(ServerObservedSchema, { serverId: s1.id, observed: create(ObservedSchema, { state: "running", appliedVersion: 1n }) }) } });
+    expect(await seen).toBe(s1.id);
+    let settled = false;
+    p.then(() => { settled = true; }, () => { settled = true; });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(settled).toBe(false);
+    agent.ack(req.id);
+    expect((await p).body.case).toBe("ack");
+  });
+
+  it("un Error con streamId != 0 y el id de la petición rechaza openStream al instante", async () => {
+    const { agent, conn } = await connected();
+    const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 1 } }, () => {}, () => {});
+    const req = await agent.waitFor("subscribeLogs");
+    agent.send({ id: req.id, streamId: req.id, body: { case: "error", value: { code: "unknown_server", message: "no existe" } } });
+    await expect(opened).rejects.toMatchObject({ code: "unknown_server" });
+  });
+
+  it("una segunda conexión del mismo nodo termina la vieja y su close tardío no desregistra la nueva", async () => {
+    const { nodeId, nodeToken, agent: a1 } = await connected();
+    const a2 = new FakeAgent(url, nodeToken);
+    await a2.connect();
+    await a2.waitFor("helloAck");
+    await waitUntil(() => a1.closed);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(app.agents.isOnline(nodeId)).toBe(true);
+    expect(app.nodes.get(nodeId)!.status).toBe("online");
+    a2.close();
+  });
+
+  it("al cerrar el socket se rechazan las pendientes y se cierran los streams", async () => {
+    const { nodeId, agent, conn } = await connected();
+    const reasons: string[] = [];
+    const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 0 } }, () => {}, (r) => reasons.push(r));
+    const sub = await agent.waitFor("subscribeLogs");
+    agent.ack(sub.id, sub.id);
+    await opened;
+    const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 5000);
+    const assertion = expect(p).rejects.toMatchObject({ code: "disconnected" });
+    await agent.waitFor("powerAction");
+    agent.close();
+    await assertion;
+    await waitUntil(() => reasons.length === 1);
+    expect(app.agents.isOnline(nodeId)).toBe(false);
+    await expect(conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } })).rejects.toMatchObject({ code: "disconnected" });
+  });
+
+  it("ServerObserved de un servidor de otro nodo se ignora", async () => {
+    const { agent } = await connected("uno");
+    const other = await enrollNode("dos");
+    const foreign = app.servers.create({ nodeId: other.nodeId, name: "Ajeno", slug: "ajeno", spec: baseSpec, desiredState: "running" });
+    let emitted = false;
+    app.events.once("observed", () => { emitted = true; });
+    agent.send({ body: { case: "serverObserved", value: create(ServerObservedSchema, { serverId: foreign.id, observed: create(ObservedSchema, { state: "running" }) }) } });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(emitted).toBe(false);
+    expect(app.servers.get(foreign.id)!.observed).toBeNull();
+  });
+
+  it("protobuf malformado se ignora y la conexión sigue viva", async () => {
+    const { agent, conn } = await connected();
+    agent.sendRaw(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0x0f, 0x80]));
+    const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 2000);
+    const req = await agent.waitFor("powerAction");
+    agent.ack(req.id);
+    expect((await p).body.case).toBe("ack");
   });
 });
 

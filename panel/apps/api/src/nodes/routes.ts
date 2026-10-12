@@ -63,6 +63,7 @@ export async function nodeRoutes(app: FastifyInstance) {
       if (!isForeignKeyError(e)) throw e;
       return reply.code(409).send({ error: "El nodo tiene servidores; bórralos o mígralos antes" });
     }
+    app.agents.get(node.id)?.terminate(); // un nodo borrado no puede seguir conectado
     return reply.code(204).send();
   });
 

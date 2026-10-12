@@ -31,6 +31,8 @@ export class FakeAgent {
     this.ws.send(toBinary(EnvelopeSchema, create(EnvelopeSchema, env)));
   }
 
+  sendRaw(data: Uint8Array): void { this.ws.send(data); }
+
   next(timeoutMs = 3000): Promise<Envelope> {
     const q = this.queue.shift();
     if (q) return Promise.resolve(q);

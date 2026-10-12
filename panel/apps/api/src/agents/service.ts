@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
-import type { Envelope, Observed } from "@mcsm/proto";
+import type { Envelope, Hello, Observed } from "@mcsm/proto";
+import type { AgentConn } from "./hub.js";
 import { toNodeDto } from "../nodes/repo.js";
 import { toServerSpecMessage, type ObservedDto } from "../servers/repo.js";
 
@@ -23,6 +24,8 @@ export class AgentService {
   start() {
     const { agents, nodes, events } = this.app;
     agents.on("attached", (nodeId: string) => {
+      const row = nodes.get(nodeId);
+      if (!row) return;
       nodes.setStatus(nodeId, "online");
       events.emit("node", toNodeDto(nodes.get(nodeId)!));
     });
@@ -43,7 +46,8 @@ export class AgentService {
     }
     switch (env.body.case) {
       case "hello":
-        return this.onHello(nodeId, env);
+        void this.onHello(nodeId, env);
+        return;
       case "serverObserved": {
         const { serverId, observed } = env.body.value;
         const row = this.app.servers.get(serverId);
@@ -63,6 +67,16 @@ export class AgentService {
     const hello = env.body.value;
     const conn = this.app.agents.get(nodeId);
     if (!conn) return;
+    try {
+      await this.handshake(nodeId, env, conn, hello);
+    } catch (e) {
+      this.app.log.warn({ nodeId, err: e }, "fallo en el Hello del agente; se cierra la conexión");
+      conn.terminate();
+    }
+  }
+
+  private async handshake(nodeId: string, env: Envelope, conn: AgentConn, hello: Hello) {
+    if (!this.app.nodes.get(nodeId)) throw new Error("el nodo ya no existe");
     this.app.nodes.setStatus(nodeId, "online", {
       agentVersion: hello.agentVersion, dockerVersion: hello.dockerVersion,
       hostInfo: hello.host ? { hostname: hello.host.hostname, cpus: hello.host.cpus, memTotalBytes: Number(hello.host.memTotalBytes), os: hello.host.os, arch: hello.host.arch } : undefined,
