@@ -369,6 +369,29 @@ describe("acciones sobre copias", () => {
     expect(res.json()).toMatchObject({ specVersion: 3, spec: { memory: "3G", backups: { cron: "0 */6 * * *" } } });
     agent.close();
   });
+  it("PATCH de la spec: backups null borra la programación y llega al agente sin la sección; ausente se conserva", async () => {
+    const { nodeToken, s } = await setup();
+    const patch = (u: string, payload: object) => app.inject({ method: "PATCH", url: u, headers: { cookie }, payload });
+    let res = await patch(`/api/servers/${s.id}/backups/schedule`, { enabled: true, cron: "0 4 * * *" });
+    expect(res.json()).toMatchObject({ specVersion: 2, spec: { backups: { enabled: true, cron: "0 4 * * *" } } });
+    res = await patch(`/api/servers/${s.id}`, { spec: { memory: "3G" } }); // sin la clave: se conserva
+    expect(res.json()).toMatchObject({ specVersion: 3, spec: { memory: "3G", backups: { enabled: true, cron: "0 4 * * *" } } });
+
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 3n });
+    agent.ack(list.id);
+    const pending = patch(`/api/servers/${s.id}`, { spec: { backups: null } });
+    const apply = await agent.waitFor("applySpec");
+    if (apply.body.case !== "applySpec") throw new Error();
+    expect(apply.body.value.server!.version).toBe(4n);
+    expect(JSON.parse(new TextDecoder().decode(apply.body.value.server!.specJson))).not.toHaveProperty("backups");
+    agent.ack(apply.id);
+    res = await pending;
+    expect(res.statusCode).toBe(200);
+    expect(res.json().specVersion).toBe(4);
+    expect(res.json().spec).not.toHaveProperty("backups");
+    expect(JSON.parse(app.servers.get(s.id)!.spec)).not.toHaveProperty("backups");
+    agent.close();
+  });
   it("una copia de otro servidor es 404 al restaurar y al borrar", async () => {
     const { nodeId, nodeToken, s } = await setup();
     const other = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: baseSpec, desiredState: "running" });

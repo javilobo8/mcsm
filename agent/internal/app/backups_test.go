@@ -756,6 +756,24 @@ func TestScheduledRechecksAtExecution(t *testing.T) {
 	}
 }
 
+// PATCH {spec:{backups:null}} en el panel llega como una spec sin la sección: el refresco
+// periódico (cada scheduleRefreshEvery, 15 s) desprograma el servidor.
+func TestScheduleRemovedWhenSpecLosesBackups(t *testing.T) {
+	e := newBackupEnv(t, backupsSpecJSON)
+	e.a.bk.refreshSchedules()
+	if ids := e.a.bk.sched.IDs(); len(ids) != 1 {
+		t.Fatalf("programado al principio: %v", ids)
+	}
+	i := strings.Index(backupsSpecJSON, `,"backups":`)
+	noBackups := backupsSpecJSON[:i] + "}"
+	e.handle(20, &mcsmv1.ApplySpec{Server: &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(noBackups)}})
+	e.settle(t)
+	e.a.bk.refreshSchedules()
+	if ids := e.a.bk.sched.IDs(); len(ids) != 0 {
+		t.Fatalf("sin sección backups no queda programación: %v", ids)
+	}
+}
+
 func TestScheduledOnlyIfPlayersSince(t *testing.T) {
 	e := newBackupEnv(t, strings.Replace(backupsSpecJSON, `"onlyIfPlayersSince":false`, `"onlyIfPlayersSince":true`, 1))
 	count := func() int { m, _ := backup.List(e.backupsDir(), "alpha"); return len(m) }
