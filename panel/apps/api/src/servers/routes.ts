@@ -5,15 +5,25 @@ import { powerActionSchema, serverCreateSchema, serverPatchSchema } from "@mcsm/
 import { HttpError, ServersService } from "./service.js";
 import { toServerDto } from "./repo.js";
 
-export const serverRoutes = fp(async function serverRoutes(app: FastifyInstance) {
-  const svc = new ServersService(app);
-  app.decorate("serversService", svc);
+/** Decora el servicio en la raíz y registra las rutas encapsuladas (el errorHandler solo afecta a /api/servers). */
+export const serverRoutes = fp(async function serverRoutes(root: FastifyInstance) {
+  const svc = new ServersService(root);
+  root.decorate("serversService", svc);
+  await root.register(serverRoutesInner);
+});
+
+async function serverRoutesInner(app: FastifyInstance) {
+  const svc = app.serversService;
 
   app.setErrorHandler((err: FastifyError | Error, _req, reply) => {
     if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message });
     if (err instanceof z.ZodError) return reply.code(400).send({ error: err.issues[0]?.message ?? "Datos inválidos" });
-    app.log.error(err);
-    return reply.code((err as FastifyError).statusCode ?? 500).send({ error: err.message ?? "Error interno" });
+    const status = (err as FastifyError).statusCode;
+    if (status === undefined || status >= 500) {
+      app.log.error(err);
+      return reply.code(500).send({ error: "Error interno" });
+    }
+    return reply.code(status).send({ error: err.message });
   });
 
   app.get("/api/servers", async () => app.servers.list().map((r) => toServerDto(r)));
@@ -42,7 +52,7 @@ export const serverRoutes = fp(async function serverRoutes(app: FastifyInstance)
     const { command } = z.object({ command: z.string().trim().min(1).max(500) }).parse(req.body);
     return svc.command(req.params.id, command);
   });
-});
+}
 
 declare module "fastify" {
   interface FastifyInstance { serversService: ServersService }

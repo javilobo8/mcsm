@@ -42,6 +42,16 @@ export class ServersService {
     throw new HttpError(409, `No quedan puertos libres entre ${from} y ${to} en este nodo`);
   }
 
+  /** Sufija `-2`, `-3`… respetando el máximo de 40 caracteres. */
+  private uniqueSlug(nodeId: string, base: string): string {
+    if (!this.app.servers.getBySlug(nodeId, base)) return base;
+    for (let n = 2; ; n++) {
+      const suffix = `-${n}`;
+      const candidate = base.slice(0, 40 - suffix.length).replace(/-+$/g, "") + suffix;
+      if (!this.app.servers.getBySlug(nodeId, candidate)) return candidate;
+    }
+  }
+
   private checkPorts(nodeId: string, spec: Spec, selfId?: string) {
     const used = new Set<number>();
     for (const r of this.app.servers.list(nodeId)) {
@@ -56,7 +66,7 @@ export class ServersService {
   }
 
   private completeSpec(nodeId: string, input: SpecInput, previous?: Spec): Spec {
-    const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId);
+    const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId, new Set(input.ports.extra.map((e) => e.host)));
     const candidate = { ...input, ports: { game, extra: input.ports.extra }, rconPassword: previous?.rconPassword ?? randomToken() };
     const parsed = specSchema.safeParse(candidate);
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Spec inválida");
@@ -75,8 +85,10 @@ export class ServersService {
 
   async create(input: ServerCreateInput) {
     this.requireNode(input.nodeId);
-    const slug = input.slug ?? slugify(input.name);
-    if (this.app.servers.getBySlug(input.nodeId, slug)) throw new HttpError(409, `Ya existe un servidor con slug "${slug}" en este nodo`);
+    if (input.slug && this.app.servers.getBySlug(input.nodeId, input.slug)) {
+      throw new HttpError(409, `Ya existe un servidor con slug "${input.slug}" en este nodo`);
+    }
+    const slug = input.slug ?? this.uniqueSlug(input.nodeId, slugify(input.name));
     const spec = this.completeSpec(input.nodeId, input.spec);
     this.checkPorts(input.nodeId, spec);
     const row = this.app.servers.create({ nodeId: input.nodeId, name: input.name, slug, spec, desiredState: input.desiredState });

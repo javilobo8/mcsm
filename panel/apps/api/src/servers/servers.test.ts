@@ -142,4 +142,37 @@ describe("servidores", () => {
     expect(app.servers.get(s.id)!.desired_state).toBe("stopped");
     agent.close();
   });
+
+  it("slug autogenerado repetido se sufija; el explícito repetido da 409", async () => {
+    const a = (await post("/api/servers", { nodeId, name: "Prueba" })).json();
+    const b = (await post("/api/servers", { nodeId, name: "Prueba" })).json();
+    const c = (await post("/api/servers", { nodeId, name: "Prueba" })).json();
+    expect([a.slug, b.slug, c.slug]).toEqual(["prueba", "prueba-2", "prueba-3"]);
+    expect((await post("/api/servers", { nodeId, name: "X", slug: "prueba" })).statusCode).toBe(409);
+    const long = "n".repeat(60);
+    const l1 = (await post("/api/servers", { nodeId, name: long })).json();
+    const l2 = (await post("/api/servers", { nodeId, name: long })).json();
+    expect(l1.slug).toHaveLength(40);
+    expect(l2.slug).toMatch(/^[a-z0-9][a-z0-9-]{0,39}$/);
+    expect(l2.slug).not.toBe(l1.slug);
+    expect(l2.slug.endsWith("-2")).toBe(true);
+  });
+
+  it("el puerto de juego autoasignado evita los hosts de ports.extra de la propia spec", async () => {
+    const res = await post("/api/servers", { nodeId, name: "E", spec: { ports: { extra: [{ host: 25565, container: 19132, proto: "udp" }] } } });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().spec.ports.game).toBe(25566);
+  });
+
+  it("un error interno devuelve 500 genérico sin filtrar el mensaje; JSON mal formado da 400", async () => {
+    const orig = app.servers.list.bind(app.servers);
+    app.servers.list = () => { throw new Error("SQLITE_ERROR /secreto/ruta"); };
+    let res = await app.inject({ method: "GET", url: "/api/servers", headers: { cookie } });
+    app.servers.list = orig;
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toMatch(/SQLITE|secreto/);
+    expect(res.json()).toEqual({ error: "Error interno" });
+    res = await app.inject({ method: "POST", url: "/api/servers", headers: { cookie, "content-type": "application/json" }, payload: "{mal" });
+    expect(res.statusCode).toBe(400);
+  });
 });
