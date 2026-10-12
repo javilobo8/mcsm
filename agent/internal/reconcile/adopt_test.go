@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -518,5 +519,69 @@ func TestLateAdoptKeepsNewerSpecAndRecreates(t *testing.T) {
 	}
 	if v, _ := st.Applied("a"); v != 2 {
 		t.Fatalf("applied = %d", v)
+	}
+}
+
+// m1: ya está en la red mcsm sin el alias (reimportado tras perder el store, con otro slug): se
+// reconecta con el alias, sin pararlo; los alias que tuviera se conservan.
+func TestAdoptAddsAliasWhenAlreadyOnNetwork(t *testing.T) {
+	r, _, fake, _, root := setup(t)
+	ctx := context.Background()
+	id, err := fake.Create(ctx, "mc", &container.Config{Image: "itzg/minecraft-server:java21"},
+		&container.HostConfig{Binds: []string{filepath.Join(root, "alpha", "data") + ":/data"},
+			PortBindings: network.PortMap{network.MustParsePort("25565/tcp"): {{HostPort: "25570"}}}},
+		&network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{"mcsm": {Aliases: []string{"mcsm-viejo"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fake.Start(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	fake.Calls = nil
+	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := fake.InspectImport(ctx, id)
+	if !slices.Contains(info.Aliases["mcsm"], "mcsm-alpha") || !slices.Contains(info.Aliases["mcsm"], "mcsm-viejo") {
+		t.Fatalf("alias = %v", info.Aliases)
+	}
+	if calls(fake, "DisconnectNetwork mcsm "+id) != 1 || calls(fake, "Stop")+calls(fake, "Start")+calls(fake, "Create") != 0 {
+		t.Fatalf("calls = %v", fake.Calls)
+	}
+	// Con el alias ya puesto (reintento) no se toca la red.
+	fake.Calls = nil
+	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
+		t.Fatal(err)
+	}
+	if calls(fake, "ConnectNetwork")+calls(fake, "DisconnectNetwork") != 0 {
+		t.Fatalf("calls = %v", fake.Calls)
+	}
+}
+
+// failStoreOnConnect cierra el store justo después de conectar el contenedor a la red: el guardado de
+// la adopción falla después de ConnectNetwork.
+type failStoreOnConnect struct {
+	*docker.Fake
+	st *store.Store
+}
+
+func (f failStoreOnConnect) ConnectNetwork(ctx context.Context, netName, id string, aliases []string) error {
+	err := f.Fake.ConnectNetwork(ctx, netName, id, aliases)
+	f.st.Close()
+	return err
+}
+
+// m12: si guardar la adopción falla tras ConnectNetwork, el alias se deshace (no queda huérfano).
+func TestAdoptUndoesAliasWhenStoreFails(t *testing.T) {
+	r, st, fake, _, root := setup(t)
+	ctx := context.Background()
+	id := external(t, fake, "mc", filepath.Join(root, "alpha", "data"), true)
+	r.eng = failStoreOnConnect{fake, st}
+	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err == nil {
+		t.Fatal("el guardado falla: Adopt también")
+	}
+	info, _ := fake.InspectImport(ctx, id)
+	if slices.Contains(info.Networks, "mcsm") {
+		t.Fatalf("el alias se deshace: %v %v", info.Networks, fake.Calls)
 	}
 }

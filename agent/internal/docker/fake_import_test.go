@@ -103,3 +103,37 @@ func TestFakeImageEnv(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestFakeAliasesAndDisconnect(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake()
+	id, _ := f.Create(ctx, "ajeno", &container.Config{Image: "y"}, &container.HostConfig{},
+		&network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{"mcsm": {Aliases: []string{"viejo"}}}})
+	info, _ := f.InspectImport(ctx, id)
+	if !reflect.DeepEqual(info.Aliases, map[string][]string{"mcsm": {"viejo"}}) {
+		t.Fatalf("alias = %v", info.Aliases)
+	}
+	if err := f.DisconnectNetwork(ctx, "mcsm", id); err != nil {
+		t.Fatal(err)
+	}
+	info, _ = f.InspectImport(ctx, id)
+	if len(info.Networks) != 0 || len(info.Aliases) != 0 {
+		t.Fatalf("tras desconectar: %v %v", info.Networks, info.Aliases)
+	}
+	if err := f.DisconnectNetwork(ctx, "mcsm", id); err == nil {
+		t.Fatal("desconectar de una red a la que no está conectado falla, como en Docker")
+	}
+	if err := f.ConnectNetwork(ctx, "mcsm", id, []string{"viejo", "mcsm-x"}); err != nil {
+		t.Fatal(err)
+	}
+	info, _ = f.InspectImport(ctx, id)
+	if !reflect.DeepEqual(info.Aliases["mcsm"], []string{"viejo", "mcsm-x"}) {
+		t.Fatalf("alias = %v", info.Aliases)
+	}
+	if err := f.DisconnectNetwork(ctx, "mcsm", "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+	if f.Calls[len(f.Calls)-1] != "DisconnectNetwork mcsm nope" {
+		t.Fatalf("calls = %v", f.Calls)
+	}
+}

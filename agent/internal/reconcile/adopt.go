@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -102,10 +103,15 @@ func (r *Reconciler) recordAdoption(ctx context.Context, sp *mcsmv1.ServerSpec, 
 	if err != nil {
 		return err
 	}
-	if err := r.connectAlias(ctx, info, sp.Slug); err != nil {
+	undo, err := r.connectAlias(ctx, info, sp.Slug)
+	if err != nil {
 		return err
 	}
-	return r.st.AdoptWithSpec(sp, store.Adoption{ContainerID: info.ID, Slug: sp.Slug, Version: a.Version}, externalPath(parsed, dataDir))
+	if err := r.st.AdoptWithSpec(sp, store.Adoption{ContainerID: info.ID, Slug: sp.Slug, Version: a.Version}, externalPath(parsed, dataDir)); err != nil {
+		undo() // m12: sin adopción, el alias mcsm-<slug> sobra
+		return err
+	}
+	return nil
 }
 
 // externalPath es la carpeta que se registra como verificada al adoptar: dataDir si es un dataPath
@@ -133,10 +139,12 @@ func (r *Reconciler) readopt(ctx context.Context, sp *mcsmv1.ServerSpec, parsed 
 	if err != nil {
 		return nil, err
 	}
-	if err := r.connectAlias(ctx, info, sp.Slug); err != nil {
+	undo, err := r.connectAlias(ctx, info, sp.Slug)
+	if err != nil {
 		return nil, err
 	}
 	if err := r.st.PutAdoption(sp.ServerId, store.Adoption{ContainerID: info.ID, Slug: sp.Slug, Version: a.Version}, externalPath(parsed, dataDir)); err != nil {
+		undo()
 		return nil, err
 	}
 	r.log.Info("importado adoptado de nuevo desde su spec", "server", sp.Slug, "contenedor", info.Name)
@@ -247,17 +255,42 @@ func (r *Reconciler) checkDataFree(ctx context.Context, dataDir, exclude string)
 }
 
 // connectAlias conecta el contenedor a la red del agente con el alias mcsm-<slug> (RCON, ping y
-// métricas lo buscan por ese nombre). Si ya está en la red, no hace nada.
-func (r *Reconciler) connectAlias(ctx context.Context, info *docker.ImportInfo, slug string) error {
-	for _, n := range info.Networks {
-		if n == r.network {
-			return nil
+// métricas lo buscan por ese nombre), sin reiniciarlo. Si ya está en la red con el alias, no hace nada;
+// si está sin él (m1: p. ej. reimportado con otro slug), lo reconecta conservando sus otros alias:
+// Docker no cambia los alias de una conexión existente. undo deshace el cambio, en lo posible (m12).
+func (r *Reconciler) connectAlias(ctx context.Context, info *docker.ImportInfo, slug string) (undo func(), err error) {
+	want := spec.ContainerName(slug)
+	prev := info.Aliases[r.network]
+	if !slices.Contains(info.Networks, r.network) {
+		if err := r.eng.ConnectNetwork(ctx, r.network, info.ID, []string{want}); err != nil {
+			return nil, fmt.Errorf("conectar %s a la red %s: %w", info.Name, r.network, err)
 		}
+		return func() {
+			if err := r.eng.DisconnectNetwork(ctx, r.network, info.ID); err != nil {
+				r.log.Warn("deshacer la conexión a la red de un contenedor no adoptado", "contenedor", info.Name, "err", err)
+			}
+		}, nil
 	}
-	if err := r.eng.ConnectNetwork(ctx, r.network, info.ID, []string{spec.ContainerName(slug)}); err != nil {
-		return fmt.Errorf("conectar %s a la red %s: %w", info.Name, r.network, err)
+	if slices.Contains(prev, want) {
+		return func() {}, nil
 	}
-	return nil
+	if err := r.eng.DisconnectNetwork(ctx, r.network, info.ID); err != nil {
+		return nil, fmt.Errorf("reconectar %s a la red %s con el alias %s: %w", info.Name, r.network, want, err)
+	}
+	if err := r.eng.ConnectNetwork(ctx, r.network, info.ID, append(slices.Clone(prev), want)); err != nil {
+		if rerr := r.eng.ConnectNetwork(ctx, r.network, info.ID, prev); rerr != nil {
+			r.log.Warn("volver a conectar un contenedor a la red con sus alias", "contenedor", info.Name, "err", rerr)
+		}
+		return nil, fmt.Errorf("reconectar %s a la red %s con el alias %s: %w", info.Name, r.network, want, err)
+	}
+	return func() {
+		if err := r.eng.DisconnectNetwork(ctx, r.network, info.ID); err == nil {
+			err = r.eng.ConnectNetwork(ctx, r.network, info.ID, prev)
+			if err != nil {
+				r.log.Warn("restaurar los alias de red de un contenedor no adoptado", "contenedor", info.Name, "err", err)
+			}
+		}
+	}, nil
 }
 
 func adoptedContainer(serverID, slug, id, name, state string) *docker.Container {

@@ -82,4 +82,7 @@ type Engine interface {
 	ImageEnv(ctx context.Context, image string) ([]string, error)
 	// ConnectNetwork conecta un contenedor (en marcha o no) a una red con alias DNS, sin reiniciarlo.
 	ConnectNetwork(ctx context.Context, netName, id string, aliases []string) error
+	// DisconnectNetwork lo desconecta de una red, sin reiniciarlo (Docker no cambia los alias de una
+	// conexión existente: se desconecta y se vuelve a conectar).
+	DisconnectNetwork(ctx context.Context, netName, id string) error
 }

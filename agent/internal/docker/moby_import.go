@@ -63,8 +63,14 @@ func (m *Moby) InspectImport(ctx context.Context, id string) (*ImportInfo, error
 		out.Mounts = append(out.Mounts, Mount{Type: string(mp.Type), Source: mp.Source, Destination: mp.Destination, Name: mp.Name, RW: mp.RW})
 	}
 	if c.NetworkSettings != nil {
-		for name := range c.NetworkSettings.Networks {
+		for name, ep := range c.NetworkSettings.Networks {
 			out.Networks = append(out.Networks, name)
+			if ep != nil && len(ep.Aliases) > 0 {
+				if out.Aliases == nil {
+					out.Aliases = map[string][]string{}
+				}
+				out.Aliases[name] = ep.Aliases
+			}
 		}
 	}
 	sort.Strings(out.Networks)
@@ -87,5 +93,10 @@ func (m *Moby) ConnectNetwork(ctx context.Context, netName, id string, aliases [
 	_, err := m.cli.NetworkConnect(ctx, netName, client.NetworkConnectOptions{
 		Container: id, EndpointConfig: &network.EndpointSettings{Aliases: aliases},
 	})
+	return notFound(err)
+}
+
+func (m *Moby) DisconnectNetwork(ctx context.Context, netName, id string) error {
+	_, err := m.cli.NetworkDisconnect(ctx, netName, client.NetworkDisconnectOptions{Container: id})
 	return notFound(err)
 }

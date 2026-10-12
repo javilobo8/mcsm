@@ -18,6 +18,9 @@ type ImportInfo struct {
 	NanoCPUs    int64
 	NetworkMode string
 	Networks    []string // redes a las que está conectado, ordenadas
+	// Aliases: alias DNS que puso el usuario en cada red (sin el nombre ni el id del contenedor);
+	// nil si no hay ninguno.
+	Aliases map[string][]string
 }
 
 // PortPublish es una publicación de puerto. HostIP "" = todas las interfaces; HostPort 0 = efímero.

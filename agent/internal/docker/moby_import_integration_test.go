@@ -84,8 +84,19 @@ func TestMobyImportInspectAndConnect(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, _ = m.InspectImport(ctx, id)
-	if !slices.Contains(info.Networks, netName) {
-		t.Fatalf("networks = %v", info.Networks)
+	if !slices.Contains(info.Networks, netName) || !slices.Contains(info.Aliases[netName], "mcsm-test-alias") {
+		t.Fatalf("networks = %v, aliases = %v", info.Networks, info.Aliases)
+	}
+	// plan-6 (m1): para añadir un alias se desconecta y se vuelve a conectar, sin reiniciarlo.
+	if err := m.DisconnectNetwork(ctx, netName, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ConnectNetwork(ctx, netName, id, []string{"mcsm-test-alias", "mcsm-test-otro"}); err != nil {
+		t.Fatal(err)
+	}
+	info, _ = m.InspectImport(ctx, id)
+	if info.State != "running" || !slices.Contains(info.Aliases[netName], "mcsm-test-otro") || !slices.Contains(info.Aliases[netName], "mcsm-test-alias") {
+		t.Fatalf("state = %s, aliases = %v", info.State, info.Aliases)
 	}
 	if _, err := m.InspectImport(ctx, "mcsm-test-no-existe"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v", err)

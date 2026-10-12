@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/moby/moby/api/types/network"
 )
 
 // ListAll devuelve todos los contenedores, ordenados por id. Como Inspect, no se anota en Calls.
@@ -72,13 +74,26 @@ func (f *Fake) InspectImport(_ context.Context, id string) (*ImportInfo, error) 
 		}
 	}
 	nets := map[string]bool{}
+	addAliases := func(n string, as []string) {
+		if len(as) == 0 {
+			return
+		}
+		if out.Aliases == nil {
+			out.Aliases = map[string][]string{}
+		}
+		out.Aliases[n] = append([]string(nil), as...)
+	}
 	if c.Net != nil {
-		for n := range c.Net.EndpointsConfig {
+		for n, ep := range c.Net.EndpointsConfig {
 			nets[n] = true
+			if ep != nil {
+				addAliases(n, ep.Aliases)
+			}
 		}
 	}
-	for n := range c.Aliases {
+	for n, as := range c.Aliases {
 		nets[n] = true
+		addAliases(n, as)
 	}
 	for n := range nets {
 		out.Networks = append(out.Networks, n)
@@ -123,5 +138,35 @@ func (f *Fake) ConnectNetwork(_ context.Context, netName, id string, aliases []s
 		c.Aliases = map[string][]string{}
 	}
 	c.Aliases[netName] = append([]string(nil), aliases...)
+	return nil
+}
+
+// DisconnectNetwork imita a Docker: desconectar de una red a la que no está conectado es un error.
+func (f *Fake) DisconnectNetwork(_ context.Context, netName, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.record("DisconnectNetwork %s %s", netName, id)
+	c, ok := f.Containers[id]
+	if !ok {
+		return ErrNotFound
+	}
+	_, viaAlias := c.Aliases[netName]
+	viaCreate := false
+	if c.Net != nil {
+		_, viaCreate = c.Net.EndpointsConfig[netName]
+	}
+	if !viaAlias && !viaCreate {
+		return fmt.Errorf("container %s is not connected to network %s", c.Name, netName)
+	}
+	delete(c.Aliases, netName)
+	if viaCreate {
+		eps := make(map[string]*network.EndpointSettings, len(c.Net.EndpointsConfig))
+		for n, ep := range c.Net.EndpointsConfig {
+			if n != netName {
+				eps[n] = ep
+			}
+		}
+		c.Net = &network.NetworkingConfig{EndpointsConfig: eps} // copia: no toca la config del llamador
+	}
 	return nil
 }
