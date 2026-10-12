@@ -69,7 +69,7 @@ export function NetworkSection({ spec, onChange, onError }: { spec: EditableSpec
     <div className="flex flex-col gap-6">
       <div className="max-w-xs">
         <NumberField id="sf-port" label="Puerto de juego (host)" value={spec.ports.game} min={1} max={65535} onError={onError}
-          hint="Dentro del contenedor siempre es 25565. Vacío = el panel elige uno libre."
+          hint="Dentro del contenedor siempre es 25565. Vacío = se conserva el puerto actual."
           onChange={(game) => onChange({ ...spec, ports: { ...spec.ports, game } })} />
       </div>
       <div className="flex flex-col gap-2">

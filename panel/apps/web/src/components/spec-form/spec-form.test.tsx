@@ -42,6 +42,18 @@ describe("SpecForm (render en servidor, sin DOM)", () => {
     expect(render(modded, "server")).toContain("Dejar de gestionar");
   });
 
+  it("textos veraces: sin límite de RAM el agente aplica memoria + 1G; al editar, el puerto vacío se conserva", () => {
+    const html = render(modded, "server");
+    expect(html).toContain("Vacío = memoria de la JVM + 1G");
+    expect(html).toContain("Vacío = se conserva el puerto actual");
+    expect(html).not.toContain("el panel elige uno libre");
+  });
+
+  it("Jugadores avisa (en su sección) de las variables del env que la pisarían", () => {
+    const html = render({ ...modded, env: { OPS: "Lobo,Pepe" } }, "server");
+    expect(html).toContain("Quita la variable OPS de las variables de entorno");
+  });
+
   it("cada campo se asigna a su pestaña", () => {
     expect(sectionOfField("sf-mods-urls")).toBe("Versión y mods");
     expect(sectionOfField("sf-prop-motd")).toBe("Propiedades");

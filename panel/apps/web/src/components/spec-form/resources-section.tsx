@@ -13,7 +13,7 @@ export function ResourcesSection({ spec, onChange, onError }: { spec: EditableSp
       <ValidatedInput id="sf-memory" label="Memoria de la JVM (MEMORY)" hint="Ej. 4G o 512M." value={spec.memory} onError={onError}
         validate={validateMemory} onChange={(memory) => onChange({ ...spec, memory })} />
       <ValidatedInput id="sf-memlimit" label="Límite de RAM del contenedor" placeholder="5G" value={spec.resources.memLimit} onError={onError}
-        hint="Vacío = sin límite. Si lo pones, al menos la memoria de la JVM (mejor +1G)." externalError={relError}
+        hint="Vacío = memoria de la JVM + 1G. Si lo pones, al menos la memoria de la JVM (mejor +1G)." externalError={relError}
         validate={(v) => (v === "" ? null : validateMemory(v))} onChange={(memLimit) => onChange({ ...spec, resources: { ...spec.resources, memLimit } })} />
       <NumberField id="sf-cpus" label="Límite de CPUs" value={spec.resources.cpus || undefined} min={0} max={256} integer={false} zeroIsEmpty placeholder="2" onError={onError}
         hint="Vacío = sin límite. Admite decimales (1.5)." onChange={(cpus) => onChange({ ...spec, resources: { ...spec.resources, cpus: cpus ?? 0 } })} />

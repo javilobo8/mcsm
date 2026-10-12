@@ -189,7 +189,7 @@ export function validateMemory(m: string): string | null {
   return MEMORY_RE.test(m) ? null : "Formato de memoria inválido: un número entero y M o G (ej. 4G, 512M)";
 }
 
-/** Límite de RAM del contenedor: vacío (sin límite) o memoria válida y no menor que la de la JVM. */
+/** Límite de RAM del contenedor: vacío (el agente aplica memoria + 1G) o memoria válida y no menor que la de la JVM. */
 export function validateMemLimit(limit: string, memory: string): string | null {
   if (limit === "") return null;
   const bad = validateMemory(limit);

@@ -36,6 +36,8 @@ function showModpack(v: unknown): string {
 function showWhitelist(v: unknown): string {
   if (!isObj(v)) return NONE;
   const players = Array.isArray(v.players) && v.players.length ? `: ${v.players.join(", ")}` : "";
+  // Activada y vacía: el agente sincroniza whitelist.json a [] y solo los ops (que se la saltan) pueden entrar.
+  if (v.enabled && !players) return "activada y vacía — nadie podrá entrar salvo los ops";
   return `${v.enabled ? "activada" : "desactivada"}${players}`;
 }
 

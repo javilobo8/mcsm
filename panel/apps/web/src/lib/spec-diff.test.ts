@@ -45,9 +45,10 @@ describe("diffSpecs", () => {
       { label: "Whitelist", before: "(sin gestionar)", after: "desactivada" },
     ]);
   });
-  it("whitelist activada con lista vacía se muestra como tal", () => {
+  it("whitelist activada con lista vacía avisa de que solo entran los ops", () => {
     expect(diffSpecs({ type: "PAPER" }, { type: "PAPER", whitelist: { enabled: true, players: [] } })).toEqual([
-      { label: "Whitelist", before: "(sin gestionar)", after: "activada" },
+      { label: "Whitelist", before: "(sin gestionar)", after: "activada y vacía — nadie podrá entrar salvo los ops" },
     ]);
+    expect(diffSpecs({ type: "PAPER" }, { type: "PAPER", whitelist: { enabled: false, players: [] } })[0]?.after).toBe("desactivada");
   });
 });
