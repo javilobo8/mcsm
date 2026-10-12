@@ -5146,6 +5146,15 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 Sin desviaciones, no hay commit.
 
+**Notas de la verificación (E2E combinada de los Planes 6 y 7 sobre `feat/wave-b`, 2026-10-12).** Informe completo en `.superpowers/sdd/wave-b-e2e-report.md`.
+- Montaje: un solo nodo en el Docker del host (`mcsm-test-agent-a`, `docker run`, no el compose `mcsm-test-p6`), compartido con la E2E del Plan 7: dos agentes sobre el mismo Docker se verían los contenedores. Directorio de trabajo en el scratchpad (`/tmp`), no en `deploy/data`.
+- **Bug encontrado y arreglado (9f2d104):** la consola de un importado aún adoptado mostraba los 8 bytes de cabecera del multiplexado de Docker delante de cada línea, y sin marca de tiempo. Los contenedores de Compose no tienen TTY; los que crea el agente, sí. `Moby.Logs` separa stdout y stderr con `stdcopy` cuando el contenedor no tiene TTY. Test de integración: `TestMobyLogsWithoutTTY`.
+- Step 4: con los datos en `/tmp`, la propuesta añade el aviso de carpeta temporal (f7a5972). En la máquina no había servidores itzg del usuario: solo salieron los de prueba. Un contenedor con `./mods:/data/mods` aparece con un bloqueo, y `POST …/import` da 409 con ese texto (6ed31e3).
+- Step 6: los 409 de archivos y de copia dicen «datos fuera de DATA_ROOT: … elimina el servidor sin borrar datos, mueve esa carpeta a DATA_ROOT/<slug>/data y vuelve a importarlo» (d82c0b5). Un PATCH con otro `dataPath` o con `null` da 400; con el mismo valor no cambia la versión. Crear un servidor con `dataPath` da 400.
+- Step 7: `HostConfig.Binds` es `null` y `/data` va en `HostConfig.Mounts` (`{"Type":"bind","Source":"<dataPath>","Target":"/data"}`), por el arreglo M3 (5d1740c). Con la carpeta apartada, recrear falla («bind source path does not exist»): no se crea una carpeta vacía y el panel lo muestra en `observed.error`. Al devolver la carpeta, el contenedor se crea solo (unos 20 s).
+- H1 (a54989f): se cambió el `dataPath` en la BD del panel a otra carpeta. El `ApplySpec` se rechaza («carpeta de datos sin verificar … no se monta») y el contenedor no se toca. El PATCH responde 200 (el push es asíncrono): el rechazo solo se ve en el log del panel y en `observedSpecVersion`, que no avanza.
+- Step 8 (web): pendiente del humano, porque el navegador automatizado no abre `localhost:8080`.
+
 ---
 
 ## Cierre del plan
