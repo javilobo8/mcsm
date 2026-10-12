@@ -18,19 +18,31 @@ export interface FileEntryDto {
 const CONTROL = /[\u0000-\u001f\u007f]/;
 /** Igual que `files.Clean` del agente: 4096 bytes UTF-8, no unidades UTF-16. */
 const MAX_PATH_BYTES = 4096;
+/** NAME_MAX de Linux: 255 bytes UTF-8. */
+const MAX_NAME_BYTES = 255;
 const encoder = new TextEncoder();
+
+function byteLength(s: string): number {
+  return encoder.encode(s).length;
+}
+
+/** Motivo por el que una ruta es insegura, o null si es válida. */
+function pathProblem(p: string): string | null {
+  if (byteLength(p) > MAX_PATH_BYTES) return "Ruta demasiado larga (máx. 4096 bytes)";
+  if (CONTROL.test(p)) return "Ruta inválida: no se permiten caracteres de control";
+  if (p.split("/").includes("..")) return "Ruta inválida: no se permite «..»";
+  return null;
+}
 
 /**
  * Normaliza una ruta dentro de /data del servidor ("mods//a.jar/" → "/mods/a.jar", "" → "/").
  * Devuelve null si es insegura: ".." o caracteres de control se rechazan, nunca se arreglan.
  */
 export function normalizePath(p: string): string | null {
-  if (encoder.encode(p).length > MAX_PATH_BYTES) return null;
-  if (CONTROL.test(p)) return null;
+  if (pathProblem(p) !== null) return null;
   const parts: string[] = [];
   for (const seg of p.split("/")) {
     if (seg === "" || seg === ".") continue;
-    if (seg === "..") return null;
     parts.push(seg);
   }
   return "/" + parts.join("/");
@@ -40,12 +52,12 @@ export function normalizePath(p: string): string | null {
 export const filePathSchema = z
   .string({ error: "Falta la ruta" })
   .transform((p, ctx) => {
-    const n = normalizePath(p);
-    if (n === null) {
-      ctx.addIssue({ code: "custom", message: "Ruta inválida: no se permite «..» ni caracteres de control" });
+    const problem = pathProblem(p);
+    if (problem !== null) {
+      ctx.addIssue({ code: "custom", message: problem });
       return z.NEVER;
     }
-    return n;
+    return normalizePath(p) as string;
   });
 
 /** Nombre de un fichero o carpeta nuevo (crear carpeta, renombrar). */
@@ -53,9 +65,13 @@ export const fileNameSchema = z
   .string()
   .trim()
   .min(1, "El nombre no puede estar vacío")
-  .max(255, "Nombre demasiado largo")
+  .refine((n) => byteLength(n) <= MAX_NAME_BYTES, "Nombre demasiado largo (máx. 255 bytes)")
   .refine((n) => n !== "." && n !== ".." && !n.includes("/") && !CONTROL.test(n), "Nombre inválido: sin «/», «..» ni caracteres de control");
 
+/**
+ * joinPath, parentPath y baseName esperan rutas ya normalizadas (`normalizePath` / `filePathSchema`):
+ * empiezan por "/", sin "/" final ni segmentos vacíos. Con otra entrada el resultado no es fiable.
+ */
 export function joinPath(dir: string, name: string): string {
   return dir === "/" ? `/${name}` : `${dir}/${name}`;
 }

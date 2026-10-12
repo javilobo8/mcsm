@@ -14,6 +14,18 @@ describe("normalizePath", () => {
   });
 });
 
+describe("límite de ruta (4096 bytes UTF-8)", () => {
+  it("acepta exactamente 4096 bytes, aunque sean multibyte", () => {
+    expect(normalizePath("ñ".repeat(2048))).toBe("/" + "ñ".repeat(2048));
+    expect(normalizePath("a".repeat(4096))).not.toBeNull();
+  });
+  it("rechaza 4097 bytes con mensaje de longitud", () => {
+    expect(normalizePath("ñ".repeat(2048) + "a")).toBeNull();
+    expect(normalizePath("a".repeat(4097))).toBeNull();
+    expect(filePathSchema.safeParse("ñ".repeat(2048) + "a").error?.issues[0]?.message).toMatch(/demasiado larga/);
+  });
+});
+
 describe("filePathSchema", () => {
   it("devuelve la ruta normalizada", () => {
     expect(filePathSchema.parse("mods/a.jar")).toBe("/mods/a.jar");
@@ -25,6 +37,12 @@ describe("filePathSchema", () => {
 });
 
 describe("fileNameSchema", () => {
+  it("mide el límite de 255 bytes, no caracteres", () => {
+    expect(fileNameSchema.safeParse("ñ".repeat(127)).success).toBe(true);
+    expect(fileNameSchema.safeParse("ñ".repeat(130)).success).toBe(false);
+    expect(fileNameSchema.safeParse("a".repeat(255)).success).toBe(true);
+    expect(fileNameSchema.safeParse("a".repeat(256)).success).toBe(false);
+  });
   it("acepta nombres normales y recorta espacios", () => {
     expect(fileNameSchema.parse("  plugins ")).toBe("plugins");
     expect(fileNameSchema.parse("mundo ñ (copia).zip")).toBe("mundo ñ (copia).zip");
