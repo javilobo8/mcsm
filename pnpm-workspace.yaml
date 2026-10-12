@@ -1,3 +1,5 @@
 packages:
   - panel/apps/*
   - panel/packages/*
+allowBuilds:
+  esbuild: true
