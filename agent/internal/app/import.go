@@ -3,12 +3,15 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
+	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/importer"
 	"mcsm/agent/internal/reconcile"
+	"mcsm/agent/internal/spec"
 )
 
 // Importación de contenedores existentes (plan-6, spec §6.7).
@@ -69,4 +72,43 @@ func adoptErrCode(err error) string {
 	default:
 		return errcode.ApplyFailed
 	}
+}
+
+// serverContainers es lo que mide el muestreador de métricas (stats.Containers): los contenedores
+// gestionados y los adoptados, con mcsm.server_id y mcsm.slug (ping a mcsm-<slug>, el alias de red).
+type serverContainers struct{ a *App }
+
+func (c serverContainers) ListManaged(ctx context.Context) ([]docker.Container, error) {
+	return c.a.rec.ServerContainers(ctx)
+}
+
+func (c serverContainers) Stats(ctx context.Context, id string) (docker.Stats, error) {
+	return c.a.eng.Stats(ctx, id)
+}
+
+// errExternalData: el servidor guarda sus datos fuera de DATA_ROOT (dataPath) y el agente no los ve
+// (solo monta DATA_ROOT, spec §6.1): ni copias ni archivos.
+var errExternalData = errors.New("datos fuera de DATA_ROOT")
+
+func externalDataSpec(s spec.Spec) error {
+	if s.DataPath == "" {
+		return nil
+	}
+	return fmt.Errorf("%w: los datos de este servidor están en %s, fuera de DATA_ROOT, y el agente no los ve; "+
+		"no hay copias de seguridad ni archivos. Para tenerlos, para el servidor, mueve esa carpeta a DATA_ROOT/<slug>/data "+
+		"y quita dataPath de su configuración", errExternalData, s.DataPath)
+}
+
+// externalData es externalDataSpec para un servidor del store; nil si no existe o su spec no se lee
+// (de eso responde quien llama).
+func (a *App) externalData(serverID string) error {
+	sp, err := a.st.GetSpec(serverID)
+	if err != nil || sp == nil {
+		return nil
+	}
+	parsed, err := spec.Parse(sp.SpecJson)
+	if err != nil {
+		return nil
+	}
+	return externalDataSpec(parsed)
 }

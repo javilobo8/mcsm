@@ -312,6 +312,11 @@ func (a *App) handleFiles(ctx context.Context, env *mcsmv1.Envelope, send func(*
 		_ = send(errMsg(env.Id, errcode.Unsupported, fmt.Errorf("mensaje de archivos no soportado: %T", env.Body)))
 		return
 	}
+	// plan-6: con dataPath los datos están fuera de DATA_ROOT y el agente no los ve.
+	if err := a.externalData(req.GetServerId()); err != nil {
+		_ = send(errMsg(env.Id, errcode.ExternalData, err))
+		return
+	}
 	if !a.xfer.enter() {
 		_ = send(errMsg(env.Id, errcode.Busy, errFilesClosing))
 		return
