@@ -6,7 +6,7 @@ import { AgentErrorCode } from "../agents/error-codes.js";
 import type { JobDto, JobState } from "../jobs/repo.js";
 import { agentErrorToHttp } from "../lib/http.js";
 import { nowIso } from "../lib/time.js";
-import { toServerDto, toServerSpecMessage, type ServerRow } from "../servers/repo.js";
+import { toServerDto, type ServerRow } from "../servers/repo.js";
 import { HttpError } from "../servers/service.js";
 import { BackupsRepo, toBackupDto, type BackupDto, type BackupInput, type BackupTriggerName } from "./repo.js";
 
@@ -36,6 +36,8 @@ export function infoToInput(b: BackupInfo): BackupInput {
 /** Copias de seguridad (spec §7 BackupService): tabla `backups`, órdenes al agente e inventario. */
 export class BackupService {
   /** Inicio de la última petición de inventario por nodo: solo se dan por perdidos los jobs anteriores. */
+  /** Idempotency-Key de POST /backups → job (en memoria, acotado). */
+  private keys = new Map<string, string>();
   private syncStartedAt = new Map<string, string>();
 
   constructor(private app: FastifyInstance, private repo: BackupsRepo) {}
@@ -78,12 +80,21 @@ export class BackupService {
   // Acciones del usuario
 
   /** Copia manual inmediata. Devuelve el job; el avance llega por el topic `jobs`. */
-  async createNow(serverId: string): Promise<JobDto> {
+  async createNow(serverId: string, idempotencyKey?: string): Promise<JobDto> {
     const row = this.requireServer(serverId);
+    // Un reintento del navegador con la misma clave devuelve el job ya creado.
+    const keyed = idempotencyKey ? `${serverId}:${idempotencyKey}` : "";
+    const prior = keyed ? this.keys.get(keyed) : undefined;
+    const existing = prior ? this.app.jobs.get(prior) : null;
+    if (existing) return existing;
     const conn = this.onlineConn(row.node_id);
     const job = this.app.jobs.create({
       type: "backup", serverId, nodeId: row.node_id, status: "running", message: "Solicitando la copia al agente", payload: { trigger: "manual" },
     });
+    if (keyed) {
+      this.keys.set(keyed, job.id);
+      if (this.keys.size > 500) this.keys.delete(this.keys.keys().next().value!);
+    }
     await this.dispatch(conn, job.id, { case: "backupNow", value: { serverId, jobId: job.id, trigger: BackupTrigger.MANUAL } });
     return this.app.jobs.get(job.id)!;
   }
@@ -116,14 +127,16 @@ export class BackupService {
     this.app.events.emit("backups", serverId);
   }
 
-  /** Cambia `spec.backups` (programación y retención) y la envía al agente como una spec nueva. */
+  /** Cambia `spec.backups` (programación y retención) y la envía al agente como una spec nueva. El cuerpo REEMPLAZA
+   * `backups` entero (lo omitido vuelve a sus valores por defecto). No es acción inmediata: con el nodo desconectado
+   * se guarda y versiona sin 409, y la spec llega en el próximo SyncSpecs. */
   async updateSchedule(serverId: string, input: unknown) {
     const row = this.requireServer(serverId);
     const current = JSON.parse(row.spec) as Spec;
     const parsed = specSchema.safeParse({ ...current, backups: input });
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Programación de copias inválida");
     const updated = this.app.servers.updateSpec(serverId, parsed.data);
-    void this.push(updated);
+    void this.app.serversService.push(updated);
     return toServerDto(updated, { includeSecrets: true });
   }
 
@@ -142,16 +155,6 @@ export class BackupService {
       const err = agentErrorToHttp(e, "El agente rechazó la orden");
       this.app.jobs.finish(jobId, "failed", err.message);
       throw err;
-    }
-  }
-
-  private async push(row: ServerRow): Promise<void> {
-    const conn = this.app.agents.get(row.node_id);
-    if (!conn) return; // se entregará en el próximo SyncSpecs
-    try {
-      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row) } }, 120_000);
-    } catch (e) {
-      this.app.log.warn({ serverId: row.id, err: e }, "ApplySpec de la programación de copias sin éxito; el agente lo reintentará");
     }
   }
 

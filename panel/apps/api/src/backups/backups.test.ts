@@ -309,4 +309,75 @@ describe("acciones sobre copias", () => {
     expect(res.json()).toMatchObject({ specVersion: 3, spec: { memory: "3G", backups: { cron: "0 */6 * * *" } } });
     agent.close();
   });
+  it("una copia de otro servidor es 404 al restaurar y al borrar", async () => {
+    const { nodeId, nodeToken, s } = await setup();
+    const other = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: baseSpec, desiredState: "running" });
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n, [other.id]: 1n });
+    const synced = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.ack(list.id);
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [info(s.id, "uno-20261012T040000.000Z-1.tar.zst")] } } });
+    await synced;
+    const b = (await getBackups(s.id))[0];
+    expect((await post(`/api/servers/${other.id}/backups/${b.id}/restore`)).statusCode).toBe(404);
+    const del = await app.inject({ method: "DELETE", url: `/api/servers/${other.id}/backups/${b.id}`, headers: { cookie } });
+    expect(del.statusCode).toBe(404);
+    agent.close();
+  });
+
+  it("errores del agente al restaurar y al borrar: restaurar deja el job fallido; borrar conserva la copia", async () => {
+    const { nodeToken, s } = await setup();
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    const synced = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.ack(list.id);
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [info(s.id, "uno-20261012T040000.000Z-1.tar.zst")] } } });
+    await synced;
+    const b = (await getBackups(s.id))[0];
+    const r = post(`/api/servers/${s.id}/backups/${b.id}/restore`);
+    const rreq = await agent.waitFor("backupRestore");
+    agent.send({ id: rreq.id, body: { case: "error", value: { code: "busy", message: "ocupado con otra copia" } } });
+    const rres = await r;
+    expect(rres.statusCode).toBe(409);
+    expect(app.jobs.list({ serverId: s.id })[0]).toMatchObject({ type: "restore", status: "failed" });
+    const d = app.inject({ method: "DELETE", url: `/api/servers/${s.id}/backups/${b.id}`, headers: { cookie } });
+    const dreq = await agent.waitFor("backupDelete");
+    agent.send({ id: dreq.id, body: { case: "error", value: { code: "not_found", message: "no existe la copia" } } });
+    expect((await d).statusCode).toBe(404);
+    expect((await getBackups(s.id)).map((x: any) => x.id)).toEqual([b.id]);
+    agent.close();
+  });
+
+  it("la programación con el nodo desconectado se guarda y versiona sin 409", async () => {
+    const { s } = await setup();
+    const res = await app.inject({ method: "PATCH", url: `/api/servers/${s.id}/backups/schedule`, headers: { cookie }, payload: { enabled: true, cron: "0 4 * * *" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ specVersion: 2, spec: { backups: { enabled: true, cron: "0 4 * * *" } } });
+  });
+
+  it("si la conexión cae sin respuesta el job sigue abierto; el inventario posterior lo cierra", async () => {
+    const { nodeToken, s } = await setup();
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    agent.ack(list.id);
+    const pending = post(`/api/servers/${s.id}/backups`);
+    await agent.waitFor("backupNow");
+    agent.close(); // sin Ack
+    const res = await pending;
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ type: "backup", status: "running" });
+    expect(app.jobs.list({ serverId: s.id })[0]).toMatchObject({ status: "running" });
+  });
+
+  it("Idempotency-Key: un reintento devuelve el mismo job y no envía otra orden", async () => {
+    const { nodeToken, s } = await setup();
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    agent.ack(list.id);
+    const send = () => app.inject({ method: "POST", url: `/api/servers/${s.id}/backups`, headers: { cookie, "idempotency-key": "k1" } });
+    const first = send();
+    agent.ack((await agent.waitFor("backupNow")).id);
+    const a = await first;
+    const b = await send();
+    expect(b.statusCode).toBe(202);
+    expect(b.json().id).toBe(a.json().id);
+    expect(app.jobs.list({ serverId: s.id })).toHaveLength(1);
+    agent.close();
+  });
 });

@@ -19,7 +19,7 @@ async function backupRoutesInner(app: FastifyInstance) {
 
   // Acciones del usuario
   app.post<{ Params: { id: string } }>("/api/servers/:id/backups", async (req, reply) =>
-    reply.code(202).send(await svc.createNow(req.params.id)));
+    reply.code(202).send(await svc.createNow(req.params.id, req.headers["idempotency-key"]?.toString())));
 
   app.post<{ Params: { id: string; backupId: string } }>("/api/servers/:id/backups/:backupId/restore", async (req, reply) =>
     reply.code(202).send(await svc.restore(req.params.id, req.params.backupId)));

@@ -77,7 +77,8 @@ export class ServersService {
     return parsed.data;
   }
 
-  private async push(row: ServerRow): Promise<void> {
+  /** Envía la spec al agente si el nodo está conectado (si no, irá en el próximo SyncSpecs). */
+  async push(row: ServerRow): Promise<void> {
     const conn = this.app.agents.get(row.node_id);
     if (!conn) return; // se entregará en el próximo SyncSpecs
     try {
