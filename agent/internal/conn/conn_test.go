@@ -46,6 +46,34 @@ func TestEnroll(t *testing.T) {
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 
+// hangGuard solo evita que un fallo cuelgue la suite: no forma parte de lo que
+// se comprueba, así que es holgado para máquinas cargadas.
+const hangGuard = 10 * time.Second
+
+// waitFor espera a que cond se cumpla, sondeando.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	tick := time.NewTicker(time.Millisecond)
+	defer tick.Stop()
+	deadline := time.After(hangGuard)
+	for !cond() {
+		select {
+		case <-tick.C:
+		case <-deadline:
+			t.Fatalf("timeout esperando %s", what)
+		}
+	}
+}
+
+// waitConnected espera a que el cliente publique la sesión. El panel recibe el
+// Hello antes de que el cliente marque la sesión como conectada (el Hello se
+// escribe antes de publicar el ws para que nada se le adelante), así que leer
+// el Hello en el panel no garantiza que Connected/Send ya funcionen.
+func waitConnected(t *testing.T, c *Client) {
+	t.Helper()
+	waitFor(t, "sesión publicada", c.Connected)
+}
+
 type captureHandler struct {
 	mu   sync.Mutex
 	envs []*mcsmv1.Envelope
@@ -115,16 +143,14 @@ func TestClientHelloDispatchAndReconnect(t *testing.T) {
 	var hello *mcsmv1.Hello
 	select {
 	case hello = <-fp.gotHello:
-	case <-time.After(3 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("sin Hello")
 	}
 	if hello.AgentVersion != "0.1.0" || hello.SpecVersions["a"] != 3 {
 		t.Fatalf("hello = %+v", hello)
 	}
 	ws := <-fp.ws
-	if !c.Connected() {
-		t.Fatal("debería estar conectado")
-	}
+	waitConnected(t, c)
 
 	// panel → agente: PowerAction; el handler responde Ack con el mismo id
 	req := &mcsmv1.Envelope{Id: 42, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a"}}}
@@ -132,7 +158,7 @@ func TestClientHelloDispatchAndReconnect(t *testing.T) {
 	if err := ws.Write(ctx, websocket.MessageBinary, raw); err != nil {
 		t.Fatal(err)
 	}
-	rctx, rcancel := context.WithTimeout(ctx, 2*time.Second)
+	rctx, rcancel := context.WithTimeout(ctx, hangGuard)
 	_, data, err := ws.Read(rctx)
 	rcancel()
 	if err != nil {
@@ -148,11 +174,11 @@ func TestClientHelloDispatchAndReconnect(t *testing.T) {
 	ws.Close(websocket.StatusGoingAway, "reinicio")
 	select {
 	case <-fp.gotHello:
-	case <-time.After(3 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("no reconectó")
 	}
-	if atomic.LoadInt32(&fp.conns) < 2 {
-		t.Fatalf("conns = %d", fp.conns)
+	if n := atomic.LoadInt32(&fp.conns); n < 2 {
+		t.Fatalf("conns = %d", n)
 	}
 }
 
@@ -198,6 +224,7 @@ func TestPingKeepsSessionAndConcurrentSends(t *testing.T) {
 	go c.Run(ctx)
 	<-fp.gotHello
 	ws := <-fp.ws
+	waitConnected(t, c)
 
 	const n = 50
 	var wg sync.WaitGroup
@@ -212,7 +239,7 @@ func TestPingKeepsSessionAndConcurrentSends(t *testing.T) {
 	}
 	got := 0
 	for got < n {
-		rctx, rc := context.WithTimeout(ctx, 3*time.Second)
+		rctx, rc := context.WithTimeout(ctx, hangGuard)
 		_, data, err := ws.Read(rctx) // Read procesa también los pings del cliente
 		rc()
 		if err != nil {
@@ -240,11 +267,16 @@ func TestOnDisconnectAndStop(t *testing.T) {
 	done := make(chan struct{})
 	go func() { c.Run(ctx); close(done) }()
 	<-fp.gotHello
-	<-fp.ws
+	ws := <-fp.ws
+	// Como un panel real, el lado servidor sigue leyendo y contesta al cierre.
+	// Si la cancelación llega antes del primer Read del cliente, coder/websocket
+	// no tumba la conexión y el Close del cliente hace el handshake completo,
+	// que con un par que no lee espera 5 s a la respuesta.
+	ws.CloseRead(context.Background())
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(3 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("Run no terminó con ctx cancelado")
 	}
 	select {
@@ -332,9 +364,7 @@ func TestHandlerSendBoundToItsSession(t *testing.T) {
 	ws.Close(websocket.StatusGoingAway, "x")
 	<-fp.gotHello // sesión nueva establecida
 	ws2 := <-fp.ws
-	for !c.Connected() {
-		time.Sleep(time.Millisecond)
-	}
+	waitConnected(t, c)
 	if err := oldSend(&mcsmv1.Envelope{Id: 7, Body: &mcsmv1.Envelope_Ack{Ack: &mcsmv1.Ack{}}}); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("send de sesión vieja: %v", err)
 	}
