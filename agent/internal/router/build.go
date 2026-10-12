@@ -31,9 +31,12 @@ const (
 	// ContainerName es el nombre del contenedor del router en un nodo (los tests usan mcsm-test-…).
 	ContainerName = "mcsm-router"
 	Image         = "itzg/mc-router"
-	// Tag fija la versión de mc-router. Cambiarla cambia el hash: al actualizar el agente, el router
-	// se recrea con la imagen nueva.
-	Tag = "1.47.1"
+	// Tag fija la versión de mc-router y Digest el índice multiarquitectura publicado con ella
+	// (docker buildx imagetools inspect itzg/mc-router:1.47.1). El contenedor recibe el socket de
+	// Docker: un tag vuelto a publicar no debe llegar a ningún nodo. Cambiarlos cambia el hash: al
+	// actualizar el agente, el router se recrea con la imagen nueva.
+	Tag    = "1.47.1"
+	Digest = "sha256:177433dd91507339924d60205a19ae9a289afd0e69dbad54e1a55d497f7523f8"
 	// LabelRouter marca el contenedor del router (además de mcsm.managed, para recibir sus eventos).
 	LabelRouter = "mcsm.router"
 	// LabelHash guarda el hash de la configuración para detectar cambios sin comparar campo a campo.
@@ -51,13 +54,21 @@ const (
 	memoryLimit = 256 << 20
 	pidsLimit   = 256
 	hashSchema  = 1
+	// connectionRateLimit: conexiones nuevas por segundo (global). El 1 por defecto de mc-router hace
+	// esperar a varios jugadores que refrescan la lista de servidores a la vez.
+	connectionRateLimit = 10
 
 	asleepMOTD  = "Servidor dormido: conéctate para arrancarlo"
 	loadingMOTD = "Arrancando el servidor…"
 )
 
-// ImageRef es la imagen del router con su etiqueta fijada.
-func ImageRef() string { return Image + ":" + Tag }
+// ImageRef es la imagen del router con su etiqueta y su digest fijados.
+func ImageRef() string { return Image + ":" + Tag + "@" + Digest }
+
+// logConfig rota los logs del router: está expuesto a la red y registra cada conexión.
+func logConfig() container.LogConfig {
+	return container.LogConfig{Type: "json-file", Config: map[string]string{"max-size": "10m", "max-file": "3"}}
+}
 
 // Build es la configuración del contenedor del router.
 type Build struct {
@@ -85,7 +96,7 @@ func Validate(sp *mcsmv1.RouterSpec) error {
 // args son los argumentos de mc-router. Sin autoscale, mc-router solo enruta a contenedores en
 // marcha; con autoscale arranca el servidor al entrar un jugador y lo para tras N minutos sin nadie.
 func args(sp *mcsmv1.RouterSpec) []string {
-	a := []string{"-in-docker", "-port", strconv.Itoa(ListenPort)}
+	a := []string{"-in-docker", "-port", strconv.Itoa(ListenPort), "-connection-rate-limit", strconv.Itoa(connectionRateLimit)}
 	if sp.Autoscale {
 		mins := sp.AutoscaleDownAfterMinutes
 		if mins == 0 {
@@ -119,6 +130,7 @@ func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName string, socketGID u
 		CapDrop:        []string{"ALL"},
 		GroupAdd:       []string{strconv.FormatUint(uint64(socketGID), 10)},
 		ReadonlyRootfs: true,
+		LogConfig:      logConfig(),
 	}
 	host.Resources.Memory = memoryLimit
 	pids := int64(pidsLimit)
@@ -151,6 +163,8 @@ type hashInput struct {
 	CapDrop        []string          `json:"capDrop"`
 	GroupAdd       []string          `json:"groupAdd"`
 	ReadonlyRootfs bool              `json:"readonlyRootfs"`
+	LogType        string            `json:"logType"`
+	LogOpts        map[string]string `json:"logOpts"`
 }
 
 func hashOf(name, networkName string, cfg *container.Config, host *container.HostConfig) (string, error) {
@@ -159,6 +173,7 @@ func hashOf(name, networkName string, cfg *container.Config, host *container.Hos
 		Labels: map[string]string{}, Binds: sorted(host.Binds), Network: networkName, Restart: string(host.RestartPolicy.Name),
 		Memory: host.Resources.Memory, SecurityOpt: sorted(host.SecurityOpt), CapDrop: sorted(host.CapDrop),
 		GroupAdd: sorted(host.GroupAdd), ReadonlyRootfs: host.ReadonlyRootfs,
+		LogType: host.LogConfig.Type, LogOpts: host.LogConfig.Config,
 	}
 	for k, v := range cfg.Labels {
 		if k != LabelHash {

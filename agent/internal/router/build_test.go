@@ -22,10 +22,12 @@ func build(t *testing.T, sp *mcsmv1.RouterSpec) *Build {
 
 func TestBuildContainer(t *testing.T) {
 	b := build(t, &mcsmv1.RouterSpec{HostPort: 25565})
-	if b.Name != "mcsm-router" || b.Config.Image != "itzg/mc-router:"+Tag {
+	// S1: el contenedor recibe el socket de Docker: la imagen va fijada por digest, no solo por tag.
+	if b.Name != "mcsm-router" || b.Config.Image != "itzg/mc-router:1.47.1@sha256:177433dd91507339924d60205a19ae9a289afd0e69dbad54e1a55d497f7523f8" || ImageRef() != b.Config.Image {
 		t.Fatalf("nombre/imagen = %s %s", b.Name, b.Config.Image)
 	}
-	if !slices.Equal(b.Config.Cmd, []string{"-in-docker", "-port", "25565"}) {
+	// S4: el límite por defecto de mc-router (1 conexión/s, global) hace esperar a varios jugadores.
+	if !slices.Equal(b.Config.Cmd, []string{"-in-docker", "-port", "25565", "-connection-rate-limit", "10"}) {
 		t.Fatalf("cmd = %v", b.Config.Cmd)
 	}
 	if b.Config.Labels[spec.LabelManaged] != "true" || b.Config.Labels[LabelRouter] != "true" || b.Config.Labels[LabelHash] != b.Hash {
@@ -62,6 +64,10 @@ func TestBuildContainerHardening(t *testing.T) {
 	}
 	if h.RestartPolicy.Name != "unless-stopped" {
 		t.Fatalf("restart = %v", h.RestartPolicy)
+	}
+	// S5: expuesto a la red y registra cada conexión: logs con rotación.
+	if h.LogConfig.Type != "json-file" || h.LogConfig.Config["max-size"] != "10m" || h.LogConfig.Config["max-file"] != "3" {
+		t.Fatalf("logs = %+v", h.LogConfig)
 	}
 	if u := build(t, &mcsmv1.RouterSpec{HostPort: 25565}).Config.User; u != "65532:65532" {
 		t.Fatalf("usuario = %q: no root", u)
