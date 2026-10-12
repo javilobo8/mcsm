@@ -10,7 +10,7 @@ import { JobProgress } from "@/components/job-progress";
 import { createBackup, newIdempotencyKey, useBackups } from "@/hooks/use-backups";
 import { useJobs, useJobsLive } from "@/hooks/use-jobs";
 import { api, apiPath, type BackupDto, type JobDto, type ServerDto } from "@/lib/api";
-import { backupActions, deleteDialogText, formatBackupDate, toggleBusyReason } from "@/lib/backups";
+import { backupActions, keepIdempotencyKey, deleteDialogText, formatBackupDate, toggleBusyReason } from "@/lib/backups";
 import { formatBytes } from "@/lib/format";
 import { backupsKey, isActive, TRIGGER_LABEL } from "@/lib/jobs";
 
@@ -24,11 +24,12 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
   const [deleting, setDeleting] = useState<BackupDto | null>(null);
   const refreshJobs = () => qc.invalidateQueries({ queryKey: ["jobs"] });
 
-  // Una clave por intención: los reintentos tras un fallo la reutilizan; un éxito la renueva.
+  // Una clave por intención: solo un fallo sin respuesta del servidor la conserva para el reintento.
   const createKey = useRef<string | null>(null);
   const createNow = useMutation({
     mutationFn: () => createBackup(server.id, (createKey.current ??= newIdempotencyKey())),
     onSuccess: () => { createKey.current = null; return refreshJobs(); },
+    onError: (e) => { if (!keepIdempotencyKey(e)) createKey.current = null; },
   });
   const restore = useMutation({
     mutationFn: (b: BackupDto) => api.post<JobDto>(apiPath`/api/servers/${server.id}/backups/${b.id}/restore`),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { BackupDto, JobDto } from "./api";
-import { backupActions, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, scheduleToForm, toggleBusyReason } from "./backups";
+import { ApiError, type BackupDto, type JobDto } from "./api";
+import { backupActions, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, scheduleToForm, toggleBusyReason } from "./backups";
 
 const base: BackupDto = {
   id: "b1", serverId: "s1", nodeId: "n1", filename: "x.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
@@ -91,5 +91,15 @@ describe("resincronización del formulario", () => {
     const r = resyncSchedule(edited, a, edited);
     expect(r.form).toEqual(edited);
     expect(resyncSchedule(r.form, r.base, { ...edited, keepCount: "1" }).form.keepCount).toBe("1");
+  });
+});
+
+describe("clave de idempotencia", () => {
+  it("solo se conserva si no hubo respuesta del servidor", () => {
+    expect(keepIdempotencyKey(new TypeError("Failed to fetch"))).toBe(true);
+    expect(keepIdempotencyKey(new ApiError(0, "sin conexión"))).toBe(true);
+    expect(keepIdempotencyKey(new ApiError(409, "busy"))).toBe(false);
+    expect(keepIdempotencyKey(new ApiError(502, "agente"))).toBe(false);
+    expect(keepIdempotencyKey(null)).toBe(false);
   });
 });

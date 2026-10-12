@@ -22,7 +22,7 @@ export function BackupScheduleForm({ server }: { server: ServerDto }) {
     setBase({ form: r.base, json: incomingJson });
   }
   const [localErr, setLocalErr] = useState<string | null>(null);
-  const set = <K extends keyof ScheduleForm>(k: K, v: ScheduleForm[K]) => setF((o) => ({ ...o, [k]: v }));
+  const set = <K extends keyof ScheduleForm>(k: K, v: ScheduleForm[K]) => { if (save.isSuccess) save.reset(); setF((o) => ({ ...o, [k]: v })); };
   const save = useMutation({
     mutationFn: (cfg: BackupsConfig) => api.patch<ServerDto>(apiPath`/api/servers/${server.id}/backups/schedule`, cfg),
     onSuccess: (dto) => {

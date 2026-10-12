@@ -1,5 +1,5 @@
 import { backupsSchema, type BackupsConfig } from "@mcsm/shared";
-import type { BackupDto, JobDto } from "./api";
+import { ApiError, type BackupDto, type JobDto } from "./api";
 
 export const CRON_PRESETS = [
   { value: "daily", label: "Cada día a las 4:00", cron: "0 4 * * *" },
@@ -80,4 +80,10 @@ export function deleteDialogText(b: Pick<BackupDto, "kind" | "filename">): { tit
 export function formatBackupDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("es-ES");
+}
+
+/** Tras un fallo, ¿se reutiliza la Idempotency-Key? Solo si no hubo respuesta del servidor (la petición pudo llegar o no); con cualquier respuesta se descarta. */
+export function keepIdempotencyKey(error: unknown): boolean {
+  if (error === null || error === undefined) return false;
+  return !(error instanceof ApiError) || error.status === 0;
 }
