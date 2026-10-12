@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { backupsSchema } from "./backups.js";
 
 export const RESERVED_ENV = new Set([
   "EULA", "TYPE", "VERSION", "MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "RCON_PORT", "SERVER_PORT", "CUSTOM_SERVER_PROPERTIES",
@@ -55,6 +56,7 @@ const baseFields = {
   // ── plan-2 ──
   // ── plan-3 ──
   // ── plan-4 ──
+  backups: backupsSchema.optional(),
   // ── plan-5 ──
   // ── plan-6 ──
   // ── plan-7 ──

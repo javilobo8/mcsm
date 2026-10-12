@@ -97,6 +97,7 @@ type Spec struct {
 	// ── plan-2 ──
 	// ── plan-3 ──
 	// ── plan-4 ──
+	Backups *Backups `json:"backups,omitempty"`
 	// ── plan-5 ──
 	// ── plan-6 ──
 	// ── plan-7 ──
@@ -218,6 +219,9 @@ func (s Spec) Validate() error {
 	// ── plan-2 ──
 	// ── plan-3 ──
 	// ── plan-4 ──
+	if err := s.Backups.Validate(); err != nil {
+		return err
+	}
 	// ── plan-5 ──
 	// ── plan-6 ──
 	// ── plan-7 ──

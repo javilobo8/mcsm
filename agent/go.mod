@@ -9,6 +9,7 @@ require (
 	github.com/mcstatus-io/mcutil/v4 v4.3.1
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/shirou/gopsutil/v4 v4.26.9
 	go.etcd.io/bbolt v1.5.0
 	google.golang.org/protobuf v1.36.12
