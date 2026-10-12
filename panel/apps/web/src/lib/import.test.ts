@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { defaultSpecInput, type ImportCandidateDto, type ImportedFrom } from "@mcsm/shared";
 import type { ObservedDto, ServerDto } from "./api";
 import type { EditableSpec } from "./spec-edit";
-import { adoptBlock, adoptRequest, candidateStateLabel, importNotices, initialReview, isAdopted, isPristine, reviewDirty, reviewLeaveWarning } from "./import";
+import { adoptBlock, adoptRequest, candidateStateLabel, importNotices, initialReview, isAdopted, isPristine, reviewDirty, reviewLeaveWarning, serverImportView } from "./import";
 
 const ID = "a".repeat(64);
 const spec: EditableSpec = { ...defaultSpecInput(), type: "PAPER", version: "1.21.4", memory: "4G", env: { MOTD: "Hola" }, ports: { game: 25565, extra: [] } };
@@ -85,5 +85,41 @@ describe("avisos de un servidor importado", () => {
     expect(isAdopted(s)).toBe(false);
     expect(importNotices(s)).toHaveLength(1);
     expect(importNotices(server({}))).toEqual([]);
+  });
+});
+
+describe("serverImportView: pestañas y borrado de un servidor importado (I3, m5)", () => {
+  const from: ImportedFrom = { containerId: ID, containerName: "mc-viejo", specVersion: 1, importedAt: "", composeProject: "casa", composeService: "survival" };
+  const base = { slug: "survival", importedFrom: null, observed: null, spec: { ...spec, ports: { game: 25565, extra: [] } } } as unknown as ServerDto;
+  const withData = { ...base, spec: { ...base.spec, dataPath: "/home/lobo/mc/survival" } } as ServerDto;
+
+  it("un servidor del panel: todo disponible y el texto de borrado de siempre", () => {
+    const v = serverImportView(base);
+    expect(v).toMatchObject({ backups: null, files: null, deleteData: null });
+    expect(v.deleteDescription).not.toMatch(/original/);
+  });
+
+  it("con dataPath: sin copias ni archivos, y la casilla de borrar el mundo desactivada, explicando por qué", () => {
+    const v = serverImportView(withData);
+    for (const why of [v.backups, v.files, v.deleteData]) expect(why).toMatch(/\/home\/lobo\/mc\/survival/);
+    expect(v.backups).toMatch(/copias/);
+    expect(v.files).toMatch(/archivos/);
+    expect(v.backups).toMatch(/vuelve a importarlo/);
+    expect(v.deleteData).toMatch(/no los borra/);
+  });
+
+  it("aún adoptado: el borrado elimina el contenedor original que se importó (y avisa de Compose)", () => {
+    const v = serverImportView({ ...base, importedFrom: from, observed: { containerId: ID } as ObservedDto });
+    expect(v.deleteDescription).toMatch(/original «mc-viejo»/);
+    expect(v.deleteDescription).toMatch(/Compose/);
+    expect(v.backups).toBeNull(); // datos en DATA_ROOT: copias y archivos funcionan
+  });
+
+  it("estado desconocido (nodo sin observar): lo advierte por si aún es el original", () => {
+    expect(serverImportView({ ...base, importedFrom: from }).deleteDescription).toMatch(/si aún no se ha recreado/i);
+  });
+
+  it("ya recreado como mcsm-<slug>: el texto de siempre", () => {
+    expect(serverImportView({ ...base, importedFrom: from, observed: { containerId: "b".repeat(64) } as ObservedDto }).deleteDescription).not.toMatch(/original/);
   });
 });

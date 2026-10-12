@@ -83,6 +83,48 @@ export function importNotices(s: Pick<ServerDto, "importedFrom" | "observed" | "
   return out;
 }
 
+/**
+ * Qué cambia en la página de un servidor importado (I3, m5). Con dataPath el agente no ve los datos:
+ * las pestañas Backups y Archivos se sustituyen por una explicación y la casilla de borrar el mundo se
+ * desactiva (el panel no lo borra). Si aún sigue en el contenedor original, el borrado lo elimina.
+ */
+export interface ServerImportView {
+  /** Explicación en lugar de la pestaña Backups, o null si funciona. */
+  backups: string | null;
+  /** Explicación en lugar de la pestaña Archivos, o null si funciona. */
+  files: string | null;
+  /** Por qué no se puede marcar «borrar también el mundo», o null. */
+  deleteData: string | null;
+  /** Texto del diálogo de borrado. */
+  deleteDescription: string;
+}
+
+const DELETE_DESCRIPTION = "El servidor se quitará del panel y su contenedor se eliminará.";
+
+export function serverImportView(s: Pick<ServerDto, "importedFrom" | "observed" | "slug" | "spec">): ServerImportView {
+  const dataPath = s.spec.dataPath;
+  const outside = dataPath
+    ? `Los datos de este servidor están en ${dataPath}, fuera de DATA_ROOT, y el agente no los ve`
+    : null;
+  const howTo = `Para tenerlos, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${s.slug}/data y vuelve a importarlo.`;
+  const from = s.importedFrom;
+  let deleteDescription = DELETE_DESCRIPTION;
+  if (from) {
+    const compose = from.composeProject ? ` Si lo creó Docker Compose (proyecto «${from.composeProject}»), quita también ese servicio del compose.` : "";
+    if (isAdopted(s)) {
+      deleteDescription = `El servidor se quitará del panel y se eliminará su contenedor, que todavía es el original «${from.containerName}» que importaste: deja de existir también fuera del panel.${compose}`;
+    } else if (!s.observed?.containerId) {
+      deleteDescription = `El servidor se quitará del panel y su contenedor se eliminará. Si aún no se ha recreado, ese contenedor es el original «${from.containerName}» que importaste.${compose}`;
+    }
+  }
+  return {
+    backups: outside && `${outside}: no tiene copias de seguridad. ${howTo}`,
+    files: outside && `${outside}: no tiene navegador de archivos. ${howTo}`,
+    deleteData: dataPath ? `Los datos están en ${dataPath}, fuera de DATA_ROOT: el panel no los borra (bórralos a mano si quieres).` : null,
+    deleteDescription,
+  };
+}
+
 const STATES: Record<string, string> = {
   running: "En marcha", exited: "Parado", created: "Creado", restarting: "Reiniciando", paused: "En pausa", dead: "Muerto",
 };

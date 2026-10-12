@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToString } from "react-dom/server";
 import { defaultSpecInput } from "@mcsm/shared";
 import type { ServerDto } from "@/lib/api";
-import { ImportNotices } from "./import-notices";
+import { ExternalDataNote, ImportNotices } from "./import-notices";
 
 const ID = "a".repeat(64);
 const base = {
@@ -26,5 +26,13 @@ describe("ImportNotices (render en servidor)", () => {
     expect(html).toContain("mc-viejo");
     expect(html).toContain("mcsm-survival");
     expect(html).toContain("/home/lobo/mc/survival");
+  });
+});
+
+describe("ExternalDataNote", () => {
+  it("pinta la explicación como nota", () => {
+    const html = renderToString(<ExternalDataNote text="Los datos están en /home/lobo/mc" />);
+    expect(html).toContain('role="note"');
+    expect(html).toContain("/home/lobo/mc");
   });
 });

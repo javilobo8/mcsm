@@ -12,3 +12,12 @@ export function ImportNotices({ server }: { server: ServerDto }) {
     </div>
   );
 }
+
+/** Explicación en lugar de una pestaña que no aplica a este servidor (p. ej. datos fuera de DATA_ROOT). */
+export function ExternalDataNote({ text }: { text: string }) {
+  return (
+    <div role="note" className="flex max-w-3xl gap-2 rounded-md border border-sky-900 bg-sky-950/30 p-3 text-sm text-sky-200">
+      <Info className="mt-0.5 size-4 shrink-0" />{text}
+    </div>
+  );
+}
