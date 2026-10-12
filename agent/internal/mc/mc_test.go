@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -105,14 +106,17 @@ func readVarint(r io.ByteReader) (int, error) {
 	}
 }
 
-// fakeSLP responde al Server List Ping moderno con una respuesta grabada.
-func fakeSLP(t *testing.T, statusJSON string) (host string, port uint16) {
+// fakeSLP responde al Server List Ping moderno con una respuesta grabada y
+// contesta al ping (lo que mide la latencia) con el mismo payload; pings
+// cuenta los pings recibidos.
+func fakeSLP(t *testing.T, statusJSON string) (host string, port uint16, pings *atomic.Int32) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { ln.Close() })
+	pings = &atomic.Int32{}
 	send := func(c net.Conn, id byte, data []byte) {
 		body := append([]byte{id}, data...)
 		c.Write(append(varint(len(body)), body...))
@@ -141,13 +145,15 @@ func fakeSLP(t *testing.T, statusJSON string) (host string, port uint16) {
 							send(c, 0x00, append(varint(len(s)), s...))
 						} // si no, es el handshake
 					case 0x01: // ping
+						pings.Add(1)
 						send(c, 0x01, pkt[1:])
 					}
 				}
 			}(c)
 		}
 	}()
-	return splitAddr(t, ln)
+	host, port = splitAddr(t, ln)
+	return host, port, pings
 }
 
 type byteReader struct{ r io.Reader }
@@ -202,8 +208,10 @@ func TestRconContextCancelled(t *testing.T) {
 	}
 }
 
+const paperStatus = `{"version":{"name":"Paper 1.21.4","protocol":769},"players":{"max":20,"online":3,"sample":[]},"description":{"text":"hola"}}`
+
 func TestStatusOnline(t *testing.T) {
-	host, port := fakeSLP(t, `{"version":{"name":"Paper 1.21.4","protocol":769},"players":{"max":20,"online":3,"sample":[]},"description":{"text":"hola"}}`)
+	host, port, _ := fakeSLP(t, paperStatus)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	st := Status(ctx, host, port)
@@ -225,5 +233,40 @@ func TestStatusOffline(t *testing.T) {
 	}
 	if time.Since(start) > 4*time.Second {
 		t.Fatal("el ping no debe tardar más que su timeout")
+	}
+}
+
+func TestStatusLatencyFromPing(t *testing.T) {
+	// en local (como en la red Docker) el RTT del ping es de decenas de µs:
+	// la latencia sale del ping/pong y, aunque sea submilisegundo, no es 0
+	host, port, pings := fakeSLP(t, paperStatus)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	st := Status(ctx, host, port)
+	if !st.Online {
+		t.Fatal("debería estar online")
+	}
+	if pings.Load() == 0 {
+		t.Fatal("el ping de estado debe enviar el ping (Ping: true) para medir la latencia")
+	}
+	if st.LatencyMs == 0 {
+		t.Fatalf("status = %v; una latencia medida no debe reportarse como 0", st)
+	}
+}
+
+func TestLatencyMsRoundsUp(t *testing.T) {
+	for _, tc := range []struct {
+		d    time.Duration
+		want uint32
+	}{
+		{0, 0},
+		{20 * time.Microsecond, 1},
+		{time.Millisecond, 1},
+		{time.Millisecond + time.Nanosecond, 2},
+		{25300 * time.Microsecond, 26},
+	} {
+		if got := latencyMs(tc.d); got != tc.want {
+			t.Errorf("latencyMs(%v) = %d, want %d", tc.d, got, tc.want)
+		}
 	}
 }

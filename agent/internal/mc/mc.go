@@ -44,7 +44,7 @@ func Status(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 	out := &mcsmv1.McStatus{
 		Online:    true,
 		Version:   st.Version.Name.Clean,
-		LatencyMs: uint32(st.Latency.Milliseconds()),
+		LatencyMs: latencyMs(st.Latency),
 	}
 	if st.Players.Online != nil && *st.Players.Online > 0 {
 		out.PlayersOnline = uint32(*st.Players.Online)
@@ -53,6 +53,16 @@ func Status(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		out.PlayersMax = uint32(*st.Players.Max)
 	}
 	return out
+}
+
+// latencyMs redondea hacia arriba a milisegundos enteros. En la red Docker
+// local el RTT del ping SLP es de decenas de µs: truncar (Duration.Milliseconds)
+// lo dejaría siempre en 0, indistinguible de "sin medir".
+func latencyMs(d time.Duration) uint32 {
+	if d <= 0 {
+		return 0
+	}
+	return uint32((d + time.Millisecond - 1) / time.Millisecond)
 }
 
 // Rcon ejecuta un comando y devuelve la salida.
