@@ -196,3 +196,20 @@ export function validateExtraPorts(extra: readonly EditableSpec["ports"]["extra"
   }
   return null;
 }
+
+/** Número de un texto de campo numérico, tolerando un separador final en edición ("0." / "0,"); undefined si vacío o inválido. */
+export function parseNumberText(text: string): number | undefined {
+  const t = text.trim().replace(/[.,]$/, "");
+  return /^[0-9]+([.,][0-9]+)?$/.test(t) ? Number(t.replace(",", ".")) : undefined;
+}
+
+/**
+ * ¿Debe un campo numérico reemplazar su texto local por el valor entrante del padre?
+ * No si es el eco de lo emitido, ni si el texto en edición ya vale lo mismo ("0.", "0,5" mientras se escribe).
+ * `zeroIsEmpty`: el campo usa 0 como "vacío" (p. ej. CPUs), así que 0 y undefined son equivalentes.
+ */
+export function shouldResyncNumber(o: { text: string; incoming: number | undefined; emitted: number | undefined; zeroIsEmpty?: boolean }): boolean {
+  const norm = (v: number | undefined) => (o.zeroIsEmpty && v === 0 ? undefined : v);
+  if (norm(o.incoming) === norm(o.emitted)) return false;
+  return norm(parseNumberText(o.text)) !== norm(o.incoming);
+}

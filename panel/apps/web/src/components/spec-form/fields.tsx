@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { listToText, kvToText, parseKv, parseLines, validateListItems, type ListItemKind } from "@/lib/spec-edit";
+import { listToText, kvToText, parseKv, parseLines, shouldResyncNumber, validateListItems, type ListItemKind } from "@/lib/spec-edit";
 
 /** Notifica errores de campo al formulario (null = el campo vuelve a ser válido). */
 export type ReportError = (field: string, message: string | null) => void;
@@ -96,7 +96,8 @@ export function KvField({ id, label, value, onChange, onError, placeholder, hint
 }
 
 /** Número opcional (vacío = undefined). Solo acepta enteros NO negativos (o decimales no negativos con integer=false): si hace falta un negativo, ampliar la regex.  Avisa con onError si no es un número válido en [min, max]. */
-export function NumberField({ id, label, value, onChange, onError, min, max, integer = true, placeholder, hint }: {
+export function NumberField({ id, label, value, onChange, onError, min, max, integer = true, placeholder, hint, zeroIsEmpty }: {
+  zeroIsEmpty?: boolean;
   id: string; label: string; value: number | undefined; onChange: (v: number | undefined) => void; onError: ReportError;
   min?: number; max?: number; integer?: boolean; placeholder?: string; hint?: React.ReactNode;
 }) {
@@ -105,9 +106,9 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
   useEffect(() => () => onError(id, null), [id, onError]);
   const emitted = useRef(value);
   useEffect(() => {
-    if (value === emitted.current) return;
+    if (!shouldResyncNumber({ text, incoming: value, emitted: emitted.current, zeroIsEmpty })) { emitted.current = value; return; }
     emitted.current = value; setText(value === undefined ? "" : String(value)); setError(null); onError(id, null);
-  }, [value, id, onError]);
+  }, [value, id, onError]); // eslint-disable-line react-hooks/exhaustive-deps
   const update = (t: string) => {
     setText(t);
     const trimmed = t.trim();

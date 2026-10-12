@@ -142,3 +142,23 @@ describe("validadores de Propiedades, Avanzado y Recursos", () => {
     expect(validateExtraPorts([{ host: 0, container: 1, proto: "tcp", label: "" }])).toContain("#1");
   });
 });
+
+describe("resincronización de campos numéricos", () => {
+  it("eco y ediciones en curso no se pisan", async () => {
+    const { shouldResyncNumber: r, parseNumberText } = await import("./spec-edit");
+    expect(parseNumberText("0.")).toBe(0);
+    expect(parseNumberText("0,5")).toBe(0.5);
+    expect(parseNumberText("x")).toBeUndefined();
+    expect(r({ text: "0", incoming: 0, emitted: 0 })).toBe(false);
+    expect(r({ text: "0.", incoming: 0, emitted: 0 })).toBe(false);
+    expect(r({ text: "0.5", incoming: 0.5, emitted: 0.5 })).toBe(false);
+    // CPUs: 0 se guarda pero el prop vuelve undefined; no es un cambio remoto
+    expect(r({ text: "0", incoming: undefined, emitted: 0, zeroIsEmpty: true })).toBe(false);
+    expect(r({ text: "0.", incoming: undefined, emitted: 0, zeroIsEmpty: true })).toBe(false);
+    // sin zeroIsEmpty, undefined frente a 0 sí es distinto (el texto "0" vale 0)
+    expect(r({ text: "0", incoming: undefined, emitted: 0 })).toBe(true);
+    // reemplazo remoto real
+    expect(r({ text: "4", incoming: 8, emitted: 4 })).toBe(true);
+    expect(r({ text: "4", incoming: undefined, emitted: 4 })).toBe(true);
+  });
+});
