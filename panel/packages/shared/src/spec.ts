@@ -5,6 +5,8 @@ export const RESERVED_ENV = new Set([
 ]);
 
 const memory = z.string().regex(/^[1-9]\d*[MmGg]$/, "Formato de memoria inválido (ej. 4G, 512M; sin ceros)");
+/** Etiqueta de la imagen itzg (gramática de tag de Docker, sin digest). Misma regex que el agente. */
+export const IMAGE_TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const port = z.number().int().min(1).max(65535);
 const RCON_PORT = 25575;
 const RESERVED_PROPS = new Set(["server-port", "enable-rcon", "rcon.port", "rcon.password"]);
@@ -35,7 +37,7 @@ const resourcesSchema = z.object({
 });
 
 const baseFields = {
-  imageTag: z.string().min(1).default("latest"),
+  imageTag: z.string().regex(IMAGE_TAG_RE, "Etiqueta de imagen inválida (letras, números, . _ -; empieza por letra o número; máx. 128)").default("latest"),
   type: z.string().min(1).default("PAPER"),
   version: z.string().min(1).default("LATEST"),
   memory: memory.default("2G"),

@@ -61,6 +61,11 @@ var sizeRe = regexp.MustCompile(`^[1-9]\d*[MmGg]$`)
 // envNameRe valida los nombres de variable de env (no pueden contener = ni espacios).
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// imageTagRe valida la etiqueta de la imagen itzg (gramática de tag de Docker, sin
+// digest). Misma regex que el zod del panel. Sin ella, moby limpia `..` al construir la
+// URL de ImageInspect y un tag como "x/../../containers/<id>" llegaba a otra API.
+var imageTagRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
+
 // propKeyRe valida las claves de server.properties.
 var propKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
@@ -140,6 +145,9 @@ func Parse(b []byte) (Spec, error) {
 }
 
 func (s Spec) Validate() error {
+	if s.ImageTag != "" && !imageTagRe.MatchString(s.ImageTag) { // vacío = latest
+		return fmt.Errorf("spec: imageTag inválido %q (letras, números, . _ -; empieza por letra o número; máx. 128)", s.ImageTag)
+	}
 	if s.Type == "" {
 		return fmt.Errorf("spec: type es obligatorio")
 	}

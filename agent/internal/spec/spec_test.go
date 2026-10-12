@@ -314,6 +314,17 @@ func TestValidacionEndurecida(t *testing.T) {
 		{"propiedad server-port reservada", func(s *Spec) { s.Properties = map[string]string{"server-port": "1"} }, "reservada"},
 		{"propiedad enable-rcon reservada", func(s *Spec) { s.Properties = map[string]string{"enable-rcon": "true"} }, "reservada"},
 		{"propiedad rcon.port reservada", func(s *Spec) { s.Properties = map[string]string{"rcon.port": "1"} }, "reservada"},
+		{"imageTag java21 aceptado", func(s *Spec) { s.ImageTag = "java21" }, ""},
+		{"imageTag con punto y guion aceptado", func(s *Spec) { s.ImageTag = "2024.10.0-java21-graalvm" }, ""},
+		{"imageTag vacío aceptado (latest)", func(s *Spec) { s.ImageTag = "" }, ""},
+		{"imageTag con ruta rechazado", func(s *Spec) { s.ImageTag = "x/../../containers/abc" }, "imageTag"},
+		{"imageTag con dos puntos rechazado", func(s *Spec) { s.ImageTag = "a:b" }, "imageTag"},
+		{"imageTag con espacio rechazado", func(s *Spec) { s.ImageTag = "a b" }, "imageTag"},
+		{"imageTag que empieza por guion rechazado", func(s *Spec) { s.ImageTag = "-x" }, "imageTag"},
+		{"imageTag que empieza por punto rechazado", func(s *Spec) { s.ImageTag = ".x" }, "imageTag"},
+		{"imageTag que empieza por guion bajo rechazado", func(s *Spec) { s.ImageTag = "_x" }, "imageTag"},
+		{"imageTag de 128 aceptado", func(s *Spec) { s.ImageTag = strings.Repeat("a", 128) }, ""},
+		{"imageTag de 129 rechazado", func(s *Spec) { s.ImageTag = strings.Repeat("a", 129) }, "imageTag"},
 		{"propiedades válidas aceptadas", func(s *Spec) {
 			s.Properties = map[string]string{"max-players": "10", "motd": "Hola", "level-name": "world"}
 		}, ""},

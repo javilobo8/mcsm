@@ -38,6 +38,15 @@ describe("specInputSchema", () => {
   });
 });
 
+describe("imageTag (misma regex que el agente)", () => {
+  it.each(["latest", "java21", "2024.10.0-java21-graalvm", "a".repeat(128)])("acepta %j", (tag) => {
+    expect(() => specSchema.parse({ ...fixture, imageTag: tag })).not.toThrow();
+  });
+  it.each(["", "x/../../containers/abc", "a:b", "a b", "-x", ".x", "_x", "a".repeat(129)])("rechaza %j", (tag) => {
+    expect(() => specSchema.parse({ ...fixture, imageTag: tag })).toThrow(/imagen/i);
+  });
+});
+
 describe("endurecimiento de validación", () => {
   const withEnv = (env: Record<string, string>) => ({ ...fixture, env });
   const withProps = (properties: Record<string, string>) => ({ ...fixture, properties });
