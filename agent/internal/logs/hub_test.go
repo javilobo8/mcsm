@@ -241,6 +241,10 @@ func TestSlowSubscriberCountsDropsAndDoesNotBlock(t *testing.T) {
 		recv(t, fast)
 	}
 	<-done
+	// publish reparte a los suscriptores en orden de mapa con f.mu tomado: el
+	// rápido puede recibir la última línea antes de que se cuente el descarte
+	// del lento. Close toma f.mu, así que espera a ese publish y fija la cuenta.
+	slow.Close()
 	if got := slow.Dropped(); got != 50 {
 		t.Fatalf("Dropped = %d, quería 50", got)
 	}
