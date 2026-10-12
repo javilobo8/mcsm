@@ -1,6 +1,9 @@
 export interface DiffLine { label: string; before: string; after: string }
 
 const NONE = "—";
+const UNMANAGED = "(sin gestionar)";
+// Secciones opcionales: ausente = el panel no las gestiona; vacía es un cambio real.
+const OPTIONAL_LABELS = new Set(["Operadores", "Whitelist"]);
 
 const TOP_LABELS: Record<string, string> = {
   type: "Tipo", version: "Versión de Minecraft", imageTag: "Java (imagen)", memory: "Memoria JVM",
@@ -49,6 +52,7 @@ function flatten(spec: Obj): Map<string, string> {
     if (k === "properties" && isObj(v)) for (const [pk, pv] of Object.entries(v)) out.set(`Propiedad ${pk}`, show(pv));
     else if (k === "env" && isObj(v)) for (const [ek, ev] of Object.entries(v)) out.set(`Variable ${ek}`, show(ev));
     else if (k === "modpack") out.set(TOP_LABELS.modpack!, showModpack(v));
+    else if (k === "ops") out.set(TOP_LABELS.ops!, Array.isArray(v) && v.length === 0 ? "vacía — se revocarán todos" : show(v));
     else if (k === "whitelist") out.set(TOP_LABELS.whitelist!, showWhitelist(v));
     else if ((k === "resources" || k === "ports" || k === "mods" || k === "plugins") && isObj(v)) {
       for (const [sk, sv] of Object.entries(v)) {
@@ -67,8 +71,9 @@ export function diffSpecs(before: Obj, after: Obj): DiffLine[] {
   const labels = [...new Set([...a.keys(), ...b.keys()])];
   const lines: DiffLine[] = [];
   for (const label of labels) {
-    const x = a.get(label) ?? NONE;
-    const y = b.get(label) ?? NONE;
+    const missing = OPTIONAL_LABELS.has(label) ? UNMANAGED : NONE;
+    const x = a.get(label) ?? missing;
+    const y = b.get(label) ?? missing;
     if (x !== y) lines.push({ label, before: x, after: y });
   }
   return lines;

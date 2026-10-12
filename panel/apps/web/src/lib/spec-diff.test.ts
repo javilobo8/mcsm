@@ -24,7 +24,7 @@ describe("diffSpecs", () => {
       { label: "Propiedad motd", before: "Hola", after: "Adiós" },
       { label: "Propiedad pvp", before: "true", after: "—" },
       { label: "Mods de Modrinth", before: "—", after: "lithium" },
-      { label: "Whitelist", before: "—", after: "activada: Lobo" },
+      { label: "Whitelist", before: "(sin gestionar)", after: "activada: Lobo" },
       { label: "Puertos extra", before: "—", after: "19132→19132/udp (Geyser)" },
     ]));
     expect(JSON.stringify(lines)).not.toMatch(/secreto|otro/);
@@ -33,5 +33,16 @@ describe("diffSpecs", () => {
   it("modpack legible", () => {
     const lines = diffSpecs({ type: "PAPER" }, { type: "MODRINTH", modpack: { platform: "MODRINTH", slugOrUrl: "cobblemon-fabric", versionId: "", loader: "fabric" } });
     expect(lines).toContainEqual({ label: "Modpack", before: "—", after: "MODRINTH: cobblemon-fabric (fabric)" });
+  });
+  it("ops/whitelist de ausente a vacío (y al revés) es un cambio explícito", () => {
+    expect(diffSpecs({ type: "PAPER" }, { type: "PAPER", ops: [] })).toEqual([
+      { label: "Operadores", before: "(sin gestionar)", after: "vacía — se revocarán todos" },
+    ]);
+    expect(diffSpecs({ type: "PAPER", ops: [] }, { type: "PAPER" })).toEqual([
+      { label: "Operadores", before: "vacía — se revocarán todos", after: "(sin gestionar)" },
+    ]);
+    expect(diffSpecs({ type: "PAPER" }, { type: "PAPER", whitelist: { enabled: false, players: [] } })).toEqual([
+      { label: "Whitelist", before: "(sin gestionar)", after: "desactivada" },
+    ]);
   });
 });

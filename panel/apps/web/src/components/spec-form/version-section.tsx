@@ -1,0 +1,107 @@
+import { MODRINTH_LOADERS, usesCurseForge } from "@mcsm/shared";
+import { Input } from "@/components/ui/input";
+import { JAVA_TAGS, SERVER_TYPES, typeKind } from "@/lib/spec-catalog";
+import { withType, type EditableSpec } from "@/lib/spec-edit";
+import { Field, ListField, OptionalSelect, RequiredSelect } from "./fields";
+import { CurseForgeKeyNotice } from "./curseforge-key";
+
+type Mods = NonNullable<EditableSpec["mods"]>;
+type Plugins = NonNullable<EditableSpec["plugins"]>;
+const EMPTY_MODS: Mods = { modrinthProjects: [], curseforgeFiles: [], urls: [] };
+const EMPTY_PLUGINS: Plugins = { modrinthProjects: [], spigetResources: [], urls: [] };
+
+const MODPACK_HELP: Record<string, { slug: string; slugHint: string; version: string; versionHint: string }> = {
+  MODRINTH: {
+    slug: "Modpack de Modrinth", slugHint: "Slug, id o URL de modrinth.com (MODRINTH_MODPACK).",
+    version: "Versión del modpack (opcional)", versionHint: "Id o número de versión (MODRINTH_VERSION). Vacío = la última compatible con la versión de Minecraft.",
+  },
+  AUTO_CURSEFORGE: {
+    slug: "Modpack de CurseForge", slugHint: "Slug (CF_SLUG) o URL de la página o de un fichero (CF_PAGE_URL).",
+    version: "Id del fichero (opcional)", versionHint: "Número de fichero para fijar versión (CF_FILE_ID). Vacío = el último.",
+  },
+  FTBA: {
+    slug: "Id del modpack de FTB", slugHint: "Número del modpack (FTB_MODPACK_ID).",
+    version: "Id de versión (opcional)", versionHint: "Número de versión (FTB_MODPACK_VERSION_ID). Vacío = la última.",
+  },
+};
+
+/** Sección "Versión y mods": tipo, versión, Java, modpack, mods y plugins. */
+export function VersionSection({ spec, onChange }: { spec: EditableSpec; onChange: (s: EditableSpec) => void }) {
+  const kind = typeKind(spec.type);
+  const mods = spec.mods ?? EMPTY_MODS;
+  const plugins = spec.plugins ?? EMPTY_PLUGINS;
+  const hasMods = Object.values(mods).some((l) => l.length > 0);
+  const hasPlugins = Object.values(plugins).some((l) => l.length > 0);
+  const showMods = kind === "mods" || kind === "modpack" || kind === "other" || hasMods;
+  const showPlugins = kind === "plugins" || kind === "other" || hasPlugins;
+  const mp = spec.modpack;
+  const help = mp ? MODPACK_HELP[mp.platform] : undefined;
+  // La sección se conserva aunque quede vacía: así el agente emite MODRINTH_PROJECTS vacía e itzg
+  // borra lo que instaló (quitar el último mod lo quita del servidor).
+  const setMods = (m: Partial<Mods>) => onChange({ ...spec, mods: { ...mods, ...m } });
+  const setPlugins = (p: Partial<Plugins>) => onChange({ ...spec, plugins: { ...plugins, ...p } });
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field id="sf-type" label="Tipo">
+          <RequiredSelect id="sf-type" value={spec.type} options={SERVER_TYPES} onChange={(t) => onChange(withType(spec, t))} />
+        </Field>
+        <Field id="sf-version" label="Versión de Minecraft" hint="LATEST, SNAPSHOT o una versión como 1.21.4.">
+          <Input id="sf-version" value={spec.version} onChange={(e) => onChange({ ...spec, version: e.target.value.trim() })} />
+        </Field>
+        <Field id="sf-java" label="Java (etiqueta de la imagen)" hint="java21 para 1.20.5+; java17 para 1.17–1.20.4; java8 para versiones antiguas.">
+          <RequiredSelect id="sf-java" value={spec.imageTag} options={JAVA_TAGS.map((t) => ({ value: t, label: t }))} onChange={(t) => onChange({ ...spec, imageTag: t })} />
+        </Field>
+      </div>
+
+      {mp && help && (
+        <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
+          <legend className="px-1 text-sm font-medium">Modpack</legend>
+          <Field id="sf-mp-slug" label={help.slug} hint={help.slugHint}>
+            <Input id="sf-mp-slug" value={mp.slugOrUrl} onChange={(e) => onChange({ ...spec, modpack: { ...mp, slugOrUrl: e.target.value.trim() } })} />
+          </Field>
+          <Field id="sf-mp-version" label={help.version} hint={help.versionHint}>
+            <Input id="sf-mp-version" value={mp.versionId} onChange={(e) => onChange({ ...spec, modpack: { ...mp, versionId: e.target.value.trim() } })} />
+          </Field>
+          {mp.platform === "MODRINTH" && (
+            <Field id="sf-mp-loader" label="Loader (opcional)" hint="Solo si el modpack publica versiones para varios loaders.">
+              <OptionalSelect id="sf-mp-loader" value={mp.loader || undefined}
+                options={MODRINTH_LOADERS.filter((l) => l !== "").map((l) => ({ value: l, label: l }))}
+                onChange={(l) => onChange({ ...spec, modpack: { ...mp, loader: (l ?? "") as typeof mp.loader } })} defaultLabel="(cualquiera)" />
+            </Field>
+          )}
+        </fieldset>
+      )}
+
+      {showMods && (
+        <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
+          <legend className="px-1 text-sm font-medium">Mods</legend>
+          <ListField id="sf-mods-modrinth" label="Modrinth (MODRINTH_PROJECTS)" value={mods.modrinthProjects} placeholder={"lithium\nferritecore:beta"}
+            hint="Slug o id por línea; «:beta» o «:versión» para fijar." onChange={(l) => setMods({ modrinthProjects: l })} />
+          <ListField id="sf-mods-cf" label="CurseForge (CURSEFORGE_FILES)" value={mods.curseforgeFiles} placeholder={"jei\njei:4593548"}
+            hint="Slug, id, slug:fichero o URL por línea." onChange={(l) => setMods({ curseforgeFiles: l })} />
+          <ListField id="sf-mods-urls" label="URLs de .jar (MODS)" value={mods.urls} placeholder="https://…/mod.jar"
+            hint="Una URL http(s) por línea. Quitar una URL no borra el .jar ya descargado." onChange={(l) => setMods({ urls: l })} />
+        </fieldset>
+      )}
+
+      {showPlugins && (
+        <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
+          <legend className="px-1 text-sm font-medium">Plugins</legend>
+          <ListField id="sf-pl-modrinth" label="Modrinth (MODRINTH_PROJECTS)" value={plugins.modrinthProjects} placeholder={"luckperms\nchunky"}
+            hint="Slug o id por línea." onChange={(l) => setPlugins({ modrinthProjects: l })} />
+          <ListField id="sf-pl-spiget" label="Spiget (SPIGET_RESOURCES)" value={plugins.spigetResources} placeholder={"28140\n34315"}
+            hint="Id numérico de SpigotMC por línea. Algunos (p. ej. EssentialsX) no permiten descarga automática." onChange={(l) => setPlugins({ spigetResources: l })} />
+          <ListField id="sf-pl-urls" label="URLs de .jar (PLUGINS)" value={plugins.urls} placeholder="https://…/plugin.jar"
+            hint="Una URL http(s) por línea. Quitar una URL no borra el .jar ya descargado." onChange={(l) => setPlugins({ urls: l })} />
+        </fieldset>
+      )}
+
+      {kind === "vanilla" && !hasMods && !hasPlugins && (
+        <p className="text-xs text-muted-foreground">Vanilla no carga mods ni plugins. Elige Fabric/Forge/NeoForge/Quilt para mods o Paper/Purpur/Spigot para plugins.</p>
+      )}
+      {usesCurseForge(spec) && <CurseForgeKeyNotice />}
+    </div>
+  );
+}
