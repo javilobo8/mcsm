@@ -248,6 +248,9 @@ func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string
 		return errcode.InvalidSpec, err
 	}
 	if err := a.rec.Apply(ctx, sp); err != nil {
+		if errors.Is(err, reconcile.ErrDataPathUnverified) { // plan-6 (H1): dataPath que el agente no verificó
+			return errcode.BadSpec, err
+		}
 		return busyOr(err, errcode.ApplyFailed), err
 	}
 	return "", nil
@@ -411,6 +414,10 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		// Disco y transferencias con el contexto de vida: un corte del WS no los aborta.
 		a.handleFiles(life, env, send)
 	// ── plan-6 ──
+	case *mcsmv1.Envelope_ImportScan:
+		a.handleImportScan(ctx, env.Id, send) // solo lectura: contexto de la sesión
+	case *mcsmv1.Envelope_ImportAdopt:
+		a.handleImportAdopt(env.Id, b.ImportAdopt, send) // muta Docker y store: a.life dentro
 	// ── plan-7 ──
 	// ── plan-8 ──
 	// ── plan-9 ──

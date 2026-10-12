@@ -1,0 +1,132 @@
+//go:build integration
+
+package docker
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
+)
+
+func TestMobyImportInspectAndConnect(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	const netName, name = "mcsm-test-import-net", "mcsm-test-import"
+	m, err := NewMoby()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.EnsureNetwork(ctx, netName); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = m.cli.NetworkRemove(context.Background(), netName, client.NetworkRemoveOptions{}) }()
+	if err := m.EnsureImage(ctx, "alpine:3.22"); err != nil {
+		t.Fatal(err)
+	}
+	if all, err := m.ListAll(ctx); err == nil {
+		for _, c := range all {
+			if c.Name == name {
+				_ = m.Remove(ctx, c.ID)
+			}
+		}
+	}
+	dir := t.TempDir()
+	id, err := m.Create(ctx, name,
+		&container.Config{Image: "alpine:3.22", Cmd: []string{"sleep", "300"}, Env: []string{"FOO=bar"}, User: "1001:1001",
+			Labels: map[string]string{"mcsm.test": "true", "com.docker.compose.project": "mcsm-test"}},
+		&container.HostConfig{
+			Binds:         []string{dir + ":/data", dir + ":/extra:ro"},
+			RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
+			PortBindings:  network.PortMap{network.MustParsePort("25565/tcp"): {{HostPort: "25596"}}},
+			Resources:     container.Resources{Memory: 64 << 20, NanoCPUs: 5e8},
+		}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Remove(context.Background(), id)
+	if err := m.Start(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	all, err := m.ListAll(ctx)
+	if err != nil || !slices.ContainsFunc(all, func(c Container) bool { return c.ID == id && c.Labels["mcsm.test"] == "true" }) {
+		t.Fatalf("ListAll no devuelve el contenedor: %v", err)
+	}
+	info, err := m.InspectImport(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != name || info.Image != "alpine:3.22" || info.User != "1001:1001" || !strings.HasPrefix(info.ImageID, "sha256:") || info.State != "running" ||
+		!slices.Contains(info.Env, "FOO=bar") || info.Restart != "unless-stopped" || info.Memory != 64<<20 || info.NanoCPUs != 5e8 {
+		t.Fatalf("inspect = %+v", info)
+	}
+	if len(info.Ports) != 1 || info.Ports[0] != (PortPublish{ContainerPort: 25565, Proto: "tcp", HostPort: 25596}) {
+		t.Fatalf("ports = %+v", info.Ports)
+	}
+	if !slices.Contains(info.Mounts, Mount{Type: "bind", Source: dir, Destination: "/data", RW: true}) ||
+		!slices.Contains(info.Mounts, Mount{Type: "bind", Source: dir, Destination: "/extra", RW: false}) {
+		t.Fatalf("mounts = %+v", info.Mounts)
+	}
+	env, err := m.ImageEnv(ctx, info.ImageID)
+	if err != nil || !slices.ContainsFunc(env, func(e string) bool { return strings.HasPrefix(e, "PATH=") }) {
+		t.Fatalf("ImageEnv = %v, %v", env, err)
+	}
+	if err := m.ConnectNetwork(ctx, netName, id, []string{"mcsm-test-alias"}); err != nil {
+		t.Fatal(err)
+	}
+	info, _ = m.InspectImport(ctx, id)
+	if !slices.Contains(info.Networks, netName) || !slices.Contains(info.Aliases[netName], "mcsm-test-alias") {
+		t.Fatalf("networks = %v, aliases = %v", info.Networks, info.Aliases)
+	}
+	// plan-6 (m1): para añadir un alias se desconecta y se vuelve a conectar, sin reiniciarlo.
+	if err := m.DisconnectNetwork(ctx, netName, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ConnectNetwork(ctx, netName, id, []string{"mcsm-test-alias", "mcsm-test-otro"}); err != nil {
+		t.Fatal(err)
+	}
+	info, _ = m.InspectImport(ctx, id)
+	if info.State != "running" || !slices.Contains(info.Aliases[netName], "mcsm-test-otro") || !slices.Contains(info.Aliases[netName], "mcsm-test-alias") {
+		t.Fatalf("state = %s, aliases = %v", info.State, info.Aliases)
+	}
+	if _, err := m.InspectImport(ctx, "mcsm-test-no-existe"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// plan-6 (M3): con Mounts de tipo bind, Docker no crea la carpeta de origen si no existe (con Binds sí,
+// vacía): un disco externo sin montar no acaba en un mundo nuevo.
+func TestMobyBindMountMissingSourceFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	const name = "mcsm-test-missing-bind"
+	m, err := NewMoby()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.EnsureImage(ctx, "alpine:3.22"); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "no-existe", "data")
+	id, err := m.Create(ctx, name, &container.Config{Image: "alpine:3.22", Cmd: []string{"true"}, Labels: map[string]string{"mcsm.test": "true"}},
+		&container.HostConfig{Mounts: []mount.Mount{{Type: mount.TypeBind, Source: missing, Target: "/data"}}}, nil)
+	if err == nil {
+		defer m.Remove(context.Background(), id)
+		startErr := m.Start(ctx, id)
+		if startErr == nil {
+			t.Fatal("Docker aceptó un bind cuyo origen no existe")
+		}
+	}
+	if _, statErr := os.Stat(missing); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("Docker no debe crear la carpeta: %v", statErr)
+	}
+}

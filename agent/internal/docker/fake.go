@@ -25,8 +25,10 @@ type Fake struct {
 	Calls      []string
 	CreateErr  error
 	StartErr   error
-	StatsErr   error            // si no es nil, Stats lo devuelve
-	stats      map[string]Stats // lecturas fijadas con SetStats, por id de contenedor
+	StatsErr   error               // si no es nil, Stats lo devuelve
+	ImageEnvs  map[string][]string // plan-6: ENV de cada imagen, por referencia (ImageEnv)
+	ConnectErr error               // plan-6: si no es nil, ConnectNetwork lo devuelve
+	stats      map[string]Stats    // lecturas fijadas con SetStats, por id de contenedor
 	logPipes   map[string][]*io.PipeWriter
 	subs       []*eventSub
 }
@@ -58,10 +60,14 @@ type FakeContainer struct {
 	Config     *container.Config
 	HostConfig *container.HostConfig
 	Net        *network.NetworkingConfig
+	Aliases    map[string][]string // plan-6: red → alias añadidos con ConnectNetwork
 }
 
+// FakeID es el id del n-ésimo contenedor que crea el fake: 64 hex, como los de Docker.
+func FakeID(n int) string { return fmt.Sprintf("%064x", n) }
+
 func NewFake() *Fake {
-	return &Fake{Containers: map[string]*FakeContainer{}, Images: map[string]bool{}, Networks: map[string]bool{}, logPipes: map[string][]*io.PipeWriter{}}
+	return &Fake{Containers: map[string]*FakeContainer{}, Images: map[string]bool{}, Networks: map[string]bool{}, ImageEnvs: map[string][]string{}, logPipes: map[string][]*io.PipeWriter{}}
 }
 
 func (f *Fake) record(format string, args ...any) {
@@ -128,7 +134,7 @@ func (f *Fake) Create(_ context.Context, name string, cfg *container.Config, hos
 		}
 	}
 	f.seq++
-	id := fmt.Sprintf("fake%04d", f.seq)
+	id := FakeID(f.seq)
 	f.Containers[id] = &FakeContainer{ID: id, Name: name, State: "created", Config: cfg, HostConfig: host, Net: net}
 	return id, nil
 }
@@ -165,6 +171,9 @@ func (f *Fake) Start(_ context.Context, id string) error {
 	}
 	if c.State == "running" {
 		return nil
+	}
+	if c.State == "paused" { // como Docker
+		return fmt.Errorf("cannot start a paused container, try unpause instead: %w", cerrdefs.ErrConflict)
 	}
 	mine := hostPorts(c.HostConfig)
 	for _, o := range f.Containers {

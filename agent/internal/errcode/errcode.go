@@ -31,3 +31,8 @@ const (
 	TransferFailed = "transfer_failed" // subida/descarga fallida
 	IOError        = "io_error"        // error de E/S del host
 )
+
+// Importación (Plan 6).
+const (
+	ExternalData = "external_data" // datos del servidor fuera de DATA_ROOT (dataPath): sin copias ni archivos
+)

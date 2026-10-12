@@ -15,10 +15,12 @@ import { ServerCharts } from "@/components/server-charts";
 import { ServerConfigForm } from "@/components/server-config-form";
 import { FileBrowser } from "@/components/files/file-browser";
 import { GuardedTabs } from "@/components/guarded-tabs";
+import { ExternalDataNote, ImportNotices } from "@/components/import-notices";
 import { useServer } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
 import { api, apiPath, ApiError } from "@/lib/api";
 import { formatUptime } from "@/lib/format";
+import { serverImportView } from "@/lib/import";
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return <Card><CardContent className="p-4"><div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div><div className="mt-1 text-lg">{value}</div></CardContent></Card>;
@@ -33,7 +35,7 @@ export function ServerPage() {
   const [confirmDel, setConfirmDel] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
   const del = useMutation({
-    mutationFn: () => api.del(apiPath`/api/servers/${serverId}?deleteData=${deleteData}`),
+    mutationFn: () => api.del(apiPath`/api/servers/${serverId}?deleteData=${deleteData && !q.data?.spec.dataPath}`),
     onSuccess: () => {
       void navigate({ to: "/" }).then(() => {
         qc.removeQueries({ queryKey: ["server", serverId] });
@@ -57,6 +59,7 @@ export function ServerPage() {
   const node = nodes.data?.find((n) => n.id === s.nodeId);
   const nodeOnline = nodes.data ? node?.status === "online" : undefined;
   const applying = s.specVersion !== s.observedSpecVersion;
+  const iv = serverImportView(s); // plan-6: datos fuera de DATA_ROOT; importado aún en su contenedor original
 
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -71,6 +74,7 @@ export function ServerPage() {
           </div>
           {nodeOnline === false && <p className="mt-2 text-sm text-amber-400">El nodo «{node?.name}» está desconectado: el estado mostrado puede estar desfasado y las acciones no están disponibles.</p>}
           {o?.error && <p className="mt-2 max-w-3xl rounded-md border border-red-900 bg-red-950/40 p-2 text-sm text-red-300">{o.error}</p>}
+          <ImportNotices server={s} />
         </div>
         <div className="flex items-center gap-2">
           <PowerButtons server={s} size="default" nodeOnline={nodeOnline} />
@@ -108,10 +112,10 @@ export function ServerPage() {
         {/* ── plan-2 ── */}
         {/* ── plan-3 ── */}
         {/* ── plan-4 ── */}
-        <TabsContent value="backups"><BackupsTab key={s.id} server={s} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="backups">{iv.backups ? <ExternalDataNote text={iv.backups} /> : <BackupsTab key={s.id} server={s} nodeOnline={nodeOnline} />}</TabsContent>
         <TabsContent value="history"><JobList key={s.id} filter={{ serverId: s.id }} showServer={false} /></TabsContent>
         {/* ── plan-5 ── */}
-        <TabsContent value="files"><FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="files">{iv.files ? <ExternalDataNote text={iv.files} /> : <FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} />}</TabsContent>
         {/* ── plan-6 ── */}
         {/* ── plan-7 ── */}
         {/* ── plan-8 ── */}
@@ -122,16 +126,16 @@ export function ServerPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Eliminar «{s.name}»</DialogTitle>
-            <DialogDescription>El servidor se quitará del panel y su contenedor se eliminará.</DialogDescription>
+            <DialogDescription>{iv.deleteDescription}</DialogDescription>
           </DialogHeader>
-          <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" className="mt-1" checked={deleteData} onChange={(e) => setDeleteData(e.target.checked)} />
-            <span>Borrar también el mundo y los archivos de «{s.name}» en el nodo. Esta acción no se puede deshacer.</span>
+          <label className={`flex items-start gap-2 text-sm${iv.deleteData ? " text-muted-foreground" : ""}`}>
+            <input type="checkbox" className="mt-1" disabled={iv.deleteData !== null} checked={deleteData && iv.deleteData === null} onChange={(e) => setDeleteData(e.target.checked)} />
+            <span>{iv.deleteData ?? `Borrar también el mundo y los archivos de «${s.name}» en el nodo. Esta acción no se puede deshacer.`}</span>
           </label>
           {del.error && <p role="alert" className="text-sm text-red-400">{del.error instanceof ApiError ? del.error.message : "Error inesperado"}</p>}
           <DialogFooter>
             <Button variant="ghost" disabled={del.isPending} onClick={() => setConfirmDel(false)}>Cancelar</Button>
-            <Button variant="destructive" disabled={del.isPending} onClick={() => del.mutate()}>{del.isPending ? "Eliminando…" : deleteData ? "Eliminar con datos" : "Eliminar"}</Button>
+            <Button variant="destructive" disabled={del.isPending} onClick={() => del.mutate()}>{del.isPending ? "Eliminando…" : deleteData && iv.deleteData === null ? "Eliminar con datos" : "Eliminar"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

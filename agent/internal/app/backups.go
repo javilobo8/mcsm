@@ -80,6 +80,8 @@ func backupErrCode(err error) string {
 		return errcode.InvalidRequest
 	case errors.Is(err, errBadSpec):
 		return errcode.BadSpec
+	case errors.Is(err, errExternalData): // plan-6
+		return errcode.ExternalData
 	default:
 		return errcode.BackupFailed
 	}
@@ -240,6 +242,9 @@ func (b *backupService) recoverServer(serverID string) {
 	t, err := b.target(serverID)
 	if err != nil {
 		b.a.log.Warn("recuperar copias y restauraciones", "server", serverID, "err", err)
+		return
+	}
+	if t.spec.DataPath != "" { // plan-6 (m3): el agente no ve esa carpeta y nunca copia ni restaura ahí
 		return
 	}
 	rec, err := b.recoverDisk(t.backupsDir, t.dataDir, t.slug)
@@ -521,7 +526,11 @@ func (b *backupService) startBackup(jobID, serverID, trigger string) error {
 	if jobID == "" {
 		return fmt.Errorf("%w: falta job_id", errBadRequest)
 	}
-	if _, err := b.target(serverID); err != nil {
+	t, err := b.target(serverID)
+	if err != nil {
+		return err
+	}
+	if err := externalDataSpec(t.spec); err != nil { // plan-6
 		return err
 	}
 	j, existing, err := b.jobs.Begin(jobID, serverID, jobs.TypeBackup)
@@ -720,6 +729,9 @@ func (b *backupService) startRestore(jobID, serverID, filename string) error {
 	if err != nil {
 		return err
 	}
+	if err := externalDataSpec(t.spec); err != nil { // plan-6
+		return err
+	}
 	if !backup.ValidName(t.slug, filename) {
 		return fmt.Errorf("%w: nombre de copia inválido %q", errBadRequest, filename)
 	}
@@ -914,9 +926,11 @@ func (b *backupService) listing(serverID string) ([]*mcsmv1.BackupInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	pre, err := backup.ListPreRestore(t.dataDir)
-	if err != nil {
-		return nil, err
+	var pre []backup.Meta
+	if t.spec.DataPath == "" { // plan-6 (m3): con dataPath no hay restauraciones ni el agente ve la carpeta
+		if pre, err = backup.ListPreRestore(t.dataDir); err != nil {
+			return nil, err
+		}
 	}
 	out := make([]*mcsmv1.BackupInfo, 0, len(archives)+len(pre))
 	for _, m := range append(archives, pre...) {

@@ -13,7 +13,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 
 const server: ServerDto = {
   id: "s1", nodeId: "n1", name: "Supervivencia", slug: "supervivencia", specVersion: 3, desiredState: "running",
-  observed: null, observedSpecVersion: 3, observedAt: null, createdAt: "", updatedAt: "",
+  observed: null, observedSpecVersion: 3, observedAt: null, createdAt: "", updatedAt: "", importedFrom: null,
   spec: {
     imageTag: "java21", type: "FABRIC", version: "1.21.4", memory: "4G", properties: { motd: "Hola" }, env: {},
     resources: { cpus: 0, memLimit: "" }, restartPolicy: "unless-stopped",

@@ -15,6 +15,7 @@ import (
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/files"
 	"mcsm/agent/internal/reconcile"
+	"mcsm/agent/internal/spec"
 )
 
 const (
@@ -257,6 +258,9 @@ func (a *App) sweepTemps(ctx context.Context) {
 		return
 	}
 	for _, sp := range specs {
+		if p, err := spec.Parse(sp.SpecJson); err == nil && p.DataPath != "" {
+			continue // plan-6 (m3): sus datos no están en DATA_ROOT/<slug>/data
+		}
 		root, err := files.Root(a.cfg.DataRoot, sp.Slug)
 		if err != nil {
 			continue
@@ -310,6 +314,11 @@ func (a *App) handleFiles(ctx context.Context, env *mcsmv1.Envelope, send func(*
 	req := filesRequest(env)
 	if req == nil { // Handle solo enruta Files* aquí
 		_ = send(errMsg(env.Id, errcode.Unsupported, fmt.Errorf("mensaje de archivos no soportado: %T", env.Body)))
+		return
+	}
+	// plan-6: con dataPath los datos están fuera de DATA_ROOT y el agente no los ve.
+	if err := a.externalData(req.GetServerId()); err != nil {
+		_ = send(errMsg(env.Id, errcode.ExternalData, err))
 		return
 	}
 	if !a.xfer.enter() {

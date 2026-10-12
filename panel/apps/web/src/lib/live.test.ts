@@ -9,7 +9,7 @@ const obs = (over: Partial<ObservedDto> = {}): ObservedDto => ({
 });
 const server = (id: string): ServerDto => ({
   id, nodeId: "n1", name: id, slug: id, specVersion: 3, desiredState: "running", observed: null, observedSpecVersion: 2,
-  observedAt: null, createdAt: "", updatedAt: "", spec: { ports: { game: 25565 } } as ServerDto["spec"],
+  observedAt: null, createdAt: "", updatedAt: "", spec: { ports: { game: 25565 } } as ServerDto["spec"], importedFrom: null,
 });
 const node = (id: string, name = id): NodeDto => ({
   id, name, dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "",

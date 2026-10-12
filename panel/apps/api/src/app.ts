@@ -3,7 +3,7 @@ import { curseforgeRoutes } from "./curseforge/routes.js";
 import { EventEmitter } from "node:events";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
 import type { Db } from "./db/db.js";
 import { config, type Config } from "./config.js";
 import { authPlugin } from "./auth/plugin.js";
@@ -24,8 +24,10 @@ import { templateRoutes } from "./templates/routes.js";
 import { errorHandler } from "./lib/http.js";
 import { backupRoutes } from "./backups/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
+import { importRoutes } from "./import/routes.js";
 
-export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
+/** `logger`: true en producción; los tests pueden pasar opciones de pino (p. ej. un `stream` para capturar los logs). */
+export interface AppOptions { db: Db; logger?: FastifyServerOptions["logger"]; config?: Partial<Config> }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const cfg: Config = { ...config, ...opts.config };
@@ -66,6 +68,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(transfersPlugin);
   await app.register(fileRoutes);
   // ── plan-6 ──
+  await app.register(importRoutes);
   // ── plan-7 ──
   // ── plan-8 ──
   // ── plan-9 ──

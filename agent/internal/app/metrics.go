@@ -22,7 +22,7 @@ func dialRcon(ctx context.Context, host string, port uint16, password string) (s
 // y el ping de estado de la App. Host, reloj y RCON se inyectan para los tests.
 func (a *App) newSampler(host stats.HostReader, clock stats.Clock, dial stats.DialRcon) *stats.Sampler {
 	return stats.New(stats.Options{
-		Containers: a.eng,
+		Containers: serverContainers{a}, // plan-6: también los importados aún adoptados
 		Host:       host,
 		DataRoot:   a.cfg.DataRoot,
 		Status: func(ctx context.Context, h string, p uint16) *mcsmv1.McStatus {

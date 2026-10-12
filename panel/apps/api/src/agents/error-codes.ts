@@ -27,6 +27,8 @@ export const AgentErrorCode = {
   Root: "root",
   TransferFailed: "transfer_failed",
   IoError: "io_error",
+  // Importación (Plan 6).
+  ExternalData: "external_data",
   // Solo en el panel: AgentError local de AgentConn, nunca viaja por el WS.
   Disconnected: "disconnected",
   Syncing: "syncing",

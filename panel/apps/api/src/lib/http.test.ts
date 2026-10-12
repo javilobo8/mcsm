@@ -27,6 +27,7 @@ describe("agentErrorToHttp", () => {
     [AgentErrorCode.NotDir, 400],
     [AgentErrorCode.TransferFailed, 502],
     [AgentErrorCode.IoError, 502],
+    [AgentErrorCode.ExternalData, 409],
     [AgentErrorCode.Timeout, 504],
     [AgentErrorCode.PowerFailed, 502],
     ["codigo_nuevo", 502],
