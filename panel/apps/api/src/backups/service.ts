@@ -20,6 +20,13 @@ const STATUSES: Record<number, JobState> = {
   [JobStatus.OK]: "ok",
   [JobStatus.FAILED]: "failed",
 };
+/** Borrar una copia es borrar un fichero: 60 s sobran. */
+const DELETE_TIMEOUT_MS = 60_000;
+/**
+ * Borrar unos datos pre-restore es borrar un mundo entero (una carpeta): en una SD o un disco lento tarda minutos, y
+ * con 60 s el navegador vería 504 mientras el agente sigue borrando. El mismo plazo que el borrado de Archivos.
+ */
+const PRE_RESTORE_DELETE_TIMEOUT_MS = 5 * 60_000;
 const LOST = "interrumpido: el agente no tiene constancia de este job (la orden no llegó o el agente se reinició)";
 
 const msToIso = (ms: bigint): string | null => (ms > 0n ? new Date(Number(ms)).toISOString() : null);
@@ -129,7 +136,8 @@ export class BackupService {
     const b = this.requireBackup(serverId, backupId);
     const conn = this.onlineConn(row.node_id);
     try {
-      await conn.request({ case: "backupDelete", value: { serverId, filename: b.filename } }, 60_000);
+      const timeout = b.trigger === "pre_restore" ? PRE_RESTORE_DELETE_TIMEOUT_MS : DELETE_TIMEOUT_MS;
+      await conn.request({ case: "backupDelete", value: { serverId, filename: b.filename } }, timeout);
     } catch (e) {
       throw agentErrorToHttp(e, "No se pudo borrar la copia");
     }

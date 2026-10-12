@@ -7,6 +7,7 @@ import { specSchema } from "@mcsm/shared";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
 import { FakeAgent } from "../../test/fake-agent.js";
+import { AgentConn } from "../agents/hub.js";
 
 let app: FastifyInstance; let url: string; let cookie: string;
 
@@ -454,6 +455,33 @@ describe("acciones sobre copias", () => {
     expect(JSON.parse(app.servers.get(s.id)!.spec)).not.toHaveProperty("backups");
     agent.close();
   });
+  it("borrar unos datos pre-restore (un mundo entero) tiene 5 min de plazo; una copia, 60 s", async () => {
+    const { nodeToken, s } = await setup();
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    const synced = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.ack(list.id);
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [
+      info(s.id, "uno-20261012T040000.000Z-1.tar.zst"),
+      info(s.id, "data.pre-restore-20261012T060000.000Z", { trigger: BackupTrigger.PRE_RESTORE, sha256: "" }),
+    ] } } });
+    await synced;
+    const rows = await getBackups(s.id);
+    const request = vi.spyOn(AgentConn.prototype, "request");
+    try {
+      for (const [kind, ms] of [["directory", 5 * 60_000], ["archive", 60_000]] as const) {
+        const b = rows.find((r: any) => r.kind === kind);
+        const del = app.inject({ method: "DELETE", url: `/api/servers/${s.id}/backups/${b.id}`, headers: { cookie } });
+        const dreq = await agent.waitFor("backupDelete");
+        agent.ack(dreq.id);
+        expect((await del).statusCode).toBe(204);
+        expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ case: "backupDelete" }), ms);
+      }
+    } finally {
+      request.mockRestore();
+    }
+    agent.close();
+  });
+
   it("una copia de otro servidor es 404 al restaurar y al borrar", async () => {
     const { nodeId, nodeToken, s } = await setup();
     const other = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: baseSpec, desiredState: "running" });
