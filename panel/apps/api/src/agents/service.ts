@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
-import type { Envelope, Hello, Observed } from "@mcsm/proto";
+import { DesiredState, type Envelope, type Hello, type Observed } from "@mcsm/proto";
 import type { AgentConn } from "./hub.js";
 import { toNodeDto } from "../nodes/repo.js";
-import { toServerSpecMessage, type ObservedDto } from "../servers/repo.js";
+import { toServerSpecMessage, type ObservedDto, type ServerRow } from "../servers/repo.js";
 
 export function observedToDto(o: Observed | undefined): ObservedDto {
   return {
@@ -14,6 +14,18 @@ export function observedToDto(o: Observed | undefined): ObservedDto {
       version: o?.mc?.version ?? "", latencyMs: o?.mc?.latencyMs ?? 0,
     },
   };
+}
+
+/**
+ * Una fila se reenvía en SyncSpecs si el agente no la tiene, tiene otra versión o tiene otro
+ * estado deseado. Un agente que no informa `desired_states` (anterior a ese campo) solo se
+ * compara por versión.
+ */
+export function specDiffers(r: ServerRow, hello: Hello): boolean {
+  if (hello.specVersions[r.id] !== BigInt(r.spec_version)) return true;
+  const agentDesired = hello.desiredStates[r.id];
+  if (agentDesired === undefined) return false;
+  return agentDesired !== (r.desired_state === "running" ? DesiredState.RUNNING : DesiredState.STOPPED);
 }
 
 export class AgentService {
@@ -94,7 +106,7 @@ export class AgentService {
 
     const rows = this.app.servers.list(nodeId);
     const known = new Set(Object.keys(hello.specVersions));
-    const servers = rows.filter((r) => hello.specVersions[r.id] !== BigInt(r.spec_version)).map(toServerSpecMessage);
+    const servers = rows.filter((r) => specDiffers(r, hello)).map(toServerSpecMessage);
     const removedIds = [...known].filter((id) => !rows.some((r) => r.id === id));
     try {
       await conn.request({ case: "syncSpecs", value: { servers, removedIds } }, 120_000);

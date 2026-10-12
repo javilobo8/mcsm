@@ -3,7 +3,7 @@ import type { WebSocket } from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { create } from "@bufbuild/protobuf";
-import { HelloSchema, ObservedSchema, ServerObservedSchema, LogLineSchema } from "@mcsm/proto";
+import { DesiredState, HelloSchema, ObservedSchema, ServerObservedSchema, LogLineSchema } from "@mcsm/proto";
 import { AgentHub } from "./hub.js";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
@@ -66,6 +66,21 @@ describe("agent hub", () => {
     await new Promise((r) => setTimeout(r, 100));
     node = (await app.inject({ method: "GET", url: "/api/nodes", headers: { cookie } })).json()[0];
     expect(node.status).toBe("offline");
+  });
+
+  it("SyncSpecs incluye también las specs cuyo estado deseado difiere del del agente", async () => {
+    const { nodeId, nodeToken } = await enrollNode();
+    const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s2 = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect({
+      specVersions: { [s1.id]: 1n, [s2.id]: 1n },
+      desiredStates: { [s1.id]: DesiredState.RUNNING, [s2.id]: DesiredState.RUNNING }, // s2 derivó en el agente
+    });
+    const sync = await agent.handshake();
+    if (sync.body.case !== "syncSpecs") throw new Error();
+    expect(sync.body.value.servers.map((s) => s.serverId)).toEqual([s2.id]);
+    expect(sync.body.value.servers[0]!.desiredState).toBe(DesiredState.STOPPED);
   });
 
   it("ServerObserved actualiza la BD y emite evento", async () => {
