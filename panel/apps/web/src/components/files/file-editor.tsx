@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Save, X } from "lucide-react";
 import type { EditorView } from "codemirror";
@@ -12,7 +12,7 @@ import { CodeEditor } from "./code-editor";
 const errText = (e: unknown) => (e instanceof ApiError ? e.message : "Error inesperado");
 
 /** Editor de un fichero de texto (≤ 2 MiB). Guarda con el botón o Ctrl/Cmd+S. */
-export function FileEditor({ serverId, path, onClose }: { serverId: string; path: string; onClose(): void }) {
+export function FileEditor({ serverId, path, onClose, onDirtyChange }: { serverId: string; path: string; onClose(): void; onDirtyChange?(dirty: boolean): void }) {
   const file = useQuery({ queryKey: ["file-content", serverId, path], queryFn: () => filesApi.read(serverId, path), gcTime: 0, staleTime: Infinity });
   const view = useRef<EditorView | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -34,7 +34,12 @@ export function FileEditor({ serverId, path, onClose }: { serverId: string; path
     inFlight.current = true;
     save.mutate(view.current.state.doc.toString());
   };
-  const close = () => { if (!dirty || confirm("Hay cambios sin guardar. ¿Descartarlos?")) onClose(); };
+  // El padre decide si cerrar con cambios sin guardar (diálogo propio, no window.confirm).
+  const close = onClose;
+  const report = useRef(onDirtyChange);
+  useEffect(() => { report.current = onDirtyChange; });
+  useEffect(() => { report.current?.(dirty); }, [dirty]);
+  useEffect(() => () => report.current?.(false), []);
   const name = baseName(path);
 
   return (

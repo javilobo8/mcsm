@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { afterEach, vi } from "vitest";
-import { breadcrumbs, canEdit, canStartSave, filesApi, isClean, progressPct, uploadFile, validateNewName } from "./files";
+import { breadcrumbs, canEdit, canStartSave, entryOpenKind, filesApi, isClean, isSaveShortcut, progressPct, sortEntries, uploadClashes, uploadFile, validateNewName } from "./files";
 
 describe("breadcrumbs", () => {
   it("raíz y rutas anidadas", () => {
@@ -83,5 +83,46 @@ describe("progressPct", () => {
     expect(progressPct(0, 0)).toBe(0);
     expect(progressPct(512, 1024)).toBe(50);
     expect(progressPct(2000, 1024)).toBe(100);
+  });
+});
+
+const ent = (name: string, over: Partial<{ dir: boolean; symlink: boolean; size: number }> = {}) => ({ name, dir: false, symlink: false, size: 1, modifiedAt: 0, mode: 0o644, ...over });
+
+describe("sortEntries", () => {
+  it("carpetas primero y después por nombre sin distinguir mayúsculas, sin mutar la entrada", () => {
+    const input = [ent("b.txt"), ent("Zeta", { dir: true }), ent("A.txt"), ent("alfa", { dir: true })];
+    const out = sortEntries(input);
+    expect(out.map((e) => e.name)).toEqual(["alfa", "Zeta", "A.txt", "b.txt"]);
+    expect(input.map((e) => e.name)).toEqual(["b.txt", "Zeta", "A.txt", "alfa"]);
+  });
+});
+
+describe("entryOpenKind", () => {
+  it("carpeta navega, texto pequeño edita, el resto solo se descarga", () => {
+    expect(entryOpenKind(ent("world", { dir: true }))).toBe("dir");
+    expect(entryOpenKind(ent("server.properties", { size: 10 }))).toBe("edit");
+    expect(entryOpenKind(ent("latest.log", { size: 3 * 1024 * 1024 }))).toBe("download");
+    expect(entryOpenKind(ent("a.jar"))).toBe("download");
+  });
+  it("un enlace simbólico a carpeta no se navega (dir=false) y uno a texto se edita solo si cabe", () => {
+    expect(entryOpenKind(ent("link", { symlink: true }))).toBe("download");
+    expect(entryOpenKind(ent("link.yml", { symlink: true }))).toBe("edit");
+  });
+});
+
+describe("uploadClashes", () => {
+  it("devuelve los nombres que ya existen, una vez cada uno", () => {
+    expect(uploadClashes(["a", "b", "a", "c"], ["c", "a"])).toEqual(["a", "c"]);
+    expect(uploadClashes(["x"], [])).toEqual([]);
+  });
+});
+
+describe("isSaveShortcut", () => {
+  it("Ctrl+S o Cmd+S sin otros modificadores", () => {
+    expect(isSaveShortcut({ key: "s", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(true);
+    expect(isSaveShortcut({ key: "S", ctrlKey: false, metaKey: true, altKey: false, shiftKey: false })).toBe(true);
+    expect(isSaveShortcut({ key: "s", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false })).toBe(false);
+    expect(isSaveShortcut({ key: "s", ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(false);
+    expect(isSaveShortcut({ key: "a", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(false);
   });
 });

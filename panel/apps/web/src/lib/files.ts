@@ -80,3 +80,25 @@ export const isClean = (doc: { length: number; toString(): string }, saved: stri
 
 /** Se puede lanzar un guardado: hay vista, hay cambios y no hay otro PUT en vuelo. */
 export const canStartSave = (s: { hasView: boolean; dirty: boolean; inFlight: boolean }): boolean => s.hasView && s.dirty && !s.inFlight;
+
+/** Carpetas primero y después por nombre (sin distinguir mayúsculas). No muta la entrada. */
+export function sortEntries<T extends Pick<FileEntryDto, "name" | "dir">>(entries: readonly T[]): T[] {
+  return [...entries].sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+/** Qué hace abrir una entrada: navegar a la carpeta, abrir el editor o (si no es editable) solo descargar. */
+export function entryOpenKind(e: Pick<FileEntryDto, "name" | "dir" | "size">): "dir" | "edit" | "download" {
+  if (e.dir) return "dir";
+  return canEdit(e) ? "edit" : "download";
+}
+
+/** Nombres subidos que ya existen en la carpeta (sin repetidos). */
+export function uploadClashes(names: readonly string[], existing: readonly string[]): string[] {
+  const have = new Set(existing);
+  return [...new Set(names.filter((n) => have.has(n)))];
+}
+
+/** Ctrl/Cmd+S sin otros modificadores. */
+export function isSaveShortcut(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">): boolean {
+  return e.key.toLowerCase() === "s" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
+}
