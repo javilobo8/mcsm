@@ -40,6 +40,7 @@ type Reconciler struct {
 	status   mc.StatusFunc
 	observer Observer
 	log      *slog.Logger
+	onDemand func(spec.Spec) bool // plan-8: servidores que arranca y para mc-router (SetOnDemand)
 
 	mu      sync.Mutex
 	locks   map[string]*sync.Mutex
@@ -251,6 +252,11 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 			return fmt.Errorf("crear contenedor: %w", err)
 		}
 		existing = &docker.Container{ID: id, Name: build.Name, State: "created", Labels: build.Config.Labels}
+	}
+	// plan-8: con el autoscale del router, mc-router arranca y para los servidores con hostname; el
+	// estado deseado no se impone a un contenedor que ya existía (uno recién creado sí lo sigue).
+	if existing.State != "created" && r.onDemand != nil && r.onDemand(parsed) {
+		return r.st.SetApplied(serverID, sp.Version)
 	}
 	switch {
 	case wantRunning && existing.State != "running" && existing.State != "restarting":

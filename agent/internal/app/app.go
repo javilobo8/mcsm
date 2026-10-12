@@ -23,6 +23,7 @@ import (
 	"mcsm/agent/internal/logs"
 	"mcsm/agent/internal/mc"
 	"mcsm/agent/internal/reconcile"
+	"mcsm/agent/internal/router"
 	"mcsm/agent/internal/spec"
 	"mcsm/agent/internal/store"
 )
@@ -79,6 +80,8 @@ type App struct {
 	// tras reservar el servidor (integración de los Planes 4 y 5, ver filewrites.go).
 	fileWrites fileWrites
 	bk         *backupService // plan-4: copias, restauraciones, jobs y programación
+	// plan-8: mc-router del nodo (router.go).
+	router *router.Manager
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
@@ -91,6 +94,9 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	}, a.onObserved)
 	a.hub = logs.NewHub(eng)
 	a.bk = newBackupService(a, backup.RealClock) // plan-4
+	// plan-8: mc-router del nodo; con su autoscale, los servidores con hostname van bajo demanda.
+	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network})
+	a.rec.SetOnDemand(a.onDemand)
 	return a
 }
 
@@ -171,6 +177,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-6 ──
 	// ── plan-7 ──
 	// ── plan-8 ──
+	go a.routerLoop(ctx)
 	// ── plan-9 ──
 	client.Run(ctx)
 	// Cierre (ctx ya cancelado), las dos esperas EN PARALELO para que el total no pase de
@@ -413,6 +420,10 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	// ── plan-6 ──
 	// ── plan-7 ──
 	// ── plan-8 ──
+	case *mcsmv1.Envelope_RouterApply:
+		a.handleRouterApply(env.Id, b.RouterApply, send)
+	case *mcsmv1.Envelope_RouterRemove:
+		a.handleRouterRemove(env.Id, send)
 	// ── plan-9 ──
 
 	default:
@@ -519,6 +530,10 @@ func (a *App) eventLoop(ctx context.Context) {
 			case ev, ok := <-events:
 				if !ok {
 					break loop
+				}
+				if isRouterEvent(ev.Labels) { // plan-8: el contenedor del router
+					a.routerEvent(ctx, ev.Action)
+					continue
 				}
 				id := ev.Labels[spec.LabelServerID]
 				if id == "" {
