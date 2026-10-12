@@ -92,6 +92,35 @@ func TestWriteTruncatedTransferKeepsOriginal(t *testing.T) {
 	noTemps(t, root)
 }
 
+// countingReader cuenta los bytes que se han leído del origen.
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+func TestWriteFromStopsReadingPastExpected(t *testing.T) {
+	fsys, root, _ := layout(t)
+	// un origen que envía de más (1 MiB cuando se esperaban 10 bytes) no puede llenar el disco
+	src := &countingReader{r: io.LimitReader(&pattern{}, 1<<20)}
+	_, err := fsys.WriteFrom("server.properties", src, 10)
+	if !errors.Is(err, ErrTransfer) || Code(err) != "transfer_failed" {
+		t.Fatalf("err = %v", err)
+	}
+	if src.n > 11 {
+		t.Fatalf("se leyeron %d bytes de un origen que debía traer 10: hay que cortar en expected+1", src.n)
+	}
+	if got := readFile(t, filepath.Join(root, "server.properties")); got != "motd=hola\n" {
+		t.Fatalf("el original cambió: %q", got)
+	}
+	noTemps(t, root)
+}
+
 func TestWriteErrors(t *testing.T) {
 	fsys, root, outside := layout(t)
 	must(t, os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(root, "evil.txt")))

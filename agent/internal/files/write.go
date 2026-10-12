@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path"
 	"syscall"
@@ -98,7 +99,8 @@ func randHex() string {
 
 // WriteFrom escribe src en p de forma atómica: temporal en la misma carpeta, fsync y rename.
 // Si algo falla, el fichero anterior queda intacto y el temporal se borra. expected >= 0 exige
-// ese número exacto de bytes (una transferencia truncada nunca reemplaza el fichero). Conserva
+// ese número exacto de bytes (una transferencia truncada nunca reemplaza el fichero) y no lee
+// más de expected+1 del origen; con expected < 0 no hay tope. Conserva
 // permisos y dueño del fichero reemplazado; uno nuevo hereda el dueño de su carpeta, para que
 // el servidor (uid 1000 en itzg) pueda seguir reescribiéndolo aunque el agente sea root.
 // Copia en streaming: la memoria usada no depende del tamaño.
@@ -130,6 +132,9 @@ func (f *FS) WriteFrom(p string, src io.Reader, expected int64) (int64, error) {
 			_ = r.Remove(tmp)
 		}
 	}()
+	if expected >= 0 && expected < math.MaxInt64 {
+		src = io.LimitReader(src, expected+1) // un origen que envía de más no llena el disco
+	}
 	n, err := io.Copy(fh, tagReader{src})
 	if err != nil {
 		var re readErr
@@ -138,7 +143,10 @@ func (f *FS) WriteFrom(p string, src io.Reader, expected int64) (int64, error) {
 		}
 		return n, mapErr(err, rel)
 	}
-	if expected >= 0 && n != expected {
+	switch {
+	case expected >= 0 && n > expected:
+		return n, fmt.Errorf("%w: el origen envía más de %d bytes", ErrTransfer, expected)
+	case expected >= 0 && n < expected:
 		return n, fmt.Errorf("%w: recibidos %d de %d bytes", ErrTransfer, n, expected)
 	}
 	if err := fh.Chmod(wt.mode); err != nil { // el umask pudo recortar los permisos al crear
