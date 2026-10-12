@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { listToText, kvToText, parseKv, parseLines, shouldResyncNumber, validateListItems, type ListItemKind } from "@/lib/spec-edit";
+import { listToText, kvToText, parseKv, parseLines, readNumberField, shouldResyncNumber, validateListItems, type ListItemKind } from "@/lib/spec-edit";
 
 /** Notifica errores de campo al formulario (null = el campo vuelve a ser válido). */
 export type ReportError = (field: string, message: string | null) => void;
@@ -105,23 +105,18 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
   const [error, setError] = useState<string | null>(null);
   useEffect(() => () => onError(id, null), [id, onError]);
   const emitted = useRef(value);
+  // Solo cuando cambia el valor del padre: `text` y `zeroIsEmpty` se leen pero no son dependencias a propósito.
+  // Con `text` el efecto correría a cada tecla y compararía el valor anterior del padre con lo que se está
+  // escribiendo (pisaría "0." o un texto inválido aún no corregido); la decisión está en shouldResyncNumber.
   useEffect(() => {
     if (!shouldResyncNumber({ text, incoming: value, emitted: emitted.current, zeroIsEmpty })) { emitted.current = value; return; }
     emitted.current = value; setText(value === undefined ? "" : String(value)); setError(null); onError(id, null);
-  }, [value, id, onError]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value, id, onError]); // eslint-disable-line react-hooks/exhaustive-deps -- ver el comentario de arriba
   const update = (t: string) => {
     setText(t);
-    const trimmed = t.trim();
-    if (trimmed === "") { setError(null); onError(id, null); emitted.current = undefined; onChange(undefined); return; }
-    // Solo dígitos decimales (nada de "0x10" ni "1e3"); con integer=false admite un decimal con punto o coma.
-    const n = (integer ? /^[0-9]+$/ : /^[0-9]+([.,][0-9]+)?$/).test(trimmed) ? Number(trimmed.replace(",", ".")) : Number.NaN;
-    const bad = !Number.isFinite(n) || (min !== undefined && n < min) || (max !== undefined && n > max);
-    if (bad) {
-      const range = min !== undefined && max !== undefined ? ` entre ${min} y ${max}` : min !== undefined ? ` ≥ ${min}` : "";
-      const msg = `${label}: debe ser un número${integer ? " entero" : ""}${range}`;
-      setError(msg); onError(id, msg); return;
-    }
-    setError(null); onError(id, null); emitted.current = n; onChange(n);
+    const r = readNumberField(t, { label, integer, min, max });
+    if (!r.ok) { setError(r.error); onError(id, r.error); return; }
+    setError(null); onError(id, null); emitted.current = r.value; onChange(r.value);
   };
   return (
     <Field id={id} label={label} hint={hint} error={error}>

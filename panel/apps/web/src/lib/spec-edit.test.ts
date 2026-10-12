@@ -148,7 +148,8 @@ describe("resincronización de campos numéricos", () => {
     const { shouldResyncNumber: r, parseNumberText } = await import("./spec-edit");
     expect(parseNumberText("0.")).toBe(0);
     expect(parseNumberText("0,5")).toBe(0.5);
-    expect(parseNumberText("x")).toBeUndefined();
+    expect(parseNumberText("x")).toBeNaN(); // inválido no es vacío
+    expect(parseNumberText("  ")).toBeUndefined();
     expect(r({ text: "0", incoming: 0, emitted: 0 })).toBe(false);
     expect(r({ text: "0.", incoming: 0, emitted: 0 })).toBe(false);
     expect(r({ text: "0.5", incoming: 0.5, emitted: 0.5 })).toBe(false);
@@ -160,6 +161,31 @@ describe("resincronización de campos numéricos", () => {
     // reemplazo remoto real
     expect(r({ text: "4", incoming: 8, emitted: 4 })).toBe(true);
     expect(r({ text: "4", incoming: undefined, emitted: 4 })).toBe(true);
+    // texto inválido en pantalla + reemplazo remoto (recargar, descartar) a vacío o a otro valor: se resincroniza
+    expect(r({ text: "x", incoming: undefined, emitted: 4 })).toBe(true);
+    expect(r({ text: "x", incoming: 8, emitted: 4 })).toBe(true);
+    expect(r({ text: "x", incoming: undefined, emitted: 4, zeroIsEmpty: true })).toBe(true);
+    // …pero no si el padre solo repite lo último emitido
+    expect(r({ text: "x", incoming: 4, emitted: 4 })).toBe(false);
+  });
+});
+
+describe("lectura de un NumberField", () => {
+  it("enteros: vacío, válido, decimales, basura y rango", async () => {
+    const { readNumberField: read } = await import("./spec-edit");
+    const o = { label: "Jugadores", integer: true, min: 1, max: 10 };
+    expect(read("", o)).toEqual({ ok: true, value: undefined });
+    expect(read(" 7 ", o)).toEqual({ ok: true, value: 7 });
+    for (const bad of ["1.5", "5.", "x", "0x10", "1e3", "-1", "0", "11"]) expect(read(bad, o), bad).toEqual({ ok: false, error: "Jugadores: debe ser un número entero entre 1 y 10" });
+  });
+  it("decimales: los estados intermedios al teclear (0. y 0,) son válidos, sin error transitorio", async () => {
+    const { readNumberField: read } = await import("./spec-edit");
+    const o = { label: "CPUs", integer: false, min: 0, max: 256 };
+    expect(read("0.", o)).toEqual({ ok: true, value: 0 });
+    expect(read("0,", o)).toEqual({ ok: true, value: 0 });
+    expect(read("0.5", o)).toEqual({ ok: true, value: 0.5 });
+    expect(read("1,25", o)).toEqual({ ok: true, value: 1.25 });
+    for (const bad of [".", ",", "1.2.3", "-1", "300", "x"]) expect(read(bad, o).ok, bad).toBe(false);
   });
 });
 

@@ -207,10 +207,30 @@ export function validateExtraPorts(extra: readonly EditableSpec["ports"]["extra"
   return null;
 }
 
-/** Número de un texto de campo numérico, tolerando un separador final en edición ("0." / "0,"); undefined si vacío o inválido. */
+/**
+ * Número de un texto de campo numérico (no negativo, decimal con punto o coma), tolerando un separador final
+ * en edición ("0." / "0,"). undefined si está vacío y NaN si es inválido: inválido NO es vacío (si no, un
+ * reemplazo remoto a vacío no resincronizaría un campo con texto inválido).
+ */
 export function parseNumberText(text: string): number | undefined {
-  const t = text.trim().replace(/[.,]$/, "");
-  return /^[0-9]+([.,][0-9]+)?$/.test(t) ? Number(t.replace(",", ".")) : undefined;
+  const raw = text.trim();
+  if (raw === "") return undefined;
+  const t = raw.replace(/[.,]$/, "");
+  return /^[0-9]+([.,][0-9]+)?$/.test(t) ? Number(t.replace(",", ".")) : Number.NaN;
+}
+
+/**
+ * Lo tecleado en un NumberField: vacío → undefined; válido → número; si no, el mensaje de error.
+ * Solo dígitos decimales (nada de "0x10" ni "1e3"); con integer=false admite un decimal con punto o coma
+ * y los estados intermedios al teclear ("0." vale 0), para no mostrar un error transitorio.
+ */
+export function readNumberField(text: string, o: { label: string; integer: boolean; min?: number; max?: number }): { ok: true; value: number | undefined } | { ok: false; error: string } {
+  const t = text.trim();
+  if (t === "") return { ok: true, value: undefined };
+  const n = o.integer ? (/^[0-9]+$/.test(t) ? Number(t) : Number.NaN) : (parseNumberText(t) ?? Number.NaN);
+  if (Number.isFinite(n) && (o.min === undefined || n >= o.min) && (o.max === undefined || n <= o.max)) return { ok: true, value: n };
+  const range = o.min !== undefined && o.max !== undefined ? ` entre ${o.min} y ${o.max}` : o.min !== undefined ? ` ≥ ${o.min}` : "";
+  return { ok: false, error: `${o.label}: debe ser un número${o.integer ? " entero" : ""}${range}` };
 }
 
 /**

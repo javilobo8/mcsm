@@ -15,10 +15,11 @@ function PortInput({ id, label, placeholder, value, onChange, onError }: {
   const [text, setText] = useState(value ? String(value) : "");
   const [error, setError] = useState<string | null>(null);
   useEffect(() => () => onError(id, null), [id, onError]);
-  // Resincroniza si el padre reemplaza la spec (y no es el eco de lo que escribimos).
+  // Resincroniza si el padre reemplaza la spec (y no es el eco de lo que escribimos). Solo depende de `value`
+  // a propósito: con `text`/`error` correría a cada tecla y pisaría lo que se está escribiendo.
   useEffect(() => {
     if (error === null && (/^[0-9]+$/.test(text.trim()) ? Number(text) : 0) !== value) setText(value ? String(value) : "");
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps -- ver el comentario de arriba
   const update = (t: string) => {
     setText(t);
     const trimmed = t.trim();
