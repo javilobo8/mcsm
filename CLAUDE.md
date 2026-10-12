@@ -112,3 +112,6 @@ disjuntos; nunca dos implementadores a la vez sobre el mismo working tree.
 
 (El controlador añade aquí trampas de librerías y decisiones que los agentes deben
 conocer.)
+
+- Versiones del Plan 1 que no existen en npm: `vitest ^4.3.0` → usa `^4.1.11`;
+  `@fastify/static ^8.4.0` → usa `^8.3.0`. El resto de versiones del plan existen.
