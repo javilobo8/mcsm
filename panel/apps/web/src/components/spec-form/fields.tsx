@@ -50,9 +50,11 @@ export function ListField({ id, label, value, onChange, onError, kind = "entry",
 }
 
 /** Pares clave=valor en un textarea. Si una línea es inválida, avisa con onError y no propaga el valor. */
-export function KvField({ id, label, value, onChange, onError, placeholder, hint, rows = 6 }: {
+export function KvField({ id, label, value, onChange, onError, placeholder, hint, rows = 6, validate }: {
   id: string; label: string; value: Record<string, string> | undefined; onChange: (v: Record<string, string>) => void;
   onError: ReportError; placeholder?: string; hint?: React.ReactNode; rows?: number;
+  /** Validación extra de los pares ya parseados (claves reservadas…): mensaje o null. Si falla, no se propaga el valor. */
+  validate?: (kv: Record<string, string>) => string | null;
 }) {
   const [text, setText] = useState(() => kvToText(value));
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,8 @@ export function KvField({ id, label, value, onChange, onError, placeholder, hint
     setText(t);
     try {
       const kv = parseKv(t);
+      const bad = validate?.(kv);
+      if (bad) throw new Error(bad);
       setError(null); onError(id, null); onChange(kv);
     } catch (e) {
       const msg = `${label}: ${(e as Error).message}`;
@@ -132,5 +136,32 @@ export function RequiredSelect({ id, value, options, onChange, "aria-describedby
       <SelectTrigger id={id} aria-describedby={describedby}><SelectValue /></SelectTrigger>
       <SelectContent>{all.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
     </Select>
+  );
+}
+
+/**
+ * Texto de una línea con validación: si `validate` falla avisa con onError y NO propaga el valor
+ * (el spec conserva el último válido). `externalError` suma un error que depende de otro campo.
+ */
+export function ValidatedInput({ id, label, value, onChange, onError, validate, externalError, placeholder, hint }: {
+  id: string; label: string; value: string; onChange: (v: string) => void; onError: ReportError;
+  validate: (v: string) => string | null; externalError?: string | null; placeholder?: string; hint?: React.ReactNode;
+}) {
+  const [text, setText] = useState(value);
+  const [own, setOwn] = useState<string | null>(null);
+  const update = (raw: string) => {
+    const t = raw.trim();
+    setText(raw);
+    const bad = validate(t);
+    const msg = bad ? `${label}: ${bad}` : null;
+    setOwn(msg); onError(id, msg);
+    if (!bad) onChange(t);
+  };
+  const error = own ?? externalError ?? null;
+  return (
+    <Field id={id} label={label} hint={hint} error={error}>
+      <Input id={id} value={text} placeholder={placeholder} aria-invalid={!!error} aria-describedby={describedBy(id, hint, error)}
+        onChange={(e) => update(e.target.value)} />
+    </Field>
   );
 }

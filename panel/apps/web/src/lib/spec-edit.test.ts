@@ -104,3 +104,39 @@ describe("typeChangeNotice", () => {
     expect(typeChangeNotice(filled, "MODRINTH")).toBeNull();
   });
 });
+
+describe("validadores de Propiedades, Avanzado y Recursos", () => {
+  it("propiedades: rechaza las reservadas y nombres inválidos", async () => {
+    const { validateExtraProperties } = await import("./spec-edit");
+    expect(validateExtraProperties({ "spawn-npcs": "true" })).toBeNull();
+    for (const k of ["server-port", "enable-rcon", "rcon.port", "rcon.password"]) expect(validateExtraProperties({ [k]: "1" })).toContain(k);
+    expect(validateExtraProperties({ "Bad Key": "1" })).toContain("Bad Key");
+  });
+  it("env: rechaza reservadas, CF_API_KEY con mensaje propio y nombres inválidos", async () => {
+    const { validateEnv } = await import("./spec-edit");
+    expect(validateEnv({ USE_AIKAR_FLAGS: "true" })).toBeNull();
+    expect(validateEnv({ MEMORY: "4G" })).toContain("MEMORY");
+    expect(validateEnv({ RCON_PORT: "1" })).toContain("RCON_PORT");
+    expect(validateEnv({ CF_API_KEY: "x" })).toContain("aparte");
+    expect(validateEnv({ "1BAD": "x" })).toContain("1BAD");
+  });
+  it("memoria: formato y límite >= memoria", async () => {
+    const { validateMemory, validateMemLimit } = await import("./spec-edit");
+    expect(validateMemory("4G")).toBeNull();
+    for (const bad of ["", "0G", "04G", "4", "4GB", "-1G", "4 G"]) expect(validateMemory(bad)).not.toBeNull();
+    expect(validateMemLimit("", "4G")).toBeNull();
+    expect(validateMemLimit("5G", "4G")).toBeNull();
+    expect(validateMemLimit("2G", "4G")).not.toBeNull();
+    expect(validateMemLimit("3x", "4G")).not.toBeNull();
+  });
+  it("ListItemKind player valida nombres y UUID", () => {
+    expect(validateListItems("player", ["Lobo", "069a79f4-44e9-4726-a5be-fca90e38aaf5"])).toBeNull();
+    expect(validateListItems("player", ["no valido!"])).toContain("no valido!");
+  });
+  it("puertos extra: RCON 25575 y rangos", async () => {
+    const { validateExtraPorts } = await import("./spec-edit");
+    expect(validateExtraPorts([{ host: 19132, container: 19132, proto: "udp", label: "" }])).toBeNull();
+    expect(validateExtraPorts([{ host: 30000, container: 25575, proto: "tcp", label: "" }])).toContain("25575");
+    expect(validateExtraPorts([{ host: 0, container: 1, proto: "tcp", label: "" }])).toContain("#1");
+  });
+});

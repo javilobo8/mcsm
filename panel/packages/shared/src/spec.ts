@@ -8,12 +8,14 @@ export const RESERVED_ENV = new Set([
   "CF_API_KEY",
 ]);
 
-const memory = z.string().regex(/^[1-9]\d*[MmGg]$/, "Formato de memoria inválido (ej. 4G, 512M; sin ceros)");
+export const MEMORY_RE = /^[1-9]\d*[MmGg]$/;
+const memory = z.string().regex(MEMORY_RE, "Formato de memoria inválido (ej. 4G, 512M; sin ceros)");
 /** Etiqueta de la imagen itzg (gramática de tag de Docker, sin digest). Misma regex que el agente. */
 export const IMAGE_TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const port = z.number().int().min(1).max(65535);
-const RCON_PORT = 25575;
-const RESERVED_PROPS = new Set(["server-port", "enable-rcon", "rcon.port", "rcon.password"]);
+export const PROPERTY_KEY_RE = /^[a-z0-9][a-z0-9._-]*$/;
+export const RCON_PORT = 25575;
+export const RESERVED_PROPS = new Set(["server-port", "enable-rcon", "rcon.port", "rcon.password"]);
 
 export function memoryToBytes(m: string): number {
   const n = Number(m.slice(0, -1));
@@ -29,8 +31,9 @@ export const portMappingSchema = z.object({
   message: "El puerto extra no puede publicar RCON (25575)",
 });
 
+export const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const envSchema = z
-  .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Nombre de variable inválido"), z.string())
+  .record(z.string().regex(ENV_KEY_RE, "Nombre de variable inválido"), z.string())
   .refine((env) => !Object.keys(env).some((k) => RESERVED_ENV.has(k)), {
     message: "Contiene una variable reservada (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES, CF_API_KEY)",
   });
@@ -47,7 +50,7 @@ const baseFields = {
   memory: memory.default("2G"),
   properties: z
     .record(
-      z.string().regex(/^[a-z0-9][a-z0-9._-]*$/, "Nombre de propiedad inválido").refine((k) => !RESERVED_PROPS.has(k), {
+      z.string().regex(PROPERTY_KEY_RE, "Nombre de propiedad inválido").refine((k) => !RESERVED_PROPS.has(k), {
         message: "La propiedad es reservada (la gestiona el agente)",
       }),
       z.string().refine((v) => !/[\r\n]/.test(v), { message: "El valor de la propiedad no puede contener saltos de línea" }),

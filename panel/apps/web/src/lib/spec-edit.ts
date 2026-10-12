@@ -1,5 +1,6 @@
 import {
-  MODPACK_PLATFORMS, DIGITS_RE, ENTRY_RE, URL_RE, canonicalJson, formatZodError, specInputSchema, templateSpecSchema,
+  MODPACK_PLATFORMS, DIGITS_RE, ENTRY_RE, URL_RE, PLAYER_RE, ENV_KEY_RE, MEMORY_RE, PROPERTY_KEY_RE, RESERVED_ENV, RESERVED_PROPS,
+  canonicalJson, formatZodError, memoryToBytes, portMappingSchema, specInputSchema, templateSpecSchema,
   type ModpackPlatform, type SpecInput, type SpecPatch, type TemplateSpec,
 } from "@mcsm/shared";
 import { TYPED_PROPERTY_KEYS } from "./spec-catalog";
@@ -23,15 +24,16 @@ export function parseLines(text: string): string[] {
   return text.split("\n").map((s) => s.trim()).filter(Boolean);
 }
 
-export type ListItemKind = "entry" | "url" | "digits";
+export type ListItemKind = "entry" | "url" | "digits" | "player";
 
 /** Primer ítem inválido de una lista, con un mensaje en castellano; null si todos valen. Usa las regex de @mcsm/shared. */
 export function validateListItems(kind: ListItemKind, items: readonly string[]): string | null {
-  const re = kind === "url" ? URL_RE : kind === "digits" ? DIGITS_RE : ENTRY_RE;
+  const re = kind === "url" ? URL_RE : kind === "digits" ? DIGITS_RE : kind === "player" ? PLAYER_RE : ENTRY_RE;
   const bad = items.find((i) => !re.test(i));
   if (bad === undefined) return null;
   const why = kind === "url" ? "debe empezar por http:// o https:// y no tener espacios ni comas"
     : kind === "digits" ? "debe ser un id numérico"
+    : kind === "player" ? "debe ser un nombre de Java (1-16 letras, números o _) o un UUID"
     : "no puede tener espacios ni comas";
   return `«${bad.length > 40 ? `${bad.slice(0, 40)}…` : bad}» ${why}`;
 }
@@ -148,4 +150,48 @@ export function validateSpec(spec: EditableSpec, mode: "server" | "template"): s
 /** Estado inicial del editor de plantillas a partir de su spec. */
 export function editableFromTemplate(spec: TemplateSpec): EditableSpec {
   return { ...spec, ports: { extra: [] } };
+}
+
+const quote = (k: string) => (k.length > 40 ? `${k.slice(0, 40)}…` : k);
+
+/** "Otras propiedades": rechaza nombres inválidos y las claves que gestiona el agente. Null si todo vale. */
+export function validateExtraProperties(kv: Record<string, string>): string | null {
+  for (const k of Object.keys(kv)) {
+    if (RESERVED_PROPS.has(k)) return `«${k}» es una propiedad reservada: la gestiona el agente (server-port, enable-rcon, rcon.port y rcon.password no se editan)`;
+    if (!PROPERTY_KEY_RE.test(k)) return `«${quote(k)}» no es un nombre de propiedad válido (minúsculas, números, . _ -)`;
+  }
+  return null;
+}
+
+/** Variables de entorno extra: nombres válidos, sin las reservadas ni CF_API_KEY. Null si todo vale. */
+export function validateEnv(kv: Record<string, string>): string | null {
+  for (const k of Object.keys(kv)) {
+    if (k === "CF_API_KEY") return "CF_API_KEY no se puede fijar aquí: la API key de CurseForge se configura aparte (Ajustes)";
+    if (RESERVED_ENV.has(k)) return `«${k}» es una variable reservada: la generan otras secciones (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES)`;
+    if (!ENV_KEY_RE.test(k)) return `«${quote(k)}» no es un nombre de variable válido (letras, números y _; no empieza por número)`;
+  }
+  return null;
+}
+
+/** Memoria de la JVM (MEMORY): 4G, 512M… sin ceros a la izquierda. */
+export function validateMemory(m: string): string | null {
+  return MEMORY_RE.test(m) ? null : "Formato de memoria inválido: un número entero y M o G (ej. 4G, 512M)";
+}
+
+/** Límite de RAM del contenedor: vacío (sin límite) o memoria válida y no menor que la de la JVM. */
+export function validateMemLimit(limit: string, memory: string): string | null {
+  if (limit === "") return null;
+  const bad = validateMemory(limit);
+  if (bad) return bad;
+  if (MEMORY_RE.test(memory) && memoryToBytes(limit) < memoryToBytes(memory)) return `El límite (${limit}) no puede ser menor que la memoria de la JVM (${memory})`;
+  return null;
+}
+
+/** Puertos extra con el mismo esquema que la API (rangos, proto y sin publicar RCON 25575). Primer error "Puerto extra #n: …" o null. */
+export function validateExtraPorts(extra: readonly EditableSpec["ports"]["extra"][number][]): string | null {
+  for (const [i, e] of extra.entries()) {
+    const r = portMappingSchema.safeParse(e);
+    if (!r.success) return `Puerto extra #${i + 1}: ${r.error.issues[0]?.message ?? "inválido"}`;
+  }
+  return null;
 }
