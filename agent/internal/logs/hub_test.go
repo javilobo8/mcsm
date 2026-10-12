@@ -2,6 +2,9 @@ package logs
 
 import (
 	"context"
+	"io"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,7 +44,6 @@ func TestSubscribeParsesTimestamps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unsub()
-	time.Sleep(20 * time.Millisecond)
 	f.WriteLog(id, "2026-10-12T10:00:00.123456789Z [10:00:00] [Server thread/INFO]: Done (3.2s)!\n")
 	l := recv(t, ch)
 	if l.Text != "[10:00:00] [Server thread/INFO]: Done (3.2s)!" {
@@ -54,10 +56,10 @@ func TestSubscribeParsesTimestamps(t *testing.T) {
 
 func TestReplayAndSharedFollower(t *testing.T) {
 	f, id := newFakeWithContainer(t)
-	h := NewHub(f)
+	eng := &countEngine{Engine: f}
+	h := NewHub(eng)
 	ch1, unsub1, _ := h.Subscribe("a", id, 100)
 	defer unsub1()
-	time.Sleep(20 * time.Millisecond)
 	f.WriteLog(id, "2026-10-12T10:00:00Z uno\n2026-10-12T10:00:01Z dos\n")
 	recv(t, ch1)
 	recv(t, ch1)
@@ -69,13 +71,7 @@ func TestReplayAndSharedFollower(t *testing.T) {
 	if got := recv(t, ch2).Text; got != "dos" {
 		t.Fatalf("replay[1] = %q", got)
 	}
-	calls := 0
-	for _, c := range f.Calls {
-		if len(c) >= 4 && c[:4] == "Logs" {
-			calls++
-		}
-	}
-	if calls != 1 {
+	if calls := eng.logsCalls.Load(); calls != 1 {
 		t.Fatalf("debe compartir un único follower; Logs llamado %d veces", calls)
 	}
 }
@@ -86,12 +82,18 @@ func TestGraceClosesFollower(t *testing.T) {
 	h.SetGrace(20 * time.Millisecond)
 	_, unsub, _ := h.Subscribe("a", id, 10)
 	unsub()
-	time.Sleep(100 * time.Millisecond)
-	h.mu.Lock()
-	_, alive := h.followers["a"]
-	h.mu.Unlock()
-	if alive {
-		t.Fatal("el follower debe cerrarse pasado el periodo de gracia")
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		h.mu.Lock()
+		_, alive := h.followers["a"]
+		h.mu.Unlock()
+		if !alive {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("el follower debe cerrarse pasado el periodo de gracia")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }
 
@@ -119,9 +121,146 @@ func TestContainerIDChangeReopens(t *testing.T) {
 	defer unsub1()
 	ch2, unsub2, _ := h.Subscribe("a", id2, 10)
 	defer unsub2()
-	time.Sleep(20 * time.Millisecond)
 	f.WriteLog(id2, "2026-10-12T10:00:00Z nuevo\n")
 	if got := recv(t, ch2).Text; got != "nuevo" {
 		t.Fatalf("got %q", got)
 	}
+}
+
+// countEngine cuenta las llamadas a Logs sin leer f.Calls (que no tiene lock accesible).
+type countEngine struct {
+	docker.Engine
+	logsCalls atomic.Int32
+}
+
+func (e *countEngine) Logs(ctx context.Context, id string, tail int) (io.ReadCloser, error) {
+	e.logsCalls.Add(1)
+	return e.Engine.Logs(ctx, id, tail)
+}
+
+func TestGraceRaceSubscribeBeforeDrop(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	h.SetGrace(time.Nanosecond)
+	_, unsub, _ := h.Subscribe("a", id, 10)
+	subCh := make(chan *Subscription, 1)
+	h.graceHook = func() { // el temporizador ya disparó: un Subscribe entra en la ventana
+		s, err := h.SubscribeSub("a", id, 10)
+		if err != nil {
+			t.Error(err)
+		}
+		subCh <- s
+	}
+	unsub()
+	var sub *Subscription
+	select {
+	case sub = <-subCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("el hook no se ejecutó")
+	}
+	time.Sleep(20 * time.Millisecond) // deja correr dropIfIdle
+	f.WriteLog(id, "2026-10-12T10:00:00Z vivo\n")
+	if got := recv(t, sub.Lines).Text; got != "vivo" {
+		t.Fatalf("la suscripción debe seguir viva y recibir; got %q", got)
+	}
+}
+
+func TestSubscribeNeverReturnsClosedFollower(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	h.SetGrace(time.Nanosecond)
+	for i := 0; i < 200; i++ {
+		s, err := h.SubscribeSub("a", id, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case _, ok := <-s.Lines:
+			if !ok {
+				t.Fatalf("iteración %d: canal cerrado nada más suscribirse", i)
+			}
+		default:
+		}
+		s.Close()
+	}
+}
+
+func TestLongLineTruncatedAndFollowerSurvives(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	ch, unsub, _ := h.Subscribe("a", id, 10)
+	defer unsub()
+	go f.WriteLog(id, "2026-10-12T10:00:00Z "+strings.Repeat("x", 2*1024*1024)+"\n2026-10-12T10:00:01Z normal\n")
+	l := recv(t, ch)
+	if !strings.HasSuffix(l.Text, truncMarker) || len(l.Text) > maxLineBytes+len(truncMarker) {
+		t.Fatalf("línea larga no truncada: len=%d", len(l.Text))
+	}
+	if got := recv(t, ch).Text; got != "normal" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestReplayRespectsTail(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	ch1, unsub1, _ := h.Subscribe("a", id, 100)
+	defer unsub1()
+	f.WriteLog(id, "2026-10-12T10:00:00Z a\n2026-10-12T10:00:01Z b\n2026-10-12T10:00:02Z c\n")
+	for i := 0; i < 3; i++ {
+		recv(t, ch1)
+	}
+	ch2, unsub2, _ := h.Subscribe("a", id, 2)
+	defer unsub2()
+	if got := recv(t, ch2).Text; got != "b" {
+		t.Fatalf("got %q", got)
+	}
+	if got := recv(t, ch2).Text; got != "c" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSlowSubscriberCountsDropsAndDoesNotBlock(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	slow, err := h.SubscribeSub("a", id, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer slow.Close()
+	fast, unsubFast, _ := h.Subscribe("a", id, 10)
+	defer unsubFast()
+	const n = subBuffer + 50
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < n; i++ {
+			f.WriteLog(id, "2026-10-12T10:00:00Z l\n")
+		}
+	}()
+	for i := 0; i < n; i++ { // el rápido recibe todo aunque el lento no lea
+		recv(t, fast)
+	}
+	<-done
+	if got := slow.Dropped(); got != 50 {
+		t.Fatalf("Dropped = %d, quería 50", got)
+	}
+}
+
+func TestEOFClosesChannelsAndDoubleUnsub(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	ch, unsub, _ := h.Subscribe("a", id, 10)
+	if err := f.Remove(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("esperaba cierre")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("EOF debe cerrar el canal")
+	}
+	unsub()
+	unsub()
 }

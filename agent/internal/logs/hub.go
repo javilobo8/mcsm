@@ -4,8 +4,10 @@ package logs
 import (
 	"bufio"
 	"context"
+	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mcsm/agent/internal/docker"
@@ -14,6 +16,8 @@ import (
 const (
 	ringSize     = 500
 	subBuffer    = 1024
+	maxLineBytes = 1024 * 1024
+	truncMarker  = " …[truncada]"
 	defaultGrace = 30 * time.Second
 )
 
@@ -22,11 +26,40 @@ type Line struct {
 	Text string
 }
 
+// Subscription es una suscripción a los logs de un servidor.
+//
+// Lines entrega primero el replay del buffer circular (las últimas `tail` líneas,
+// máx. 500) y luego las nuevas. Se cierra cuando muere el follower (EOF del
+// stream, Reset, contenedor borrado o cambio de contenedor). Si el suscriptor no
+// lee y su buffer se llena, las líneas nuevas se descartan sin bloquear a nadie y
+// se cuentan: Dropped() devuelve el total acumulado, para que la capa WS emita
+// StreamDropped{count} (spec §5.2) con la diferencia desde el último aviso.
+// Close es idempotente y seguro tras el cierre del follower.
+type Subscription struct {
+	Lines   <-chan Line
+	dropped atomic.Uint64
+	unsub   func()
+}
+
+// Dropped devuelve el número acumulado de líneas descartadas por este suscriptor.
+func (s *Subscription) Dropped() uint64 { return s.dropped.Load() }
+
+// Close da de baja la suscripción (inicia el periodo de gracia si era la última).
+func (s *Subscription) Close() { s.unsub() }
+
 type Hub struct {
 	eng       docker.Engine
 	mu        sync.Mutex
 	followers map[string]*follower
 	grace     time.Duration
+
+	// graceHook (solo tests) se invoca al inicio del callback del temporizador de gracia.
+	graceHook func()
+}
+
+type subscriber struct {
+	ch  chan Line
+	sub *Subscription
 }
 
 type follower struct {
@@ -36,7 +69,7 @@ type follower struct {
 	cancel      context.CancelFunc
 	mu          sync.Mutex
 	ring        []Line
-	subs        map[int]chan Line
+	subs        map[int]*subscriber
 	nextSub     int
 	closed      bool
 	graceTimer  *time.Timer
@@ -46,30 +79,62 @@ func NewHub(eng docker.Engine) *Hub {
 	return &Hub{eng: eng, followers: map[string]*follower{}, grace: defaultGrace}
 }
 
-func (h *Hub) SetGrace(d time.Duration) { h.grace = d }
-
-func (h *Hub) Subscribe(serverID, containerID string, tail int) (<-chan Line, func(), error) {
+// SetGrace cambia el periodo de gracia (por defecto 30 s) para las próximas bajas.
+func (h *Hub) SetGrace(d time.Duration) {
 	h.mu.Lock()
-	f, ok := h.followers[serverID]
-	if ok && f.containerID != containerID {
-		f.close()
-		delete(h.followers, serverID)
-		ok = false
-	}
-	if !ok {
-		ctx, cancel := context.WithCancel(context.Background())
-		rc, err := h.eng.Logs(ctx, containerID, tail)
-		if err != nil {
-			cancel()
-			h.mu.Unlock()
-			return nil, nil, err
-		}
-		f = &follower{hub: h, serverID: serverID, containerID: containerID, cancel: cancel, subs: map[int]chan Line{}}
-		h.followers[serverID] = f
-		go f.run(ctx, rc)
-	}
+	h.grace = d
 	h.mu.Unlock()
-	return f.subscribe()
+}
+
+// Subscribe es SubscribeSub sin contador de descartes.
+func (h *Hub) Subscribe(serverID, containerID string, tail int) (<-chan Line, func(), error) {
+	s, err := h.SubscribeSub(serverID, containerID, tail)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.Lines, s.Close, nil
+}
+
+// SubscribeSub suscribe a los logs de serverID. El primer suscriptor abre
+// `docker logs --follow` con `tail` líneas; los siguientes comparten el follower.
+// Si containerID cambia respecto al follower vigente, este se cierra y se abre otro.
+// Nunca devuelve una suscripción a un follower ya cerrado: en ese caso abre uno nuevo.
+func (h *Hub) SubscribeSub(serverID, containerID string, tail int) (*Subscription, error) {
+	for {
+		h.mu.Lock()
+		f := h.followers[serverID]
+		if f != nil && f.containerID != containerID {
+			f.close()
+			delete(h.followers, serverID)
+			f = nil
+		}
+		if f == nil {
+			h.mu.Unlock()
+			// Docker se consulta sin h.mu: un daemon lento no bloquea a otros servidores.
+			ctx, cancel := context.WithCancel(context.Background())
+			rc, err := h.eng.Logs(ctx, containerID, tail)
+			if err != nil {
+				cancel()
+				return nil, err
+			}
+			h.mu.Lock()
+			if cur := h.followers[serverID]; cur != nil {
+				// Otro Subscribe se nos adelantó: descartamos nuestro stream y lo reintentamos.
+				h.mu.Unlock()
+				cancel()
+				_ = rc.Close()
+				continue
+			}
+			f = &follower{hub: h, serverID: serverID, containerID: containerID, cancel: cancel, subs: map[int]*subscriber{}}
+			h.followers[serverID] = f
+			go f.run(ctx, rc)
+		}
+		h.mu.Unlock()
+		if s := f.subscribe(tail); s != nil {
+			return s, nil
+		}
+		// El follower se cerró entre medias (gracia, EOF, Reset): se reintenta.
+	}
 }
 
 func (h *Hub) Reset(serverID string) {
@@ -91,57 +156,124 @@ func (h *Hub) drop(f *follower) {
 	f.close()
 }
 
-func (f *follower) subscribe() (<-chan Line, func(), error) {
+// dropIfIdle comprueba que f sigue sin suscriptores y lo cierra, de forma atómica
+// respecto a Subscribe (h.mu y luego f.mu, el mismo orden que drop).
+func (h *Hub) dropIfIdle(f *follower) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	f.mu.Lock()
+	idle := len(f.subs) == 0
+	f.mu.Unlock()
+	if !idle {
+		return
+	}
+	if h.followers[f.serverID] == f {
+		delete(h.followers, f.serverID)
+	}
+	f.close()
+}
+
+// subscribe devuelve nil si el follower ya está cerrado.
+func (f *follower) subscribe(tail int) *Subscription {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.closed {
+		return nil
+	}
 	if f.graceTimer != nil {
 		f.graceTimer.Stop()
 		f.graceTimer = nil
 	}
 	ch := make(chan Line, subBuffer)
-	for _, l := range f.ring {
+	replay := f.ring
+	if tail <= 0 {
+		replay = nil
+	} else if len(replay) > tail {
+		replay = replay[len(replay)-tail:]
+	}
+	for _, l := range replay {
 		ch <- l
 	}
-	if f.closed {
-		close(ch)
-		return ch, func() {}, nil
-	}
+	s := &Subscription{Lines: ch}
 	id := f.nextSub
 	f.nextSub++
-	f.subs[id] = ch
+	f.subs[id] = &subscriber{ch: ch, sub: s}
 	var once sync.Once
-	unsub := func() {
+	s.unsub = func() {
 		once.Do(func() {
+			// h.mu antes que f.mu (mismo orden que drop), así que la gracia se lee antes.
+			f.hub.mu.Lock()
+			grace := f.hub.grace
+			f.hub.mu.Unlock()
 			f.mu.Lock()
 			defer f.mu.Unlock()
 			delete(f.subs, id)
 			if len(f.subs) == 0 && !f.closed {
-				f.graceTimer = time.AfterFunc(f.hub.grace, func() {
-					f.mu.Lock()
-					idle := len(f.subs) == 0
-					f.mu.Unlock()
-					if idle {
-						f.hub.drop(f)
+				f.graceTimer = time.AfterFunc(grace, func() {
+					if hook := f.hub.graceHook; hook != nil {
+						hook()
 					}
+					f.hub.dropIfIdle(f)
 				})
 			}
 		})
 	}
-	return ch, unsub, nil
+	return s
 }
 
-func (f *follower) run(ctx context.Context, rc interface {
-	Read([]byte) (int, error)
-	Close() error
-}) {
+func (f *follower) run(ctx context.Context, rc io.ReadCloser) {
 	defer rc.Close()
-	go func() { <-ctx.Done(); rc.Close() }()
-	sc := bufio.NewScanner(rc)
-	sc.Buffer(make([]byte, 64*1024), 1024*1024)
-	for sc.Scan() {
-		f.publish(parseLine(sc.Text()))
+	go func() { <-ctx.Done(); rc.Close() }() // Close es idempotente en Fake y Moby
+	br := bufio.NewReaderSize(rc, 64*1024)
+	for {
+		line, err := readLine(br)
+		if line != nil {
+			f.publish(parseLine(string(line)))
+		}
+		if err != nil {
+			break
+		}
 	}
 	f.hub.drop(f)
+}
+
+// readLine lee una línea; si supera maxLineBytes la trunca (con marcador) y descarta
+// el resto en vez de abortar. Devuelve la última línea parcial junto con el error.
+func readLine(br *bufio.Reader) ([]byte, error) {
+	var buf []byte
+	truncated := false
+	for {
+		chunk, isPrefix, err := br.ReadLine()
+		if len(chunk) > 0 {
+			if room := maxLineBytes - len(buf); room > 0 {
+				if len(chunk) > room {
+					chunk = chunk[:room]
+					truncated = true
+				}
+				buf = append(buf, chunk...)
+			} else {
+				truncated = true
+			}
+		}
+		if err != nil {
+			if truncated {
+				buf = append(buf, truncMarker...)
+			}
+			if len(buf) == 0 {
+				return nil, err
+			}
+			return buf, err
+		}
+		if !isPrefix {
+			if truncated {
+				buf = append(buf, truncMarker...)
+			}
+			if buf == nil {
+				buf = []byte{}
+			}
+			return buf, nil
+		}
+	}
 }
 
 func (f *follower) publish(l Line) {
@@ -152,10 +284,11 @@ func (f *follower) publish(l Line) {
 		f.ring = f.ring[:ringSize-1]
 	}
 	f.ring = append(f.ring, l)
-	for _, ch := range f.subs {
+	for _, s := range f.subs {
 		select {
-		case ch <- l:
-		default: // suscriptor lento: se descarta la línea para no bloquear al resto
+		case s.ch <- l:
+		default: // suscriptor lento: se descarta y se cuenta para no bloquear al resto
+			s.sub.dropped.Add(1)
 		}
 	}
 }
@@ -167,9 +300,13 @@ func (f *follower) close() {
 		return
 	}
 	f.closed = true
+	if f.graceTimer != nil {
+		f.graceTimer.Stop()
+		f.graceTimer = nil
+	}
 	f.cancel()
-	for id, ch := range f.subs {
-		close(ch)
+	for id, s := range f.subs {
+		close(s.ch)
 		delete(f.subs, id)
 	}
 }
