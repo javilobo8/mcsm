@@ -72,6 +72,12 @@ export class AgentService {
       // ── plan-2 ──
       // ── plan-3 ──
       // ── plan-4 ──
+      case "jobProgress":
+      case "backupCreated":
+      case "backupDeleted":
+      case "backupInventory":
+        this.app.backupsService.onAgentMessage(nodeId, env);
+        return;
       // ── plan-5 ──
       // ── plan-6 ──
       // ── plan-7 ──

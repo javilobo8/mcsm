@@ -15,6 +15,7 @@ import { ServersRepo } from "./servers/repo.js";
 import { serverRoutes } from "./servers/routes.js";
 import { realtimeRoutes } from "./realtime/routes.js";
 import { errorHandler } from "./lib/http.js";
+import { backupRoutes } from "./backups/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
@@ -48,6 +49,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // ── plan-3 ──
   // ── plan-4 ──
   await app.register(jobRoutes);
+  await app.register(backupRoutes);
   // ── plan-5 ──
   // ── plan-6 ──
   // ── plan-7 ──
