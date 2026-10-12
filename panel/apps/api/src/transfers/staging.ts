@@ -43,41 +43,44 @@ export class Staging {
   }
 
   /**
-   * Guarda un stream: escribe `<id>.part` (exclusivo, 0600) y lo renombra a `<id>.bin` al
-   * terminar. Si falla, se corta o supera `maxBytes`, borra su `.part` y rechaza. El id debe
-   * ser único (p. ej. un transferId): un `.part` ajeno con el mismo id hace fallar con EEXIST.
-   * El stream pasa a ser de Staging: si falla, queda destruido (quien lo envía ve el corte).
+   * Guarda un stream: reserva `<id>.bin` (exclusivo), escribe `<id>.part` (exclusivo, 0600) y lo
+   * renombra sobre su reserva al terminar. Nunca pisa un `.bin` existente: un id repetido (otro
+   * `save` en curso o ya terminado) falla con EEXIST sin tocar lo ajeno. Si falla, se corta o
+   * supera `maxBytes`, borra lo suyo y rechaza. El stream pasa a ser de Staging: si falla, queda
+   * destruido (quien lo envía ve el corte).
    */
   async save(id: string, stream: Readable, opts: SaveOptions = {}): Promise<StagedFile> {
-    let part: string, path: string;
+    let part = "";
+    let path = "";
+    let size = 0;
+    // Solo se borra lo que creó este save: con EEXIST, el .part/.bin es de otra escritura.
+    let reserved = false;
+    let created = false;
     try {
       part = this.file(id, "part");
       path = this.file(id, "bin");
       opts.signal?.throwIfAborted();
       await mkdir(this.dir, { recursive: true, mode: 0o700 });
-    } catch (e) {
-      stream.destroy(); // sin error: nadie escucha 'error' en el origen todavía
-      throw e;
-    }
+      const reservation = await open(path, "wx", 0o600);
+      reserved = true;
+      await reservation.close();
 
-    let size = 0;
-    const max = opts.maxBytes;
-    const counter = new Transform({
-      transform(chunk: Buffer, _enc, cb) {
-        size += chunk.length;
-        if (max !== undefined && size > max) cb(new HttpError(413, `El fichero supera el tamaño máximo admitido (${max} bytes)`));
-        else cb(null, chunk);
-      },
-    });
-    const out = createWriteStream(part, { flags: "wx", mode: 0o600 });
-    // Solo borramos el .part si lo creamos nosotros: con EEXIST es de otra escritura.
-    let created = false;
-    out.once("open", () => { created = true; });
-    try {
+      const max = opts.maxBytes;
+      const counter = new Transform({
+        transform(chunk: Buffer, _enc, cb) {
+          size += chunk.length;
+          if (max !== undefined && size > max) cb(new HttpError(413, `El fichero supera el tamaño máximo admitido (${max} bytes)`));
+          else cb(null, chunk);
+        },
+      });
+      const out = createWriteStream(part, { flags: "wx", mode: 0o600 });
+      out.once("open", () => { created = true; });
       await pipeline(stream, counter, out, opts.signal ? { signal: opts.signal } : {});
-      await rename(part, path);
+      await rename(part, path); // sobre la reserva propia: atómico
     } catch (e) {
-      if (created) await rm(part, { force: true });
+      stream.destroy(); // sin error: si falló antes del pipeline nadie escucha 'error' en el origen
+      if (created) await rm(part, { force: true }).catch(() => {});
+      if (reserved) await rm(path, { force: true }).catch(() => {});
       throw e;
     }
     return { id, path, size };
@@ -85,8 +88,14 @@ export class Staging {
 
   /**
    * Fuente para TransferService.outbound. Abre el fichero al invocarse (si ya no existe, la
-   * fuente rechaza y la ruta puede responder el error) y anuncia su tamaño real. Por defecto
-   * borra el fichero al cerrarse el stream, termine bien o no.
+   * fuente rechaza y la ruta puede responder el error) y anuncia su tamaño real.
+   *
+   * `removeAfter` (por defecto true) borra el fichero al cerrarse el stream, **termine bien o
+   * no**: sirve para entregas de un solo intento. Si el fichero es el único origen de algo que
+   * hay que poder reintentar —la migración entre nodos (oleada B)—, usa `removeAfter: false` y
+   * llama a `remove(file)` tras resolverse `done` de la transferencia (y en su fallo definitivo).
+   * Lo que nunca llega a invocarse (transferencia caducada o cancelada) queda hasta `sweep` o el
+   * siguiente arranque.
    */
   source(file: StagedFile, opts: { removeAfter?: boolean } = {}): TransferSource {
     const removeAfter = opts.removeAfter ?? true;

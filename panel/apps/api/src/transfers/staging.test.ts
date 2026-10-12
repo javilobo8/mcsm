@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, utimes, writeFile }
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HttpError } from "../lib/http.js";
 import { Staging } from "./staging.js";
 
@@ -97,12 +97,16 @@ describe("Staging", () => {
     expect(ok.size).toBe(10);
   });
 
-  it("signal: abortar a mitad corta el pipeline, destruye el origen y borra el .part", async () => {
+  it("signal: abortar con datos ya escritos en el .part corta, destruye el origen y no deja nada", async () => {
     const s = new Staging(dir);
     const src = new PassThrough();
     const ac = new AbortController();
     const saving = s.save("cancelado", src, { signal: ac.signal });
     src.write("medio");
+    // Espera con condición y plazo (no un sleep): el primer trozo ya está en disco.
+    await vi.waitFor(async () => {
+      expect((await stat(join(dir, "cancelado.part"))).size).toBe(5);
+    }, { timeout: 5000, interval: 5 });
     ac.abort();
     await expect(saving).rejects.toMatchObject({ name: "AbortError" });
     expect(src.destroyed).toBe(true);
@@ -130,6 +134,32 @@ describe("Staging", () => {
     await writeFile(join(dir, "dup.part"), "de otra escritura");
     await expect(s.save("dup", Readable.from([Buffer.from("x")]))).rejects.toMatchObject({ code: "EEXIST" });
     expect(await readFile(join(dir, "dup.part"), "utf8")).toBe("de otra escritura");
+    expect(await readdir(dir)).toEqual(["dup.part"]); // ni rastro de lo que reservó este save
+  });
+
+  it("no pisa un .bin existente del mismo id: falla con EEXIST y destruye el origen", async () => {
+    const s = new Staging(dir);
+    const first = await s.save("uno", Readable.from([Buffer.from("primero")]));
+    const src = new PassThrough();
+    await expect(s.save("uno", src)).rejects.toMatchObject({ code: "EEXIST" });
+    expect(src.destroyed).toBe(true);
+    expect(await readFile(first.path, "utf8")).toBe("primero");
+    expect(await readdir(dir)).toEqual(["uno.bin"]);
+  });
+
+  it("dos save simultáneos con el mismo id: gana uno entero y el otro falla sin tocar nada", async () => {
+    const s = new Staging(dir);
+    const results = await Promise.allSettled([
+      s.save("par", Readable.from([Buffer.from("aaaa")])),
+      s.save("par", Readable.from([Buffer.from("bbbb")])),
+    ]);
+    const ok = results.filter((r) => r.status === "fulfilled");
+    const ko = results.filter((r) => r.status === "rejected");
+    expect(ok).toHaveLength(1);
+    expect(ko).toHaveLength(1);
+    expect((ko[0] as PromiseRejectedResult).reason).toMatchObject({ code: "EEXIST" });
+    expect(["aaaa", "bbbb"]).toContain(await readFile(join(dir, "par.bin"), "utf8"));
+    expect(await readdir(dir)).toEqual(["par.bin"]);
   });
 
   it("source falla al invocarse si el fichero ya no existe (la ruta puede responder el error)", async () => {
