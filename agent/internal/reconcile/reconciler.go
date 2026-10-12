@@ -46,6 +46,7 @@ type Reconciler struct {
 	fails   map[string]int
 	failVer map[string]uint64
 	lastErr map[string]string
+	held    map[string]string // plan-4: servidores reservados por Hold (backup/restore) y su motivo
 	now     func() time.Time
 }
 
@@ -177,6 +178,12 @@ func (r *Reconciler) Forget(serverID string) error {
 }
 
 func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err error) {
+	// plan-4: con el servidor reservado (Hold) no se toca Docker ni se publica nada.
+	if reason := r.heldReason(serverID); reason != "" {
+		// La spec ya está guardada: se aplicará al liberar la reserva (Hold).
+		r.log.Info("reconciliación aplazada", "server", serverID, "motivo", reason)
+		return nil
+	}
 	var version uint64
 	defer func() {
 		if err != nil {
@@ -256,6 +263,10 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData bool) error {
 	unlock := r.lock(serverID)
 	defer unlock()
+	// plan-4: un servidor reservado (Hold) no se borra a mitad de una copia o restauración.
+	if reason := r.heldReason(serverID); reason != "" {
+		return fmt.Errorf("%w (%s)", ErrBusy, reason)
+	}
 	sp, err := r.st.GetSpec(serverID)
 	if err != nil {
 		return err
@@ -326,6 +337,10 @@ func (r *Reconciler) dataPath(slug string) (string, error) {
 func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.PowerActionType) (err error) {
 	unlock := r.lock(serverID)
 	defer unlock()
+	// plan-4: antes del defer que publica: "ocupado" no es un error del servidor.
+	if reason := r.heldReason(serverID); reason != "" {
+		return fmt.Errorf("%w (%s)", ErrBusy, reason)
+	}
 	published := false
 	defer func() {
 		if published {

@@ -1,0 +1,218 @@
+package reconcile
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	mcsmv1 "mcsm/agent/gen/mcsm/v1"
+)
+
+const specJSON3G = `{"imageTag":"java21","type":"PAPER","version":"1.21.4","memory":"3G","ports":{"game":25565},"restartPolicy":"unless-stopped","rconPassword":"abcdefgh"}`
+
+const runningState = mcsmv1.DesiredState_DESIRED_STATE_RUNNING
+
+func TestHoldDefersApplyUntilRelease(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	release, err := r.Hold("a", "copia de seguridad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(fake.Calls)
+	if err := r.Apply(ctx, &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: runningState, SpecJson: []byte(specJSON3G)}); err != nil {
+		t.Fatal(err)
+	}
+	r.ReconcileAll(ctx)
+	for _, c := range fake.Calls[before:] {
+		if strings.HasPrefix(c, "Stop") || strings.HasPrefix(c, "Remove") || strings.HasPrefix(c, "Create") {
+			t.Fatalf("no debe tocar el contenedor durante la reserva: %v", fake.Calls[before:])
+		}
+	}
+	if v, _ := st.Applied("a"); v != 1 {
+		t.Fatalf("applied = %d, want 1", v)
+	}
+	if sp, _ := st.GetSpec("a"); sp.Version != 2 {
+		t.Fatal("la spec nueva debe quedar guardada")
+	}
+	release(ctx)
+	if v, _ := st.Applied("a"); v != 2 {
+		t.Fatalf("tras liberar applied = %d, want 2", v)
+	}
+	if calls(fake, "Remove") != 1 || calls(fake, "Create") != 2 {
+		t.Fatalf("debe recrear al liberar: %v", fake.Calls)
+	}
+	release(ctx) // idempotente
+	if calls(fake, "Create") != 2 {
+		t.Fatal("liberar dos veces no repite nada")
+	}
+}
+
+func TestHoldRejectsSecondHoldPowerAndRemove(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	release, err := r.Hold("a", "restauración")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Held("a") || r.Held("b") {
+		t.Fatal("Held")
+	}
+	if _, err := r.Hold("a", "copia"); !errors.Is(err, ErrBusy) || !strings.Contains(err.Error(), "restauración") {
+		t.Fatalf("segunda reserva = %v", err)
+	}
+	stops := calls(fake, "Stop")
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); !errors.Is(err, ErrBusy) {
+		t.Fatalf("Power = %v", err)
+	}
+	if calls(fake, "Stop") != stops {
+		t.Fatal("Power no debe tocar el contenedor reservado")
+	}
+	if err := r.Remove(ctx, "a", false); !errors.Is(err, ErrBusy) {
+		t.Fatalf("Remove = %v", err)
+	}
+	if sp, _ := st.GetSpec("a"); sp == nil {
+		t.Fatal("Remove no debe borrar la spec de un servidor reservado")
+	}
+	release(ctx)
+	if r.Held("a") {
+		t.Fatal("debe liberarse")
+	}
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHoldWaitsForOperationInProgress(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	unlock := r.lock("a") // otra operación sobre el servidor en curso
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.Hold("a", "copia")
+		done <- err
+	}()
+	select {
+	case <-done:
+		t.Fatal("Hold no debe volver mientras otra operación tiene el lock del servidor")
+	default:
+	}
+	unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Hold no volvió tras liberar el lock")
+	}
+}
+
+func TestReleaseRestartsServerStoppedDuringHold(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	release, err := r.Hold("a", "restauración")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cid := r.ContainerID(ctx, "a")
+	if err := fake.Stop(ctx, cid, StopTimeout); err != nil { // la restauración lo para
+		t.Fatal(err)
+	}
+	r.ReconcileAll(ctx)
+	if ins, _ := fake.Inspect(ctx, cid); ins.Running {
+		t.Fatal("durante la reserva nadie debe arrancarlo")
+	}
+	release(ctx)
+	if ins, _ := fake.Inspect(ctx, cid); !ins.Running {
+		t.Fatal("al liberar vuelve a su estado deseado (running)")
+	}
+}
+
+// Una reserva sin motivo sigue siendo una reserva: el motivo vacío no puede desactivar
+// las comprobaciones.
+func TestHoldWithEmptyReasonStillHolds(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	release, err := r.Hold("a", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.Held("a") {
+		t.Fatal("Held con motivo vacío")
+	}
+	stops := calls(fake, "Stop")
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); !errors.Is(err, ErrBusy) {
+		t.Fatalf("Power = %v", err)
+	}
+	if calls(fake, "Stop") != stops {
+		t.Fatal("Power no debe tocar el contenedor reservado")
+	}
+	release(ctx)
+	if r.Held("a") {
+		t.Fatal("debe liberarse")
+	}
+}
+
+// Reservas y liberaciones concurrentes con ticks y acciones de encendido: sin carreras
+// (-race), sin bloqueos y con el servidor en su estado deseado al acabar.
+func TestHoldConcurrentWithTicksAndPower(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			release, err := r.Hold("a", "copia")
+			if err != nil {
+				if !errors.Is(err, ErrBusy) {
+					t.Error(err)
+				}
+				return
+			}
+			release(ctx)
+		}()
+		go func() {
+			defer wg.Done()
+			r.ReconcileAll(ctx)
+		}()
+		go func() {
+			defer wg.Done()
+			if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err != nil && !errors.Is(err, ErrBusy) {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	if r.Held("a") {
+		t.Fatal("todas las reservas debían liberarse")
+	}
+	ins, err := fake.Inspect(ctx, r.ContainerID(ctx, "a"))
+	if err != nil || !ins.Running || calls(fake, "Create") != 1 {
+		t.Fatalf("ins=%+v err=%v calls=%v", ins, err, fake.Calls)
+	}
+}
