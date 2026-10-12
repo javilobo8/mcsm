@@ -29,6 +29,7 @@ describe("formularios dentro de diálogos", () => {
   it("encuentra los diálogos con formulario", () => {
     expect(files.map(([f]) => f)).toEqual(expect.arrayContaining([
       "../components/spec-form/curseforge-key.tsx", "../components/save-template-dialog.tsx", "../routes/nodes.tsx",
+      "../components/files/name-dialog.tsx",
     ]));
   });
   it("formsInsideDialogs ignora el <form> exterior que contiene al diálogo", () => {
