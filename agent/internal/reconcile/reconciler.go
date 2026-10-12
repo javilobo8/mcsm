@@ -232,9 +232,14 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 	// plan-6: un importado sin registro de adopción (ImportAdopt perdido, store nuevo) se vuelve a
 	// adoptar; si su contenedor original ya no existe, se crea el gestionado.
 	if existing == nil && parsed.Adopt != nil {
-		if existing, err = r.readopt(ctx, sp, parsed.Adopt, build.DataDir); err != nil {
+		if existing, err = r.readopt(ctx, sp, parsed, build.DataDir); err != nil {
 			return err
 		}
+	}
+	// plan-6 (H1): un dataPath solo se monta si el agente lo verificó para este servidor. Antes de tocar
+	// Docker: un cambio de spec no debe parar el original para luego no poder crear.
+	if err := r.checkDataPath(ctx, serverID, parsed, existing); err != nil {
+		return err
 	}
 	switch {
 	case existing != nil && existing.Adopted:

@@ -418,6 +418,9 @@ func TestRemoveWithDataPathRefusesDeleteData(t *testing.T) {
 
 func TestDataPathCreateNeverMkdirs(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
+	if err := st.PutExternalPath("a", extDataPath); err != nil { // verificada al importar (H1)
+		t.Fatal(err)
+	}
 	put(t, st, "a", "alpha", 1, desiredRunning, string(importedSpec("", impOpts{noAdopt: true, dataPath: extDataPath})))
 	if err := r.Reconcile(context.Background(), "a"); err != nil {
 		t.Fatal(err)
@@ -492,5 +495,28 @@ func TestServerContainersSkipsGoneAdopted(t *testing.T) {
 	list, err := r.ServerContainers(ctx)
 	if err != nil || len(list) != 0 {
 		t.Fatalf("ServerContainers = %+v, %v", list, err)
+	}
+}
+
+// M1: un ImportAdopt v1 tardío (sesión vieja) no pisa la v2 que ya guardó un SyncSpecs de «Adoptar y
+// aplicar»: se guarda solo la adopción v1, así que la v2 recrea.
+func TestLateAdoptKeepsNewerSpecAndRecreates(t *testing.T) {
+	r, st, fake, _, root := setup(t)
+	ctx := context.Background()
+	id := external(t, fake, "mc", filepath.Join(root, "alpha", "data"), true)
+	if err := r.StoreForce(importMsg("a", "alpha", 2, importedSpec(id, impOpts{memory: "3G"}))); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
+		t.Fatal(err)
+	}
+	if sp, _ := st.GetSpec("a"); sp == nil || sp.Version != 2 {
+		t.Fatalf("spec = %v: la v2 se conserva", sp)
+	}
+	if _, ok := fake.Containers[id]; ok || calls(fake, "Create mcsm-alpha") != 1 {
+		t.Fatalf("la v2 recrea: %v", fake.Calls)
+	}
+	if v, _ := st.Applied("a"); v != 2 {
+		t.Fatalf("applied = %d", v)
 	}
 }

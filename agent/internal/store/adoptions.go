@@ -37,17 +37,25 @@ func putAdoption(tx *bbolt.Tx, serverID string, a Adoption) error {
 	return b.Put([]byte(serverID), raw)
 }
 
-// PutAdoption guarda (o sustituye) la adopción de serverID.
-func (s *Store) PutAdoption(serverID string, a Adoption) error {
+// PutAdoption guarda (o sustituye) la adopción de serverID y, si externalPath no es "", la carpeta
+// externa verificada (ver PutExternalPath), en una transacción.
+func (s *Store) PutAdoption(serverID string, a Adoption, externalPath string) error {
 	if serverID == "" || a.ContainerID == "" {
 		return errors.New("store: adopción sin servidor o sin contenedor")
 	}
-	return s.db.Update(func(tx *bbolt.Tx) error { return putAdoption(tx, serverID, a) })
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		if err := putAdoption(tx, serverID, a); err != nil {
+			return err
+		}
+		return putExternalPath(tx, serverID, externalPath)
+	})
 }
 
-// AdoptWithSpec guarda la spec (anulando su lápida, como PutSpec) y la adopción en una transacción:
-// nunca queda una adopción sin la spec que la pidió.
-func (s *Store) AdoptWithSpec(sp *mcsmv1.ServerSpec, a Adoption) error {
+// AdoptWithSpec guarda la adopción, la carpeta externa verificada (si externalPath no es "") y la spec
+// (anulando su lápida, como PutSpec) en una transacción: nunca queda una adopción sin la spec que la
+// pidió. Si ya hay guardada una spec más nueva (un SyncSpecs con la v2 de «Adoptar y aplicar» se
+// adelantó a un ImportAdopt v1 tardío), se conserva esa: la adopción v1 hará que se recree.
+func (s *Store) AdoptWithSpec(sp *mcsmv1.ServerSpec, a Adoption, externalPath string) error {
 	if sp.GetServerId() == "" || a.ContainerID == "" {
 		return errors.New("store: adopción sin servidor o sin contenedor")
 	}
@@ -56,13 +64,26 @@ func (s *Store) AdoptWithSpec(sp *mcsmv1.ServerSpec, a Adoption) error {
 		return err
 	}
 	return s.db.Update(func(tx *bbolt.Tx) error {
-		if err := tx.Bucket(bSpecs).Put([]byte(sp.ServerId), raw); err != nil {
+		newer := false
+		if cur := tx.Bucket(bSpecs).Get([]byte(sp.ServerId)); cur != nil {
+			stored := &mcsmv1.ServerSpec{}
+			if err := proto.Unmarshal(cur, stored); err != nil {
+				return err
+			}
+			newer = stored.Version > sp.Version
+		}
+		if !newer {
+			if err := tx.Bucket(bSpecs).Put([]byte(sp.ServerId), raw); err != nil {
+				return err
+			}
+			if err := deleteTombstone(tx, sp.ServerId); err != nil {
+				return err
+			}
+		}
+		if err := putAdoption(tx, sp.ServerId, a); err != nil {
 			return err
 		}
-		if err := deleteTombstone(tx, sp.ServerId); err != nil {
-			return err
-		}
-		return putAdoption(tx, sp.ServerId, a)
+		return putExternalPath(tx, sp.ServerId, externalPath)
 	})
 }
 

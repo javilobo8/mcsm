@@ -35,6 +35,8 @@ var (
 	ErrAdoptConflict = errors.New("el contenedor ya está gestionado")
 	ErrAdoptMismatch = errors.New("el contenedor no coincide con la spec")
 	ErrAdoptSpec     = errors.New("spec de adopción inválida")
+	// ErrDataPathUnverified: la spec trae un dataPath que el agente no verificó para ese servidor (H1).
+	ErrDataPathUnverified = errors.New("carpeta de datos sin verificar")
 )
 
 // Adopt establece la adopción que pide el panel (ImportAdopt): comprueba el contenedor, lo conecta a
@@ -56,7 +58,7 @@ func (r *Reconciler) Adopt(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 		return fmt.Errorf("%w: %v", ErrAdoptSpec, err)
 	}
 	// adoptMu se suelta antes de reconciliar: reconcileLocked puede llamar a readopt, que lo toma.
-	if err := r.recordAdoption(ctx, sp, parsed.Adopt, build.DataDir); err != nil {
+	if err := r.recordAdoption(ctx, sp, parsed, build.DataDir); err != nil {
 		return err
 	}
 	if err := r.reconcileLocked(ctx, sp.ServerId); err != nil {
@@ -65,10 +67,11 @@ func (r *Reconciler) Adopt(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 	return nil
 }
 
-// recordAdoption comprueba el contenedor y guarda spec y adopción, bajo adoptMu (requiere el lock
-// del servidor). Si ya está adoptado por este servidor (reintento del panel con el Ack perdido),
-// solo guarda la spec si no es más vieja.
-func (r *Reconciler) recordAdoption(ctx context.Context, sp *mcsmv1.ServerSpec, a *spec.Adopt, dataDir string) error {
+// recordAdoption comprueba el contenedor y guarda spec, adopción y (con dataPath) la carpeta verificada,
+// bajo adoptMu (requiere el lock del servidor). Si ya está adoptado por este servidor (reintento del
+// panel con el Ack perdido), solo guarda la spec si no es más vieja.
+func (r *Reconciler) recordAdoption(ctx context.Context, sp *mcsmv1.ServerSpec, parsed spec.Spec, dataDir string) error {
+	a := parsed.Adopt
 	r.adoptMu.Lock()
 	defer r.adoptMu.Unlock()
 	cur, err := r.st.Adoption(sp.ServerId)
@@ -100,14 +103,24 @@ func (r *Reconciler) recordAdoption(ctx context.Context, sp *mcsmv1.ServerSpec, 
 	if err := r.connectAlias(ctx, info, sp.Slug); err != nil {
 		return err
 	}
-	return r.st.AdoptWithSpec(sp, store.Adoption{ContainerID: info.ID, Slug: sp.Slug, Version: a.Version})
+	return r.st.AdoptWithSpec(sp, store.Adoption{ContainerID: info.ID, Slug: sp.Slug, Version: a.Version}, externalPath(parsed, dataDir))
+}
+
+// externalPath es la carpeta que se registra como verificada al adoptar: dataDir si es un dataPath
+// (fuera de DATA_ROOT); "" si los datos están en DATA_ROOT (esa ruta la decide el agente).
+func externalPath(parsed spec.Spec, dataDir string) string {
+	if parsed.DataPath == "" {
+		return ""
+	}
+	return dataDir
 }
 
 // readopt vuelve a adoptar un importado sin registro (su spec trae adopt). Requiere el lock del
 // servidor. Devuelve el contenedor adoptado, o nil si el original ya no existe (se creará el
 // gestionado). Cualquier otro fallo para la reconciliación: nunca se crea un segundo contenedor
 // sobre los datos de uno que no se pudo comprobar.
-func (r *Reconciler) readopt(ctx context.Context, sp *mcsmv1.ServerSpec, a *spec.Adopt, dataDir string) (*docker.Container, error) {
+func (r *Reconciler) readopt(ctx context.Context, sp *mcsmv1.ServerSpec, parsed spec.Spec, dataDir string) (*docker.Container, error) {
+	a := parsed.Adopt
 	r.adoptMu.Lock()
 	defer r.adoptMu.Unlock()
 	info, err := r.verifyAdoptable(ctx, sp.ServerId, a.ContainerID, dataDir)
@@ -121,7 +134,7 @@ func (r *Reconciler) readopt(ctx context.Context, sp *mcsmv1.ServerSpec, a *spec
 	if err := r.connectAlias(ctx, info, sp.Slug); err != nil {
 		return nil, err
 	}
-	if err := r.st.PutAdoption(sp.ServerId, store.Adoption{ContainerID: info.ID, Slug: sp.Slug, Version: a.Version}); err != nil {
+	if err := r.st.PutAdoption(sp.ServerId, store.Adoption{ContainerID: info.ID, Slug: sp.Slug, Version: a.Version}, externalPath(parsed, dataDir)); err != nil {
 		return nil, err
 	}
 	r.log.Info("importado adoptado de nuevo desde su spec", "server", sp.Slug, "contenedor", info.Name)
@@ -152,21 +165,54 @@ func (r *Reconciler) verifyAdoptable(ctx context.Context, serverID, containerID,
 	if m := info.NetworkMode; m == "host" || m == "none" || strings.HasPrefix(m, "container:") {
 		return nil, fmt.Errorf("%w: %s usa la red %q; solo se adoptan contenedores con red propia", ErrAdoptMismatch, info.Name, m)
 	}
-	src := ""
 	for _, m := range info.Mounts {
-		dest := path.Clean(m.Destination)
-		if dest == "/data" && m.Type == "bind" {
-			src = filepath.Clean(m.Source)
-		}
 		// Al recrearlo solo se monta /data: lo montado debajo (/data/world…) sería otra carpeta, vacía.
-		if strings.HasPrefix(dest, "/data/") {
+		if dest := path.Clean(m.Destination); strings.HasPrefix(dest, "/data/") {
 			return nil, fmt.Errorf("%w: %s monta %s en %s, dentro de /data; muévelo a la carpeta de /data para importarlo", ErrAdoptMismatch, info.Name, m.Source, dest)
 		}
 	}
-	if src != filepath.Clean(dataDir) {
+	if src := dataBind(info); src != filepath.Clean(dataDir) {
 		return nil, fmt.Errorf("%w: el /data de %s es %q y la spec espera %q", ErrAdoptMismatch, info.Name, src, dataDir)
 	}
 	return info, nil
+}
+
+// dataBind es la carpeta del host montada (bind) en /data del contenedor, limpia, o "" si no hay.
+func dataBind(info *docker.ImportInfo) string {
+	for _, m := range info.Mounts {
+		if path.Clean(m.Destination) == "/data" && m.Type == "bind" {
+			return filepath.Clean(m.Source)
+		}
+	}
+	return ""
+}
+
+// checkDataPath (H1): una spec con dataPath solo se monta si es la carpeta que el agente verificó para
+// ese servidor al adoptar su contenedor (recordAdoption, readopt). Si no hay registro (store perdido),
+// lo recupera del contenedor gestionado del servidor que ya la monta: solo lo crea el agente, y solo
+// con una carpeta verificada. Si tampoco, falla sin tocar Docker. Requiere el lock del servidor.
+func (r *Reconciler) checkDataPath(ctx context.Context, serverID string, parsed spec.Spec, existing *docker.Container) error {
+	if parsed.DataPath == "" {
+		return nil
+	}
+	reg, err := r.st.ExternalPath(serverID)
+	if err != nil {
+		return err
+	}
+	switch {
+	case reg == parsed.DataPath:
+		return nil
+	case reg != "":
+		return fmt.Errorf("%w: %s no es la carpeta que se verificó al importar el servidor (%s): no se monta", ErrDataPathUnverified, parsed.DataPath, reg)
+	}
+	if existing != nil && !existing.Adopted {
+		info, err := r.eng.InspectImport(ctx, existing.ID)
+		if err == nil && dataBind(info) == parsed.DataPath {
+			r.log.Warn("carpeta de datos externa recuperada del contenedor gestionado (el store no la tenía)", "server", serverID, "carpeta", parsed.DataPath)
+			return r.st.PutExternalPath(serverID, parsed.DataPath)
+		}
+	}
+	return fmt.Errorf("%w: no se puede comprobar que %s sea la carpeta del contenedor importado (este agente no la verificó: ¿se perdió su store?). No se crea nada: elimina el servidor sin borrar datos y vuelve a importarlo", ErrDataPathUnverified, parsed.DataPath)
 }
 
 // connectAlias conecta el contenedor a la red del agente con el alias mcsm-<slug> (RCON, ping y

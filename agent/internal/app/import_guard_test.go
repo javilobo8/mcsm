@@ -42,6 +42,10 @@ const dataPathSpec = `{"imageTag":"java21","type":"PAPER","version":"1.21.4","me
 
 func applyDataPathServer(t *testing.T, a *App, s *sink) {
 	t.Helper()
+	// La carpeta la verificó una importación (H1): sin eso el agente no la monta.
+	if err := a.st.PutExternalPath("e", "/mcsm-test-noexiste/externo/data"); err != nil {
+		t.Fatal(err)
+	}
 	sp := &mcsmv1.ServerSpec{ServerId: "e", Slug: "externo", Version: 1, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_STOPPED, SpecJson: []byte(dataPathSpec)}
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: sp}}}, s.send)
 	if e := s.waitID(t, 1); e.GetAck() == nil {
@@ -69,5 +73,22 @@ func TestFilesAndBackupsRefusedWithDataPath(t *testing.T) {
 		if msg := e.GetError().GetMessage(); !strings.Contains(msg, "vuelve a importarlo") || strings.Contains(msg, "quita dataPath") {
 			t.Errorf("%T: mensaje = %q", env.Body, msg)
 		}
+	}
+}
+
+// H1: un dataPath que el agente no verificó al importar no se monta; el panel recibe bad_spec.
+func TestApplyUnverifiedDataPathIsBadSpec(t *testing.T) {
+	a, fake, _ := newApp(t)
+	s := newSink()
+	a.send = s.send
+	js := strings.Replace(dataPathSpec, "/mcsm-test-noexiste/externo/data", "/root/mc", 1)
+	sp := &mcsmv1.ServerSpec{ServerId: "e", Slug: "externo", Version: 1, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(js)}
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: sp}}}, s.send)
+	e := s.waitID(t, 1)
+	if e.GetError().GetCode() != errcode.BadSpec || !strings.Contains(e.GetError().GetMessage(), "/root/mc") {
+		t.Fatalf("respuesta = %v", e)
+	}
+	if len(fake.Containers) != 0 {
+		t.Fatalf("no se crea nada: %v", fake.Calls)
 	}
 }

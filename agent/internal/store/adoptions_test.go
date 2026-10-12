@@ -15,10 +15,10 @@ func TestAdoptionsCRUD(t *testing.T) {
 	if err := s.DeleteAdoption("a"); err != nil {
 		t.Fatalf("borrar sin bucket es idempotente: %v", err)
 	}
-	if err := s.PutAdoption("a", Adoption{ContainerID: "c1", Slug: "alpha", Version: 2}); err != nil {
+	if err := s.PutAdoption("a", Adoption{ContainerID: "c1", Slug: "alpha", Version: 2}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutAdoption("", Adoption{ContainerID: "c1"}); err == nil {
+	if err := s.PutAdoption("", Adoption{ContainerID: "c1"}, ""); err == nil {
 		t.Fatal("sin server_id debe fallar")
 	}
 	if a, _ := s.Adoption("a"); a == nil || *a != (Adoption{ContainerID: "c1", Slug: "alpha", Version: 2}) {
@@ -48,7 +48,7 @@ func TestAdoptWithSpecIsAtomicAndCancelsTombstone(t *testing.T) {
 		t.Fatal(err)
 	}
 	sp := &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 1, SpecJson: []byte(`{}`)}
-	if err := s.AdoptWithSpec(sp, Adoption{ContainerID: "c1", Slug: "alpha", Version: 1}); err != nil {
+	if err := s.AdoptWithSpec(sp, Adoption{ContainerID: "c1", Slug: "alpha", Version: 1}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := s.GetSpec("a"); got == nil || got.Slug != "alpha" {
@@ -64,7 +64,7 @@ func TestAdoptWithSpecIsAtomicAndCancelsTombstone(t *testing.T) {
 
 func TestAdoptionSurvivesForget(t *testing.T) {
 	s := open(t)
-	_ = s.AdoptWithSpec(&mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 1}, Adoption{ContainerID: "c1", Slug: "alpha", Version: 1})
+	_ = s.AdoptWithSpec(&mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 1}, Adoption{ContainerID: "c1", Slug: "alpha", Version: 1}, "")
 	if err := s.ForgetWithTombstone("a", time.Unix(1, 0)); err != nil {
 		t.Fatal(err)
 	}

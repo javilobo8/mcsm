@@ -248,6 +248,9 @@ func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string
 		return errcode.InvalidSpec, err
 	}
 	if err := a.rec.Apply(ctx, sp); err != nil {
+		if errors.Is(err, reconcile.ErrDataPathUnverified) { // plan-6 (H1): dataPath que el agente no verificó
+			return errcode.BadSpec, err
+		}
 		return busyOr(err, errcode.ApplyFailed), err
 	}
 	return "", nil
