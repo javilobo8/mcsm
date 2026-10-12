@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { DatabaseBackup, Download, History, Trash2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -24,7 +24,12 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
   const [deleting, setDeleting] = useState<BackupDto | null>(null);
   const refreshJobs = () => qc.invalidateQueries({ queryKey: ["jobs"] });
 
-  const createNow = useMutation({ mutationFn: () => createBackup(server.id, newIdempotencyKey()), onSuccess: refreshJobs });
+  // Una clave por intención: los reintentos tras un fallo la reutilizan; un éxito la renueva.
+  const createKey = useRef<string | null>(null);
+  const createNow = useMutation({
+    mutationFn: () => createBackup(server.id, (createKey.current ??= newIdempotencyKey())),
+    onSuccess: () => { createKey.current = null; return refreshJobs(); },
+  });
   const restore = useMutation({
     mutationFn: (b: BackupDto) => api.post<JobDto>(apiPath`/api/servers/${server.id}/backups/${b.id}/restore`),
     onSuccess: () => { setRestoring(null); void refreshJobs(); },
@@ -92,10 +97,10 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
 
       <section className="flex flex-col gap-3" aria-label="Programación">
         <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Programación</h2>
-        <BackupScheduleForm key={server.specVersion} server={server} />
+        <BackupScheduleForm server={server} />
       </section>
 
-      <AlertDialog open={restoring !== null} onOpenChange={(open) => { if (!open) setRestoring(null); }}>
+      <AlertDialog open={restoring !== null} onOpenChange={(open) => { if (!open && !restore.isPending) setRestoring(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Restaurar esta copia?</AlertDialogTitle>
@@ -105,13 +110,13 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
           </AlertDialogHeader>
           {restore.error && <p role="alert" className="text-sm text-red-400">{restore.error.message}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={restore.isPending}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={restore.isPending} onClick={(e) => { e.preventDefault(); if (restoring) restore.mutate(restoring); }}>Restaurar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={deleting !== null} onOpenChange={(open) => { if (!open) setDeleting(null); }}>
+      <AlertDialog open={deleting !== null} onOpenChange={(open) => { if (!open && !remove.isPending) setDeleting(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{del?.title}</AlertDialogTitle>
@@ -119,7 +124,7 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
           </AlertDialogHeader>
           {remove.error && <p role="alert" className="text-sm text-red-400">{remove.error.message}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={remove.isPending}>Cancelar</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={remove.isPending} onClick={(e) => { e.preventDefault(); if (deleting) remove.mutate(deleting); }}>Borrar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

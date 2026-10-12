@@ -27,12 +27,25 @@ export function scheduleToForm(b: BackupsConfig | undefined): ScheduleForm {
   };
 }
 
+/** Entero decimal no negativo ("" = 0); null si no lo es (nada de "1e2", "0x10", "-1" ni "2.5"). */
+export function parseRetention(s: string): number | null {
+  const t = s.trim();
+  if (t === "") return 0;
+  return /^\d+$/.test(t) ? Number(t) : null;
+}
+
+const sameForm = (a: ScheduleForm, b: ScheduleForm) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Al cambiar la spec del servidor: se adopta solo si el formulario no tiene cambios sin guardar. `base` = último valor del servidor visto. */
+export function resyncSchedule(current: ScheduleForm, base: ScheduleForm, incoming: ScheduleForm): { form: ScheduleForm; base: ScheduleForm } {
+  return { form: sameForm(current, base) ? incoming : current, base: incoming };
+}
+
 /** Valida con el mismo esquema que el panel y el agente. */
 export function formToSchedule(f: ScheduleForm): { ok: true; value: BackupsConfig } | { ok: false; error: string } {
-  const num = (s: string) => (s.trim() === "" ? 0 : Number(s.trim()));
-  const keepDays = num(f.keepDays);
-  const keepCount = num(f.keepCount);
-  if (!Number.isInteger(keepDays) || !Number.isInteger(keepCount)) {
+  const keepDays = parseRetention(f.keepDays);
+  const keepCount = parseRetention(f.keepCount);
+  if (keepDays === null || keepCount === null) {
     return { ok: false, error: "Los días y el número de copias deben ser números enteros" };
   }
   const r = backupsSchema.safeParse({
@@ -55,7 +68,7 @@ export interface BackupActions { restore: boolean; showDownload: boolean; downlo
 /** Qué botones de una fila están activos. `busy`: nodo caído o job en curso; `offline`: nodo caído. */
 export function backupActions(b: Pick<BackupDto, "kind" | "status">, busy: boolean, offline: boolean): BackupActions {
   const isArchive = b.kind === "archive";
-  return { restore: isArchive && b.status === "ok" && !busy, showDownload: isArchive, download: false, remove: !offline };
+  return { restore: isArchive && b.status === "ok" && !busy, showDownload: isArchive, download: false, remove: !offline && !busy };
 }
 
 export function deleteDialogText(b: Pick<BackupDto, "kind" | "filename">): { title: string; description: string } {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BackupDto, JobDto } from "./api";
-import { backupActions, deleteDialogText, formatBackupDate, formToSchedule, presetFor, scheduleToForm, toggleBusyReason } from "./backups";
+import { backupActions, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, scheduleToForm, toggleBusyReason } from "./backups";
 
 const base: BackupDto = {
   id: "b1", serverId: "s1", nodeId: "n1", filename: "x.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
@@ -49,6 +49,7 @@ describe("estado de los botones", () => {
     expect(backupActions(base, true, false).restore).toBe(false);
     expect(backupActions({ ...base, kind: "directory" }, false, false)).toMatchObject({ restore: false, showDownload: false });
     expect(backupActions(base, false, true).remove).toBe(false);
+    expect(backupActions(base, true, false).remove).toBe(false);
   });
   it("las copias que no están ok no se restauran", () => {
     expect(backupActions({ ...base, status: "failed" }, false, false).restore).toBe(false);
@@ -63,5 +64,32 @@ describe("textos", () => {
   it("formatea la fecha y tolera valores inválidos", () => {
     expect(formatBackupDate("no-fecha")).toBe("—");
     expect(formatBackupDate("2026-10-12T10:00:00Z")).not.toBe("—");
+  });
+});
+
+describe("retención", () => {
+  it("solo enteros decimales", () => {
+    expect(parseRetention("")).toBe(0);
+    expect(parseRetention(" 12 ")).toBe(12);
+    for (const bad of ["1e2", "0x10", "-1", "2.5", "siete", "+3"]) expect(parseRetention(bad)).toBeNull();
+    expect(formToSchedule({ ...scheduleToForm(undefined), keepDays: "1e2" })).toMatchObject({ ok: false });
+  });
+});
+
+describe("resincronización del formulario", () => {
+  const a = scheduleToForm(undefined);
+  const incoming = { ...a, keepDays: "30" };
+  it("sin cambios sin guardar adopta lo del servidor", () => {
+    expect(resyncSchedule(a, a, incoming)).toEqual({ form: incoming, base: incoming });
+  });
+  it("con cambios sin guardar conserva lo editado", () => {
+    const edited = { ...a, cron: "* * * * *" };
+    expect(resyncSchedule(edited, a, incoming)).toEqual({ form: edited, base: incoming });
+  });
+  it("tras el PATCH propio queda limpio", () => {
+    const edited = { ...a, keepDays: "30" };
+    const r = resyncSchedule(edited, a, edited);
+    expect(r.form).toEqual(edited);
+    expect(resyncSchedule(r.form, r.base, { ...edited, keepCount: "1" }).form.keepCount).toBe("1");
   });
 });

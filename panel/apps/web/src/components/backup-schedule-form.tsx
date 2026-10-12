@@ -7,12 +7,20 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, apiPath, type ServerDto } from "@/lib/api";
-import { CRON_PRESETS, formToSchedule, presetFor, scheduleToForm, type ScheduleForm } from "@/lib/backups";
+import { CRON_PRESETS, formToSchedule, presetFor, resyncSchedule, scheduleToForm, type ScheduleForm } from "@/lib/backups";
 
 /** Programación y retención de copias: PATCH de `spec.backups` (no forma parte del formulario de configuración). */
 export function BackupScheduleForm({ server }: { server: ServerDto }) {
   const qc = useQueryClient();
-  const [f, setF] = useState<ScheduleForm>(() => scheduleToForm(server.spec.backups));
+  const incoming = scheduleToForm(server.spec.backups);
+  const incomingJson = JSON.stringify(incoming);
+  const [f, setF] = useState<ScheduleForm>(incoming);
+  const [base, setBase] = useState<{ form: ScheduleForm; json: string }>({ form: incoming, json: incomingJson });
+  if (base.json !== incomingJson) { // la spec cambió: adoptar solo sin cambios sin guardar
+    const r = resyncSchedule(f, base.form, incoming);
+    setF(r.form);
+    setBase({ form: r.base, json: incomingJson });
+  }
   const [localErr, setLocalErr] = useState<string | null>(null);
   const set = <K extends keyof ScheduleForm>(k: K, v: ScheduleForm[K]) => setF((o) => ({ ...o, [k]: v }));
   const save = useMutation({
@@ -38,9 +46,9 @@ export function BackupScheduleForm({ server }: { server: ServerDto }) {
       </label>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <Label>Frecuencia</Label>
+          <Label htmlFor="backup-preset">Frecuencia</Label>
           <Select value={presetFor(f.cron)} onValueChange={(v) => { const p = CRON_PRESETS.find((x) => x.value === v); if (p?.cron) set("cron", p.cron); }}>
-            <SelectTrigger aria-label="Frecuencia"><SelectValue /></SelectTrigger>
+            <SelectTrigger id="backup-preset"><SelectValue /></SelectTrigger>
             <SelectContent>{CRON_PRESETS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}</SelectContent>
           </Select>
         </div>
