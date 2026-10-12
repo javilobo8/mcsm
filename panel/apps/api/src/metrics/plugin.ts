@@ -2,6 +2,7 @@ import fp from "fastify-plugin";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { metricRangeSchema } from "@mcsm/shared";
+import { HttpError } from "../lib/http.js";
 import { MetricsRepo } from "./repo.js";
 import { MetricsService } from "./service.js";
 
@@ -25,17 +26,17 @@ export const metricsPlugin = fp(async function metricsPlugin(app: FastifyInstanc
 const query = z.object({ range: metricRangeSchema.default("1h") });
 
 async function metricsRoutes(app: FastifyInstance) {
-  app.get<{ Params: { id: string } }>("/api/servers/:id/metrics", async (req, reply) => {
-    if (!app.servers.get(req.params.id)) return reply.code(404).send({ error: "Servidor no encontrado" });
+  app.get<{ Params: { id: string } }>("/api/servers/:id/metrics", async (req) => {
+    if (!app.servers.get(req.params.id)) throw new HttpError(404, "Servidor no encontrado");
     const q = query.safeParse(req.query ?? {});
-    if (!q.success) return reply.code(400).send({ error: q.error.issues[0]?.message ?? "Rango inválido" });
+    if (!q.success) throw new HttpError(400, q.error.issues[0]?.message ?? "Rango inválido");
     return app.metrics.series("server", req.params.id, q.data.range);
   });
 
-  app.get<{ Params: { id: string } }>("/api/nodes/:id/metrics", async (req, reply) => {
-    if (!app.nodes.get(req.params.id)) return reply.code(404).send({ error: "Nodo no encontrado" });
+  app.get<{ Params: { id: string } }>("/api/nodes/:id/metrics", async (req) => {
+    if (!app.nodes.get(req.params.id)) throw new HttpError(404, "Nodo no encontrado");
     const q = query.safeParse(req.query ?? {});
-    if (!q.success) return reply.code(400).send({ error: q.error.issues[0]?.message ?? "Rango inválido" });
+    if (!q.success) throw new HttpError(400, q.error.issues[0]?.message ?? "Rango inválido");
     return app.metrics.series("node", req.params.id, q.data.range);
   });
 }
