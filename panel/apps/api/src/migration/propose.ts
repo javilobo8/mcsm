@@ -7,6 +7,8 @@ export const requiredSpace = (n: number): number => n + Math.max(Math.floor(n * 
 export interface TargetServer { slug: string; spec: Spec }
 export interface ProposalInput {
   slug: string; spec: Spec; targetServers: TargetServer[]; range: { from: number; to: number }; requestedPort?: number;
+  /** Slugs ocupados en el destino sin servidor (p. ej. un origen con la retirada pendiente: su directorio sigue allí). */
+  reservedSlugs?: Iterable<string>;
 }
 export type Proposal = { ok: true; slug: string; port: number; portChanged: boolean } | { ok: false; error: string };
 
@@ -46,7 +48,7 @@ export function proposeTarget(i: ProposalInput): Proposal {
     for (let p = i.range.from; p <= i.range.to && port === undefined; p++) if (!used.has(p) && !extras.has(p)) port = p;
     if (port === undefined) return { ok: false, error: `No quedan puertos libres entre ${i.range.from} y ${i.range.to} en el nodo destino` };
   }
-  const slug = uniqueSlugAmong(i.slug, new Set(i.targetServers.map((s) => s.slug)));
+  const slug = uniqueSlugAmong(i.slug, new Set([...i.targetServers.map((s) => s.slug), ...(i.reservedSlugs ?? [])]));
   return { ok: true, slug, port, portChanged: port !== i.spec.ports.game };
 }
 

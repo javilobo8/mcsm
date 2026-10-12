@@ -18,6 +18,10 @@ describe("proposeTarget", () => {
     });
     expect(p).toEqual({ ok: true, slug: "survival", port: 25567, portChanged: true });
   });
+  it("slug reservado (origen con la retirada pendiente): también se evita", () => {
+    const p = proposeTarget({ slug: "survival", spec: spec(25570), targetServers: [], reservedSlugs: ["survival"], range });
+    expect(p).toMatchObject({ ok: true, slug: "survival-2", port: 25570, portChanged: false });
+  });
   it("slug ocupado: sufijo -2", () => {
     const p = proposeTarget({ slug: "survival", spec: spec(25570), targetServers: [{ slug: "survival", spec: spec(25565) }], range });
     expect(p).toMatchObject({ ok: true, slug: "survival-2", port: 25570 });

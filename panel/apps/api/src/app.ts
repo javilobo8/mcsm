@@ -25,6 +25,7 @@ import { errorHandler } from "./lib/http.js";
 import { backupRoutes } from "./backups/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
 import { migrationGuard } from "./migration/guard.js";
+import { migrationRoutes } from "./migration/routes.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
 
@@ -69,6 +70,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(fileRoutes);
   // ── plan-6 ──
   // ── plan-7 ──
+  await app.register(migrationRoutes);
   // ── plan-8 ──
   // ── plan-9 ──
   if (cfg.webDist) {
