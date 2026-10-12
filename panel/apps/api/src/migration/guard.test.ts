@@ -99,6 +99,37 @@ describe("MigrationsRepo", () => {
     expect((app.servers.get(s.id) as unknown as Record<string, unknown>).imported_from).toBeNull();
   });
 
+  it("commit: falla si otro servidor del destino ya usa el puerto de juego o un puerto extra (M1)", async () => {
+    const a = await enroll("a"); const b = await enroll("b");
+    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId, { target_port: 25570, target_spec: JSON.stringify(spec(25570)) }));
+    const other = app.servers.create({ nodeId: b.nodeId, name: "Otro", slug: "otro", spec: spec(25571), desiredState: "stopped" });
+    // Alguien cambió el otro servidor de B para usar el puerto reservado (sin pasar por checkPorts).
+    app.servers.updateSpec(other.id, spec(25570));
+    expect(app.migrations.commit(m, "running", observed)).toBe(false);
+    expect(app.servers.get(s.id)!.node_id).toBe(a.nodeId);
+    expect(app.migrations.get(m.id)!.phase).toBe("running");
+    app.servers.updateSpec(other.id, specSchema.parse({ ...spec(25572), ports: { game: 25572, extra: [{ host: 25570, container: 19132, proto: "udp" }] } }));
+    expect(app.migrations.commit(m, "running", observed)).toBe(false);
+    app.servers.updateSpec(other.id, spec(25572));
+    expect(app.migrations.commit(m, "running", observed)).toBe(true);
+  });
+
+  it("checkPorts y allocatePort cuentan los puertos reservados por migraciones hacia el nodo (M1)", async () => {
+    const a = await enroll("a"); const b = await enroll("b");
+    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const other = app.servers.create({ nodeId: b.nodeId, name: "Otro", slug: "otro", spec: spec(25571), desiredState: "stopped" });
+    const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId, { target_port: 25566, target_spec: JSON.stringify(spec(25566)) }));
+    const patch = await app.inject({ method: "PATCH", url: `/api/servers/${other.id}`, headers: { cookie }, payload: { spec: { ports: { game: 25566 } } } });
+    expect(patch.statusCode).toBe(409);
+    expect(patch.json().error).toMatch(/25566/);
+    expect(app.serversService.allocatePort(b.nodeId)).toBe(25565);
+    app.servers.updateSpec(other.id, spec(25565));
+    expect(app.serversService.allocatePort(b.nodeId)).toBe(25567); // 25566 lo reserva la migración
+    app.migrations.update(m.id, { phase: "failed" });
+    expect(app.serversService.allocatePort(b.nodeId)).toBe(25566);
+  });
+
   it("blockingServer y blockingNodeCreate solo mientras puede haber conflicto (I2)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });

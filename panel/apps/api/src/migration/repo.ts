@@ -1,4 +1,4 @@
-import type { MigrationDto, MigrationPhase } from "@mcsm/shared";
+import type { MigrationDto, MigrationPhase, Spec } from "@mcsm/shared";
 import type { Db } from "../db/db.js";
 import { nowIso } from "../lib/time.js";
 import type { ObservedDto } from "../servers/repo.js";
@@ -47,6 +47,9 @@ export function toMigrationDto(r: MigrationRow): MigrationDto {
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
+
+/** Puertos del host de una spec: el de juego y los extra. */
+const specPorts = (spec: Spec): number[] => [spec.ports.game, ...spec.ports.extra.map((e) => e.host)];
 
 export class MigrationsRepo {
   constructor(private db: Db) {}
@@ -109,6 +112,22 @@ export class MigrationsRepo {
       ORDER BY created_at LIMIT 1`, nodeId, nodeId);
   }
 
+  /**
+   * Puertos del host que reservan en `nodeId` las migraciones hacia él que aún pueden tener (o tener pronto) allí su
+   * copia: el puerto de juego y los extra de su spec en el destino. `checkPorts`/`allocatePort` los cuentan como
+   * usados. Tras el commit ya no hace falta: la fila del servidor está en el nodo.
+   */
+  reservedPorts(nodeId: string, exceptServerId?: string): Set<number> {
+    const rows = this.db.prepare(`SELECT server_id, target_spec FROM migrations WHERE target_node_id = ? AND ${TARGET_BUSY}`)
+      .all(nodeId) as unknown as { server_id: string; target_spec: string }[];
+    const out = new Set<number>();
+    for (const r of rows) {
+      if (r.server_id === exceptServerId) continue;
+      for (const p of specPorts(JSON.parse(r.target_spec) as Spec)) out.add(p);
+    }
+    return out;
+  }
+
   /** Bloquea borrar el nodo mientras una migración que lo usa está en curso (deshaciéndose, sí se puede). */
   blockingNodeDelete(nodeId: string): MigrationRow | null {
     return this.one("SELECT * FROM migrations WHERE phase = 'running' AND (source_node_id = ? OR target_node_id = ?) ORDER BY created_at LIMIT 1", nodeId, nodeId);
@@ -144,8 +163,8 @@ export class MigrationsRepo {
   /**
    * Confirma la migración en UNA transacción: la fila del servidor pasa al destino (nodo, slug, spec, versión, estado
    * deseado y último observado) solo si sigue en el origen con la versión del inicio, y la migración pasa a
-   * `committed` con la retirada del origen pendiente. Devuelve false (sin cambiar nada) si la versión cambió o el
-   * slug ya está ocupado en el destino.
+   * `committed` con la retirada del origen pendiente. Devuelve false (sin cambiar nada) si la versión cambió, o el
+   * slug o alguno de sus puertos ya está ocupado en el destino.
    */
   commit(m: MigrationRow, desired: "running" | "stopped", observed: ObservedDto | null): boolean {
     const now = nowIso();
@@ -154,6 +173,13 @@ export class MigrationsRepo {
     const clearImport = cols.some((c) => c.name === "imported_from") ? ", imported_from = NULL" : "";
     this.db.exec("BEGIN IMMEDIATE");
     try {
+      // Los puertos del servidor en el destino siguen libres allí (otro servidor de ese nodo pudo cambiar los suyos).
+      const mine = new Set(specPorts(JSON.parse(m.target_spec) as Spec));
+      const others = this.db.prepare("SELECT spec FROM servers WHERE node_id = ? AND id != ?").all(m.target_node_id, m.server_id) as unknown as { spec: string }[];
+      if (others.some((r) => specPorts(JSON.parse(r.spec) as Spec).some((p) => mine.has(p)))) {
+        this.db.exec("ROLLBACK");
+        return false;
+      }
       const moved = this.db.prepare(`UPDATE servers SET node_id = ?, slug = ?, spec = ?, spec_version = ?, desired_state = ?,
           observed = ?, observed_spec_version = ?, observed_at = ?, updated_at = ?${clearImport}
         WHERE id = ? AND node_id = ? AND spec_version = ?`)
