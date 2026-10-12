@@ -14,6 +14,7 @@ export function observedToDto(o: RouterObserved): RouterObservedDto {
   return {
     configured: o.configured, state: o.state || "missing", containerId: o.containerId, image: o.image,
     hostPort: o.hostPort, autoscale: o.autoscale, error: o.error,
+    autoscaleDownAfterMinutes: o.spec?.autoscaleDownAfterMinutes ?? 0, autoscaleAllowPlayers: [...(o.spec?.autoscaleAllowPlayers ?? [])],
   };
 }
 
@@ -94,7 +95,10 @@ export class RouterService {
       if (!conn) return;
       const spec = rowSpec(this.repo.get(nodeId));
       const body: Body = spec.enabled
-        ? { case: "routerApply", value: { spec: { hostPort: spec.port, autoscale: spec.autoscale, autoscaleDownAfterMinutes: spec.autoscaleDownAfterMinutes } } }
+        ? { case: "routerApply", value: { spec: {
+          hostPort: spec.port, autoscale: spec.autoscale, autoscaleDownAfterMinutes: spec.autoscaleDownAfterMinutes,
+          autoscaleAllowPlayers: spec.autoscaleAllowPlayers,
+        } } }
         : { case: "routerRemove", value: {} };
       await conn.request(body, 30_000);
     });

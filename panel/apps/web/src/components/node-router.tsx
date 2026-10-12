@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import type { NodeDto } from "@/lib/api";
 import { dialogSubmit } from "@/lib/dialog-form";
@@ -28,7 +29,7 @@ export function NodeRouterForm({ node, router, onSaved }: { node: NodeDto; route
   const errors = routerFormErrors(form);
   const invalid = Object.keys(errors).length > 0;
   const status = routerStatus(router, node.status === "online");
-  const save = useMutation({ mutationFn: () => saveRouter(node.id, routerFormBody(form)), onSuccess: onSaved });
+  const save = useMutation({ mutationFn: () => saveRouter(node.id, routerFormBody(form, router.spec)), onSuccess: onSaved });
   return (
     <form className="flex flex-col gap-4" onSubmit={dialogSubmit(() => { if (!invalid) save.mutate(); })}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -56,11 +57,23 @@ export function NodeRouterForm({ node, router, onSaved }: { node: NodeDto; route
           <Label htmlFor="router-minutes">Minutos sin jugadores hasta parar</Label>
           <Input id="router-minutes" inputMode="numeric" value={form.minutes} aria-invalid={!!errors.minutes} onChange={(e) => setForm({ ...form, minutes: e.target.value })} />
           {errors.minutes && <p role="alert" className="text-xs text-red-400">{errors.minutes}</p>}
-          <p className="text-xs text-muted-foreground">Los servidores con hostname quedan bajo demanda: el panel deja de arrancarlos y pararlos por su cuenta (Arrancar y Parar siguen funcionando).</p>
+          <p className="text-xs text-muted-foreground">
+            Los servidores con hostname quedan bajo demanda: mc-router los arranca cuando alguien intenta entrar y los para tras esos minutos sin jugadores; el panel deja de arrancarlos y pararlos por su cuenta. Parar desde el panel no impide que un jugador lo vuelva a arrancar al entrar. Tras una restauración, un servidor dormido sigue dormido hasta que entre alguien.
+          </p>
+        </div>
+      )}
+      {form.autoscale && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="router-players">Jugadores que pueden despertar servidores</Label>
+          <Textarea id="router-players" rows={3} value={form.players} aria-invalid={!!errors.players} placeholder="Uno por línea (nombre o UUID)"
+            onChange={(e) => setForm({ ...form, players: e.target.value })} />
+          {errors.players
+            ? <p role="alert" className="text-xs text-red-400">{errors.players}</p>
+            : <p className="text-xs text-muted-foreground">Vacío: cualquiera que llegue al puerto del router despierta los servidores dormidos (y con varios a la vez, el nodo se puede quedar sin memoria). Cambiar la lista reinicia el router: los jugadores conectados por él se desconectan.</p>}
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        El router (itzg/mc-router) lee el socket de Docker del nodo para encontrar los servidores con hostname, igual que el agente. Los jugadores entran por el hostname de cada servidor (Configuración → Red) con un DNS local que apunte a esta máquina; cada servidor sigue teniendo también su puerto propio.
+        El router (itzg/mc-router) usa el socket de Docker del nodo para encontrar los servidores con hostname (y, con autoscale, arrancarlos y pararlos): tiene control total de Docker en esa máquina, lo que equivale a root, y montarlo en solo lectura no lo limita. Va endurecido y con la imagen fijada, pero actívalo solo en nodos de confianza. Si el socket no da acceso a su grupo (o Docker funciona en modo rootless) el router no verá los servidores. Los jugadores entran por el hostname de cada servidor (Configuración → Red) con un DNS local que apunte a esta máquina; cada servidor sigue teniendo también su puerto propio.
       </p>
       <Button type="submit" disabled={save.isPending || invalid}>{save.isPending ? "Guardando…" : "Guardar"}</Button>
       {save.error && <p role="alert" className="text-sm text-red-400">{save.error.message}</p>}

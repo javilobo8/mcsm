@@ -35,7 +35,7 @@ describe("router de un nodo: configuración", () => {
     const res = await getRouter();
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
-      nodeId, spec: { enabled: false, port: 25565, autoscale: false, autoscaleDownAfterMinutes: 10 }, observed: null, observedAt: null, updatedAt: null,
+      nodeId, spec: { enabled: false, port: 25565, autoscale: false, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: [] }, observed: null, observedAt: null, updatedAt: null,
     });
     expect((await getRouter("no-existe")).statusCode).toBe(404);
     expect((await putRouter({ enabled: true }, "no-existe")).statusCode).toBe(404);
@@ -46,7 +46,8 @@ describe("router de un nodo: configuración", () => {
     expect((await putRouter({ enabled: true, autoscaleDownAfterMinutes: 2000 })).statusCode).toBe(400);
     const res = await putRouter({ enabled: true, port: 25590, autoscale: true });
     expect(res.statusCode).toBe(200);
-    expect(res.json().spec).toEqual({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 10 });
+    expect(res.json().spec).toEqual({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: [] });
+    expect((await putRouter({ enabled: true, autoscale: true, autoscaleAllowPlayers: ["a b"] })).statusCode).toBe(400);
     expect(res.json().updatedAt).not.toBeNull();
     expect((await getRouter()).json().spec.port).toBe(25590);
   });
@@ -66,10 +67,10 @@ describe("router de un nodo: configuración", () => {
 describe("router de un nodo: agente", () => {
   it("activar envía RouterApply y desactivar RouterRemove; responde tras el Ack", async () => {
     const agent = await connect();
-    const put = putRouter({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30 });
+    const put = putRouter({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] });
     const apply = await agent.waitFor("routerApply");
     if (apply.body.case !== "routerApply") throw new Error();
-    expect(apply.body.value.spec).toMatchObject({ hostPort: 25590, autoscale: true, autoscaleDownAfterMinutes: 30 });
+    expect(apply.body.value.spec).toMatchObject({ hostPort: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] });
     agent.ack(apply.id);
     expect((await put).statusCode).toBe(200);
 
@@ -142,9 +143,27 @@ describe("router de un nodo: agente", () => {
     agent.ack(remove.id);
     const dto = (await getRouter()).json();
     expect(dto.spec.enabled).toBe(false);
-    expect(dto.observed).toEqual({ configured: true, state: "running", containerId: "c1", image: "itzg/mc-router:1.47.1", hostPort: 25565, autoscale: false, error: "" });
+    expect(dto.observed).toEqual({
+      configured: true, state: "running", containerId: "c1", image: "itzg/mc-router:1.47.1", hostPort: 25565, autoscale: false, error: "",
+      autoscaleDownAfterMinutes: 0, autoscaleAllowPlayers: [],
+    });
     expect(dto.observedAt).not.toBeNull();
     expect(events).toHaveLength(1);
+    agent.close();
+  });
+
+  it("la spec aplicada en el agente viaja en el estado observado (minutos y lista del autoscale)", async () => {
+    const agent = await connect();
+    const put = putRouter({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] });
+    agent.ack((await agent.waitFor("routerApply")).id);
+    await put;
+    const changed = new Promise<void>((r) => app.events.once("router", () => r()));
+    agent.send({ body: { case: "routerObserved", value: {
+      configured: true, state: "running", hostPort: 25590, autoscale: true,
+      spec: { hostPort: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] },
+    } } });
+    await changed;
+    expect((await getRouter()).json().observed).toMatchObject({ autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] });
     agent.close();
   });
 });

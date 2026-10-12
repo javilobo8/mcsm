@@ -5,8 +5,11 @@ import type { ServerMessage } from "./api";
 import { bindRouterLive, routerFormBody, routerFormErrors, routerFormFrom, routerKey, routerStatus } from "./router";
 
 const base: RouterDto = {
-  nodeId: "n1", spec: { enabled: true, port: 25565, autoscale: false, autoscaleDownAfterMinutes: 10 },
-  observed: { configured: true, state: "running", containerId: "c", image: "itzg/mc-router:1.47.1", hostPort: 25565, autoscale: false, error: "" },
+  nodeId: "n1", spec: { enabled: true, port: 25565, autoscale: false, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: [] },
+  observed: {
+    configured: true, state: "running", containerId: "c", image: "itzg/mc-router:1.47.1", hostPort: 25565, autoscale: false, error: "",
+    autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: [],
+  },
   observedAt: "2026-10-12T10:00:00.000Z", updatedAt: "2026-10-12T09:59:00.000Z",
 };
 
@@ -30,14 +33,24 @@ describe("routerStatus", () => {
     expect(routerStatus({ ...base, spec: { ...base.spec, autoscale: true } }, true).label).toBe("Aplicando…");
     expect(routerStatus({ ...base, observed: { ...base.observed!, state: "exited" } }, true)).toMatchObject({ label: "Estado: exited", tone: "warn" });
   });
+  it("con autoscale también compara los minutos y la lista de jugadores (m6)", () => {
+    const auto = { ...base, spec: { ...base.spec, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] },
+      observed: { ...base.observed!, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] } };
+    expect(routerStatus(auto, true).label).toBe("Activo en :25565");
+    expect(routerStatus({ ...auto, spec: { ...auto.spec, autoscaleDownAfterMinutes: 15 } }, true).label).toBe("Aplicando…");
+    expect(routerStatus({ ...auto, spec: { ...auto.spec, autoscaleAllowPlayers: ["amigo", "otro"] } }, true).label).toBe("Aplicando…");
+    // Sin autoscale, minutos y lista no cuentan.
+    expect(routerStatus({ ...base, spec: { ...base.spec, autoscaleDownAfterMinutes: 15 } }, true).label).toBe("Activo en :25565");
+  });
 });
 
 describe("formulario del router", () => {
   it("ida y vuelta", () => {
-    const f = routerFormFrom(base.spec);
-    expect(f).toEqual({ enabled: true, port: "25565", autoscale: false, minutes: "10" });
+    const f = routerFormFrom({ ...base.spec, autoscaleAllowPlayers: ["amigo", "otro"] });
+    expect(f).toEqual({ enabled: true, port: "25565", autoscale: false, minutes: "10", players: "amigo\notro" });
     expect(routerFormErrors(f)).toEqual({});
-    expect(routerFormBody({ ...f, port: " 25590 ", autoscale: true, minutes: "30" })).toEqual({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30 });
+    expect(routerFormBody({ ...f, port: " 25590 ", autoscale: true, minutes: "30", players: "amigo\n otro ,amigo\n" }, base.spec))
+      .toEqual({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo", "otro"] });
   });
   it("valida puerto y minutos (los minutos solo con autoscale)", () => {
     const f = routerFormFrom(base.spec);
@@ -45,7 +58,15 @@ describe("formulario del router", () => {
     expect(routerFormErrors({ ...f, autoscale: true, minutes: "0" }).minutes).toBeDefined();
     expect(routerFormErrors({ ...f, autoscale: true, minutes: "1441" }).minutes).toBeDefined();
     expect(routerFormErrors({ ...f, autoscale: false, minutes: "" })).toEqual({});
-    expect(routerFormBody({ ...f, autoscale: false, minutes: "" }).autoscaleDownAfterMinutes).toBe(10);
+    expect(routerFormBody({ ...f, autoscale: false, minutes: "" }, base.spec).autoscaleDownAfterMinutes).toBe(10);
+    expect(routerFormErrors({ ...f, autoscale: true, players: "amigo\nmal jugador" }).players).toMatch(/mal jugador/);
+    expect(routerFormErrors({ ...f, autoscale: false, players: "mal jugador" })).toEqual({});
+  });
+  it("desactivar se puede guardar aunque el resto no valga (m7): se envía lo guardado", () => {
+    const saved = { ...base.spec, port: 25590, autoscaleAllowPlayers: ["amigo"] };
+    const f = { ...routerFormFrom(saved), enabled: false, port: "abc", autoscale: true, minutes: "0", players: "mal jugador" };
+    expect(routerFormErrors(f)).toEqual({});
+    expect(routerFormBody(f, saved)).toEqual({ enabled: false, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: ["amigo"] });
   });
 });
 

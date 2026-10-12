@@ -61,12 +61,18 @@ describe("router en la spec del servidor", () => {
 
 describe("routerDeploymentSpecSchema", () => {
   it("valores por defecto: desactivado, 25565, sin autoscale, 10 min", () => {
-    expect(defaultRouterDeploymentSpec()).toEqual({ enabled: false, port: 25565, autoscale: false, autoscaleDownAfterMinutes: 10 });
+    expect(defaultRouterDeploymentSpec()).toEqual({ enabled: false, port: 25565, autoscale: false, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: [] });
   });
   it("rangos", () => {
     for (const bad of [{ port: 0 }, { port: 65536 }, { port: 25565.5 }, { autoscaleDownAfterMinutes: 0 }, { autoscaleDownAfterMinutes: 1441 }]) {
       expect(routerDeploymentSpecSchema.safeParse(bad).success).toBe(false);
     }
     expect(routerDeploymentSpecSchema.safeParse({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 1440 }).success).toBe(true);
+  });
+  it("lista de jugadores que despiertan servidores: nombres o UUID, como la whitelist, máx. 1000", () => {
+    expect(routerDeploymentSpecSchema.safeParse({ autoscaleAllowPlayers: ["amigo", "0123456789abcdef0123456789abcdef"] }).success).toBe(true);
+    for (const bad of [["a b"], ["demasiado_largo_17"], [""], Array.from({ length: 1001 }, (_, i) => `p${i}`)]) {
+      expect(routerDeploymentSpecSchema.safeParse({ autoscaleAllowPlayers: bad }).success).toBe(false);
+    }
   });
 });
