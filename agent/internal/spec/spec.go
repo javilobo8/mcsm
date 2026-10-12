@@ -231,6 +231,9 @@ func (s Spec) Validate() error {
 	if err := s.validateContent(); err != nil {
 		return err
 	}
+	if err := s.validateLimits(); err != nil {
+		return err
+	}
 	// ── plan-4 ──
 	// ── plan-5 ──
 	// ── plan-6 ──

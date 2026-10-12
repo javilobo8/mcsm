@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { PowerActionType } from "@mcsm/proto";
 import {
-  canonicalJson, formatZodError, mergeSpecPatch, specInputSchema, specPatchNullError, usesCurseForge, specSchema, slugify,
+  canonicalJson, formatZodError, mergeSpecPatch, specInputSchema, specPatchNullError, specSizeError, usesCurseForge, specSchema, slugify,
   type ServerCreateInput, type Spec, type SpecInput, type SpecPatch, type PowerActionName,
 } from "@mcsm/shared";
 import type { z } from "zod";
@@ -72,6 +72,10 @@ export class ServersService {
     const candidate = { ...input, ports: { game, extra: input.ports.extra }, rconPassword: previous?.rconPassword ?? randomToken() };
     const parsed = specSchema.safeParse(candidate);
     if (!parsed.success) throw new HttpError(400, formatZodError(parsed.error));
+    // Tope de la spec ya fusionada (crear, PATCH, instanciar plantilla): cada PATCH cabe en el bodyLimit
+    // pero varias secciones grandes acumuladas no; un SyncSpecs de más de 4 MiB desconectaría el nodo en bucle.
+    const tooBig = specSizeError(parsed.data);
+    if (tooBig) throw new HttpError(400, tooBig);
     return parsed.data;
   }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LIST_MAX_MESSAGE, MAX_LIST_ITEMS } from "./spec-limits.js";
 
 /**
  * Secciones de contenido de la spec (§4.1): modpack, mods, plugins, whitelist y ops.
@@ -24,6 +25,8 @@ const entry = z.string().regex(ENTRY_RE, "Entrada inválida: sin espacios ni com
 const url = z.string().regex(URL_RE, "URL inválida: debe empezar por http:// o https:// y no tener espacios ni comas");
 const spigetId = z.string().regex(DIGITS_RE, "Los recursos de Spiget son ids numéricos");
 const player = z.string().regex(PLAYER_RE, "Jugador inválido: nombre de Java (1-16 letras, números o _) o UUID");
+/** Lista de la spec: como mucho MAX_LIST_ITEMS elementos (mismo tope en el agente). */
+const list = <T extends z.ZodType>(item: T) => z.array(item).max(MAX_LIST_ITEMS, LIST_MAX_MESSAGE);
 
 export const modpackSchema = z
   .object({
@@ -45,20 +48,20 @@ export const modpackSchema = z
   });
 
 export const modsSchema = z.object({
-  modrinthProjects: z.array(entry).default([]),
-  curseforgeFiles: z.array(entry).default([]),
-  urls: z.array(url).default([]),
+  modrinthProjects: list(entry).default([]),
+  curseforgeFiles: list(entry).default([]),
+  urls: list(url).default([]),
 });
 
 export const pluginsSchema = z.object({
-  modrinthProjects: z.array(entry).default([]),
-  spigetResources: z.array(spigetId).default([]),
-  urls: z.array(url).default([]),
+  modrinthProjects: list(entry).default([]),
+  spigetResources: list(spigetId).default([]),
+  urls: list(url).default([]),
 });
 
 export const whitelistSchema = z.object({
   enabled: z.boolean().default(false),
-  players: z.array(player).default([]),
+  players: list(player).default([]),
 });
 
 /** Campos que se añaden a la spec (todos opcionales: sin ellos la spec es la del Plan 1). */
@@ -67,7 +70,7 @@ export const contentFields = {
   mods: modsSchema.optional(),
   plugins: pluginsSchema.optional(),
   whitelist: whitelistSchema.optional(),
-  ops: z.array(player).optional(),
+  ops: list(player).optional(),
 };
 
 const WHITELIST_PROPS = ["white-list", "enforce-whitelist"];

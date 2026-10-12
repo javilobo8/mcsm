@@ -118,3 +118,12 @@ describe("PATCH de plantilla: null en claves obligatorias", () => {
     expect((await req("PATCH", `/api/templates/${tpl.id}`, { spec: { whitelist: null } })).json().spec).not.toHaveProperty("whitelist");
   });
 });
+
+describe("plantillas: tope de 64 KiB", () => {
+  it("no se guarda una plantilla que no se podría instanciar", async () => {
+    const env = Object.fromEntries(Array.from({ length: 18 }, (_, i) => [`V${i}`, "x".repeat(4000)]));
+    const res = await req("POST", "/api/templates", { name: "Enorme", spec: { env } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/64 KiB/);
+  });
+});

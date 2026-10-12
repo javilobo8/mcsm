@@ -1,20 +1,24 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
-  copyName, formatZodError, mergeSpecPatch, serverCreateSchema, specPatchNullError, specToTemplate, templateCreateSchema,
+  copyName, formatZodError, mergeSpecPatch, serverCreateSchema, specPatchNullError, specSizeError, specToTemplate, templateCreateSchema,
   templateInstantiateSchema, templatePatchSchema, type Spec, type TemplateSpec,
 } from "@mcsm/shared";
 import { HttpError } from "../servers/service.js";
 import { toTemplateDto, type TemplateRow } from "./repo.js";
 
-/** Valida una spec de plantilla; los errores salen como 400 con la ruta del campo. */
+/** Valida una spec de plantilla; los errores salen como 400 con la ruta del campo. Mismo tope de 64 KiB que un servidor. */
 function toTemplateSpec(raw: Record<string, unknown>): TemplateSpec {
+  let spec: TemplateSpec;
   try {
-    return specToTemplate(raw);
+    spec = specToTemplate(raw);
   } catch (e) {
     if (e instanceof z.ZodError) throw new HttpError(400, formatZodError(e));
     throw e;
   }
+  const tooBig = specSizeError(spec);
+  if (tooBig) throw new HttpError(400, tooBig);
+  return spec;
 }
 
 export async function templateRoutes(app: FastifyInstance) {

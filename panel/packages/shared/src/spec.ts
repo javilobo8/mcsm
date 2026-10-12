@@ -2,6 +2,7 @@ import { z } from "zod";
 import "./zod-locale.js";
 import { specPatchSchema, type SpecPatch } from "./spec-patch.js";
 import { contentCheck, contentFields } from "./spec-content.js";
+import { limitsCheck } from "./spec-limits.js";
 
 export const RESERVED_ENV = new Set([
   "EULA", "TYPE", "VERSION", "MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "RCON_PORT", "SERVER_PORT", "CUSTOM_SERVER_PROPERTIES",
@@ -77,10 +78,11 @@ function memLimitCheck(s: { memory: string; resources: { memLimit: string } }, c
 }
 
 /** Validaciones de objeto completo: memoria y, debajo de las anclas, las de cada plan. */
-function specChecks(s: Parameters<typeof memLimitCheck>[0] & Parameters<typeof contentCheck>[0], ctx: z.RefinementCtx) {
+function specChecks(s: Parameters<typeof memLimitCheck>[0] & Parameters<typeof contentCheck>[0] & Parameters<typeof limitsCheck>[0], ctx: z.RefinementCtx) {
   memLimitCheck(s, ctx);
   // ── plan-3 ──
   contentCheck(s, ctx);
+  limitsCheck(s, ctx);
 }
 
 /** Spec completa, tal y como se persiste y se envía al agente. */

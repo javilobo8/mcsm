@@ -113,3 +113,21 @@ describe("PATCH: null en claves obligatorias", () => {
     expect((await patch(s.id, { spec: { ops: null, mods: null } })).statusCode).toBe(200);
   });
 });
+
+describe("PATCH: tope de 64 KiB de la spec tras el merge", () => {
+  const bigEnv = (prefix: string) => Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`${prefix}${i}`, "x".repeat(4000)]));
+  it("cada PATCH cabe, pero la spec resultante no: 400 claro y la spec guardada no cambia", async () => {
+    const s = await create();
+    let res = await patch(s.id, { spec: { env: bigEnv("A") } });
+    expect(res.statusCode).toBe(200);
+    res = await patch(s.id, { spec: { properties: Object.fromEntries(Object.entries(bigEnv("p")).map(([k, v]) => [k.toLowerCase(), v])) } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/64 KiB/);
+    expect(app.servers.get(s.id)!.spec_version).toBe(2);
+  });
+  it("también al crear", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Grande", spec: { env: { ...bigEnv("A"), ...bigEnv("B") } } } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/64 KiB/);
+  });
+});
