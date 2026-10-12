@@ -17,6 +17,7 @@ export const AgentErrorCode = {
   RemoveFailed: "remove_failed",
   PowerFailed: "power_failed",
   BadSpec: "bad_spec",
+  BackupFailed: "backup_failed",
   RconFailed: "rcon_failed",
   // Solo en el panel: AgentError local de AgentConn, nunca viaja por el WS.
   Disconnected: "disconnected",

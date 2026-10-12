@@ -1669,6 +1669,7 @@ func (*Ack) Descriptor() ([]byte, []int) {
 //	too_large        demasiado grande                                  413
 //	apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
 //	                 del agente o de Docker (spec §10)
+//	backup_failed    fallo de una copia, restauración o borrado de copias  502
 //
 // Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
 // timeout (504), protocol (502).
