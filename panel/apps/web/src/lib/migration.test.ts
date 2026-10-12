@@ -4,7 +4,7 @@ import type { JobDto, NodeDto } from "./api";
 import { jobTypeLabel } from "./jobs";
 import {
   activeMigrationJob, canCloseMigration, closeMigrationText, confirmText, lastMigrationJob, migrateBlockedReason, migrateFormDirty, migrationBody, migrationFinished,
-  migrationSync, parsePortInput, pendingText, portHint, proposalPath, stepStates, targetOptions,
+  migrationSync, parsePortInput, pendingText, portHint, proposalPath, routerDnsNote, stepStates, targetOptions,
 } from "./migration";
 
 const node = (id: string, name: string, status: "online" | "offline" = "online"): NodeDto => ({
@@ -154,6 +154,18 @@ describe("migración en la web", () => {
     const t = confirmText({ ...base, imported: "AVISO DEL IMPORTADO" });
     expect(t.startsWith(confirmText(base))).toBe(true);
     expect(t).toMatch(/AVISO DEL IMPORTADO$/);
+  });
+
+  it("plan-8: un servidor con hostname avisa de que el DNS tiene que apuntar al nodo destino", () => {
+    expect(routerDnsNote(undefined, "Casa", "Garaje")).toBeNull();
+    expect(routerDnsNote({ enabled: false, hostname: "survival.lan" }, "Casa", "Garaje")).toBeNull();
+    expect(routerDnsNote({ enabled: true, hostname: "survival.lan" }, "Casa", "Garaje")).toBe(
+      "Tras migrar, el hostname «survival.lan» tiene que resolver a la IP de «Garaje» (y su router tiene que estar activo): " +
+      "si no, los jugadores seguirán llegando al router de «Casa», que ya no tendrá este servidor.");
+    expect(routerDnsNote({ enabled: true, hostname: "survival.lan" }, "Casa", undefined)).toMatch(/a la IP del nodo destino \(y su router/);
+    const base = { serverName: "Survival", slug: "survival", source: "Casa", target: "Garaje", port: 25565, deleteSource: false, running: true };
+    expect(confirmText({ ...base, dns: null })).toBe(confirmText(base));
+    expect(confirmText({ ...base, imported: "IMPORTADO", dns: "DNS" })).toMatch(/IMPORTADO DNS$/);
   });
 
   it("detecta el final de la migración en curso", () => {

@@ -15,7 +15,7 @@ import { useNodes } from "@/hooks/use-nodes";
 import type { JobDto, ServerDto } from "@/lib/api";
 import {
   activeMigrationJob, canCloseMigration, closeMigrationText, confirmText, lastMigrationJob, migrateBlockedReason, migrateFormDirty, migrationBody, migrationKey,
-  parsePortInput, pendingText, portHint, stepStates, targetOptions, type StepState,
+  parsePortInput, pendingText, portHint, routerDnsNote, stepStates, targetOptions, type StepState,
 } from "@/lib/migration";
 import { serverImportView } from "@/lib/import";
 import { cn } from "@/lib/utils";
@@ -75,6 +75,8 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
   const finalPort = port ?? proposal.data?.port;
   // Plan 6: si aún es el contenedor original importado, la retirada del origen lo elimina (como el borrado).
   const importedRetire = serverImportView(server).retire;
+  // Plan 8: con hostname, el DNS tiene que apuntar al destino tras migrar.
+  const dnsNote = routerDnsNote(server.spec.router, nodeName(server.nodeId), target ? nodeName(target.id) : undefined);
 
   const close = useMutation({
     mutationFn: () => closeMigration(server.id),
@@ -151,6 +153,7 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
             <span>{`Borrar el origen al terminar (sus datos y sus copias en este nodo). Si no, se conservan en ${server.slug}.migrated-….`}</span>
           </label>
           {importedRetire && <p role="note" className="text-sm text-amber-400">{importedRetire}</p>}
+          {dnsNote && <p role="note" className="text-sm text-amber-400">{dnsNote}</p>}
           {start.error && <p role="alert" className="text-sm text-red-400">{start.error.message}</p>}
           <div className="flex items-center gap-3">
             <Button onClick={() => { start.reset(); setConfirming(true); }} disabled={blocked !== null || finalPort === undefined} title={blocked ?? undefined}>
@@ -184,7 +187,7 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
             <AlertDialogDescription>
               {finalPort !== undefined ? confirmText({
                 serverName: server.name, slug: server.slug, source: nodeName(server.nodeId), target: target?.label ?? "", port: finalPort,
-                deleteSource, running: server.desiredState === "running", imported: importedRetire,
+                deleteSource, running: server.desiredState === "running", imported: importedRetire, dns: dnsNote,
               }) : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

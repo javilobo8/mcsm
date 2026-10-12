@@ -1,4 +1,4 @@
-import { MIGRATION_STEPS, OPEN_PHASES, migrationLeftovers, stepOfProgress, type MigrationDto, type MigrationProposalDto, type MigrationRequestInput } from "@mcsm/shared";
+import { MIGRATION_STEPS, OPEN_PHASES, migrationLeftovers, stepOfProgress, type MigrationDto, type MigrationProposalDto, type MigrationRequestInput, type Spec } from "@mcsm/shared";
 import { apiPath, type JobDto, type NodeDto } from "./api";
 import { isActive } from "./jobs";
 
@@ -135,8 +135,20 @@ export function closeMigrationText(m: MigrationDto, nodeName: (id: string) => st
 }
 
 /** Texto del diálogo de confirmación. `imported`: aviso de un servidor importado (`serverImportView(s).retire`), al final. */
+/**
+ * Plan 8: aviso de un servidor con hostname (router activo). Su DNS apunta al nodo de origen: tras migrar tiene que
+ * apuntar al destino, que además necesita su router activo. null si el servidor no usa el router.
+ */
+export function routerDnsNote(router: Spec["router"], source: string, target: string | undefined): string | null {
+  if (!router?.enabled) return null;
+  const dst = target ? `de «${target}»` : "del nodo destino";
+  return `Tras migrar, el hostname «${router.hostname}» tiene que resolver a la IP ${dst} (y su router tiene que estar activo): ` +
+    `si no, los jugadores seguirán llegando al router de «${source}», que ya no tendrá este servidor.`;
+}
+
 export function confirmText(o: {
   serverName: string; slug: string; source: string; target: string; port: number; deleteSource: boolean; running: boolean; imported?: string | null;
+  dns?: string | null;
 }): string {
   return [
     o.running ? `«${o.serverName}» se parará en «${o.source}» durante la migración.` : `«${o.serverName}» está parado en «${o.source}».`,
@@ -147,6 +159,7 @@ export function confirmText(o: {
       : `Al terminar, sus datos y copias en «${o.source}» se conservarán en ${o.slug}.migrated-… (bórralos a mano cuando ya no los necesites).`,
     `Si algo falla, el servidor sigue en «${o.source}» con su mundo intacto${o.running ? " y se vuelve a arrancar" : ""}.`,
     ...(o.imported ? [o.imported] : []),
+    ...(o.dns ? [o.dns] : []),
   ].join(" ");
 }
 

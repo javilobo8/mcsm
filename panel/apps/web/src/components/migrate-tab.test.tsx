@@ -61,6 +61,12 @@ describe("MigrateTab", () => {
     expect(render([])).not.toContain("contenedor original");
   });
 
+  it("un servidor con hostname avisa del DNS hacia el nodo destino (Planes 7 y 8)", () => {
+    const routed = { ...server, spec: { ...server.spec, router: { enabled: true, hostname: "survival.lan" } } } as unknown as ServerDto;
+    expect(render([], null, routed)).toContain("el hostname «survival.lan» tiene que resolver a la IP del nodo destino");
+    expect(render([])).not.toContain("hostname");
+  });
+
   it("una migración atascada enseña lo pendiente con su motivo y la acción de cerrarla a mano (M4)", () => {
     const stuck: MigrationDto = {
       id: "j0", serverId: "s1", sourceNodeId: "a", targetNodeId: "b", sourceSlug: "survival", targetSlug: "survival", targetPort: 25565,
