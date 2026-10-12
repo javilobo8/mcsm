@@ -198,3 +198,115 @@ describe("inventario y avisos del agente", () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe("acciones sobre copias", () => {
+  const post = (u: string) => app.inject({ method: "POST", url: u, headers: { cookie } });
+
+  async function setup() {
+    const { nodeId, nodeToken } = await enrollNode("nas");
+    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    return { nodeId, nodeToken, s };
+  }
+
+  it("crear copia: 409 con el nodo desconectado; conectado envía BackupNow y devuelve el job", async () => {
+    const { nodeToken, s } = await setup();
+    let res = await post(`/api/servers/${s.id}/backups`);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/desconectado/);
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    agent.ack(list.id);
+    const pending = post(`/api/servers/${s.id}/backups`);
+    const req = await agent.waitFor("backupNow");
+    if (req.body.case !== "backupNow") throw new Error();
+    expect(req.body.value).toMatchObject({ serverId: s.id, trigger: BackupTrigger.MANUAL });
+    const jobId = req.body.value.jobId;
+    agent.ack(req.id);
+    res = await pending;
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ id: jobId, type: "backup", status: "running", serverId: s.id, payload: { trigger: "manual" } });
+    const done = nextEvent(app.events, "job", (j) => j.id === jobId && j.status === "ok");
+    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "uno-20261012T040000.000Z-1.tar.zst", { trigger: BackupTrigger.MANUAL }), jobId } } });
+    agent.send({ body: { case: "jobProgress", value: { jobId, serverId: s.id, type: "backup", status: JobStatus.OK, progress: 100, message: "Copia creada" } } });
+    await done;
+    expect((await getBackups(s.id))[0]).toMatchObject({ trigger: "manual", kind: "archive" });
+    agent.close();
+  });
+
+  it("si el agente responde busy: 409 y el job queda fallido", async () => {
+    const { nodeToken, s } = await setup();
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    agent.ack(list.id);
+    const pending = post(`/api/servers/${s.id}/backups`);
+    const req = await agent.waitFor("backupNow");
+    agent.send({ id: req.id, body: { case: "error", value: { code: "busy", message: "el servidor está ocupado con otra copia o restauración (restauración)" } } });
+    const res = await pending;
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/ocupado/);
+    expect(app.jobs.list({ serverId: s.id })[0]).toMatchObject({ status: "failed", message: expect.stringMatching(/ocupado/) });
+    agent.close();
+  });
+
+  it("restaurar envía el nombre del fichero; los datos pre-restore no se restauran; borrar marca la copia", async () => {
+    const { nodeToken, s } = await setup();
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    const synced = nextEvent(app.events, "backups", (id) => id === s.id);
+    agent.ack(list.id);
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [
+      info(s.id, "uno-20261012T040000.000Z-1.tar.zst"),
+      info(s.id, "data.pre-restore-20261012T060000.000Z", { trigger: BackupTrigger.PRE_RESTORE, sha256: "" }),
+    ] } } });
+    await synced;
+    const rows = await getBackups(s.id);
+    const archive = rows.find((b: any) => b.kind === "archive");
+    const dir = rows.find((b: any) => b.kind === "directory");
+    let res = await post(`/api/servers/${s.id}/backups/${dir.id}/restore`);
+    expect(res.statusCode).toBe(400);
+
+    const pending = post(`/api/servers/${s.id}/backups/${archive.id}/restore`);
+    const req = await agent.waitFor("backupRestore");
+    if (req.body.case !== "backupRestore") throw new Error();
+    expect(req.body.value).toMatchObject({ serverId: s.id, filename: archive.filename });
+    agent.ack(req.id);
+    res = await pending;
+    expect(res.statusCode).toBe(202);
+    expect(res.json()).toMatchObject({ type: "restore", status: "running", payload: { backupId: archive.id, filename: archive.filename } });
+
+    const del = app.inject({ method: "DELETE", url: `/api/servers/${s.id}/backups/${dir.id}`, headers: { cookie } });
+    const dreq = await agent.waitFor("backupDelete");
+    if (dreq.body.case !== "backupDelete") throw new Error();
+    expect(dreq.body.value.filename).toBe(dir.filename);
+    agent.ack(dreq.id);
+    expect((await del).statusCode).toBe(204);
+    expect((await getBackups(s.id)).map((b: any) => b.id)).toEqual([archive.id]);
+    expect((await post(`/api/servers/${s.id}/backups/${dir.id}/restore`)).statusCode).toBe(404);
+    agent.close();
+  });
+
+  it("la programación se valida, versiona la spec, llega al agente y el formulario de configuración no la borra", async () => {
+    const { nodeToken, s } = await setup();
+    const patch = (u: string, payload: object) => app.inject({ method: "PATCH", url: u, headers: { cookie }, payload });
+    let res = await patch(`/api/servers/${s.id}/backups/schedule`, { enabled: true, cron: "0 4 * * MON" });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/Día de la semana/);
+    res = await app.inject({ method: "PATCH", url: `/api/servers/${s.id}/backups/schedule`, headers: { cookie } });
+    expect(res.statusCode).toBe(400);
+
+    const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
+    agent.ack(list.id);
+    const pending = patch(`/api/servers/${s.id}/backups/schedule`, { enabled: true, cron: "0 */6 * * *", keepCount: 5 });
+    const apply = await agent.waitFor("applySpec");
+    if (apply.body.case !== "applySpec") throw new Error();
+    const sent = JSON.parse(new TextDecoder().decode(apply.body.value.server!.specJson));
+    expect(sent.backups).toMatchObject({ enabled: true, cron: "0 */6 * * *", keepCount: 5 });
+    agent.ack(apply.id);
+    res = await pending;
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ specVersion: 2, spec: { backups: { enabled: true, cron: "0 */6 * * *", keepCount: 5, keepDays: 7, excludes: ["logs", "cache", "*.tmp"], onlyIfPlayersSince: true } } });
+
+    const form = patch(`/api/servers/${s.id}`, { spec: { memory: "3G" } }); // el formulario no envía backups
+    agent.ack((await agent.waitFor("applySpec")).id);
+    res = await form;
+    expect(res.json()).toMatchObject({ specVersion: 3, spec: { memory: "3G", backups: { cron: "0 */6 * * *" } } });
+    agent.close();
+  });
+});

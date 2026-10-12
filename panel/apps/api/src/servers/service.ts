@@ -66,7 +66,12 @@ export class ServersService {
 
   private completeSpec(nodeId: string, input: SpecInput, previous?: Spec): Spec {
     const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId, new Set(input.ports.extra.map((e) => e.host)));
-    const candidate = { ...input, ports: { game, extra: input.ports.extra }, rconPassword: previous?.rconPassword ?? randomToken() };
+    const candidate = {
+      ...input,
+      backups: input.backups ?? previous?.backups, // plan-4: el formulario no trae la programación de copias; se conserva
+      ports: { game, extra: input.ports.extra },
+      rconPassword: previous?.rconPassword ?? randomToken(),
+    };
     const parsed = specSchema.safeParse(candidate);
     if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Spec inválida");
     return parsed.data;

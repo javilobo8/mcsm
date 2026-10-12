@@ -1,8 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { BackupTrigger, JobStatus, type BackupCreated, type BackupDeleted, type BackupInfo, type BackupInventory, type Envelope, type JobProgress } from "@mcsm/proto";
-import type { JobState } from "../jobs/repo.js";
+import { specSchema, type Spec } from "@mcsm/shared";
+import { AgentError, type AgentConn, type Body } from "../agents/hub.js";
+import { AgentErrorCode } from "../agents/error-codes.js";
+import type { JobDto, JobState } from "../jobs/repo.js";
+import { agentErrorToHttp } from "../lib/http.js";
 import { nowIso } from "../lib/time.js";
-import type { ServerRow } from "../servers/repo.js";
+import { toServerDto, toServerSpecMessage, type ServerRow } from "../servers/repo.js";
 import { HttpError } from "../servers/service.js";
 import { BackupsRepo, toBackupDto, type BackupDto, type BackupInput, type BackupTriggerName } from "./repo.js";
 
@@ -69,6 +73,98 @@ export class BackupService {
       case "backupInventory": return this.onInventory(nodeId, env.body.value);
       default: return;
     }
+  }
+
+  // Acciones del usuario
+
+  /** Copia manual inmediata. Devuelve el job; el avance llega por el topic `jobs`. */
+  async createNow(serverId: string): Promise<JobDto> {
+    const row = this.requireServer(serverId);
+    const conn = this.onlineConn(row.node_id);
+    const job = this.app.jobs.create({
+      type: "backup", serverId, nodeId: row.node_id, status: "running", message: "Solicitando la copia al agente", payload: { trigger: "manual" },
+    });
+    await this.dispatch(conn, job.id, { case: "backupNow", value: { serverId, jobId: job.id, trigger: BackupTrigger.MANUAL } });
+    return this.app.jobs.get(job.id)!;
+  }
+
+  async restore(serverId: string, backupId: string): Promise<JobDto> {
+    const row = this.requireServer(serverId);
+    const b = this.requireBackup(serverId, backupId);
+    if (b.trigger === "pre_restore") {
+      throw new HttpError(400, "Son los datos que había antes de una restauración: no se restauran desde aquí. Bórralos cuando ya no los necesites.");
+    }
+    const conn = this.onlineConn(row.node_id);
+    const job = this.app.jobs.create({
+      type: "restore", serverId, nodeId: row.node_id, status: "running", message: "Solicitando la restauración al agente",
+      payload: { backupId: b.id, filename: b.filename },
+    });
+    await this.dispatch(conn, job.id, { case: "backupRestore", value: { serverId, filename: b.filename, jobId: job.id } });
+    return this.app.jobs.get(job.id)!;
+  }
+
+  async remove(serverId: string, backupId: string): Promise<void> {
+    const row = this.requireServer(serverId);
+    const b = this.requireBackup(serverId, backupId);
+    const conn = this.onlineConn(row.node_id);
+    try {
+      await conn.request({ case: "backupDelete", value: { serverId, filename: b.filename } }, 60_000);
+    } catch (e) {
+      throw agentErrorToHttp(e, "No se pudo borrar la copia");
+    }
+    this.repo.markDeleted(serverId, b.filename);
+    this.app.events.emit("backups", serverId);
+  }
+
+  /** Cambia `spec.backups` (programación y retención) y la envía al agente como una spec nueva. */
+  async updateSchedule(serverId: string, input: unknown) {
+    const row = this.requireServer(serverId);
+    const current = JSON.parse(row.spec) as Spec;
+    const parsed = specSchema.safeParse({ ...current, backups: input });
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Programación de copias inválida");
+    const updated = this.app.servers.updateSpec(serverId, parsed.data);
+    void this.push(updated);
+    return toServerDto(updated, { includeSecrets: true });
+  }
+
+  // Internos
+
+  /** Envía la orden de un job. Sin respuesta (desconexión o timeout) el job sigue abierto: el agente
+   * puede estar ejecutándola y el inventario al reconectar lo aclarará. Un Error explícito lo cierra. */
+  private async dispatch(conn: AgentConn, jobId: string, body: Body): Promise<void> {
+    try {
+      await conn.request(body, 30_000);
+    } catch (e) {
+      if (e instanceof AgentError && (e.code === AgentErrorCode.Disconnected || e.code === AgentErrorCode.Timeout)) {
+        this.app.jobs.update(jobId, { message: "El agente aún no ha confirmado la orden; el estado se actualizará cuando informe" });
+        return;
+      }
+      const err = agentErrorToHttp(e, "El agente rechazó la orden");
+      this.app.jobs.finish(jobId, "failed", err.message);
+      throw err;
+    }
+  }
+
+  private async push(row: ServerRow): Promise<void> {
+    const conn = this.app.agents.get(row.node_id);
+    if (!conn) return; // se entregará en el próximo SyncSpecs
+    try {
+      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row) } }, 120_000);
+    } catch (e) {
+      this.app.log.warn({ serverId: row.id, err: e }, "ApplySpec de la programación de copias sin éxito; el agente lo reintentará");
+    }
+  }
+
+  private requireBackup(serverId: string, backupId: string) {
+    const b = this.repo.get(backupId);
+    if (!b || b.server_id !== serverId || b.status === "deleted") throw new HttpError(404, "Copia no encontrada");
+    return b;
+  }
+
+  private onlineConn(nodeId: string): AgentConn {
+    const conn = this.app.agents.get(nodeId);
+    if (!conn) throw new HttpError(409, "El nodo está desconectado");
+    return conn;
   }
 
   private onJobProgress(nodeId: string, p: JobProgress) {
