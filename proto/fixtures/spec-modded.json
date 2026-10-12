@@ -1,0 +1,17 @@
+{
+  "imageTag": "java21",
+  "type": "MODRINTH",
+  "version": "1.21.1",
+  "memory": "6G",
+  "modpack": { "platform": "MODRINTH", "slugOrUrl": "cobblemon-fabric", "versionId": "", "loader": "fabric" },
+  "mods": { "modrinthProjects": ["lithium", "ferritecore:beta", "lithium"], "curseforgeFiles": [], "urls": [] },
+  "plugins": { "modrinthProjects": [], "spigetResources": [], "urls": [] },
+  "properties": { "motd": "Modpack de casa", "max-players": "8" },
+  "whitelist": { "enabled": true, "players": ["Steve", "Lobo"] },
+  "ops": ["Lobo"],
+  "env": {},
+  "ports": { "game": 25566, "extra": [] },
+  "resources": { "cpus": 0, "memLimit": "8G" },
+  "restartPolicy": "unless-stopped",
+  "rconPassword": "s3cretpassw0rd"
+}

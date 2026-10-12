@@ -1,0 +1,256 @@
+package spec
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func fixturePath(name string) string {
+	return filepath.Join("..", "..", "..", "proto", "fixtures", name)
+}
+
+func loadModded(t *testing.T) Spec {
+	t.Helper()
+	b, err := os.ReadFile(fixturePath("spec-modded.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := Parse(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+func buildEnv(t *testing.T, s Spec) map[string]string {
+	t.Helper()
+	b, err := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return envMap(b.Config.Env)
+}
+
+func hashOfSpec(t *testing.T, s Spec) string {
+	t.Helper()
+	b, err := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.Hash
+}
+
+// Casos compartidos con panel/packages/shared/src/spec-content.test.ts: Go y zod deben
+// aceptar y rechazar exactamente lo mismo.
+func TestContentCasesSharedWithZod(t *testing.T) {
+	baseRaw, err := os.ReadFile(fixturePath("spec-example.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	casesRaw, err := os.ReadFile(fixturePath("spec-content-cases.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Name  string                     `json:"name"`
+		OK    bool                       `json:"ok"`
+		Merge map[string]json.RawMessage `json:"merge"`
+	}
+	if err := json.Unmarshal(casesRaw, &cases); err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) < 30 {
+		t.Fatalf("solo %d casos: ¿fixture truncada?", len(cases))
+	}
+	for _, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
+			var doc map[string]json.RawMessage
+			if err := json.Unmarshal(baseRaw, &doc); err != nil {
+				t.Fatal(err)
+			}
+			for k, v := range c.Merge {
+				doc[k] = v
+			}
+			b, _ := json.Marshal(doc)
+			_, err := Parse(b)
+			if c.OK && err != nil {
+				t.Fatalf("debía aceptarse: %v", err)
+			}
+			if !c.OK && err == nil {
+				t.Fatal("debía rechazarse")
+			}
+		})
+	}
+}
+
+func TestContentEnvModrinthModpack(t *testing.T) {
+	env := buildEnv(t, loadModded(t))
+	want := map[string]string{
+		"TYPE":                    "MODRINTH",
+		"MODRINTH_MODPACK":        "cobblemon-fabric",
+		"MODRINTH_LOADER":         "fabric",
+		"MODRINTH_PROJECTS":       "ferritecore:beta,lithium",
+		"ENABLE_WHITELIST":        "true",
+		"WHITELIST":               "Lobo,Steve",
+		"EXISTING_WHITELIST_FILE": "SYNCHRONIZE",
+		"OPS":                     "Lobo",
+		"EXISTING_OPS_FILE":       "SYNCHRONIZE",
+	}
+	for k, v := range want {
+		if env[k] != v {
+			t.Errorf("env[%s] = %q, want %q", k, env[k], v)
+		}
+	}
+	for _, k := range []string{"MODPACK_PLATFORM", "MODRINTH_VERSION", "CF_API_KEY", "MODS", "PLUGINS", "SPIGET_RESOURCES", "CURSEFORGE_FILES"} {
+		if _, ok := env[k]; ok {
+			t.Errorf("no debía emitirse %s (= %q)", k, env[k])
+		}
+	}
+}
+
+func TestContentEnvCurseForgeAndFTB(t *testing.T) {
+	s := loadFixture(t)
+	s.Type = PlatformAutoCurseForge
+	s.Modpack = &Modpack{Platform: PlatformAutoCurseForge, SlugOrURL: "all-the-mods-10", VersionID: "6013341"}
+	s.CurseForgeAPIKey = "$2a$10$abc/def"
+	env := buildEnv(t, s)
+	if env["CF_SLUG"] != "all-the-mods-10" || env["CF_FILE_ID"] != "6013341" || env["CF_PAGE_URL"] != "" {
+		t.Errorf("slug: %v", env)
+	}
+	if env["CF_API_KEY"] != "$2a$10$abc/def" {
+		t.Errorf("CF_API_KEY = %q (los $ no se escapan: la API de Docker no interpola)", env["CF_API_KEY"])
+	}
+
+	s.Modpack.SlugOrURL = "https://www.curseforge.com/minecraft/modpacks/all-the-mods-10"
+	env = buildEnv(t, s)
+	if env["CF_PAGE_URL"] != s.Modpack.SlugOrURL || env["CF_SLUG"] != "" {
+		t.Errorf("url: %v", env)
+	}
+
+	f := loadFixture(t)
+	f.Type = PlatformFTBA
+	f.Modpack = &Modpack{Platform: PlatformFTBA, SlugOrURL: "126", VersionID: "100"}
+	env = buildEnv(t, f)
+	if env["FTB_MODPACK_ID"] != "126" || env["FTB_MODPACK_VERSION_ID"] != "100" || env["TYPE"] != "FTBA" {
+		t.Errorf("ftba: %v", env)
+	}
+}
+
+func TestContentEnvModsPluginsAndWhitelistOff(t *testing.T) {
+	s := loadFixture(t) // PAPER
+	s.Plugins = &PluginSources{ModrinthProjects: []string{"luckperms"}, SpigetResources: []string{"34315", "28140"}, URLs: []string{"https://example.com/b.jar", "https://example.com/a.jar"}}
+	s.Mods = &ModSources{CurseforgeFiles: []string{"jei:4593548"}}
+	s.Whitelist = &Whitelist{Enabled: false, Players: []string{"Lobo"}}
+	env := buildEnv(t, s)
+	want := map[string]string{
+		"MODRINTH_PROJECTS": "luckperms",
+		"SPIGET_RESOURCES":  "28140,34315",
+		"PLUGINS":           "https://example.com/a.jar,https://example.com/b.jar",
+		"CURSEFORGE_FILES":  "jei:4593548",
+		"ENABLE_WHITELIST":  "false",
+	}
+	for k, v := range want {
+		if env[k] != v {
+			t.Errorf("env[%s] = %q, want %q", k, env[k], v)
+		}
+	}
+	if _, ok := env["WHITELIST"]; ok {
+		t.Error("con la whitelist desactivada no se emite WHITELIST (itzg la activaría)")
+	}
+	if _, ok := env["CF_API_KEY"]; ok {
+		t.Error("sin API key en la spec no se emite CF_API_KEY")
+	}
+}
+
+func TestEnvLibreGanaSobreLoGenerado(t *testing.T) {
+	s := loadModded(t)
+	s.Env = map[string]string{"EXISTING_WHITELIST_FILE": "MERGE"}
+	if env := buildEnv(t, s); env["EXISTING_WHITELIST_FILE"] != "MERGE" {
+		t.Errorf("env libre debe ganar: %q", env["EXISTING_WHITELIST_FILE"])
+	}
+}
+
+// El hash solo cambia cuando cambia el contenedor.
+func TestContentHash(t *testing.T) {
+	base := loadFixture(t)
+	h0 := hashOfSpec(t, base)
+	// Valor calculado con el código del Plan 1 para spec-example.json: si cambia, al
+	// actualizar el agente se recrearían TODOS los contenedores existentes. Solo puede
+	// cambiar si se actualiza la versión de github.com/moby/moby/api.
+	if h0 != "09ff6e5490b40677" {
+		t.Fatalf("el hash de una spec sin campos nuevos cambió: %s", h0)
+	}
+
+	noOps := base
+	noOps.Ops = []string{}
+	if hashOfSpec(t, noOps) != h0 {
+		t.Error("ops vacío no debe cambiar el hash")
+	}
+
+	withKey := base
+	withKey.CurseForgeAPIKey = "k"
+	if hashOfSpec(t, withKey) != h0 {
+		t.Error("la API key de CurseForge no debe afectar a servidores que no usan CurseForge")
+	}
+
+	a := base
+	a.Mods = &ModSources{ModrinthProjects: []string{"lithium", "sodium"}}
+	b := base
+	b.Mods = &ModSources{ModrinthProjects: []string{"sodium", "lithium", "lithium"}}
+	if hashOfSpec(t, a) != hashOfSpec(t, b) {
+		t.Error("reordenar o duplicar mods no debe recrear el contenedor")
+	}
+	if hashOfSpec(t, a) == h0 {
+		t.Error("añadir mods debe cambiar el hash")
+	}
+
+	cf := base
+	cf.Mods = &ModSources{CurseforgeFiles: []string{"jei"}}
+	cf1, cf2 := cf, cf
+	cf1.CurseForgeAPIKey = "uno"
+	cf2.CurseForgeAPIKey = "dos"
+	if hashOfSpec(t, cf1) == hashOfSpec(t, cf2) {
+		t.Error("cambiar la API key debe recrear los servidores que usan CurseForge")
+	}
+}
+
+// Quitar el último mod debe llegar a itzg como MODRINTH_PROJECTS vacía (borra lo instalado);
+// sin la sección, la variable no existe y itzg no toca nada.
+func TestEmptyModsSectionClearsModrinthProjects(t *testing.T) {
+	s := loadFixture(t)
+	if _, ok := buildEnv(t, s)["MODRINTH_PROJECTS"]; ok {
+		t.Fatal("sin sección mods/plugins no debe existir MODRINTH_PROJECTS")
+	}
+	s.Mods = &ModSources{}
+	env := buildEnv(t, s)
+	if v, ok := env["MODRINTH_PROJECTS"]; !ok || v != "" {
+		t.Errorf("MODRINTH_PROJECTS = %q (presente=%v), want vacía y presente", v, ok)
+	}
+	for _, k := range []string{"MODS", "CURSEFORGE_FILES"} {
+		if _, ok := env[k]; ok {
+			t.Errorf("%s vacía no debe emitirse", k)
+		}
+	}
+}
+
+func TestParseIgnoresUnknownFields(t *testing.T) {
+	// Campos de otros planes (p. ej. backups) no deben romper el agente de este plan.
+	raw, _ := os.ReadFile(fixturePath("spec-example.json"))
+	var doc map[string]json.RawMessage
+	_ = json.Unmarshal(raw, &doc)
+	doc["backups"] = json.RawMessage(`{"enabled":true,"cron":"0 4 * * *"}`)
+	b, _ := json.Marshal(doc)
+	s, err := Parse(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hashOfSpec(t, s) != "09ff6e5490b40677" {
+		t.Error("un campo desconocido no debe cambiar el hash")
+	}
+	if !strings.Contains(string(b), "backups") {
+		t.Fatal("fixture mal construida")
+	}
+}
