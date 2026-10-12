@@ -6,7 +6,7 @@ import { baseName, editorLanguage } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
-import { filesApi, isClean } from "@/lib/files";
+import { canStartSave, filesApi, isClean } from "@/lib/files";
 import { CodeEditor } from "./code-editor";
 
 const errText = (e: unknown) => (e instanceof ApiError ? e.message : "Error inesperado");
@@ -19,15 +19,21 @@ export function FileEditor({ serverId, path, onClose }: { serverId: string; path
   // Último contenido conocido en disco (lo cargado, o lo último guardado con éxito).
   const saved = useRef<string | null>(null);
   if (saved.current === null && file.data) saved.current = file.data.content;
+  const inFlight = useRef(false);
   const save = useMutation({
     mutationFn: (content: string) => filesApi.write(serverId, path, content),
+    onSettled: () => { inFlight.current = false; },
     onSuccess: (_, content) => {
       saved.current = content;
       // Si se tecleó mientras el guardado estaba en vuelo, sigue sucio.
       setDirty(view.current ? !isClean(view.current.state.doc, content) : false);
     },
   });
-  const doSave = () => { if (view.current && dirty && !save.isPending) save.mutate(view.current.state.doc.toString()); };
+  const doSave = () => {
+    if (!view.current || !canStartSave({ hasView: true, dirty, inFlight: inFlight.current })) return;
+    inFlight.current = true;
+    save.mutate(view.current.state.doc.toString());
+  };
   const close = () => { if (!dirty || confirm("Hay cambios sin guardar. ¿Descartarlos?")) onClose(); };
   const name = baseName(path);
 
@@ -59,7 +65,7 @@ export function FileEditor({ serverId, path, onClose }: { serverId: string; path
           onChange={() => {
             const d = view.current ? !isClean(view.current.state.doc, saved.current ?? "") : true;
             setDirty(d);
-            if (d) save.reset();
+            if (d && !inFlight.current) save.reset(); // nunca durante un PUT en vuelo
           }}
           onSave={doSave}
         />

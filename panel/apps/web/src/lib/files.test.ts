@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { afterEach, vi } from "vitest";
-import { breadcrumbs, canEdit, filesApi, isClean, progressPct, uploadFile, validateNewName } from "./files";
+import { breadcrumbs, canEdit, canStartSave, filesApi, isClean, progressPct, uploadFile, validateNewName } from "./files";
 
 describe("breadcrumbs", () => {
   it("raíz y rutas anidadas", () => {
@@ -54,6 +54,15 @@ describe("isClean", () => {
     const toString = vi.fn(() => "abc");
     expect(isClean({ length: 2, toString }, "abc")).toBe(false);
     expect(toString).not.toHaveBeenCalled();
+  });
+});
+
+describe("canStartSave", () => {
+  it("solo con vista, cambios y sin otro guardado en vuelo", () => {
+    expect(canStartSave({ hasView: true, dirty: true, inFlight: false })).toBe(true);
+    expect(canStartSave({ hasView: true, dirty: true, inFlight: true })).toBe(false);
+    expect(canStartSave({ hasView: true, dirty: false, inFlight: false })).toBe(false);
+    expect(canStartSave({ hasView: false, dirty: true, inFlight: false })).toBe(false);
   });
 });
 

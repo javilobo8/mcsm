@@ -40,8 +40,8 @@ export function uploadFile(serverId: string, path: string, file: Blob, onProgres
       try { data = JSON.parse(xhr.responseText); } catch { /* cuerpo no JSON */ }
       reject(new ApiError(xhr.status, errorMessage(xhr.status, xhr.statusText, data)));
     };
+    // Sin xhr.timeout a propósito: una subida de varios GiB puede tardar mucho y solo se corta con la señal.
     xhr.onerror = () => { done(); reject(new ApiError(0, "Error de red: la subida se cortó")); };
-    xhr.ontimeout = () => { done(); reject(new ApiError(0, "La subida tardó demasiado y se cortó")); };
     xhr.onabort = () => { done(); reject(new ApiError(0, UPLOAD_CANCELLED)); };
     signal?.addEventListener("abort", onAbort, { once: true });
     xhr.send(file);
@@ -77,3 +77,6 @@ export const progressPct = (sent: number, total: number): number => (total > 0 ?
 
 /** Cierto si el documento del editor es idéntico al contenido guardado (sin construir la cadena si difiere la longitud). */
 export const isClean = (doc: { length: number; toString(): string }, saved: string): boolean => doc.length === saved.length && doc.toString() === saved;
+
+/** Se puede lanzar un guardado: hay vista, hay cambios y no hay otro PUT en vuelo. */
+export const canStartSave = (s: { hasView: boolean; dirty: boolean; inFlight: boolean }): boolean => s.hasView && s.dirty && !s.inFlight;
