@@ -60,6 +60,8 @@ export async function nodeRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string } }>("/api/nodes/:id", async (req, reply) => {
     const node = repo.get(req.params.id);
     if (!node) return reply.code(404).send({ error: "Nodo no encontrado" });
+    // plan-8: su contenedor mcsm-router quedaría huérfano en esa máquina.
+    if (app.routerService.isEnabled(node.id)) return reply.code(409).send({ error: "Desactiva el router del nodo antes de borrarlo" });
     try {
       repo.delete(node.id);
     } catch (e) {

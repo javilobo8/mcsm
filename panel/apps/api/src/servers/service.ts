@@ -40,6 +40,8 @@ export class ServersService {
   allocatePort(nodeId: string, exclude = new Set<number>()): number {
     const used = this.app.servers.usedGamePorts(nodeId);
     const { from, to } = this.app.config.gamePortRange;
+    const routerPort = this.app.routerService.reservedPort(nodeId); // plan-8: el puerto del router no se reparte
+    if (routerPort !== null) used.add(routerPort);
     for (let p = from; p <= to; p++) if (!used.has(p) && !exclude.has(p)) return p;
     throw new HttpError(409, `No quedan puertos libres entre ${from} y ${to} en este nodo`);
   }
@@ -65,6 +67,9 @@ export class ServersService {
     const mine = [spec.ports.game, ...spec.ports.extra.map((e) => e.host)];
     for (const p of mine) if (used.has(p)) throw new HttpError(409, `El puerto ${p} ya lo usa otro servidor de este nodo`);
     if (new Set(mine).size !== mine.length) throw new HttpError(400, "La spec repite un puerto");
+    // plan-8: el puerto del host del router (mc-router) del nodo tampoco está libre.
+    const routerPort = this.app.routerService.reservedPort(nodeId);
+    if (routerPort !== null && mine.includes(routerPort)) throw new HttpError(409, `El puerto ${routerPort} lo usa el router (mc-router) de este nodo`);
   }
 
   private completeSpec(nodeId: string, input: SpecInput, previous?: Spec): Spec {
@@ -113,6 +118,7 @@ export class ServersService {
     const slug = input.slug ?? this.uniqueSlug(input.nodeId, slugify(input.name));
     const spec = this.completeSpec(input.nodeId, input.spec);
     this.checkPorts(input.nodeId, spec);
+    this.app.routerService.checkHostname(input.nodeId, spec); // plan-8: hostname único por nodo
     const row = this.app.servers.create({ nodeId: input.nodeId, name: input.name, slug, spec, desiredState: input.desiredState });
     void this.push(row);
     return toServerDto(row, { includeSecrets: true });
@@ -136,6 +142,7 @@ export class ServersService {
     }
     if (spec) {
       this.checkPorts(row.node_id, spec, row.id);
+      this.app.routerService.checkHostname(row.node_id, spec, row.id); // plan-8
       updated = this.app.servers.updateSpec(id, spec, input.name);
       void this.push(updated);
     } else if (input.name && input.name !== row.name) {
