@@ -1,0 +1,174 @@
+import { EventEmitter } from "node:events";
+import type { WebSocket } from "ws";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FastifyInstance } from "fastify";
+import { create } from "@bufbuild/protobuf";
+import { ObservedSchema, ServerObservedSchema, LogLineSchema } from "@mcsm/proto";
+import { AgentHub } from "./hub.js";
+import { buildApp } from "../app.js";
+import { openDb } from "../db/db.js";
+import { FakeAgent } from "../../test/fake-agent.js";
+import { specSchema } from "@mcsm/shared";
+
+let app: FastifyInstance;
+let url: string;
+let cookie: string;
+
+async function enrollNode(name = "nas"): Promise<{ nodeId: string; nodeToken: string }> {
+  const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: name } })).json().token;
+  return (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: name, agentVersion: "fake" } })).json();
+}
+
+const baseSpec = specSchema.parse({ type: "PAPER", version: "1.21.4", memory: "2G", ports: { game: 25565 }, rconPassword: "abcdefgh" });
+
+beforeEach(async () => {
+  app = await buildApp({ db: openDb(":memory:") });
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  url = `http://127.0.0.1:${(app.server.address() as any).port}`;
+  const res = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
+  const c = res.cookies.find((c) => c.name === "mcsm_session")!;
+  cookie = `${c.name}=${c.value}`;
+});
+afterEach(async () => { await app.close(); });
+
+describe("agent hub", () => {
+  it("rechaza tokens inválidos", async () => {
+    const agent = new FakeAgent(url, "nope");
+    await expect(agent.connect()).rejects.toThrow(/401/);
+  });
+
+  it("Hello → HelloAck + SyncSpecs con lo que falta, y marca el nodo online/offline", async () => {
+    const { nodeId, nodeToken } = await enrollNode();
+    const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s2 = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
+    app.servers.updateSpec(s2.id, { ...baseSpec, ports: { game: 25567, extra: [] } }); // s2 pasa a versión 2
+
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect({ specVersions: { [s2.id]: 2n, "zombie-id": 1n } });
+    const ack = await agent.waitFor("helloAck");
+    expect(ack.body.case === "helloAck" && ack.body.value.nodeId).toBe(nodeId);
+
+    const sync = await agent.waitFor("syncSpecs");
+    if (sync.body.case !== "syncSpecs") throw new Error();
+    expect(sync.body.value.servers.map((s) => s.serverId)).toEqual([s1.id]); // s2 ya está al día
+    expect(sync.body.value.removedIds).toEqual(["zombie-id"]);
+    expect(sync.body.value.servers[0]!.slug).toBe("uno");
+    expect(sync.body.value.servers[0]!.version).toBe(1n);
+    agent.ack(sync.id);
+
+    await new Promise((r) => setTimeout(r, 50));
+    let node = (await app.inject({ method: "GET", url: "/api/nodes", headers: { cookie } })).json()[0];
+    expect(node.status).toBe("online");
+    expect(node.agentVersion).toBe("fake");
+    expect(app.agents.isOnline(nodeId)).toBe(true);
+
+    agent.close();
+    await new Promise((r) => setTimeout(r, 100));
+    node = (await app.inject({ method: "GET", url: "/api/nodes", headers: { cookie } })).json()[0];
+    expect(node.status).toBe("offline");
+  });
+
+  it("ServerObserved actualiza la BD y emite evento", async () => {
+    const { nodeId, nodeToken } = await enrollNode();
+    const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect({ specVersions: { [s1.id]: 1n } });
+    await agent.waitFor("helloAck");
+    const seen = new Promise<any>((resolve) => app.events.once("observed", (id, obs) => resolve({ id, obs })));
+    agent.send({ body: { case: "serverObserved", value: create(ServerObservedSchema, {
+      serverId: s1.id, tsUnixMs: BigInt(Date.now()),
+      observed: create(ObservedSchema, { containerId: "abc", state: "running", health: "healthy", appliedVersion: 1n, mc: { online: true, playersOnline: 2, playersMax: 10, version: "1.21.4", latencyMs: 3 } }),
+    }) } });
+    const ev = await seen;
+    expect(ev.id).toBe(s1.id);
+    expect(ev.obs.state).toBe("running");
+    const row = app.servers.get(s1.id)!;
+    expect(row.observed_spec_version).toBe(1);
+    expect(JSON.parse(row.observed!).mc.playersOnline).toBe(2);
+  });
+
+  it("request() resuelve con la respuesta del mismo id y falla con Error", async () => {
+    const { nodeId, nodeToken } = await enrollNode();
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect();
+    await agent.waitFor("helloAck");
+    await agent.waitFor("syncSpecs");
+    const conn = app.agents.get(nodeId)!;
+    const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 2000);
+    const req = await agent.waitFor("powerAction");
+    agent.ack(req.id);
+    expect((await p).body.case).toBe("ack");
+    const p2 = conn.request({ case: "sendCommand", value: { serverId: "x", command: "list" } }, 2000);
+    const req2 = await agent.waitFor("sendCommand");
+    agent.send({ id: req2.id, body: { case: "error", value: { code: "rcon_failed", message: "sin conexión" } } });
+    await expect(p2).rejects.toMatchObject({ code: "rcon_failed", message: "sin conexión" });
+  });
+  it("openStream no pierde el primer LogLine enviado en el mismo tick que el Ack", async () => {
+    const { nodeId, nodeToken } = await enrollNode();
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect();
+    await agent.waitFor("helloAck");
+    await agent.waitFor("syncSpecs");
+    const conn = app.agents.get(nodeId)!;
+    const lines: string[] = [];
+    const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 200 } }, (e) => {
+      if (e.body.case === "logLine") lines.push(e.body.value.line);
+    }, () => {});
+    const req = await agent.waitFor("subscribeLogs");
+    // Ack y primera línea de log seguidos, sin ceder el control entre ambos.
+    agent.ack(req.id, req.id);
+    agent.send({ streamId: req.id, body: { case: "logLine", value: create(LogLineSchema, { serverId: "x", tsUnixMs: 1n, line: "primera" }) } });
+    agent.send({ streamId: req.id, body: { case: "logLine", value: create(LogLineSchema, { serverId: "x", tsUnixMs: 2n, line: "segunda" }) } });
+    await opened;
+    await new Promise((r) => setTimeout(r, 100));
+    expect(lines).toEqual(["primera", "segunda"]);
+  });
+
+  it("openStream borra el stream si la petición falla", async () => {
+    const { nodeId, nodeToken } = await enrollNode();
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect();
+    await agent.waitFor("helloAck");
+    await agent.waitFor("syncSpecs");
+    const conn = app.agents.get(nodeId)!;
+    const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 1 } }, () => {}, () => {});
+    const req = await agent.waitFor("subscribeLogs");
+    agent.send({ id: req.id, body: { case: "error", value: { code: "unknown_server", message: "no existe" } } });
+    await expect(opened).rejects.toMatchObject({ code: "unknown_server" });
+    expect((conn as unknown as { streams: Map<bigint, unknown> }).streams.size).toBe(0);
+  });
+});
+
+describe("heartbeat del agente", () => {
+  it("hace terminate() tras 45 s sin actividad y los pings y mensajes cuentan como actividad", () => {
+    vi.useFakeTimers();
+    try {
+      let t = 0;
+      const hub = new AgentHub({ now: () => t, idleTimeoutMs: 45_000, checkIntervalMs: 5_000 });
+      const socket = new EventEmitter() as EventEmitter & { terminate(): void; send(): void; readyState: number; OPEN: number };
+      let terminated = false;
+      socket.terminate = () => { terminated = true; socket.emit("close"); };
+      socket.send = () => {};
+      socket.OPEN = 1;
+      socket.readyState = 1;
+      const detached: string[] = [];
+      hub.on("detached", (id: string) => detached.push(id));
+      hub.attach("n1", socket as unknown as WebSocket);
+
+      t = 40_000; vi.advanceTimersByTime(40_000);
+      expect(terminated).toBe(false);
+      socket.emit("ping"); // actividad a los 40 s
+      t = 80_000; vi.advanceTimersByTime(40_000);
+      expect(terminated).toBe(false);
+      socket.emit("message", Buffer.alloc(0)); // actividad a los 80 s (mensaje ilegible, igual cuenta)
+      t = 120_000; vi.advanceTimersByTime(40_000);
+      expect(terminated).toBe(false);
+      t = 126_000; vi.advanceTimersByTime(6_000); // 46 s desde la última actividad
+      expect(terminated).toBe(true);
+      expect(detached).toEqual(["n1"]);
+      expect(hub.isOnline("n1")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
