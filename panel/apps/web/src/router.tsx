@@ -6,6 +6,7 @@ import { DashboardPage } from "./routes/dashboard";
 import { NodesPage } from "./routes/nodes";
 import { NewServerPage } from "./routes/new-server";
 import { ServerPage } from "./routes/server";
+import { JobsPage } from "./routes/jobs";
 
 const getStatus = () => api.get<AuthStatus>("/api/auth/status");
 
@@ -39,6 +40,7 @@ export const serverRoute = createRoute({ getParentRoute: () => appRoute, path: "
 // ── plan-2 ──
 // ── plan-3 ──
 // ── plan-4 ──
+export const jobsRoute = createRoute({ getParentRoute: () => appRoute, path: "/jobs", component: JobsPage });
 // ── plan-5 ──
 // ── plan-6 ──
 // ── plan-7 ──
@@ -56,6 +58,7 @@ const routeTree = rootRoute.addChildren([
     // ── plan-2 ──
     // ── plan-3 ──
     // ── plan-4 ──
+    jobsRoute,
     // ── plan-5 ──
     // ── plan-6 ──
     // ── plan-7 ──

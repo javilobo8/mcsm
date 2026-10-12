@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StateBadge } from "@/components/state-badge";
 import { BackupsTab } from "@/components/backups-tab";
+import { JobList } from "@/components/job-list";
 import { PowerButtons } from "@/components/power-buttons";
 import { Console } from "@/components/console";
 import { ServerConfigForm } from "@/components/server-config-form";
@@ -80,6 +81,7 @@ export function ServerPage() {
           {/* ── plan-3 ── */}
           {/* ── plan-4 ── */}
           <TabsTrigger value="backups">Backups</TabsTrigger>
+          <TabsTrigger value="history">Historial</TabsTrigger>
           {/* ── plan-5 ── */}
           {/* ── plan-6 ── */}
           {/* ── plan-7 ── */}
@@ -97,6 +99,7 @@ export function ServerPage() {
           <Stat label="Spec" value={applying ? `v${s.specVersion} (aplicando; actual v${s.observedSpecVersion})` : `v${s.specVersion} (aplicada)`} />
         </TabsContent>
         <TabsContent value="console"><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="history"><JobList filter={{ serverId: s.id }} showServer={false} /></TabsContent>
         <TabsContent value="config"><ServerConfigForm key={s.id} server={s} /></TabsContent>
         {/* ── plan-2 ── */}
         {/* ── plan-3 ── */}

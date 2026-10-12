@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, Server, LogOut, Plus } from "lucide-react";
+import { LayoutDashboard, ListChecks, Server, LogOut, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useLive } from "@/hooks/use-live";
@@ -8,6 +8,7 @@ import { useLive } from "@/hooks/use-live";
 const nav = [
   { to: "/", label: "Servidores", icon: LayoutDashboard },
   { to: "/nodes", label: "Nodos", icon: Server },
+  { to: "/jobs", label: "Jobs", icon: ListChecks }, // plan-4
 ] as const;
 
 export function Layout() {
