@@ -87,13 +87,10 @@ func TestRestoreParksOnDemandServer(t *testing.T) {
 		if readLevel(t, e.dataDir()) != "LEVEL-1" {
 			t.Fatal("no se restauró la copia")
 		}
-		c, _ := e.a.rec.Container(context.Background(), "a")
-		want := "running"
-		if asleep {
-			want = "created" // dormido: sigue dormido hasta que entre alguien
-		}
-		if c == nil || c.ID == old || c.State != want || e.a.rec.Held("a") {
-			t.Fatalf("dormido=%v: tras restaurar %+v (se esperaba %s)", asleep, c, want)
+		// Recreado y en marcha también si dormía: mc-router no ve un contenedor que nunca arrancó; lo
+		// vuelve a dormir tras los minutos sin jugadores.
+		if c, _ := e.a.rec.Container(context.Background(), "a"); c == nil || c.ID == old || c.State != "running" || e.a.rec.Held("a") {
+			t.Fatalf("dormido=%v: tras restaurar %+v", asleep, c)
 		}
 	}
 }
@@ -125,8 +122,8 @@ func TestBlockedOnDemandServerIsParked(t *testing.T) {
 	e.a.bk.checkBlocked()
 	e.settle(t)
 	waitBackground(t, e.a)
-	if c, _ := e.a.rec.Container(context.Background(), "a"); c == nil || c.State != "created" || e.a.rec.Held("a") {
-		t.Fatalf("con data de vuelta se recrea, dormido: %+v held=%v", c, e.a.rec.Held("a"))
+	if c, _ := e.a.rec.Container(context.Background(), "a"); c == nil || c.ID == old || c.State != "running" || e.a.rec.Held("a") {
+		t.Fatalf("con data de vuelta se recrea y arranca: %+v held=%v", c, e.a.rec.Held("a"))
 	}
 }
 
@@ -145,7 +142,7 @@ func TestColdBackupParksOnDemandServer(t *testing.T) {
 		t.Fatalf("final = %+v", fin)
 	}
 	w.check(t)
-	if c, _ := e.a.rec.Container(context.Background(), "a"); c == nil || c.State != "created" {
-		t.Fatalf("tras la copia se recrea, dormido: %+v", c)
+	if c, _ := e.a.rec.Container(context.Background(), "a"); c == nil || c.ID == old || c.State != "running" {
+		t.Fatalf("tras la copia se recrea y arranca: %+v", c)
 	}
 }

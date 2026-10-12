@@ -41,7 +41,6 @@ type Reconciler struct {
 	observer Observer
 	log      *slog.Logger
 	onDemand func(spec.Spec) bool // plan-8: servidores que arranca y para mc-router (SetOnDemand)
-	parked   map[string]bool      // plan-8: aparcados por Park (bajo r.mu); true = estaba dormido
 
 	mu      sync.Mutex
 	locks   map[string]*sync.Mutex
@@ -254,10 +253,16 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 		}
 		existing = &docker.Container{ID: id, Name: build.Name, State: "created", Labels: build.Config.Labels}
 	}
-	// plan-8: con el autoscale del router, mc-router arranca y para los servidores con hostname; el
-	// estado deseado no se impone a un contenedor que ya existía (uno recién creado sí lo sigue).
-	asleep := r.takeParkedAsleep(serverID) // aparcado dormido (Park): al recrearlo sigue dormido
-	if (existing.State != "created" || asleep) && r.onDemand != nil && r.onDemand(parsed) {
+	// plan-8: con el autoscale del router, mc-router arranca y para los servidores con hostname: el
+	// estado deseado no se impone. Un contenedor que nunca arrancó (recién creado o recreado, también
+	// al liberar una reserva tras Park) se arranca: mc-router no ve los contenedores que nunca
+	// arrancaron, así que no lo podría despertar; él lo duerme tras los minutos sin jugadores.
+	if r.onDemand != nil && r.onDemand(parsed) {
+		if existing.State == "created" {
+			if err := r.startOrDiscard(ctx, existing); err != nil {
+				return fmt.Errorf("arrancar: %w", err)
+			}
+		}
 		return r.st.SetApplied(serverID, sp.Version)
 	}
 	switch {

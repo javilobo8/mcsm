@@ -54,15 +54,17 @@ func TestOnDemandLeavesExistingContainersAlone(t *testing.T) {
 		t.Fatal("un servidor bajo demanda despierto no se para en el tick")
 	}
 
-	// Un cambio de spec sí recrea (y el nuevo sigue el estado deseado: parado).
+	// Un cambio de spec sí recrea, y el nuevo se arranca aunque el deseado sea parado: mc-router no
+	// ve un contenedor que nunca arrancó (no lo podría despertar); él lo duerme sin jugadores.
 	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, strings.Replace(routedJSON, "survival.lan", "otro.lan", 1))
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	c2, _ := r.find(ctx, "a")
-	if c2 == nil || c2.ID == c.ID || c2.State != "created" {
+	if c2 == nil || c2.ID == c.ID || c2.State != "running" {
 		t.Fatalf("recreado: %+v", c2)
 	}
+	_ = fake.Stop(ctx, c2.ID, time.Second) // mc-router lo duerme
 
 	// Power sigue mandando: arranca aunque esté bajo demanda.
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err != nil {
@@ -104,8 +106,8 @@ func TestOnDemandOnlyForRoutedServers(t *testing.T) {
 
 // plan-8 (H1): la reserva (Hold) solo frena al agente; mc-router arranca por su cuenta un
 // contenedor parado con hostname. Park lo borra mientras dura la reserva: un intento de entrar
-// (docker start del contenedor) no encuentra nada que arrancar. La liberación lo recrea y, si
-// estaba dormido, lo deja dormido.
+// (docker start del contenedor) no encuentra nada que arrancar. La liberación lo recrea y lo
+// arranca (mc-router no ve un contenedor que nunca arrancó; lo vuelve a dormir sin jugadores).
 func TestParkRemovesOnDemandContainerWhileHeld(t *testing.T) {
 	for _, wasRunning := range []bool{true, false} {
 		r, st, fake, _, _ := setup(t)
@@ -137,13 +139,8 @@ func TestParkRemovesOnDemandContainerWhileHeld(t *testing.T) {
 			t.Fatalf("start de mc-router = %v", err)
 		}
 		release(ctx)
-		c, _ := r.find(ctx, "a")
-		want := "created"
-		if wasRunning {
-			want = "running"
-		}
-		if c == nil || c.ID == old.ID || c.State != want {
-			t.Fatalf("en marcha=%v: tras liberar %+v, se esperaba %s", wasRunning, c, want)
+		if c, _ := r.find(ctx, "a"); c == nil || c.ID == old.ID || c.State != "running" {
+			t.Fatalf("en marcha=%v: tras liberar %+v", wasRunning, c)
 		}
 	}
 }

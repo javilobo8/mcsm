@@ -192,40 +192,84 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	}
 
 	// Autoscale con lista de jugadores (S3): un intruso no despierta un servidor dormido; un jugador
-	// de la lista sí. backend-a es el primero creado.
-	if err := m.Apply(&mcsmv1.RouterSpec{HostPort: uint32(port), Autoscale: true, AutoscaleAllowPlayers: []string{"amigo"}}); err != nil {
-		t.Fatal(err)
+	// de la lista sí. backend-a es el primero creado. Parada tras 1 min sin jugadores.
+	autoscale := func(players ...string) {
+		t.Helper()
+		if err := m.Apply(&mcsmv1.RouterSpec{HostPort: uint32(port), Autoscale: true, AutoscaleDownAfterMinutes: 1, AutoscaleAllowPlayers: players}); err != nil {
+			t.Fatal(err)
+		}
+		obs := m.Reconcile(ctx)
+		if obs.ContainerId != "" {
+			created = append(created, obs.ContainerId)
+		}
+		if obs.State != "running" || obs.Error != "" {
+			t.Fatalf("con autoscale y lista: %+v", obs)
+		}
 	}
-	obs = m.Reconcile(ctx)
-	if obs.ContainerId != "" {
-		created = append(created, obs.ContainerId)
+	isRunning := func(id string) bool {
+		ins, err := eng.Inspect(ctx, id)
+		return err == nil && ins.Running
 	}
-	if obs.State != "running" || obs.Error != "" {
-		t.Fatalf("con autoscale y lista: %+v", obs)
+	// wake intenta entrar como player cada segundo hasta que id esté en marcha (máx. 30 s).
+	wake := func(host, player, id string) bool {
+		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); {
+			_ = loginRouter(t, port, host, player)
+			<-time.After(time.Second)
+			if isRunning(id) {
+				return true
+			}
+		}
+		return false
 	}
+	autoscale("amigo")
 	backendA := created[0]
 	if err := eng.Stop(ctx, backendA, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	running := func() bool {
-		ins, err := eng.Inspect(ctx, backendA)
-		return err == nil && ins.Running
-	}
 	for i := 0; i < 5; i++ { // un intento por segundo durante 5 s
 		_ = loginRouter(t, port, "survival.lan", "intruso")
 		<-time.After(time.Second)
-		if running() {
+		if isRunning(backendA) {
 			t.Fatal("un jugador fuera de la lista no debe despertar el servidor")
 		}
 	}
-	woke := false
-	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline) && !woke; {
-		_ = loginRouter(t, port, "survival.lan", "amigo")
-		<-time.After(time.Second)
-		woke = running()
-	}
-	if !woke {
+	if !wake("survival.lan", "amigo", backendA) {
 		t.Fatal("un jugador de la lista despierta el servidor")
+	}
+
+	// Cambiar la lista recrea el router: los servidores dormidos se siguen despertando.
+	if err := eng.Stop(ctx, backendA, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	autoscale("amigo", "otro")
+	if !wake("survival.lan", "otro", backendA) {
+		t.Fatal("tras recrear el router, un servidor dormido se despierta")
+	}
+
+	// Un servidor bajo demanda recién creado (también al liberar una reserva tras aparcarlo): mc-router
+	// no ve un contenedor que nunca arrancó, así que el agente lo arranca; mc-router lo duerme al
+	// minuto sin jugadores y después lo despierta quien entra.
+	labels := map[string]string{"mcsm.test": "true", spec.LabelRouterHost: "nuevo.lan", spec.LabelRouterNetwork: netName}
+	fresh, err := eng.Create(ctx, "mcsm-test-rbackend-c-"+tag,
+		&container.Config{Image: "alpine:3.22", Cmd: []string{"nc", "-lk", "-p", "25565", "-e", "echo", "backend-c"}, Labels: labels},
+		&container.HostConfig{}, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{netName: {}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created = append(created, fresh)
+	if err := eng.Start(ctx, fresh); err != nil {
+		t.Fatal(err)
+	}
+	slept := false
+	for deadline := time.Now().Add(150 * time.Second); time.Now().Before(deadline) && !slept; {
+		<-time.After(5 * time.Second)
+		slept = !isRunning(fresh)
+	}
+	if !slept {
+		t.Fatal("mc-router duerme un servidor que arrancó otro y al que no entra nadie")
+	}
+	if !wake("nuevo.lan", "amigo", fresh) {
+		t.Fatal("y después lo despierta un jugador de la lista")
 	}
 
 	if err := m.Clear(); err != nil {
