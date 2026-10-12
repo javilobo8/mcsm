@@ -574,6 +574,30 @@ describe("subida: plazos y límites", () => {
     expect((await out.json()).error).toMatch(/no confirmó/);
   });
 
+  it("si el agente confirma sin haber hecho el GET, el navegador recibe 502 (no un 204 sin fichero)", async () => {
+    const browser = fetch(`${files()}/upload?path=/mods/x.jar`, { method: "PUT", body: Buffer.alloc(1000, 1), headers: { cookie, ...octet } });
+    const req = await uploadRequest();
+    agent.ack(req.id);
+    const res = await browser;
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/sin haber recibido el fichero/);
+    expect(app.transfers.pendingCount).toBe(0);
+  });
+
+  it("si el agente confirma con el GET cortado a medias, el navegador recibe 502", async () => {
+    const browser = fetch(`${files()}/upload?path=/mods/x.jar`, { method: "PUT", body: Buffer.alloc(4 * 1024 * 1024, 1), headers: { cookie, ...octet } });
+    const req = await uploadRequest();
+    const get = raw("GET", `${url}/agent/transfer/${req.transferId}`, agentAuth());
+    get.req.end();
+    await get.first;
+    get.req.destroy();
+    agent.ack(req.id);
+    const res = await browser;
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/entero/);
+    expect(app.transfers.activeCount).toBe(0);
+  });
+
   it("si falla con más de 8 MiB aún por llegar, se drenan 8 MiB y se responde con Connection: close sin esperar al resto", async () => {
     // keep-alive: el Connection: close de la respuesta tiene que ponerlo el panel, no ser eco del cliente.
     const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet, connection: "keep-alive", "content-length": String(64 << 20) });

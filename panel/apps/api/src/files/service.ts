@@ -214,7 +214,9 @@ export class FilesService {
     try {
       if (signal?.aborted) throw new ClientGone("Subida cancelada"); // ni se pregunta al agente
       const { row, conn } = this.target(serverId);
+      let claimed = false;
       const transfer = this.app.transfers.outbound(row.node_id, async () => {
+        claimed = true;
         const guard = idleGuard(IDLE_TIMEOUT_MS, () => {
           transfer.cancel("el navegador dejó de enviar el fichero");
           return new Error("El navegador dejó de enviar el fichero");
@@ -226,6 +228,13 @@ export class FilesService {
       const req = conn.request({ case: "filesUpload", value: { serverId, path, transferId: t.id, size: BigInt(size ?? -1) } }, NO_DEADLINE_MS);
       ack = ackDeadline(t.done, ACK_TIMEOUT_MS, this.timers);
       await Promise.race([req, failOnExpiry(t.done), failOnAbort(signal, "Subida cancelada"), ack.promise]);
+      // El Ack solo vale si el agente recibió de verdad el cuerpo entero (un agente defectuoso
+      // podría confirmar sin hacer el GET). Si lo hizo, `done` se resuelve en cuanto termina la
+      // respuesta de su GET; si se cortó, se rechaza (el vigilante de inactividad lo acota).
+      if (!claimed) throw new HttpError(502, "El agente confirmó la subida sin haber recibido el fichero");
+      await Promise.race([t.done, failOnAbort(signal, "Subida cancelada")]).catch((e: unknown) => {
+        throw e instanceof ClientGone ? e : new HttpError(502, "El agente confirmó la subida sin haber recibido el fichero entero");
+      });
     } catch (e) {
       t?.cancel(signal?.aborted ? "el navegador canceló la subida" : "subida fallida");
       if (signal?.aborted) body.destroy();
