@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -51,10 +52,17 @@ func TestIntegrationBackupRestore(t *testing.T) {
 	a.bk.loop(func() { a.bk.out.run(octx) })
 	t.Cleanup(func() { ocancel(); a.bk.wg.Wait(); a.bk.loops.Wait() })
 	// El test corre en el host, fuera de la red Docker: RCON con el rcon-cli de la imagen itzg.
+	// Con stopOnFlush, tras save-all flush se para el contenedor (paso 3: parada a mitad de copia).
+	var stopOnFlush atomic.Bool
 	a.rcon = func(ctx context.Context, host string, _ uint16, _ string, cmd string) (string, error) {
 		out, err := exec.CommandContext(ctx, "docker", append([]string{"exec", host, "rcon-cli"}, strings.Fields(cmd)...)...).CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("%v: %s", err, out)
+		}
+		if cmd == "save-all flush" && stopOnFlush.Load() {
+			if sout, serr := exec.CommandContext(ctx, "docker", "stop", host).CombinedOutput(); serr != nil {
+				return "", fmt.Errorf("docker stop: %v: %s", serr, sout)
+			}
 		}
 		return string(out), nil
 	}
@@ -118,6 +126,29 @@ func TestIntegrationBackupRestore(t *testing.T) {
 		t.Fatal("los datos anteriores deben conservarse en el directorio pre-restore")
 	}
 	waitHealthy(ctx, t, a, serverID)
+
+	// 3. El contenedor se para durante una copia en caliente (como el autoscale de mc-router):
+	// Minecraft guarda al pararse, así que la copia se descarta y no se anuncia.
+	backupsDir := backup.Dir(a.cfg.DataRoot, slug)
+	before, _ := os.ReadDir(backupsDir)
+	nCreated := len(col.created()) // la de 1 y los datos pre-restore de 2
+	stopOnFlush.Store(true)
+	a.Handle(ctx, &mcsmv1.Envelope{Id: 3, Body: &mcsmv1.Envelope_BackupNow{BackupNow: &mcsmv1.BackupNow{ServerId: serverID, JobId: "int-job-3"}}}, col.send)
+	settle(t, a)
+	stopOnFlush.Store(false)
+	fin := col.final("int-job-3")
+	t.Logf("copia con parada: %+v", fin)
+	if fin == nil || fin.Status != mcsmv1.JobStatus_JOB_STATUS_FAILED || !strings.Contains(fin.Message, "se paró o se reinició") ||
+		!strings.Contains(fin.Message, "descartado") || strings.Contains(fin.Message, "save-on") {
+		t.Fatalf("copia con parada = %+v", fin)
+	}
+	if got := col.created(); len(got) != nCreated {
+		t.Fatalf("una copia descartada no se anuncia: %+v", got)
+	}
+	if after, _ := os.ReadDir(backupsDir); len(after) != len(before) {
+		t.Fatalf("la copia descartada no deja ficheros: antes %v, después %v", before, after)
+	}
+	waitHealthy(ctx, t, a, serverID) // al liberar la reserva se reconcilia: vuelve a arrancar
 }
 
 func freePort(t *testing.T) int {
