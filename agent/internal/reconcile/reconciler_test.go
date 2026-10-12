@@ -482,22 +482,60 @@ func TestRemoveInvalidSlugTouchesNothing(t *testing.T) {
 	}
 }
 
-func TestApplyForceAcceptsOlderSpec(t *testing.T) {
-	r, st, _, _, _ := setup(t)
+func TestStoreForceSavesOlderSpecWithoutTouchingDocker(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
 	ctx := context.Background()
-	mk := func(v uint64) *mcsmv1.ServerSpec {
-		return &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: v, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(specJSON)}
+	mk := func(v uint64, js string) *mcsmv1.ServerSpec {
+		return &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: v, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(js)}
 	}
-	if err := r.Apply(ctx, mk(5)); err != nil {
+	if err := r.Apply(ctx, mk(5, specJSON)); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.ApplyForce(ctx, mk(2)); err != nil {
+	r.markFailure("a", 5, "fallo previo")
+	before := len(fake.Calls)
+	old := strings.Replace(specJSON, `"memory":"2G"`, `"memory":"3G"`, 1)
+	if err := r.StoreForce(mk(2, old)); err != nil {
 		t.Fatal(err)
 	}
 	if sp, _ := st.GetSpec("a"); sp.Version != 2 {
-		t.Fatalf("version = %d, ApplyForce debe sobreescribir", sp.Version)
+		t.Fatalf("version = %d, StoreForce debe sobreescribir aunque sea más antigua", sp.Version)
 	}
-	if v, _ := st.Applied("a"); v != 2 {
-		t.Fatalf("applied = %d", v)
+	if len(fake.Calls) != before {
+		t.Fatalf("StoreForce no debe tocar Docker: %v", fake.Calls[before:])
+	}
+	if _, waiting := r.retryAt["a"]; waiting || r.lastErr["a"] != "" {
+		t.Fatal("StoreForce debe limpiar el backoff para que la reconciliación sea inmediata")
+	}
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := st.Applied("a"); v != 2 || calls(fake, "Create") != 2 {
+		t.Fatalf("applied = %d calls=%v", v, fake.Calls)
+	}
+}
+
+func TestForgetDeletesSpecButKeepsContainer(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	_ = r.Reconcile(ctx, "a")
+	if err := r.Forget("a"); err != nil {
+		t.Fatal(err)
+	}
+	if sp, _ := st.GetSpec("a"); sp != nil {
+		t.Fatal("Forget debe borrar la spec")
+	}
+	if list, _ := fake.ListManaged(ctx); len(list) != 1 {
+		t.Fatal("Forget no toca Docker")
+	}
+	r.ReconcileAll(ctx)
+	if calls(fake, "Create") != 1 {
+		t.Fatal("una spec olvidada no se reconcilia")
+	}
+	if err := r.Remove(ctx, "a", false); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := fake.ListManaged(ctx); len(list) != 0 {
+		t.Fatal("Remove tras Forget debe borrar el contenedor huérfano")
 	}
 }

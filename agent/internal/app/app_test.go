@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -54,17 +55,38 @@ func (s *sink) waitID(t *testing.T, id uint64) *mcsmv1.Envelope {
 
 func newApp(t *testing.T) (*App, *docker.Fake, *store.Store) {
 	t.Helper()
+	fake := docker.NewFake()
+	a, st := newAppEngine(t, fake)
+	return a, fake, st
+}
+
+// newAppEngine construye la App sobre un Engine cualquiera (envoltorios del fake).
+func newAppEngine(t *testing.T, eng docker.Engine) (*App, *store.Store) {
+	t.Helper()
 	dir := t.TempDir()
 	st, err := store.Open(filepath.Join(dir, "a.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	fake := docker.NewFake()
 	cfg := Config{DataRoot: filepath.Join(dir, "data"), Network: "mcsm", Version: "test"}
-	a := New(cfg, st, fake, slog.Default())
+	a := New(cfg, st, eng, slog.Default())
 	a.status = func(context.Context, string, uint16) *mcsmv1.McStatus { return &mcsmv1.McStatus{Online: true} }
-	return a, fake, st
+	// Las tareas de fondo terminan antes de cerrar el store.
+	t.Cleanup(a.bg.Wait)
+	return a, st
+}
+
+// waitBackground espera a que terminen las tareas de fondo (sincronización y despachos).
+func waitBackground(t *testing.T, a *App) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { a.bg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("las tareas de fondo no terminaron")
+	}
 }
 
 func specMsg(id, slug string, v uint64) *mcsmv1.ServerSpec {
@@ -77,7 +99,7 @@ func TestSyncSpecsAndObserved(t *testing.T) {
 	a.send = s.send
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 7, Body: &mcsmv1.Envelope_SyncSpecs{SyncSpecs: &mcsmv1.SyncSpecs{Servers: []*mcsmv1.ServerSpec{specMsg("a", "alpha", 1)}}}}, s.send)
 	var sawObserved, sawAck bool
-	// Apply y ReconcileAll pueden emitir varios ServerObserved antes del Ack.
+	// El Ack sale tras guardar la spec; la reconciliación (y sus ServerObserved) va en segundo plano.
 	for !sawObserved || !sawAck {
 		e := s.next(t)
 		if e.GetServerObserved() != nil && e.GetServerObserved().ServerId == "a" && e.GetServerObserved().Observed.State == "running" {
@@ -99,6 +121,10 @@ func TestSyncSpecsAndObserved(t *testing.T) {
 	// removed_ids borra contenedor y spec
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 8, Body: &mcsmv1.Envelope_SyncSpecs{SyncSpecs: &mcsmv1.SyncSpecs{RemovedIds: []string{"a"}}}}, s.send)
 	s.waitID(t, 8)
+	if sp, _ := st.GetSpec("a"); sp != nil {
+		t.Fatal("la spec retirada se borra antes del Ack")
+	}
+	waitBackground(t, a)
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
 		t.Fatal("debe haber borrado el contenedor")
 	}
@@ -296,24 +322,171 @@ func TestUnsupportedMessageWithIDGetsError(t *testing.T) {
 	}
 }
 
-func TestApplySpecKeepsNewerButSyncSpecsOverrides(t *testing.T) {
-	a, _, st := newApp(t)
+func syncMsg(id uint64, servers []*mcsmv1.ServerSpec, removed ...string) *mcsmv1.Envelope {
+	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_SyncSpecs{SyncSpecs: &mcsmv1.SyncSpecs{Servers: servers, RemovedIds: removed}}}
+}
+
+func applyMsg(id uint64, sp *mcsmv1.ServerSpec) *mcsmv1.Envelope {
+	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: sp}}}
+}
+
+func withMemory(sp *mcsmv1.ServerSpec, mem string) *mcsmv1.ServerSpec {
+	sp.SpecJson = []byte(strings.Replace(specJSON, `"memory":"2G"`, `"memory":"`+mem+`"`, 1))
+	return sp
+}
+
+// containerEnv lee el env del contenedor del servidor. Solo tras waitBackground: sin
+// tareas de fondo vivas nadie más toca el fake.
+func containerEnv(t *testing.T, fake *docker.Fake, serverID string) map[string]string {
+	t.Helper()
+	list, _ := fake.ListManaged(context.Background())
+	for _, c := range list {
+		if c.Labels["mcsm.server_id"] == serverID {
+			env := fake.Containers[c.ID].Config.Env
+			m := map[string]string{}
+			for _, kv := range env {
+				k, v, _ := strings.Cut(kv, "=")
+				m[k] = v
+			}
+			return m
+		}
+	}
+	t.Fatalf("sin contenedor para %s", serverID)
+	return nil
+}
+
+// Dentro de una sesión, la guarda de versión sigue aplicando entre ApplySpecs: un
+// ApplySpec v6 posterior a un SyncSpecs v5 gana, y uno v4 se ignora.
+func TestApplySpecAfterSyncSpecsKeepsNewer(t *testing.T) {
+	a, fake, st := newApp(t)
 	s := newSink()
+	a.send = s.send
 	ctx := context.Background()
-	apply := func(id uint64, v uint64) {
-		a.Handle(ctx, &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: specMsg("a", "alpha", v)}}}, s.send)
-		s.waitID(t, id)
+	a.Handle(ctx, syncMsg(1, []*mcsmv1.ServerSpec{specMsg("a", "alpha", 5)}), s.send)
+	if e := s.waitID(t, 1); e.GetAck() == nil {
+		t.Fatalf("resp = %+v", e)
 	}
-	apply(1, 2)
-	apply(2, 1)
-	if sp, _ := st.GetSpec("a"); sp.Version != 2 {
-		t.Fatalf("ApplySpec v1 tras v2 debe ignorarse, version=%d", sp.Version)
-	}
-	a.Handle(ctx, &mcsmv1.Envelope{Id: 3, Body: &mcsmv1.Envelope_SyncSpecs{SyncSpecs: &mcsmv1.SyncSpecs{Servers: []*mcsmv1.ServerSpec{specMsg("a", "alpha", 1)}}}}, s.send)
+	a.Handle(ctx, applyMsg(2, withMemory(specMsg("a", "alpha", 6), "3G")), s.send)
+	s.waitID(t, 2)
+	a.Handle(ctx, applyMsg(3, withMemory(specMsg("a", "alpha", 4), "4G")), s.send)
 	s.waitID(t, 3)
-	if sp, _ := st.GetSpec("a"); sp.Version != 1 {
+	waitBackground(t, a)
+	if sp, _ := st.GetSpec("a"); sp.Version != 6 {
+		t.Fatalf("version = %d, want 6", sp.Version)
+	}
+	if v, _ := st.Applied("a"); v != 6 {
+		t.Fatalf("applied = %d, want 6", v)
+	}
+	if mem := containerEnv(t, fake, "a")["MEMORY"]; mem != "3G" {
+		t.Fatalf("el contenedor debe quedar con la spec v6, MEMORY=%s", mem)
+	}
+}
+
+// En una sesión nueva, SyncSpecs fuerza la foto del panel aunque sea más antigua que
+// la del store (base de datos del panel restaurada).
+func TestSyncSpecsForcesOlderSpecOnNewSession(t *testing.T) {
+	a, fake, st := newApp(t)
+	s := newSink()
+	a.send = s.send
+	if err := st.PutSpec(withMemory(specMsg("a", "alpha", 6), "3G")); err != nil {
+		t.Fatal(err)
+	}
+	a.Handle(context.Background(), syncMsg(1, []*mcsmv1.ServerSpec{specMsg("a", "alpha", 5)}), s.send)
+	s.waitID(t, 1)
+	if sp, _ := st.GetSpec("a"); sp.Version != 5 {
 		t.Fatalf("SyncSpecs es la verdad del panel, version=%d", sp.Version)
 	}
+	waitBackground(t, a)
+	if v, _ := st.Applied("a"); v != 5 {
+		t.Fatalf("applied = %d, want 5", v)
+	}
+	if mem := containerEnv(t, fake, "a")["MEMORY"]; mem != "2G" {
+		t.Fatalf("MEMORY=%s, want 2G", mem)
+	}
+}
+
+// gateEngine bloquea EnsureImage hasta que se cierra gate.
+type gateEngine struct {
+	*docker.Fake
+	gate chan struct{}
+}
+
+func (e gateEngine) EnsureImage(ctx context.Context, ref string) error {
+	select {
+	case <-e.gate:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return e.Fake.EnsureImage(ctx, ref)
+}
+
+// El Ack de SyncSpecs no espera a Docker: el panel no retiene nada durante un pull.
+func TestSyncSpecsAcksBeforeTouchingDocker(t *testing.T) {
+	fake := docker.NewFake()
+	gate := make(chan struct{})
+	a, st := newAppEngine(t, gateEngine{fake, gate})
+	s := newSink()
+	a.send = s.send
+	a.Handle(context.Background(), syncMsg(1, []*mcsmv1.ServerSpec{specMsg("a", "alpha", 1)}), s.send)
+	if e := s.waitID(t, 1); e.GetAck() == nil {
+		t.Fatalf("resp = %+v", e)
+	}
+	if sp, _ := st.GetSpec("a"); sp == nil {
+		t.Fatal("la spec se guarda antes del Ack")
+	}
+	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
+		t.Fatal("el contenedor aún no puede existir: el pull está bloqueado")
+	}
+	close(gate)
+	waitBackground(t, a)
+	if list, _ := fake.ListManaged(context.Background()); len(list) != 1 || list[0].State != "running" {
+		t.Fatalf("tras el pull debe crearse y arrancar: %+v", list)
+	}
+}
+
+// Un slug borrado y recreado con el nodo desconectado: removed_ids se procesa antes,
+// así que el Create del servidor nuevo no choca con el nombre del contenedor viejo.
+func TestSyncSpecsReusedSlugAfterOfflineDelete(t *testing.T) {
+	a, fake, st := newApp(t)
+	s := newSink()
+	a.send = s.send
+	ctx := context.Background()
+	a.Handle(ctx, applyMsg(1, specMsg("old", "alpha", 1)), s.send)
+	s.waitID(t, 1)
+	a.Handle(ctx, syncMsg(2, []*mcsmv1.ServerSpec{specMsg("new", "alpha", 1)}, "old"), s.send)
+	s.waitID(t, 2)
+	waitBackground(t, a)
+	list, _ := fake.ListManaged(ctx)
+	if len(list) != 1 || list[0].Labels["mcsm.server_id"] != "new" || list[0].State != "running" {
+		t.Fatalf("debe quedar solo el contenedor nuevo en marcha: %+v (calls %v)", list, fake.Calls)
+	}
+	if sp, _ := st.GetSpec("old"); sp != nil {
+		t.Fatal("la spec retirada no debe quedar")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.envs {
+		if o := e.GetServerObserved(); o != nil && o.ServerId == "new" && o.Observed.Error != "" {
+			t.Fatalf("el servidor nuevo no debe publicar errores: %s", o.Observed.Error)
+		}
+	}
+}
+
+func TestSyncSpecsSkipsInvalidAndStillAcks(t *testing.T) {
+	a, _, st := newApp(t)
+	s := newSink()
+	a.send = s.send
+	a.Handle(context.Background(), syncMsg(1, []*mcsmv1.ServerSpec{specMsg("bad", "../x", 1), nil, specMsg("a", "alpha", 1)}), s.send)
+	if e := s.waitID(t, 1); e.GetAck() == nil {
+		t.Fatalf("resp = %+v", e)
+	}
+	if sp, _ := st.GetSpec("bad"); sp != nil {
+		t.Fatal("una spec con slug inválido no se guarda")
+	}
+	if sp, _ := st.GetSpec("a"); sp == nil {
+		t.Fatal("las válidas sí")
+	}
+	waitBackground(t, a)
 }
 
 func TestPowerAction(t *testing.T) {

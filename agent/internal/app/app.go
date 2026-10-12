@@ -65,15 +65,17 @@ type App struct {
 	mu      sync.Mutex // protege streams
 	streams map[uint64]*logStream
 
-	fmu     sync.Mutex // protege flights
+	fmu     sync.Mutex // protege flights y forced
 	flights map[string]*flight
+	forced  map[string]bool // reconciliaciones pedidas sin backoff (SyncSpecs), pendientes de ejecutar
 	sem     chan struct{}
+	bg      sync.WaitGroup // tareas de fondo (sincronización y despachos)
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
 func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App {
 	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{},
-		flights: map[string]*flight{}, sem: make(chan struct{}, maxConcurrent), life: context.Background()}
+		flights: map[string]*flight{}, forced: map[string]bool{}, sem: make(chan struct{}, maxConcurrent), life: context.Background()}
 	a.send = func(*mcsmv1.Envelope) error { return conn.ErrNotConnected }
 	a.rec = reconcile.New(st, eng, cfg.DataRoot, cfg.Network, func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		return a.status(ctx, host, port)
@@ -179,19 +181,82 @@ func errMsg(id uint64, code string, err error) *mcsmv1.Envelope {
 	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_Error{Error: &mcsmv1.Error{Code: code, Message: err.Error()}}}
 }
 
-// applySpec valida y aplica una spec del panel (guarda de versión incluida en el reconciliador).
-func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec, force bool) (code string, err error) {
+// validSpecMsg comprueba lo mínimo para guardar una spec del panel: server_id y slug
+// (el slug acaba en rutas de disco y nombres de contenedor).
+func validSpecMsg(sp *mcsmv1.ServerSpec) error {
 	if sp == nil || sp.ServerId == "" || !spec.ValidSlug(sp.Slug) {
-		return "invalid_spec", errors.New("spec inválida: server_id o slug no válido")
+		return errors.New("spec inválida: server_id o slug no válido")
 	}
-	apply := a.rec.Apply
-	if force {
-		apply = a.rec.ApplyForce
+	return nil
+}
+
+// applySpec valida y aplica una spec del panel (guarda de versión incluida en el reconciliador).
+func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string, err error) {
+	if err := validSpecMsg(sp); err != nil {
+		return "invalid_spec", err
 	}
-	if err := apply(ctx, sp); err != nil {
+	if err := a.rec.Apply(ctx, sp); err != nil {
 		return "apply_failed", err
 	}
 	return "", nil
+}
+
+// syncSpecs aplica la foto del panel al reconectar (spec §3: el panel es la verdad).
+//
+//  1. removed_ids primero: se borra su spec del store (nada puede resucitarlos).
+//  2. Se guardan forzadas todas las specs recibidas, sin guarda de versión (la BD del
+//     panel pudo restaurarse) y sin reconciliar en línea.
+//  3. Ack inmediato: el panel retiene el resto de peticiones hasta recibirlo
+//     (AgentConn.ready), así que esta fase solo toca el store.
+//  4. En segundo plano y con el contexto de vida: se paran y borran los contenedores
+//     retirados y, después (un slug borrado y recreado sin conexión reutiliza el
+//     nombre del contenedor), se reconcilia cada servidor recibido sin backoff.
+//
+// Un ApplySpec posterior con versión mayor gana: Apply mantiene su guarda de versión y
+// la reconciliación de fondo lee siempre la spec vigente del store.
+func (a *App) syncSpecs(id uint64, req *mcsmv1.SyncSpecs, send func(*mcsmv1.Envelope) error) {
+	life := a.life
+	var removed, synced []string
+	for _, sid := range req.RemovedIds {
+		if err := a.rec.Forget(sid); err != nil {
+			a.log.Warn("olvidar servidor retirado", "id", sid, "err", err)
+			continue
+		}
+		removed = append(removed, sid)
+	}
+	for _, sp := range req.Servers {
+		if err := validSpecMsg(sp); err != nil {
+			a.log.Warn("spec de la sincronización ignorada", "id", sp.GetServerId(), "err", err)
+			continue
+		}
+		if err := a.rec.StoreForce(sp); err != nil {
+			a.log.Warn("guardar spec de la sincronización", "id", sp.ServerId, "err", err)
+			continue
+		}
+		synced = append(synced, sp.ServerId)
+	}
+	_ = send(ack(id))
+
+	a.bg.Add(1)
+	go func() {
+		defer a.bg.Done()
+		var wg sync.WaitGroup
+		for _, sid := range removed {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := a.rec.Remove(life, sid, false); err != nil {
+					a.log.Warn("eliminar servidor retirado", "id", sid, "err", err)
+					return
+				}
+				a.hub.Reset(sid)
+			}()
+		}
+		wg.Wait()
+		for _, sid := range synced {
+			a.reconcileAsync(life, sid, true)
+		}
+	}()
 }
 
 // Handle implementa conn.Handler. ctx es el de la sesión WS: solo vale para lo ligado a
@@ -203,23 +268,10 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		a.log.Info("panel confirmó la sesión", "node_id", b.HelloAck.NodeId)
 
 	case *mcsmv1.Envelope_SyncSpecs:
-		for _, sp := range b.SyncSpecs.Servers {
-			if _, err := a.applySpec(life, sp, true); err != nil { // el panel es la verdad al reconectar
-				a.log.Warn("aplicar spec de la sincronización", "id", sp.GetServerId(), "err", err)
-			}
-		}
-		for _, id := range b.SyncSpecs.RemovedIds {
-			if err := a.rec.Remove(life, id, false); err != nil {
-				a.log.Warn("eliminar servidor retirado", "id", id, "err", err)
-				continue
-			}
-			a.hub.Reset(id)
-		}
-		a.reconcileAll(life)
-		_ = send(ack(env.Id))
+		a.syncSpecs(env.Id, b.SyncSpecs, send)
 
 	case *mcsmv1.Envelope_ApplySpec:
-		if code, err := a.applySpec(life, b.ApplySpec.Server, false); err != nil {
+		if code, err := a.applySpec(life, b.ApplySpec.Server); err != nil {
 			_ = send(errMsg(env.Id, code, err))
 			return
 		}
@@ -438,13 +490,34 @@ func (a *App) reconcileAll(ctx context.Context) {
 		return
 	}
 	for _, sp := range specs {
-		id, slug := sp.ServerId, sp.Slug
-		a.dispatch(ctx, "rec:"+id, func() {
-			if err := a.rec.ReconcileTick(ctx, id); err != nil {
-				a.log.Warn("reconciliar", "server", slug, "err", err)
-			}
-		})
+		a.reconcileAsync(ctx, sp.ServerId, false)
 	}
+}
+
+// reconcileAsync reconcilia un servidor con el despachador por servidor. Con force se
+// salta el backoff (SyncSpecs); la marca se consume al ejecutar, así que sobrevive a la
+// coalescencia con un tick que ya estaba en curso.
+func (a *App) reconcileAsync(ctx context.Context, id string, force bool) {
+	if force {
+		a.fmu.Lock()
+		a.forced[id] = true
+		a.fmu.Unlock()
+	}
+	a.dispatch(ctx, "rec:"+id, func() {
+		a.fmu.Lock()
+		forced := a.forced[id]
+		delete(a.forced, id)
+		a.fmu.Unlock()
+		var err error
+		if forced {
+			err = a.rec.Reconcile(ctx, id)
+		} else {
+			err = a.rec.ReconcileTick(ctx, id)
+		}
+		if err != nil {
+			a.log.Warn("reconciliar", "server", id, "err", err)
+		}
+	})
 }
 
 // dispatch ejecuta fn en una goroutine con concurrencia acotada. Si ya hay una tarea
@@ -459,7 +532,9 @@ func (a *App) dispatch(ctx context.Context, key string, fn func()) {
 	f := &flight{}
 	a.flights[key] = f
 	a.fmu.Unlock()
+	a.bg.Add(1)
 	go func() {
+		defer a.bg.Done()
 		for {
 			select {
 			case a.sem <- struct{}{}:

@@ -133,24 +133,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, serverID string) error {
 // Apply guarda la spec y la reconcilia, todo bajo el lock del servidor. Una spec con
 // versión menor que la guardada (fuera de orden) se ignora y devuelve nil.
 func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
-	return r.apply(ctx, sp, false)
-}
-
-// ApplyForce es Apply sin la guarda de versión: la spec se acepta aunque sea más
-// antigua que la guardada. Es para SyncSpecs, donde el panel es la verdad al
-// reconectar (p. ej. tras restaurar su base de datos).
-func (r *Reconciler) ApplyForce(ctx context.Context, sp *mcsmv1.ServerSpec) error {
-	return r.apply(ctx, sp, true)
-}
-
-func (r *Reconciler) apply(ctx context.Context, sp *mcsmv1.ServerSpec, force bool) error {
 	unlock := r.lock(sp.ServerId)
 	defer unlock()
 	stored, err := r.st.GetSpec(sp.ServerId)
 	if err != nil {
 		return err
 	}
-	if !force && stored != nil && sp.Version < stored.Version {
+	if stored != nil && sp.Version < stored.Version {
 		r.log.Info("spec fuera de orden ignorada", "server", sp.Slug, "version", sp.Version, "guardada", stored.Version)
 		return nil
 	}
@@ -158,6 +147,33 @@ func (r *Reconciler) apply(ctx context.Context, sp *mcsmv1.ServerSpec, force boo
 		return err
 	}
 	return r.reconcileLocked(ctx, sp.ServerId)
+}
+
+// StoreForce guarda la spec sin guarda de versión y sin tocar Docker. Es para
+// SyncSpecs, donde el panel es la verdad al reconectar (p. ej. tras restaurar su base
+// de datos): la reconciliación va después, en segundo plano. Limpia el backoff para
+// que esa reconciliación (y el siguiente tick) no espere por fallos de otra spec.
+func (r *Reconciler) StoreForce(sp *mcsmv1.ServerSpec) error {
+	unlock := r.lock(sp.ServerId)
+	defer unlock()
+	if err := r.st.PutSpec(sp); err != nil {
+		return err
+	}
+	r.clearFailure(sp.ServerId)
+	return nil
+}
+
+// Forget borra la spec de un servidor retirado por el panel (bajo su lock, para que
+// ningún tick lo resucite) sin tocar Docker. El contenedor se para y se borra después
+// con Remove, que también funciona sin spec.
+func (r *Reconciler) Forget(serverID string) error {
+	unlock := r.lock(serverID)
+	defer unlock()
+	if err := r.st.DeleteSpec(serverID); err != nil {
+		return err
+	}
+	r.clearFailure(serverID)
+	return nil
 }
 
 func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err error) {
