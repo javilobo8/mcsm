@@ -585,3 +585,22 @@ func TestAdoptUndoesAliasWhenStoreFails(t *testing.T) {
 		t.Fatalf("el alias se deshace: %v %v", info.Networks, fake.Calls)
 	}
 }
+
+// m6: un contenedor en pausa se adopta «en marcha» y se deja como está: Docker no arranca uno en
+// pausa (habría que reanudarlo), así que el reconciliador no lo intenta.
+func TestAdoptPausedLeavesItPaused(t *testing.T) {
+	r, _, fake, rec, root := setup(t)
+	ctx := context.Background()
+	id := external(t, fake, "mc", filepath.Join(root, "alpha", "data"), true)
+	fake.Containers[id].State = "paused"
+	fake.Calls = nil
+	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
+		t.Fatal(err)
+	}
+	if calls(fake, "Start")+calls(fake, "Stop") != 0 {
+		t.Fatalf("calls = %v", fake.Calls)
+	}
+	if o := rec.get("a"); o == nil || o.State != "paused" || o.Error != "" {
+		t.Fatalf("observed = %+v", o)
+	}
+}

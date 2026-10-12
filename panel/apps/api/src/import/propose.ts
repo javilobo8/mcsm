@@ -337,7 +337,10 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   } else {
     slug = uniqueSlug(slugify(c.name || service), ctx.takenSlugs);
   }
-  const desiredState = c.state === "running" || c.state === "restarting" ? "running" : "stopped";
+  // En pausa cuenta como en marcha: «Adoptar sin parar» no lo para, y el agente no arranca ni reanuda
+  // un contenedor en pausa (eso lo hace quien lo pausó, con docker unpause).
+  const desiredState = c.state === "running" || c.state === "restarting" || c.state === "paused" ? "running" : "stopped";
+  if (c.state === "paused") warn("El contenedor está en pausa: se importa como «en marcha» y sigue en pausa hasta que lo reanudes (docker unpause); el panel no lo reanuda");
 
   const raw = {
     imageTag: imageTag(c.image, warn), type, version, memory, properties, env: passEnv,

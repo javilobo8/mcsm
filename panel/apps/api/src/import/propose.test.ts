@@ -200,3 +200,12 @@ describe("proposeImport: arreglos de la revisión", () => {
     expect(q.warnings.join(" ")).toMatch(/\/extra/);
   });
 });
+
+describe("proposeImport: estado", () => {
+  it("m6: un contenedor en pausa se propone en marcha (adoptarlo no lo para) y se avisa de que sigue en pausa", () => {
+    const p = proposeImport(cand({ state: "paused" }), ctx());
+    expect(p.desiredState).toBe("running");
+    expect(p.warnings.join(" ")).toMatch(/pausa/);
+    expect(proposeImport(cand({ state: "exited" }), ctx()).desiredState).toBe("stopped");
+  });
+});

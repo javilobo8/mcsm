@@ -296,7 +296,9 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 		existing = &docker.Container{ID: id, Name: build.Name, State: "created", Labels: build.Config.Labels}
 	}
 	switch {
-	case wantRunning && existing.State != "running" && existing.State != "restarting":
+	// En pausa cuenta como activo: Docker no arranca un contenedor en pausa (hay que reanudarlo) y el
+	// panel nunca pausa; se deja como está (plan-6, m6: un importado en pausa).
+	case wantRunning && !isActive(existing.State):
 		if err := r.eng.Start(ctx, existing.ID); err != nil {
 			return fmt.Errorf("arrancar: %w", err)
 		}

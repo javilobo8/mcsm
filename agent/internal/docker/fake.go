@@ -172,6 +172,9 @@ func (f *Fake) Start(_ context.Context, id string) error {
 	if c.State == "running" {
 		return nil
 	}
+	if c.State == "paused" { // como Docker
+		return fmt.Errorf("cannot start a paused container, try unpause instead: %w", cerrdefs.ErrConflict)
+	}
 	mine := hostPorts(c.HostConfig)
 	for _, o := range f.Containers {
 		if o.ID == id || o.State != "running" {
