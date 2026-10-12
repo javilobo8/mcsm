@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { applyNodeEvent, applyObservedEvent, bindLive, type LiveSource } from "./live";
 import type { NodeDto, ObservedDto, ServerDto, ServerMessage } from "./api";
 
@@ -79,6 +79,19 @@ describe("applyObservedEvent", () => {
       vi.advanceTimersByTime(5000);
       expect(spy).toHaveBeenCalledTimes(2);
     } finally { vi.useRealTimers(); }
+  });
+  it("servidor desconocido: el refetch que lanza la invalidación no se cancela y el servidor aparece", async () => {
+    const qc = new QueryClient();
+    qc.setQueryData(["servers"], [server("a")]);
+    let resolve!: (v: ServerDto[]) => void;
+    const obsr = new QueryObserver(qc, { queryKey: ["servers"], queryFn: () => new Promise<ServerDto[]>((r) => { resolve = r; }), staleTime: Infinity });
+    const unsub = obsr.subscribe(() => {});
+    applyObservedEvent(qc, observedMsg("nuevo"));
+    await new Promise((r) => setTimeout(r, 0));
+    resolve([server("a"), server("nuevo")]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(qc.getQueryData<ServerDto[]>(["servers"])!.map((s) => s.id)).toEqual(["a", "nuevo"]);
+    unsub();
   });
   it("invalida la lista si el servidor es desconocido (creado desde otra pestaña)", () => {
     const qc = new QueryClient();

@@ -35,7 +35,9 @@ export function applyObservedEvent(qc: QueryClient, msg: ObservedMsg): void {
   const list = qc.getQueryData<ServerDto[]>(["servers"]);
   if (list && !list.some((s) => s.id === msg.serverId)) {
     // Servidor creado desde otra pestaña/cliente: no hay datos para construirlo, se recarga (con límite).
+    // Nada que fusionar ni cancelar: cancelar aquí abortaría el propio refetch recién lanzado.
     invalidateServersThrottled(qc);
+    return;
   }
   const write = () => {
     qc.setQueryData<ServerDto[]>(["servers"], (old) => old?.map((s) => (s.id === msg.serverId ? withObserved(s, msg) : s)));
