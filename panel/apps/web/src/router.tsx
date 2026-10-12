@@ -5,6 +5,7 @@ import { LoginPage } from "./routes/login";
 import { DashboardPage } from "./routes/dashboard";
 import { NodesPage } from "./routes/nodes";
 import { NewServerPage } from "./routes/new-server";
+import { parseNewServerSearch } from "./lib/wizard";
 import { ServerPage } from "./routes/server";
 import { TemplatesPage } from "./routes/templates";
 import { EditTemplatePage, NewTemplatePage } from "./routes/template-edit";
@@ -36,7 +37,11 @@ const appRoute = createRoute({
 
 export const dashboardRoute = createRoute({ getParentRoute: () => appRoute, path: "/", component: DashboardPage });
 export const nodesRoute = createRoute({ getParentRoute: () => appRoute, path: "/nodes", component: NodesPage });
-export const newServerRoute = createRoute({ getParentRoute: () => appRoute, path: "/servers/new", component: NewServerPage });
+export const newServerRoute = createRoute({
+  getParentRoute: () => appRoute, path: "/servers/new", component: NewServerPage,
+  // plan-3: ?template=<id> abre el asistente con esa plantilla elegida.
+  validateSearch: parseNewServerSearch,
+});
 export const serverRoute = createRoute({ getParentRoute: () => appRoute, path: "/servers/$serverId", component: ServerPage });
 // ── plan-2 ──
 // ── plan-3 ──
