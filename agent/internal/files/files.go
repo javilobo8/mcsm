@@ -175,7 +175,11 @@ func (f *FS) resolve(rel string) (string, error) {
 			}
 			return "", fmt.Errorf("%w: %s", ErrNotFound, display(rel))
 		}
-		return "", fmt.Errorf("%w: %s", ErrInvalidPath, display(rel))
+		if errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.ENAMETOOLONG) {
+			return "", fmt.Errorf("%w: %s", ErrInvalidPath, display(rel))
+		}
+		// EACCES y demás: fallo de E/S del host, no una ruta mala del usuario.
+		return "", mapErr(err, rel)
 	}
 	if !within(root, real) {
 		return "", fmt.Errorf("%w: %s", ErrOutside, display(rel))
@@ -217,6 +221,8 @@ func (f *FS) open() (*os.Root, error) {
 	return r, nil
 }
 
+// La stdlib no exporta errPathEscapes (os/file.go): no hay forma tipada de reconocerlo y se compara
+// el texto; TestTOCTOUSwapToSymlinkIsRefused falla si cambia.
 // isEscape detecta el error de os.Root cuando una ruta sale de la raíz.
 func isEscape(err error) bool {
 	var pe *fs.PathError

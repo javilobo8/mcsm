@@ -675,6 +675,13 @@ export const AckSchema: GenMessage<Ack> = /*@__PURE__*/
  *   exists           ya existe                                         409
  *   unsupported      el agente no entiende el cuerpo: desactualizado   409
  *   too_large        demasiado grande                                  413
+ *   invalid_path     ruta con «..», caracteres de control o fichero no regular   400
+ *   path_outside     la ruta resuelta sale de /data del servidor        400
+ *   root             operación no permitida sobre la raíz               400
+ *   is_dir           era un fichero y es una carpeta                    400
+ *   not_dir          era una carpeta y es un fichero                    400
+ *   transfer_failed  subida/descarga fallida                            502
+ *   io_error         error de E/S del host                              502
  *   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
  *                    del agente o de Docker (spec §10)
  * Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),

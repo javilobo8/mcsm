@@ -18,6 +18,14 @@ export const AgentErrorCode = {
   PowerFailed: "power_failed",
   BadSpec: "bad_spec",
   RconFailed: "rcon_failed",
+  // Archivos.
+  InvalidPath: "invalid_path",
+  PathOutside: "path_outside",
+  IsDir: "is_dir",
+  NotDir: "not_dir",
+  Root: "root",
+  TransferFailed: "transfer_failed",
+  IoError: "io_error",
   // Solo en el panel: AgentError local de AgentConn, nunca viaja por el WS.
   Disconnected: "disconnected",
   Syncing: "syncing",

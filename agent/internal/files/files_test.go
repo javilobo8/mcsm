@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -237,5 +239,43 @@ func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDanglingSymlinkOutside(t *testing.T) {
+	fsys, root, outside := layout(t)
+	target := filepath.Join(outside, "no-existe")
+	must(t, os.Symlink(target, filepath.Join(root, "colgante")))
+	_, _, err := fsys.Read("colgante", 0)
+	if !errors.Is(err, ErrOutside) && !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Read = %v; quiero path_outside o not_found", err)
+	}
+	if strings.Contains(err.Error(), outside) {
+		t.Fatalf("el error revela la ruta del host: %v", err)
+	}
+}
+
+func TestSocketIsRejected(t *testing.T) {
+	fsys, root, _ := layout(t)
+	l, err := net.Listen("unix", filepath.Join(root, "s.sock"))
+	must(t, err)
+	defer l.Close()
+	if _, _, err := fsys.Read("s.sock", 0); err == nil {
+		t.Fatal("un socket no debe leerse")
+	}
+}
+
+func TestPermissionDeniedIsIOError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignora los permisos")
+	}
+	fsys, root, _ := layout(t)
+	locked := filepath.Join(root, "locked")
+	must(t, os.MkdirAll(filepath.Join(locked, "d"), 0o755))
+	must(t, os.Chmod(locked, 0))
+	t.Cleanup(func() { os.Chmod(locked, 0o755) })
+	_, _, err := fsys.Read("locked/d/x", 0)
+	if Code(err) != "io_error" {
+		t.Fatalf("Read = %v (%s); quiero io_error", err, Code(err))
 	}
 }
