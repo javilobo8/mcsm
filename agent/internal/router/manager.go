@@ -81,10 +81,14 @@ func New(eng docker.Engine, st Store, opts Options) *Manager {
 	return m
 }
 
-// hostSocketGID lee el grupo propietario del socket de Docker.
+// hostSocketGID lee el grupo propietario del socket de Docker y comprueba que ese grupo puede usarlo
+// (mc-router entra como 65532 con solo ese grupo).
 func hostSocketGID() (uint32, error) {
 	fi, err := os.Stat(HostSocket)
 	if err != nil {
+		return 0, err
+	}
+	if err := socketAccess(fi.Mode()); err != nil {
 		return 0, err
 	}
 	st, ok := fi.Sys().(*syscall.Stat_t)
@@ -92,6 +96,17 @@ func hostSocketGID() (uint32, error) {
 		return 0, errors.New("no se puede leer el propietario del socket")
 	}
 	return st.Gid, nil
+}
+
+// socketAccess: el router usa el socket con el grupo propietario, así que ese grupo necesita lectura
+// y escritura (srw-rw----, lo normal con el grupo docker). Un socket solo de root no le serviría: el
+// contenedor arrancaría «en marcha» sin ver ningún servidor. Docker rootless (uid/gid remapeados) no
+// se detecta aquí: está documentado.
+func socketAccess(mode fs.FileMode) error {
+	if mode.Perm()&0o060 != 0o060 {
+		return fmt.Errorf("el socket no da lectura y escritura a su grupo (permisos %v): mc-router no podría usarlo", mode.Perm())
+	}
+	return nil
 }
 
 // Apply valida y guarda la spec sin tocar Docker (el contenedor lo ajusta Reconcile).

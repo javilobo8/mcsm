@@ -28,8 +28,12 @@ func (a *App) onDemand(s spec.Spec) bool { return s.Router.Active() && a.router.
 // handleRouterApply guarda la spec del router y responde; el contenedor se ajusta en segundo plano.
 func (a *App) handleRouterApply(id uint64, req *mcsmv1.RouterApply, send func(*mcsmv1.Envelope) error) {
 	before := a.router.Autoscale()
-	if err := a.router.Apply(req.GetSpec()); err != nil {
+	if err := router.Validate(req.GetSpec()); err != nil {
 		_ = send(errMsg(id, errcode.InvalidRequest, err))
+		return
+	}
+	if err := a.router.Apply(req.GetSpec()); err != nil {
+		_ = send(errMsg(id, errcode.IOError, err)) // el store del agente (bbolt)
 		return
 	}
 	_ = send(ack(id))

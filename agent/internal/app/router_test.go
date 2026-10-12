@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -165,4 +166,22 @@ func TestLoadConfigRouterName(t *testing.T) {
 			t.Fatalf("MCSM_ROUTER_NAME=%q debe fallar", bad)
 		}
 	}
+}
+
+// failingRouterStore: el store del agente falla al guardar la spec del router (bbolt).
+type failingRouterStore struct{ *store.Store }
+
+func (failingRouterStore) PutRouterSpec(*mcsmv1.RouterSpec) error {
+	return errors.New("bbolt: disco lleno")
+}
+
+// m5: una spec inválida es invalid_request; un fallo del store, io_error.
+func TestRouterApplyStoreFailureIsIOError(t *testing.T) {
+	a, fake, st, s := newRouterApp(t)
+	a.router = router.New(fake, failingRouterStore{st}, router.Options{Network: "mcsm", SocketGID: func() (uint32, error) { return 967, nil }})
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_RouterApply{RouterApply: &mcsmv1.RouterApply{Spec: &mcsmv1.RouterSpec{HostPort: 25565}}}}, s.send)
+	if e := s.waitID(t, 9); e.GetError().GetCode() != errcode.IOError {
+		t.Fatalf("respuesta = %v", e)
+	}
+	waitBackground(t, a)
 }

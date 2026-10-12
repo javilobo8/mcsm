@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -358,5 +359,18 @@ func TestReconcileWritesAllowDenyFile(t *testing.T) {
 	}
 	if c := fake.Containers[m.Reconcile(ctx).ContainerId]; len(c.HostConfig.Binds) != 1 {
 		t.Fatalf("binds = %v", c.HostConfig.Binds)
+	}
+}
+
+// m11: con un socket sin lectura y escritura para su grupo (solo root, Docker rootless) mc-router no
+// vería nada aunque el contenedor arrancara: se dice en vez de desplegarlo.
+func TestSocketAccess(t *testing.T) {
+	if err := socketAccess(0o660 | fs.ModeSocket); err != nil {
+		t.Fatalf("srw-rw---- vale: %v", err)
+	}
+	for _, mode := range []fs.FileMode{0o600, 0o640, 0o620} {
+		if err := socketAccess(mode | fs.ModeSocket); err == nil || !strings.Contains(err.Error(), "su grupo") {
+			t.Fatalf("%v: err = %v", mode, err)
+		}
 	}
 }
