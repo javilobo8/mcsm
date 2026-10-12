@@ -4163,6 +4163,8 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 ```
 Si no hubo desviaciones, no hay commit.
 
+> **Notas de la verificación (ejecutada):** todos los criterios en verde con Docker real. Desviaciones del procedimiento: (1) en esta máquina el firewall descarta contenedor → host, así que el panel corrió como contenedor `mcsm-test-panel` en la red `mcsm` y el agente con `PANEL_URL=http://mcsm-test-panel:8080` en un override del compose; (2) `buf breaking` se invoca con `--against ".git#ref=<commit>"` (con `#commit=` y un SHA corto falla); (3) el `down -v` de limpieza necesita `DATA_ROOT` definido; (4) el recorrido por la UI (Step 6) no se hizo: el navegador de Claude bloquea `localhost:8080`, queda para el humano; (5) con `CF_API_KEY` la clave sí aparece en `docker inspect` del contenedor MC (inevitable, va en env) y en ningún otro sitio (consola reenviada, logs del agente y del panel, DTOs).
+
 ---
 
 ## Cierre del plan
