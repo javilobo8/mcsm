@@ -125,6 +125,41 @@ func TestExcluder(t *testing.T) {
 	}
 }
 
+// Los temporales de las escrituras atómicas de archivos (Plan 5) nunca entran en una copia,
+// sin que el usuario tenga que excluirlos: una copia durante una subida metería el temporal a
+// medias (hasta 4 GiB) y, al restaurarla, quedaría oculto e imposible de borrar desde la web.
+func TestExcluderAlwaysSkipsUploadTemps(t *testing.T) {
+	for _, patterns := range [][]string{nil, {"logs"}} {
+		e, err := NewExcluder(patterns)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, rel := range []string{".mcsm-tmp-0123456789abcdef", "plugins/foo/.mcsm-tmp-0123456789abcdef"} {
+			if !e.Excluded(rel) {
+				t.Errorf("%v: Excluded(%q) = false", patterns, rel)
+			}
+		}
+		if e.Excluded("world/level.dat") || e.Excluded("mcsm-tmp-notas.txt") {
+			t.Errorf("%v: excluye de más", patterns)
+		}
+	}
+	src := t.TempDir()
+	mustWrite(t, filepath.Join(src, "server.properties"), "motd=hola\n", 0o644)
+	mustWrite(t, filepath.Join(src, "mods", ".mcsm-tmp-0123456789abcdef"), "a medias", 0o600)
+	excl, err := NewExcluder(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	st, err := WriteArchive(context.Background(), src, &buf, excl, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Files != 1 {
+		t.Fatalf("ficheros = %d; el temporal no debe copiarse", st.Files)
+	}
+}
+
 func TestArchiveRoundTrip(t *testing.T) {
 	src := t.TempDir()
 	mustWrite(t, filepath.Join(src, "server.properties"), "motd=hola\n", 0o644)

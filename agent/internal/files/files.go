@@ -34,6 +34,10 @@ var maxEntries = 5000
 // tmpPrefix marca los temporales de las escrituras atómicas (se ocultan en los listados).
 const tmpPrefix = ".mcsm-tmp-"
 
+// TempGlob casa (path.Match) con el nombre de cualquier temporal de una escritura atómica.
+// Las copias de seguridad los excluyen siempre (backup.NewExcluder).
+const TempGlob = tmpPrefix + "*"
+
 var (
 	ErrInvalidPath   = errors.New("ruta inválida")
 	ErrOutside       = errors.New("la ruta sale del directorio del servidor")

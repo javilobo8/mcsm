@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+
+	"mcsm/agent/internal/files"
 )
 
 // Excluder decide qué rutas no entran en la copia. Las rutas son relativas a la raíz de
@@ -24,9 +26,11 @@ import (
 // Un directorio excluido se salta entero.
 type Excluder struct{ base, full []string }
 
-// NewExcluder valida los patrones (sintaxis de path.Match).
+// NewExcluder valida los patrones (sintaxis de path.Match). Además de ellos, excluye siempre
+// los temporales de las escrituras atómicas de archivos (files.TempGlob, a cualquier
+// profundidad): una copia durante una subida metería el temporal a medias.
 func NewExcluder(patterns []string) (*Excluder, error) {
-	e := &Excluder{}
+	e := &Excluder{base: []string{files.TempGlob}}
 	for _, p := range patterns {
 		p = strings.Trim(p, "/")
 		if p == "" {
