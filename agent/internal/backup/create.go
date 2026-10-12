@@ -32,6 +32,11 @@ const (
 // caliente: el mundo puede seguir con save-off hasta que alguien ejecute save-on.
 var ErrResume = errors.New("no se pudo reactivar el guardado automático (save-on); ejecuta save-on en la consola")
 
+// ErrServerStopped: el contenedor de una copia en caliente se paró, se reinició o cambió
+// durante la copia. Minecraft guarda el mundo al pararse aunque haya save-off, así que lo
+// leído puede mezclar dos estados: la copia no vale.
+var ErrServerStopped = errors.New("el servidor se paró o se reinició durante la copia")
+
 // ErrNoSpace: no hay (o deja de haber) espacio libre para la copia o la restauración sin
 // dejar el disco del nodo por debajo del margen con el que los servidores siguen guardando.
 var ErrNoSpace = errors.New("no hay espacio libre suficiente")
@@ -50,7 +55,11 @@ type CreateRequest struct {
 	BackupsDir  string // <DATA_ROOT>/<slug>/backups
 	Excludes    []string
 	// Rcon es nil si el servidor está parado: entonces se copia sin save-off.
-	Rcon     RconFunc
+	Rcon RconFunc
+	// Running (obligatorio con Rcon) comprueba que el contenedor sigue siendo el mismo que al
+	// empezar y que no se ha parado ni reiniciado; si no, devuelve un error que envuelve
+	// ErrServerStopped. Otro error: no se pudo comprobar.
+	Running  func(ctx context.Context) error
 	Now      func() time.Time
 	Sleep    func(ctx context.Context, d time.Duration) error
 	Progress func(pct uint32, msg string)
@@ -95,13 +104,22 @@ func Sleep(ctx context.Context, d time.Duration) error {
 // del save-off y con un contexto propio: ni un fallo ni una cancelación dejan el mundo sin
 // autoguardado, y se envía una sola vez. El fichero se escribe como .partial; su .json se
 // escribe antes de darle el nombre final (el inventario nunca ve una copia sin
-// metadatos); si algo falla, el parcial (y su .json) se borran (spec §10). Si la copia se
-// escribió pero save-on falla, devuelve los metadatos de la copia Y un error que envuelve
-// ErrResume; si fallan las dos cosas, el error envuelve ambas.
+// metadatos); si algo falla, el parcial (y su .json) se borran (spec §10) y no se devuelven
+// metadatos: una copia fallida nunca se confirma.
+//
+// En caliente, req.Running comprueba al cerrar el tar y otra vez antes del .json que el
+// contenedor es el mismo y no se paró ni se reinició: Minecraft guarda el mundo al pararse
+// aunque haya save-off, así que una parada durante la copia la invalida (ErrServerStopped).
+// Entonces save-on sobra (save-off no sobrevive al reinicio) y no se envía. Si save-on falla
+// con el servidor en marcha, la copia también se descarta y el error envuelve ErrResume; si
+// además falló la copia, el error envuelve ambas cosas.
 func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 	req.defaults()
 	if !spec.ValidSlug(req.Slug) {
 		return Meta{}, fmt.Errorf("slug inválido %q", req.Slug)
+	}
+	if req.Rcon != nil && req.Running == nil {
+		return Meta{}, errors.New("copia en caliente sin comprobación del contenedor")
 	}
 	excl, err := NewExcluder(req.Excludes)
 	if err != nil {
@@ -131,35 +149,14 @@ func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 		return Meta{}, err
 	}
 
-	resume := func() {}
+	var hot *hotCopy // nil en frío
 	if req.Rcon != nil {
-		var resumeErr error
-		resumed := false
-		resume = func() {
-			if resumed {
-				return
-			}
-			resumed = true
-			rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), resumeTimeout)
-			defer cancel()
-			out, rerr := req.Rcon(rctx, "save-on")
-			if rerr != nil {
-				req.Log("ATENCIÓN: save-on falló; el guardado automático puede seguir desactivado: " + rerr.Error())
-				resumeErr = fmt.Errorf("%w: %v", ErrResume, rerr)
-				return
-			}
-			logRcon(req.Log, "save-on", "guardado automático reactivado", out)
-		}
+		hot = &hotCopy{ctx: ctx, req: &req}
 		// Registrado ANTES de save-off: aunque save-off falle (quizá sí llegó al servidor),
 		// la copia falle o el job se cancele, save-on se envía con su propio contexto.
 		defer func() {
-			resume()
-			switch {
-			case resumeErr == nil:
-			case err == nil:
-				err = resumeErr
-			default:
-				err = fmt.Errorf("%w; además, %w", err, resumeErr)
+			if err = hot.finish(err); err != nil {
+				meta = Meta{}
 			}
 		}()
 		req.Progress(1, "Desactivando el guardado automático")
@@ -178,7 +175,7 @@ func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 	}
 
 	partial := final + partialExt
-	size, sum, stats, err := writeArchive(ctx, req, excl, partial, margin, resume)
+	size, sum, stats, err := writeArchive(ctx, req, excl, partial, margin, hot)
 	if err != nil {
 		return Meta{}, err
 	}
@@ -207,10 +204,11 @@ func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 	return meta, nil
 }
 
-// writeArchive escribe la copia en partial calculando su sha256 y la sincroniza. Llama a
-// archived en cuanto el tar está cerrado (ya no se leen los datos del mundo: es cuando
-// toca save-on). Si algo falla, borra el parcial.
-func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partial string, margin uint64, archived func()) (size int64, sum string, st ArchiveStats, err error) {
+// writeArchive escribe la copia en partial calculando su sha256 y la sincroniza. En
+// caliente, en cuanto el tar está cerrado (ya no se leen los datos del mundo) comprueba el
+// contenedor y envía save-on, y antes de volver lo comprueba otra vez. Si algo falla, borra
+// el parcial.
+func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partial string, margin uint64, hot *hotCopy) (size int64, sum string, st ArchiveStats, err error) {
 	f, err := os.OpenFile(partial, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
 	if err != nil {
 		return 0, "", st, fmt.Errorf("crear la copia: %w", err)
@@ -238,9 +236,11 @@ func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partia
 		req.Progress(pct, "Copiando datos")
 	})
 	if err != nil {
-		return 0, "", st, fmt.Errorf("copiar los datos: %w", err)
+		return 0, "", st, hot.explain(fmt.Errorf("copiar los datos: %w", err))
 	}
-	archived()
+	if err = hot.archived(); err != nil {
+		return 0, "", st, err
+	}
 	if err = f.Sync(); err != nil {
 		return 0, "", st, fmt.Errorf("guardar la copia en disco: %w", err)
 	}
@@ -252,7 +252,128 @@ func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partia
 	if err = f.Close(); err != nil {
 		return 0, "", st, fmt.Errorf("guardar la copia en disco: %w", err)
 	}
+	if err = hot.verify(); err != nil {
+		return 0, "", st, err
+	}
 	return info.Size(), hex.EncodeToString(h.Sum(nil)), st, nil
+}
+
+// hotCopy lleva el save-on y las comprobaciones del contenedor de una copia en caliente. Sus
+// métodos admiten nil (copia en frío) salvo resume y finish.
+type hotCopy struct {
+	ctx       context.Context
+	req       *CreateRequest
+	resumed   bool  // save-on ya enviado (o descartado por la parada): una sola vez
+	resumeErr error // save-on falló con el servidor en marcha
+	stopErr   error // el servidor se paró o se reinició durante la copia
+}
+
+// discarded añade a err que la copia no se ha guardado.
+func discarded(err error) error {
+	return fmt.Errorf("%w; la copia se ha descartado: vuelve a intentarlo", err)
+}
+
+// check pregunta si el contenedor sigue siendo el mismo y en marcha. Una parada o un reinicio
+// quedan en stopErr (y save-on sobra); si Docker no deja comprobarlo, la copia tampoco vale.
+func (h *hotCopy) check() error {
+	cctx, cancel := context.WithTimeout(h.ctx, resumeTimeout)
+	defer cancel()
+	err := h.req.Running(cctx)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrServerStopped):
+		if h.stopErr == nil {
+			h.stopErr = discarded(err)
+		}
+		return h.stopErr
+	default:
+		return discarded(fmt.Errorf("no se pudo comprobar que el servidor siguiera en marcha durante la copia (%w)", err))
+	}
+}
+
+// explain: el tar falló. Un fichero que cambió mientras se leía descarta la copia; en
+// caliente, si es porque el servidor se paró, el motivo es la parada (el fichero va al log).
+func (h *hotCopy) explain(err error) error {
+	if h != nil && h.ctx.Err() == nil {
+		if serr := h.check(); errors.Is(serr, ErrServerStopped) {
+			h.req.Log("aviso: " + err.Error())
+			if errors.Is(err, ErrSourceChanged) {
+				return serr
+			}
+			return err
+		}
+	}
+	if errors.Is(err, ErrSourceChanged) {
+		return discarded(err)
+	}
+	return err
+}
+
+// archived: el tar está cerrado. Comprueba que el servidor siguió en marcha y reactiva el
+// guardado; si save-on no llega porque se acaba de parar, el motivo es la parada.
+func (h *hotCopy) archived() error {
+	if h == nil {
+		return nil
+	}
+	if err := h.check(); err != nil {
+		return err
+	}
+	if err := h.resume(); err != nil {
+		return discarded(err)
+	}
+	return h.stopErr
+}
+
+// verify: justo antes de confirmar (.json y nombre final), otra vez: una parada que empezó
+// durante el tar puede no haber terminado al cerrarlo (Minecraft sigue guardando).
+func (h *hotCopy) verify() error {
+	if h == nil {
+		return nil
+	}
+	return h.check()
+}
+
+// resume envía save-on una sola vez, con su propio contexto (también con el job cancelado).
+// Si el servidor se paró o se reinició, sobra: vuelve a arrancar con el guardado activado. Si
+// falla con el servidor en marcha, lo avisa y devuelve un error que envuelve ErrResume.
+func (h *hotCopy) resume() error {
+	if h.resumed {
+		return h.resumeErr
+	}
+	h.resumed = true
+	if h.stopErr != nil {
+		h.req.Log("save-on no hace falta: el servidor se paró o se reinició y vuelve a arrancar con el guardado automático activado")
+		return nil
+	}
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(h.ctx), resumeTimeout)
+	defer cancel()
+	out, err := h.req.Rcon(rctx, "save-on")
+	if err == nil {
+		logRcon(h.req.Log, "save-on", "guardado automático reactivado", out)
+		return nil
+	}
+	if errors.Is(h.check(), ErrServerStopped) {
+		h.req.Log("save-on no llegó: el servidor se paró o se reinició y vuelve a arrancar con el guardado automático activado")
+		return nil
+	}
+	h.req.Log("ATENCIÓN: save-on falló; el guardado automático puede seguir desactivado: " + err.Error())
+	h.resumeErr = fmt.Errorf("%w: %v", ErrResume, err)
+	return h.resumeErr
+}
+
+// finish va en el defer de Create: save-on sale aunque save-off, la copia o el job fallen, y
+// su fallo se cuenta una sola vez en el error.
+func (h *hotCopy) finish(err error) error {
+	rerr := h.resume()
+	switch {
+	case rerr == nil || errors.Is(err, ErrResume):
+		return err
+	case err == nil:
+		return rerr
+	default:
+		return fmt.Errorf("%w; además, %w", err, rerr)
+	}
 }
 
 // backupSpace comprueba, antes de tocar el servidor, que cabe la copia: la estimación (la

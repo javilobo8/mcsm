@@ -389,6 +389,74 @@ func TestBackupNowOnRunningServer(t *testing.T) {
 	}
 }
 
+// assertDiscarded: la copia en caliente falló porque el contenedor se paró o se reinició
+// durante ella. El job lo dice sin culpar a save-on, no hay BackupCreated, no queda nada en
+// disco (ni .partial ni .json) y el inventario no la lista.
+func assertDiscarded(t *testing.T, e *backupEnv, jobID, detail string) {
+	t.Helper()
+	fin := e.col.final(jobID)
+	if fin == nil || fin.Status != jobFailed {
+		t.Fatalf("final = %+v", fin)
+	}
+	for _, want := range []string{"se paró o se reinició durante la copia", detail, "descartado"} {
+		if !strings.Contains(fin.Message, want) {
+			t.Fatalf("mensaje = %q; falta %q", fin.Message, want)
+		}
+	}
+	if strings.Contains(fin.Message, "save-on") {
+		t.Fatalf("el mensaje no debe pedir save-on: %q", fin.Message)
+	}
+	if cr := e.col.created(); len(cr) != 0 {
+		t.Fatalf("una copia descartada no se anuncia: %+v", cr)
+	}
+	if ents, _ := os.ReadDir(e.backupsDir()); len(ents) != 0 {
+		t.Fatalf("quedan ficheros en backups: %v", ents)
+	}
+	if got := strings.Join(e.rc.list(), ","); got != "save-off,save-all flush" {
+		t.Fatalf("RCON = %s; sin save-on: el servidor arranca con el guardado activado", got)
+	}
+	e.handle(90, &mcsmv1.BackupList{})
+	e.settle(t)
+	if inv := e.col.inventory(); inv == nil || len(inv.Backups) != 0 {
+		t.Fatalf("inventario = %+v", inv)
+	}
+}
+
+// Caso de la E2E del plan 8: mc-router (o docker stop, o un fallo) para el contenedor durante
+// una copia en caliente y Minecraft guarda el mundo al pararse, con save-off o sin él.
+func TestBackupDiscardedWhenServerStopsDuringCopy(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.rc.onCmd = func(cmd string) {
+		if cmd == "save-all flush" { // tras save-off: la parada cae en mitad de la copia
+			e.stopContainer(t)
+			e.writeLevel(t, "LEVEL-GUARDADO-AL-PARAR")
+		}
+	}
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	assertDiscarded(t, e, "job-1", "ya no está en marcha")
+	if e.a.rec.Held("a") {
+		t.Fatal("la reserva debe liberarse")
+	}
+}
+
+// Parado y vuelto a arrancar (restart policy, mc-router que lo despierta): mismo contenedor,
+// otro StartedAt. Lo leído puede mezclar el mundo de antes y el de después.
+func TestBackupDiscardedWhenServerRestartsDuringCopy(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.rc.onCmd = func(cmd string) {
+		if cmd == "save-all flush" {
+			e.stopContainer(t)
+			if err := e.fake.Start(context.Background(), e.a.rec.ContainerID(context.Background(), "a")); err != nil {
+				t.Error(err)
+			}
+		}
+	}
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	assertDiscarded(t, e, "job-1", "se reinició")
+}
+
 func TestBackupNowOnStoppedServerCopiesDirectly(t *testing.T) {
 	e := newBackupEnv(t, specJSON)
 	e.stopContainer(t)

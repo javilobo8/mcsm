@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +59,8 @@ func baseReq(dataDir, backupsDir string) CreateRequest {
 		DataDir: dataDir, BackupsDir: backupsDir, Excludes: []string{"logs"},
 		Now:   func() time.Time { return t0 },
 		Sleep: func(context.Context, time.Duration) error { return nil },
+		// Solo cuenta en caliente (con Rcon): el contenedor sigue siendo el mismo y en marcha.
+		Running: func(context.Context) error { return nil },
 	}
 }
 
@@ -178,18 +182,234 @@ func TestCreateFailureMidCopyRemovesPartial(t *testing.T) {
 	assertNoArchives(t, backupsDir)
 }
 
-func TestCreateSaveOnFailureKeepsTheBackup(t *testing.T) {
+// save-on falla con el servidor en marcha: el job falla, así que la copia no se confirma
+// (spec §10: un backup fallido borra su parcial); el error pide ejecutar save-on.
+func TestCreateSaveOnFailureDiscardsTheBackup(t *testing.T) {
 	dataDir, backupsDir := newWorld(t)
 	rc := &fakeRcon{fail: map[string]error{"save-on": errors.New("rcon: conectar: connection refused")}}
 	req := baseReq(dataDir, backupsDir)
 	req.Rcon = rc.run
+	var logs []string
+	req.Log = func(l string) { logs = append(logs, l) }
 	meta, err := Create(context.Background(), req)
-	if !errors.Is(err, ErrResume) {
+	if !errors.Is(err, ErrResume) || !strings.Contains(err.Error(), "descartado") {
 		t.Fatalf("err = %v", err)
 	}
-	if meta.Filename == "" || !exists(filepath.Join(backupsDir, meta.Filename)) {
-		t.Fatal("la copia escrita se conserva aunque save-on falle")
+	if strings.Count(err.Error(), "save-on") != 2 { // «(save-on); ejecuta save-on»: una sola vez el motivo
+		t.Fatalf("el fallo de save-on se cuenta una vez: %q", err)
 	}
+	if meta.Filename != "" {
+		t.Fatalf("una copia fallida no devuelve metadatos: %+v", meta)
+	}
+	if !strings.Contains(strings.Join(logs, "\n"), "ATENCIÓN: save-on falló") {
+		t.Fatalf("el log debe avisar del save-on: %v", logs)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// stopped es lo que devuelve la comprobación del contenedor si se paró durante la copia.
+var stopped = fmt.Errorf("%w (su contenedor ya no está en marcha)", ErrServerStopped)
+
+// runningSeq devuelve una comprobación que responde con results en orden (y luego el último).
+func runningSeq(calls *[]string, results ...error) func(context.Context) error {
+	return func(ctx context.Context) error {
+		*calls = append(*calls, "check")
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		r := results[0]
+		if len(results) > 1 {
+			results = results[1:]
+		}
+		return r
+	}
+}
+
+// assertStoppedErr: el mensaje dice que el servidor se paró y que la copia se descartó, y no
+// menciona save-on (un servidor parado vuelve a arrancar con el guardado activado).
+func assertStoppedErr(t *testing.T, err error, logs []string) {
+	t.Helper()
+	if !errors.Is(err, ErrServerStopped) || errors.Is(err, ErrResume) {
+		t.Fatalf("err = %v; esperaba ErrServerStopped sin ErrResume", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "se paró") || !strings.Contains(msg, "descartado") || strings.Contains(msg, "save-on") {
+		t.Fatalf("mensaje = %q", msg)
+	}
+	if strings.Contains(strings.Join(logs, "\n"), "ATENCIÓN") {
+		t.Fatalf("sin avisos falsos de save-on en el log: %v", logs)
+	}
+}
+
+// El contenedor se para durante el tar (mc-router por inactividad, docker stop, un fallo):
+// Minecraft guarda al parar aunque haya save-off, así que la copia no vale. Se descarta sin
+// .json ni nombre final, y save-on no se envía (no hay servidor al que enviarlo).
+func TestCreateServerStoppedDuringCopyDiscards(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	var calls []string
+	req.Running = runningSeq(&calls, stopped)
+	var logs []string
+	req.Log = func(l string) { logs = append(logs, l) }
+	meta, err := Create(context.Background(), req)
+	assertStoppedErr(t, err, logs)
+	if meta.Filename != "" {
+		t.Fatalf("meta = %+v", meta)
+	}
+	if got := strings.Join(rc.cmds, ","); got != "save-off,save-all flush" {
+		t.Fatalf("comandos = %s; sin save-on a un servidor parado", got)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// La comprobación al cerrar el tar pasa, pero el contenedor ya no está antes del .json (la
+// parada empezó durante el tar y Minecraft seguía guardando): se descarta igual.
+func TestCreateServerStoppedBeforeCommitDiscards(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	var calls []string
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = func(_ context.Context, cmd string) (string, error) { calls = append(calls, cmd); return "", nil }
+	req.Running = runningSeq(&calls, nil, stopped)
+	var logs []string
+	req.Log = func(l string) { logs = append(logs, l) }
+	_, err := Create(context.Background(), req)
+	assertStoppedErr(t, err, logs)
+	if got := strings.Join(calls, ","); got != "save-off,save-all flush,check,save-on,check" {
+		t.Fatalf("orden = %s; esperado: comprobar al cerrar el tar, save-on, comprobar antes de confirmar", got)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// save-on falla porque el servidor se acaba de parar: el motivo es la parada, no save-on.
+func TestCreateSaveOnFailsBecauseServerStopped(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{fail: map[string]error{"save-on": errors.New("rcon: conectar: lookup mcsm-survival: server misbehaving")}}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	var calls []string
+	req.Running = runningSeq(&calls, nil, stopped)
+	var logs []string
+	req.Log = func(l string) { logs = append(logs, l) }
+	_, err := Create(context.Background(), req)
+	assertStoppedErr(t, err, logs)
+	assertNoArchives(t, backupsDir)
+}
+
+// Si Docker no deja comprobar el contenedor, la copia no se da por buena; save-on sale igual.
+func TestCreateCannotCheckContainerDiscards(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	var calls []string
+	req.Running = runningSeq(&calls, errors.New("docker: i/o timeout"))
+	_, err := Create(context.Background(), req)
+	if err == nil || errors.Is(err, ErrServerStopped) || !strings.Contains(err.Error(), "no se pudo comprobar") ||
+		!strings.Contains(err.Error(), "docker: i/o timeout") || !strings.Contains(err.Error(), "descartado") {
+		t.Fatalf("err = %v", err)
+	}
+	if rc.cmds[len(rc.cmds)-1] != "save-on" {
+		t.Fatalf("comandos = %v", rc.cmds)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// Una copia en caliente sin comprobación del contenedor es un error de programación.
+func TestCreateHotCopyRequiresRunningCheck(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	req.Running = nil
+	if _, err := Create(context.Background(), req); err == nil {
+		t.Fatal("debe fallar")
+	}
+	if len(rc.cmds) != 0 {
+		t.Fatalf("sin tocar el servidor: %v", rc.cmds)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// growWhileCopying añade a dataDir una región grande e incompresible y hace que crezca
+// mientras el tar la lee (en la primera escritura de la copia, que vigila el espacio libre).
+func growWhileCopying(t *testing.T, req *CreateRequest) {
+	t.Helper()
+	noise := make([]byte, 4<<20)
+	rng := rand.New(rand.NewPCG(5, 6))
+	for i := range noise {
+		noise[i] = byte(rng.Uint32())
+	}
+	big := filepath.Join(req.DataDir, "world", "region", "r.0.0.mca")
+	mustWrite(t, big, string(noise), 0o644)
+	calls := 0
+	req.FreeSpace = func(string) (uint64, error) {
+		calls++
+		if calls == 2 { // 1: antes de save-off; 2: primera escritura de la copia
+			f, err := os.OpenFile(big, os.O_WRONLY|os.O_APPEND, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			if _, err := f.WriteString("chunk guardado al parar"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return 1 << 50, nil
+	}
+}
+
+// El caso de la E2E: el servidor se para durante el tar y Minecraft reescribe una región
+// mientras se lee. El mensaje cuenta la parada (la causa) y el log, el fichero.
+func TestCreateFileChangedBecauseServerStopped(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	growWhileCopying(t, &req)
+	var calls []string
+	req.Running = runningSeq(&calls, stopped)
+	var logs []string
+	req.Log = func(l string) { logs = append(logs, l) }
+	_, err := Create(context.Background(), req)
+	assertStoppedErr(t, err, logs)
+	if !strings.Contains(strings.Join(logs, "\n"), "world/region/r.0.0.mca") {
+		t.Fatalf("el log debe nombrar el fichero que cambió: %v", logs)
+	}
+	if got := strings.Join(rc.cmds, ","); got != "save-off,save-all flush" {
+		t.Fatalf("comandos = %s", got)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// Un fichero cambia durante la copia con el servidor en marcha: la copia se descarta con el
+// nombre del fichero y save-on sale igual.
+func TestCreateFileChangedWhileRunningDiscards(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	rc := &fakeRcon{}
+	req := baseReq(dataDir, backupsDir)
+	req.Rcon = rc.run
+	growWhileCopying(t, &req)
+	_, err := Create(context.Background(), req)
+	if !errors.Is(err, ErrSourceChanged) || !strings.Contains(err.Error(), "world/region/r.0.0.mca") || !strings.Contains(err.Error(), "descartado") {
+		t.Fatalf("err = %v", err)
+	}
+	if rc.cmds[len(rc.cmds)-1] != "save-on" {
+		t.Fatalf("comandos = %v", rc.cmds)
+	}
+	assertNoArchives(t, backupsDir)
+}
+
+// En frío nadie escribe (servidor parado y reservado); si algo cambia igualmente, tampoco vale.
+func TestCreateColdFileChangedDiscards(t *testing.T) {
+	dataDir, backupsDir := newWorld(t)
+	req := baseReq(dataDir, backupsDir) // Rcon nil
+	growWhileCopying(t, &req)
+	if _, err := Create(context.Background(), req); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("err = %v", err)
+	}
+	assertNoArchives(t, backupsDir)
 }
 
 func TestCreateStoppedServerSkipsRcon(t *testing.T) {

@@ -664,11 +664,11 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 		DataDir: t.dataDir, BackupsDir: t.backupsDir, Excludes: t.spec.BackupExcludes(),
 		Now: b.clock.Now, Sleep: b.sleep, Progress: j.Progress, Log: j.Log, FreeSpace: b.freeSpace,
 	}
-	running, err := b.isRunning(ctx, serverID)
+	live, err := b.runningContainer(ctx, serverID)
 	if err != nil {
 		return backup.Meta{}, err
 	}
-	if running {
+	if live != nil {
 		j.Log("servidor en marcha: copia en caliente con save-off / save-all flush / save-on")
 		host, pass := spec.ContainerName(t.slug), t.spec.RconPassword
 		req.Rcon = func(ctx context.Context, cmd string) (string, error) {
@@ -676,6 +676,7 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 			defer cancel()
 			return b.a.rcon(cctx, host, uint16(spec.RconPort), pass, cmd)
 		}
+		req.Running = func(ctx context.Context) error { return b.stillRunning(ctx, serverID, live) }
 	} else {
 		j.Log("servidor parado: copia directa")
 		// plan-8: sin contenedor, mc-router no puede despertarlo a mitad de una copia en frío.
@@ -686,32 +687,69 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 		}
 	}
 	meta, err := backup.Create(ctx, req)
-	if meta.Filename != "" { // también con ErrResume: la copia está escrita
-		b.announce(meta, serverID, j.ID())
-		b.prune(t)
+	if err != nil { // una copia fallida no queda en disco: ni se anuncia ni se poda
+		return backup.Meta{}, err
 	}
-	return meta, err
+	b.announce(meta, serverID, j.ID())
+	b.prune(t)
+	return meta, nil
 }
 
 // isRunning dice si el contenedor del servidor está en marcha. Si Docker no deja comprobarlo
 // devuelve error, nunca «parado»: una copia lo tomaría por fría (sin save-off) y una
 // restauración intercambiaría data con el servidor escribiendo.
 func (b *backupService) isRunning(ctx context.Context, serverID string) (bool, error) {
+	ins, err := b.runningContainer(ctx, serverID)
+	return ins != nil, err
+}
+
+// runningContainer devuelve la inspección del contenedor del servidor si está en marcha, o nil
+// si no existe o está parado. Mismos errores que isRunning.
+func (b *backupService) runningContainer(ctx context.Context, serverID string) (*docker.Inspect, error) {
 	c, err := b.a.rec.Container(ctx, serverID)
 	if err != nil {
-		return false, errCheckContainer(err)
+		return nil, errCheckContainer(err)
 	}
 	if c == nil {
-		return false, nil
+		return nil, nil
 	}
 	ins, err := b.a.eng.Inspect(ctx, c.ID)
 	if errors.Is(err, docker.ErrNotFound) {
-		return false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return false, errCheckContainer(err)
+		return nil, errCheckContainer(err)
 	}
-	return ins.Running, nil
+	if !ins.Running {
+		return nil, nil
+	}
+	return ins, nil
+}
+
+// stillRunning comprueba durante una copia en caliente que el contenedor del servidor es el
+// mismo que al empezar (id) y que no se ha parado ni reiniciado desde entonces (StartedAt):
+// mc-router lo para por inactividad sin mirar la reserva, y Minecraft guarda al pararse aunque
+// haya save-off. Una parada envuelve backup.ErrServerStopped; un fallo de Docker, no.
+func (b *backupService) stillRunning(ctx context.Context, serverID string, was *docker.Inspect) error {
+	c, err := b.a.rec.Container(ctx, serverID)
+	if err != nil {
+		return fmt.Errorf("Docker: %w", err)
+	}
+	if c == nil || c.ID != was.ID {
+		return fmt.Errorf("%w (su contenedor ya no es el mismo)", backup.ErrServerStopped)
+	}
+	ins, err := b.a.eng.Inspect(ctx, c.ID)
+	switch {
+	case errors.Is(err, docker.ErrNotFound):
+		return fmt.Errorf("%w (su contenedor ya no existe)", backup.ErrServerStopped)
+	case err != nil:
+		return fmt.Errorf("Docker: %w", err)
+	case !ins.Running:
+		return fmt.Errorf("%w (su contenedor ya no está en marcha)", backup.ErrServerStopped)
+	case !ins.StartedAt.Equal(was.StartedAt):
+		return fmt.Errorf("%w (su contenedor se reinició)", backup.ErrServerStopped)
+	}
+	return nil
 }
 
 func errCheckContainer(err error) error {
