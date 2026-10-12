@@ -181,11 +181,6 @@ message Error {
 // ── plan-2 ──
 // ── plan-3 ──
 // ── plan-4 ──
-// ── plan-5 ──
-// ── plan-6 ──
-// ── plan-7 ──
-// ── plan-8 ──
-// ── plan-9 ──
 
 // Copias de seguridad (spec §6.5) y jobs largos del agente (spec §5.3–5.4).
 
@@ -292,3 +287,8 @@ message JobRecord {
   int64 started_unix_ms = 8;
   int64 finished_unix_ms = 9;
 }
+// ── plan-5 ──
+// ── plan-6 ──
+// ── plan-7 ──
+// ── plan-8 ──
+// ── plan-9 ──
