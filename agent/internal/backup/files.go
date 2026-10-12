@@ -53,6 +53,7 @@ type Meta struct {
 	FinishedAt  time.Time `json:"finishedAt"`
 	Excludes    []string  `json:"excludes,omitempty"`
 	Files       int       `json:"files,omitempty"`
+	DataBytes   int64     `json:"dataBytes,omitempty"` // contenido sin comprimir: lo que ocupará al restaurarse
 }
 
 // Dir es el directorio de copias de un servidor: <dataRoot>/<slug>/backups.
