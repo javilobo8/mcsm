@@ -58,6 +58,10 @@ type FakeContainer struct {
 	Config     *container.Config
 	HostConfig *container.HostConfig
 	Net        *network.NetworkingConfig
+	// startFailed: un Start falló por el puerto. Como Docker 29.7.2, los Start siguientes
+	// funcionan pero no publican los puertos (unpublished), aunque se pare y se arranque.
+	startFailed bool
+	unpublished bool
 }
 
 func NewFake() *Fake {
@@ -112,7 +116,8 @@ func (f *Fake) Inspect(_ context.Context, id string) (*Inspect, error) {
 	if c.Config != nil {
 		labels = copyLabels(c.Config.Labels)
 	}
-	return &Inspect{ID: c.ID, Name: c.Name, State: c.State, Running: c.State == "running", Health: c.Health, ExitCode: c.ExitCode, StartedAt: c.StartedAt, Labels: labels}, nil
+	return &Inspect{ID: c.ID, Name: c.Name, State: c.State, Running: c.State == "running", Health: c.Health, ExitCode: c.ExitCode, StartedAt: c.StartedAt, Labels: labels,
+		PortsMissing: c.State == "running" && c.unpublished && len(hostPorts(c.HostConfig)) > 0}, nil
 }
 
 func (f *Fake) Create(_ context.Context, name string, cfg *container.Config, host *container.HostConfig, net *network.NetworkingConfig) (string, error) {
@@ -152,6 +157,8 @@ func hostPorts(hc *container.HostConfig) map[string]bool {
 // Start imita a Docker: sobre un contenedor ya running es no-op, y los puertos de
 // host se enlazan aquí (no en Create), así que una colisión con otro contenedor
 // running falla con "port is already allocated" dejando el contenedor en created.
+// Como Docker 29.7.2, tras un Start fallido por el puerto los siguientes arrancan sin
+// publicar los puertos (Inspect.PortsMissing) y sin ocuparlos.
 func (f *Fake) Start(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -167,17 +174,22 @@ func (f *Fake) Start(_ context.Context, id string) error {
 		return nil
 	}
 	mine := hostPorts(c.HostConfig)
+	if c.startFailed {
+		mine = nil // no publicará nada: no compite por los puertos
+	}
 	for _, o := range f.Containers {
-		if o.ID == id || o.State != "running" {
+		if o.ID == id || o.State != "running" || o.unpublished {
 			continue
 		}
 		for p := range hostPorts(o.HostConfig) {
 			if mine[p] {
+				c.startFailed = true
 				return fmt.Errorf("driver failed programming external connectivity: Bind for 0.0.0.0:%s failed: port is already allocated", p)
 			}
 		}
 	}
 	c.State, c.StartedAt, c.Health = "running", time.Now(), "starting"
+	c.unpublished = c.startFailed
 	return nil
 }
 

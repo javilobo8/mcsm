@@ -100,6 +100,13 @@ func (m *Moby) Inspect(ctx context.Context, id string) (*Inspect, error) {
 			out.StartedAt = t
 		}
 	}
+	if out.Running && c.HostConfig != nil {
+		var published network.PortMap
+		if c.NetworkSettings != nil {
+			published = c.NetworkSettings.Ports
+		}
+		out.PortsMissing = PortsMissing(c.HostConfig.PortBindings, published)
+	}
 	return out, nil
 }
 

@@ -29,6 +29,27 @@ type Inspect struct {
 	ExitCode  int
 	StartedAt time.Time
 	Labels    map[string]string
+	// PortsMissing: en marcha sin publicar los puertos que pide (PortBindings con puerto de host y
+	// NetworkSettings.Ports sin ellos). Docker 29.7.2 arranca así, y así se queda aunque se pare y
+	// se vuelva a arrancar, un contenedor cuyo arranque anterior falló por el puerto del host: hay
+	// que borrarlo y crearlo de nuevo (plan-8).
+	PortsMissing bool
+}
+
+// PortsMissing indica si falta en published algún puerto que want publica en el host. Pura.
+func PortsMissing(want, published network.PortMap) bool {
+	for p, binds := range want {
+		needs := false
+		for _, b := range binds {
+			if b.HostPort != "" {
+				needs = true
+			}
+		}
+		if needs && len(published[p]) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // Stats es una lectura puntual de `docker stats` (una sola muestra, sin la previa:
