@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { PowerActionType } from "@mcsm/proto";
 import {
-  canonicalJson, formatZodError, mergeSpecPatch, specInputSchema, specSchema, slugify,
+  canonicalJson, formatZodError, mergeSpecPatch, specInputSchema, usesCurseForge, specSchema, slugify,
   type ServerCreateInput, type Spec, type SpecInput, type SpecPatch, type PowerActionName,
 } from "@mcsm/shared";
 import type { z } from "zod";
@@ -79,10 +79,21 @@ export class ServersService {
     const conn = this.app.agents.get(row.node_id);
     if (!conn) return; // se entregará en el próximo SyncSpecs
     try {
-      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row) } }, 120_000);
+      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row, { curseforgeApiKey: this.app.curseforge.get() }) } }, 120_000);
     } catch (e) {
       this.app.log.warn({ serverId: row.id, err: e }, "ApplySpec sin éxito; el agente lo reintentará");
     }
+  }
+
+  /** Reaplica (versión +1, misma spec) los servidores que usan CurseForge. Devuelve cuántos. */
+  reapplyCurseForge(): number {
+    let n = 0;
+    for (const row of this.app.servers.list()) {
+      if (!usesCurseForge(JSON.parse(row.spec) as Spec)) continue;
+      void this.push(this.app.servers.bumpVersion(row.id));
+      n++;
+    }
+    return n;
   }
 
   async create(input: ServerCreateInput) {

@@ -1,3 +1,5 @@
+import { CurseForgeKeyRepo } from "./curseforge/repo.js";
+import { curseforgeRoutes } from "./curseforge/routes.js";
 import { EventEmitter } from "node:events";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
@@ -45,6 +47,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(realtimeRoutes);
   // ── plan-2 ──
   // ── plan-3 ──
+  app.decorate("curseforge", new CurseForgeKeyRepo(opts.db));
+  await app.register(curseforgeRoutes);
   // ── plan-4 ──
   // ── plan-5 ──
   // ── plan-6 ──
