@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -182,6 +183,11 @@ func (a *App) onObserved(serverID string, obs *mcsmv1.Observed) {
 	}}})
 }
 
+// validUTF8 sanea texto que viene del contenedor: proto3 rechaza string con UTF-8
+// inválido (el truncado por bytes puede partir una runa, o la salida no es UTF-8) y
+// proto.Marshal fallaría, perdiendo el mensaje en silencio.
+func validUTF8(s string) string { return strings.ToValidUTF8(s, "\uFFFD") }
+
 func ack(id uint64) *mcsmv1.Envelope {
 	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_Ack{Ack: &mcsmv1.Ack{}}}
 }
@@ -319,7 +325,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 			_ = send(errMsg(env.Id, "rcon_failed", err))
 			return
 		}
-		_ = send(&mcsmv1.Envelope{Id: env.Id, Body: &mcsmv1.Envelope_CommandResult{CommandResult: &mcsmv1.CommandResult{Output: out}}})
+		_ = send(&mcsmv1.Envelope{Id: env.Id, Body: &mcsmv1.Envelope_CommandResult{CommandResult: &mcsmv1.CommandResult{Output: validUTF8(out)}}})
 
 	case *mcsmv1.Envelope_SubscribeLogs:
 		if sp, err := a.st.GetSpec(b.SubscribeLogs.ServerId); err != nil || sp == nil {
@@ -412,7 +418,7 @@ func (a *App) pumpLogs(ctx context.Context, streamID uint64, serverID string, su
 				return
 			}
 			_ = send(&mcsmv1.Envelope{StreamId: streamID, Body: &mcsmv1.Envelope_LogLine{LogLine: &mcsmv1.LogLine{
-				ServerId: serverID, TsUnixMs: line.TS.UnixMilli(), Line: line.Text,
+				ServerId: serverID, TsUnixMs: line.TS.UnixMilli(), Line: validUTF8(line.Text),
 			}}})
 		}
 	}

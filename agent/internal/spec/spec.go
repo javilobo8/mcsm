@@ -28,6 +28,23 @@ const (
 	Image    = "itzg/minecraft-server"
 	GamePort = 25565
 	RconPort = 25575
+
+	// PidsLimit acota procesos e hilos del contenedor (los servidores con mods usan
+	// cientos de hilos y pids los cuenta): una fork bomb no agota el nodo.
+	PidsLimit = 4096
+	// memHeadroom es el margen sobre `memory` (heap de la JVM) cuando no hay memLimit:
+	// el límite por defecto es memory + 1G (spec §4.1).
+	memHeadroom = 1 << 30
+)
+
+// Endurecimiento del contenedor. CapAdd es el mínimo con el que el entrypoint de itzg
+// (chown de /data y paso a uid 1000 con no-new-privileges) arranca y llega a healthy;
+// probado contra la imagen real. Las funciones de itzg que necesitan NET_RAW/NET_ADMIN
+// (autopause/autostop con knockd) no están soportadas.
+var (
+	securityOpt = []string{"no-new-privileges:true"}
+	capDrop     = []string{"ALL"}
+	capAdd      = []string{"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"}
 )
 
 // ReservedEnv son variables que genera el agente y que `env` no puede pisar.
@@ -251,16 +268,28 @@ func BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, er
 		Binds:         []string{dataDir + ":/data"},
 		PortBindings:  bindings,
 		RestartPolicy: container.RestartPolicy{Name: restartPolicies[s.RestartPolicy]},
+		SecurityOpt:   append([]string(nil), securityOpt...),
+		CapDrop:       append([]string(nil), capDrop...),
+		CapAdd:        append([]string(nil), capAdd...),
 	}
+	pids := int64(PidsLimit)
+	host.Resources.PidsLimit = &pids
+	// Validate ya comprobó ambos tamaños.
 	if s.Resources.MemLimit != "" {
 		host.Resources.Memory, _ = units.RAMInBytes(s.Resources.MemLimit)
+	} else {
+		mem, _ := units.RAMInBytes(s.Memory)
+		host.Resources.Memory = mem + memHeadroom
 	}
 	if s.Resources.Cpus > 0 {
 		host.Resources.NanoCPUs = int64(s.Resources.Cpus * 1e9)
 	}
 	net := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{networkName: {}}}
 
-	hash := hashOf(name, cfg, host)
+	hash, err := hashOf(name, networkName, cfg, host)
+	if err != nil {
+		return nil, err
+	}
 	cfg.Labels[LabelHash] = hash
 	cfg.Labels[LabelVersion] = strconv.FormatUint(meta.Version, 10)
 
@@ -309,14 +338,74 @@ func (s Spec) envList() []string {
 	return out
 }
 
-func hashOf(name string, cfg *container.Config, host *container.HostConfig) string {
-	b, _ := json.Marshal(struct {
-		Name string
-		Cfg  *container.Config
-		Host *container.HostConfig
-	}{name, cfg, host})
+// hashSchema versiona la forma canónica de hashInput. Cambiarla (o cambiar lo que
+// produce BuildContainer) altera el hash de TODOS los servidores, y el agente recrea
+// todos los contenedores al actualizarse: solo a propósito.
+const hashSchema = 1
+
+// hashInput es la forma canónica y estable de lo que define el contenedor. No se usa
+// el JSON de los tipos de moby: una versión nueva de la librería (campos o valores por
+// defecto nuevos) cambiaría el hash de todo. Reglas: todo lo que BuildContainer ponga
+// en Config/HostConfig/red debe estar aquí, y los campos nuevos llevan omitempty para
+// que, vacíos, dejen el hash igual.
+type hashInput struct {
+	Schema      int               `json:"schema"`
+	Name        string            `json:"name"`
+	Image       string            `json:"image"`
+	Env         []string          `json:"env"`
+	Tty         bool              `json:"tty"`
+	OpenStdin   bool              `json:"openStdin"`
+	Labels      map[string]string `json:"labels"` // identidad; sin hash ni versión
+	Ports       []string          `json:"ports"`  // "25565/tcp->:25570", ordenados
+	Binds       []string          `json:"binds"`
+	Network     string            `json:"network"`
+	Restart     string            `json:"restart"`
+	Memory      int64             `json:"memory"`
+	NanoCPUs    int64             `json:"nanoCpus"`
+	PidsLimit   int64             `json:"pidsLimit"`
+	SecurityOpt []string          `json:"securityOpt"`
+	CapDrop     []string          `json:"capDrop"`
+	CapAdd      []string          `json:"capAdd"`
+}
+
+func hashOf(name, networkName string, cfg *container.Config, host *container.HostConfig) (string, error) {
+	in := hashInput{
+		Schema: hashSchema, Name: name, Image: cfg.Image, Env: sortedCopy(cfg.Env),
+		Tty: cfg.Tty, OpenStdin: cfg.OpenStdin, Labels: map[string]string{},
+		Binds: sortedCopy(host.Binds), Network: networkName, Restart: string(host.RestartPolicy.Name),
+		Memory: host.Resources.Memory, NanoCPUs: host.Resources.NanoCPUs,
+		SecurityOpt: sortedCopy(host.SecurityOpt), CapDrop: sortedCopy(host.CapDrop), CapAdd: sortedCopy(host.CapAdd),
+	}
+	for k, v := range cfg.Labels {
+		if k != LabelHash && k != LabelVersion {
+			in.Labels[k] = v
+		}
+	}
+	for p, binds := range host.PortBindings {
+		for _, b := range binds {
+			ip := ""
+			if b.HostIP.IsValid() {
+				ip = b.HostIP.String()
+			}
+			in.Ports = append(in.Ports, p.String()+"->"+ip+":"+b.HostPort)
+		}
+	}
+	sort.Strings(in.Ports)
+	if host.Resources.PidsLimit != nil {
+		in.PidsLimit = *host.Resources.PidsLimit
+	}
+	b, err := json.Marshal(in) // encoding/json ordena las claves de los mapas
+	if err != nil {
+		return "", fmt.Errorf("spec: calcular el hash del contenedor: %w", err)
+	}
 	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])[:16]
+	return hex.EncodeToString(sum[:])[:16], nil
+}
+
+func sortedCopy(in []string) []string {
+	out := append([]string{}, in...)
+	sort.Strings(out)
+	return out
 }
 
 func mustPort(s string) network.Port { return network.MustParsePort(s) }

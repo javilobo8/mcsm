@@ -200,6 +200,20 @@ func TestLongLineTruncatedAndFollowerSurvives(t *testing.T) {
 	}
 }
 
+// Una línea de log ocupa como mucho 64 KiB (más el marcador): con el ring de 500 líneas
+// un contenedor no puede hacer que el agente retenga cientos de MiB (M1 de la auditoría).
+func TestLineCappedAt64KiB(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	ch, unsub, _ := h.Subscribe("a", id, 10)
+	defer unsub()
+	go f.WriteLog(id, "2026-10-12T10:00:00Z "+strings.Repeat("y", 100*1024)+"\n")
+	l := recv(t, ch)
+	if !strings.HasSuffix(l.Text, truncMarker) || len(l.Text) > 64*1024+len(truncMarker) {
+		t.Fatalf("una línea de 100 KiB debe truncarse a 64 KiB: len=%d", len(l.Text))
+	}
+}
+
 func TestReplayRespectsTail(t *testing.T) {
 	f, id := newFakeWithContainer(t)
 	h := NewHub(f)

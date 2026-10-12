@@ -180,8 +180,102 @@ func TestDefaults(t *testing.T) {
 	if b.HostConfig.RestartPolicy.Name != "unless-stopped" {
 		t.Errorf("restart por defecto = %q", b.HostConfig.RestartPolicy.Name)
 	}
-	if b.HostConfig.Resources.Memory != 0 {
-		t.Error("sin memLimit no debe haber límite")
+	if b.HostConfig.Resources.Memory != 3*1024*1024*1024 {
+		t.Errorf("sin memLimit el límite es memory + 1G (spec §4.1), memory=%d", b.HostConfig.Resources.Memory)
+	}
+}
+
+// Tabla del HostConfig: aislamiento por defecto (M1/L4 de la auditoría). Cambiar esta
+// salida recrea todos los contenedores al actualizar el agente.
+func TestHostConfigHardening(t *testing.T) {
+	cases := []struct {
+		name     string
+		memory   string
+		memLimit string
+		want     int64
+	}{
+		{"sin memLimit: memory + 1G", "2G", "", 3 << 30},
+		{"sin memLimit en MiB", "512M", "", (512 << 20) + (1 << 30)},
+		{"memLimit explícito", "4G", "5G", 5 << 30},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := loadFixture(t)
+			s.Memory, s.Resources.MemLimit = tc.memory, tc.memLimit
+			b, err := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
+			if err != nil {
+				t.Fatal(err)
+			}
+			h := b.HostConfig
+			if h.Resources.Memory != tc.want {
+				t.Errorf("memory = %d, want %d", h.Resources.Memory, tc.want)
+			}
+			if h.Resources.PidsLimit == nil || *h.Resources.PidsLimit != 4096 {
+				t.Errorf("pidsLimit = %v, want 4096", h.Resources.PidsLimit)
+			}
+			if strings.Join(h.SecurityOpt, ",") != "no-new-privileges:true" {
+				t.Errorf("securityOpt = %v", h.SecurityOpt)
+			}
+			if strings.Join(h.CapDrop, ",") != "ALL" {
+				t.Errorf("capDrop = %v", h.CapDrop)
+			}
+			// Mínimo con el que el entrypoint de itzg (chown de /data y paso a uid 1000)
+			// arranca y llega a healthy (probado contra la imagen real).
+			if strings.Join(h.CapAdd, ",") != "CHOWN,DAC_OVERRIDE,FOWNER,SETGID,SETUID" {
+				t.Errorf("capAdd = %v", h.CapAdd)
+			}
+			if h.Privileged || h.NetworkMode != "" || len(h.Devices) != 0 {
+				t.Errorf("nada de privilegios extra: %+v", h)
+			}
+		})
+	}
+}
+
+// El hash se calcula sobre una forma canónica propia, no sobre el JSON de los tipos de
+// moby: fijarlo detecta cualquier cambio involuntario (que recrearía todos los
+// contenedores de la LAN al actualizar el agente). Si cambia a propósito, sube hashSchema.
+func TestHashGolden(t *testing.T) {
+	b, err := BuildContainer(meta, loadFixture(t), "/srv/minecraft", "mcsm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const golden = "09ff6e5490b40677"
+	if b.Hash != golden {
+		t.Fatalf("hash = %s, want %s: ¿cambió la salida de BuildContainer o hashInput?", b.Hash, golden)
+	}
+}
+
+func TestHashCoversWhatDefinesTheContainer(t *testing.T) {
+	base := loadFixture(t)
+	h := func(mut func(*Spec), dataRoot, net string) string {
+		t.Helper()
+		s := base
+		s.Env = map[string]string{}
+		for k, v := range base.Env {
+			s.Env[k] = v
+		}
+		if mut != nil {
+			mut(&s)
+		}
+		b, err := BuildContainer(meta, s, dataRoot, net)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b.Hash
+	}
+	ref := h(nil, "/srv/minecraft", "mcsm")
+	for name, got := range map[string]string{
+		"red":       h(nil, "/srv/minecraft", "otra"),
+		"DATA_ROOT": h(nil, "/srv/otro", "mcsm"),
+		"imagen":    h(func(s *Spec) { s.ImageTag = "java17" }, "/srv/minecraft", "mcsm"),
+		"env":       h(func(s *Spec) { s.Env["X"] = "1" }, "/srv/minecraft", "mcsm"),
+		"cpus":      h(func(s *Spec) { s.Resources.Cpus = 3 }, "/srv/minecraft", "mcsm"),
+		"restart":   h(func(s *Spec) { s.RestartPolicy = "always" }, "/srv/minecraft", "mcsm"),
+		"puertos":   h(func(s *Spec) { s.Ports.Game = 25570 }, "/srv/minecraft", "mcsm"),
+	} {
+		if got == ref {
+			t.Errorf("cambiar %s debe cambiar el hash", name)
+		}
 	}
 }
 

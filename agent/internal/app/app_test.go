@@ -8,6 +8,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"google.golang.org/protobuf/proto"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/docker"
@@ -282,6 +285,40 @@ func TestSubscribeLogsStream(t *testing.T) {
 		t.Fatal("StreamClose debe cancelar el stream")
 	}
 	noMoreLogLines(t, s, fake, a.rec.ContainerID(ctx, "a"))
+}
+
+// Proto3 rechaza string con UTF-8 inválido: sin sanear, proto.Marshal falla y la línea
+// (o la respuesta del comando) se pierde en silencio.
+func TestLogLineAndCommandResultAreValidUTF8(t *testing.T) {
+	a, fake, _ := newApp(t)
+	s := newSink()
+	a.send = s.send
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	applyAndWait(t, a, s, "a", "alpha")
+	startStream(t, a, fake, s, ctx, 5, "a")
+	fake.WriteLog(a.rec.ContainerID(ctx, "a"), "2026-10-12T10:00:02Z caf\xc3 \xff fin\n")
+	for {
+		e := s.next(t)
+		if ll := e.GetLogLine(); ll != nil {
+			if !utf8.ValidString(ll.Line) || ll.Line != "caf\uFFFD \uFFFD fin" {
+				t.Fatalf("línea = %q", ll.Line)
+			}
+			if _, err := proto.Marshal(e); err != nil {
+				t.Fatal(err)
+			}
+			break
+		}
+	}
+	a.rcon = func(context.Context, string, uint16, string, string) (string, error) { return "ok \xfe", nil }
+	a.Handle(ctx, &mcsmv1.Envelope{Id: 40, Body: &mcsmv1.Envelope_SendCommand{SendCommand: &mcsmv1.SendCommand{ServerId: "a", Command: "list"}}}, s.send)
+	e := s.waitID(t, 40)
+	if out := e.GetCommandResult().GetOutput(); out != "ok \uFFFD" {
+		t.Fatalf("output = %q", out)
+	}
+	if _, err := proto.Marshal(e); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestCancelAllStreamsStopsGoroutinesAndLines(t *testing.T) {

@@ -16,7 +16,7 @@ import (
 const (
 	ringSize     = 500
 	subBuffer    = 1024
-	maxLineBytes = 1024 * 1024
+	maxLineBytes = 64 * 1024 // el ring (500 líneas) queda acotado a ~32 MiB por servidor
 	truncMarker  = " …[truncada]"
 	defaultGrace = 30 * time.Second
 )
