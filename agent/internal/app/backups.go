@@ -45,6 +45,10 @@ const (
 	maxInventoryBytes = 3 << 20
 	// pruneReason es el motivo de los BackupDeleted de la poda.
 	pruneReason = "poda"
+	// maxParallelJobs: copias y restauraciones a la vez en el nodo (comprimen, leen y escriben
+	// el disco entero; varias copias a la misma hora tendrían N mundos en save-off a la vez).
+	// Las demás esperan en cola, con su servidor reservado y su mundo guardando con normalidad.
+	maxParallelJobs = 2
 )
 
 var (
@@ -87,6 +91,7 @@ type backupService struct {
 	sched   *backup.Scheduler
 	players *backup.PlayerWatch
 	out     *outbox
+	slots   chan struct{} // semáforo de maxParallelJobs (ver acquireSlot)
 
 	// Inyectables en tests.
 	restore        func(ctx context.Context, req backup.RestoreRequest) (backup.Meta, error)
@@ -109,6 +114,7 @@ func newBackupService(a *App, clock backup.Clock) *backupService {
 		restore: backup.Restore, recoverDisk: backup.RecoverInterrupted,
 		releaseWait: defaultReleaseWait, inventoryLimit: maxInventoryBytes,
 		blocked: map[string]func(context.Context){},
+		slots:   make(chan struct{}, maxParallelJobs),
 	}
 	// a.send se lee al entregar: se fija antes de lanzar goroutines (Run o el test).
 	b.out = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, a.log)
@@ -493,10 +499,32 @@ func (b *backupService) launchBackup(j *jobs.Job, serverID, trigger string, rele
 
 func (b *backupService) runBackupJob(serverID, trigger string, j *jobs.Job, release func(context.Context)) {
 	ctx := b.a.life
-	meta, err := b.runBackup(ctx, serverID, trigger, j)
+	var meta backup.Meta
+	err := b.withSlot(ctx, j, func() (err error) {
+		meta, err = b.runBackup(ctx, serverID, trigger, j)
+		return err
+	})
 	err = interrupted(ctx, err)
 	b.releaseHold(j, serverID, release)
 	b.finish(j, err, "Copia creada: "+meta.Filename)
+}
+
+// withSlot ejecuta fn con uno de los maxParallelJobs huecos del nodo. Se toma antes de
+// save-off (copia) o de parar el servidor (restauración); si no hay, el job lo dice y espera
+// en cola sin fallar. Solo falla si el agente se cierra mientras espera.
+func (b *backupService) withSlot(ctx context.Context, j *jobs.Job, fn func() error) error {
+	select {
+	case b.slots <- struct{}{}:
+	default:
+		j.Progress(0, "En cola: esperando a que terminen otras copias o restauraciones del nodo")
+		select {
+		case b.slots <- struct{}{}:
+		case <-ctx.Done():
+			return fmt.Errorf("en cola: %w", ctx.Err())
+		}
+	}
+	defer func() { <-b.slots }()
+	return fn()
 }
 
 // interrupted explica un fallo causado por el cierre del agente (contexto de vida cancelado).
@@ -661,7 +689,7 @@ func (b *backupService) startRestore(jobID, serverID, filename string) error {
 
 func (b *backupService) runRestoreJob(t *target, filename string, j *jobs.Job, release func(context.Context)) {
 	ctx := b.a.life
-	err := b.runRestore(ctx, t.serverID, filename, j)
+	err := b.withSlot(ctx, j, func() error { return b.runRestore(ctx, t.serverID, filename, j) })
 	if errors.Is(err, backup.ErrDataMissing) {
 		// Sin liberar: la liberación reconciliaría y arrancaría el servidor sobre un data vacío.
 		b.block(t.serverID, release, dataMissingMsg(t.dataDir, err))

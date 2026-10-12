@@ -1233,3 +1233,110 @@ func TestScheduledSkipsServerWithoutData(t *testing.T) {
 		t.Fatal("no debe quedar reservado")
 	}
 }
+
+// hostRcon es un RCON falso por servidor: save-all flush espera en la barrera de su host si
+// la tiene y avisa al llegar.
+type hostRcon struct {
+	mu      sync.Mutex
+	cmds    map[string][]string
+	gates   map[string]chan struct{}
+	reached map[string]chan struct{}
+}
+
+func newHostRcon() *hostRcon {
+	return &hostRcon{cmds: map[string][]string{}, gates: map[string]chan struct{}{}, reached: map[string]chan struct{}{}}
+}
+
+func (r *hostRcon) gate(host string) (reached <-chan struct{}, open func()) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	g, re := make(chan struct{}), make(chan struct{})
+	r.gates[host], r.reached[host] = g, re
+	var once sync.Once
+	return re, func() { once.Do(func() { close(g) }) }
+}
+
+func (r *hostRcon) fn(ctx context.Context, host string, _ uint16, _, cmd string) (string, error) {
+	r.mu.Lock()
+	r.cmds[host] = append(r.cmds[host], cmd)
+	g, re := r.gates[host], r.reached[host]
+	r.mu.Unlock()
+	if cmd == "save-all flush" && g != nil {
+		close(re)
+		select {
+		case <-g:
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	return "ok", nil
+}
+
+func (r *hostRcon) list(host string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.cmds[host]...)
+}
+
+// addServer da de alta otro servidor en marcha con su mundo en disco.
+func (e *backupEnv) addServer(t *testing.T, id, slug string, port, msgID int) {
+	t.Helper()
+	js := strings.Replace(specJSON, `"game":25565`, fmt.Sprintf(`"game":%d`, port), 1)
+	sp := &mcsmv1.ServerSpec{ServerId: id, Slug: slug, Version: 1, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(js)}
+	if r := e.handle(uint64(msgID), &mcsmv1.ApplySpec{Server: sp}); r.GetAck() == nil {
+		t.Fatalf("ApplySpec %s: %+v", id, r)
+	}
+	p := filepath.Join(e.a.cfg.DataRoot, slug, "data", "world", "level.dat")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("LEVEL-1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// m10: como mucho maxParallelJobs copias o restauraciones a la vez en el nodo. La tercera
+// espera en cola ANTES de save-off (su mundo sigue guardando) y no falla: arranca en cuanto
+// queda un hueco.
+func TestBackupsQueueBeyondNodeLimit(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.addServer(t, "b", "beta", 25566, 2)
+	e.addServer(t, "c", "gamma", 25567, 3)
+	rc := newHostRcon()
+	e.a.rcon = rc.fn
+	reachedA, openA := rc.gate("mcsm-alpha")
+	reachedB, openB := rc.gate("mcsm-beta")
+	defer openA()
+	defer openB()
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-a"})
+	e.handle(11, &mcsmv1.BackupNow{ServerId: "b", JobId: "job-b"})
+	waitClosed(t, reachedA)
+	waitClosed(t, reachedB)
+	if r := e.handle(12, &mcsmv1.BackupNow{ServerId: "c", JobId: "job-c"}); r.GetAck() == nil {
+		t.Fatalf("la tercera se acepta y espera: %+v", r)
+	}
+	queued := func() bool {
+		for _, env := range e.col.all() {
+			if p := env.GetJobProgress(); p != nil && p.JobId == "job-c" && strings.Contains(p.Message, "En cola") {
+				return true
+			}
+		}
+		return false
+	}
+	e.col.waitFor(t, "job-c en cola", queued)
+	if cmds := rc.list("mcsm-gamma"); len(cmds) != 0 {
+		t.Fatalf("en cola no hay save-off: %v", cmds)
+	}
+	openA() // job-a termina y job-c ocupa su hueco, con job-b aún en curso
+	e.col.waitFor(t, "fin de job-c", func() bool { return e.col.final("job-c") != nil })
+	openB()
+	e.settle(t)
+	for _, id := range []string{"job-a", "job-b", "job-c"} {
+		if fin := e.col.final(id); fin == nil || fin.Status != jobOK {
+			t.Fatalf("%s = %+v", id, fin)
+		}
+	}
+	if got := strings.Join(rc.list("mcsm-gamma"), ","); got != "save-off,save-all flush,save-on" {
+		t.Fatalf("gamma RCON = %s", got)
+	}
+}
