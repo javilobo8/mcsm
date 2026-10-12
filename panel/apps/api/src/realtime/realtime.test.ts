@@ -5,6 +5,7 @@ import { create } from "@bufbuild/protobuf";
 import { LogLineSchema, ObservedSchema, ServerObservedSchema } from "@mcsm/proto";
 import { EventEmitter } from "node:events";
 import { BrowserHub } from "./hub.js";
+import { originAllowed } from "./routes.js";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
 import { FakeAgent } from "../../test/fake-agent.js";
@@ -23,9 +24,11 @@ beforeEach(async () => {
 });
 afterEach(async () => { await app.close(); });
 
-function browser(withCookie = true): Promise<{ ws: WebSocket; next: () => Promise<any> }> {
+function browser(withCookie = true, origin?: string): Promise<{ ws: WebSocket; next: () => Promise<any> }> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url.replace("http", "ws") + "/ws", { headers: withCookie ? { cookie } : {} });
+    const headers: Record<string, string> = withCookie ? { cookie } : {};
+    if (origin !== undefined) headers.origin = origin;
+    const ws = new WebSocket(url.replace("http", "ws") + "/ws", { headers });
     const queue: any[] = []; const waiters: ((m: any) => void)[] = [];
     ws.on("message", (d) => { const m = JSON.parse(d.toString()); const w = waiters.shift(); w ? w(m) : queue.push(m); });
     ws.on("open", () => resolve({ ws, next: () => queue.length ? Promise.resolve(queue.shift()) : new Promise((r, rj) => { const t = setTimeout(() => rj(new Error("sin mensaje")), 3000); waiters.push((m) => { clearTimeout(t); r(m); }); }) }));
@@ -37,6 +40,30 @@ function browser(withCookie = true): Promise<{ ws: WebSocket; next: () => Promis
 describe("realtime", () => {
   it("exige sesión", async () => {
     await expect(browser(false)).rejects.toThrow(/401/);
+  });
+
+  // L2: SameSite=Strict no frena a una página same-site (mismo host, otro puerto): el
+  // navegador adjunta la cookie al WS y los WS no pasan por CORS. Se exige Origin == Host.
+  it("originAllowed: Origin igual al Host o al origen de PANEL_PUBLIC_URL", () => {
+    expect(originAllowed(undefined, "panel:8080", "")).toBe(true);
+    expect(originAllowed("http://panel:8080", "panel:8080", "")).toBe(true);
+    expect(originAllowed("http://PANEL:8080", "panel:8080", "")).toBe(true);
+    expect(originAllowed("http://panel:9090", "panel:8080", "")).toBe(false);
+    expect(originAllowed("https://panel:8080", "panel:8080", "")).toBe(true); // tras un proxy TLS
+    expect(originAllowed("http://lan.casa:8080", "127.0.0.1:8080", "http://lan.casa:8080")).toBe(true);
+    expect(originAllowed("http://otro:8080", "127.0.0.1:8080", "http://lan.casa:8080")).toBe(false);
+    expect(originAllowed("no es url", "panel:8080", "")).toBe(false);
+  });
+
+  it("rechaza el upgrade con un Origin de otro host o puerto", async () => {
+    const port = new URL(url).port;
+    await expect(browser(true, `http://127.0.0.1:${Number(port) + 1}`)).rejects.toThrow(/403/);
+    await expect(browser(true, "http://evil.example")).rejects.toThrow(/403/);
+    await expect(browser(true, "null")).rejects.toThrow(/403/);
+    const ok = await browser(true, url);
+    ok.ws.close();
+    const sinOrigin = await browser(true); // clientes que no son navegador no envían Origin
+    sinOrigin.ws.close();
   });
 
   it("reenvía estado observado y cambios de nodo", async () => {
