@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/backup"
 	"mcsm/agent/internal/docker"
+	"mcsm/agent/internal/errcode"
 )
 
 // plan-8 (H1): mc-router con autoscale arranca por su cuenta un contenedor parado con hostname, y
@@ -144,5 +146,29 @@ func TestColdBackupParksOnDemandServer(t *testing.T) {
 	w.check(t)
 	if c, _ := e.a.rec.Container(context.Background(), "a"); c == nil || c.ID == old || c.State != "running" {
 		t.Fatalf("tras la copia se recrea y arranca: %+v", c)
+	}
+}
+
+// Planes 7 × 8 (H1): la copia previa a una migración de un servidor bajo demanda se rechaza y no toca
+// el contenedor. Aparcarlo (Park) no basta: al soltar la reserva de la copia se recrearía y arrancaría
+// en el origen (mc-router no ve los que nunca arrancaron), vivo a la vez que la copia en el destino; y
+// sin aparcar, mc-router lo podría despertar a mitad de la copia o hasta la retirada. El panel ya lo
+// rechaza al planificar (409); esto cubre una vista desfasada del router del nodo.
+func TestPreMigrationRefusesOnDemandServer(t *testing.T) {
+	e := newOnDemandEnv(t)
+	e.stopContainer(t) // paso 1 de la migración
+	old := e.a.rec.ContainerID(context.Background(), "a")
+	r := e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-pre", Trigger: mcsmv1.BackupTrigger_BACKUP_TRIGGER_PRE_MIGRATION})
+	if errCode(r) != errcode.InvalidRequest || !strings.Contains(r.GetError().GetMessage(), "autoscale") {
+		t.Fatalf("respuesta = %+v", r)
+	}
+	e.settle(t)
+	waitBackground(t, e.a)
+	if cr := e.col.created(); len(cr) != 0 {
+		t.Fatalf("no hay copia: %+v", cr)
+	}
+	c, err := e.a.rec.Container(context.Background(), "a")
+	if err != nil || c == nil || c.ID != old || c.State != "exited" || e.a.rec.Held("a") {
+		t.Fatalf("el contenedor sigue igual (parado, sin recrear) y sin reserva: %+v %v held=%v", c, err, e.a.rec.Held("a"))
 	}
 }

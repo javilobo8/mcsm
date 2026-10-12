@@ -725,7 +725,20 @@ func (b *backupService) stopForRetire(id string) error {
 // el paso 1; un arranque que llegara después la haría en caliente y el origen seguiría vivo junto
 // al destino) y sin escrituras de archivos a medias (como la restauración). Se llama con la reserva
 // tomada: Power y Files ya responden busy.
+//
+// plan-8 (H1): tampoco un servidor bajo demanda (hostname con el autoscale del router). mc-router lo
+// arrancaría por su cuenta hasta la retirada, y aparcarlo (Park) solo cubre la copia: al soltar la
+// reserva se recrea y se arranca (mc-router no ve los contenedores que nunca arrancaron), vivo en el
+// origen a la vez que la copia en el destino. El panel ya lo rechaza al planificar; esto cubre una
+// vista desfasada del router del nodo.
 func (b *backupService) preMigrationReady(serverID string, j *jobs.Job) error {
+	t, err := b.target(serverID)
+	if err != nil {
+		return err
+	}
+	if b.a.onDemand(t.spec) {
+		return fmt.Errorf("%w: el servidor tiene hostname y el router de este nodo tiene el autoscale activo (mc-router lo podría arrancar durante la migración); quita el autoscale o el hostname antes de migrarlo", errBadRequest)
+	}
 	running, err := b.isRunning(b.a.life, serverID)
 	if err != nil {
 		return err
