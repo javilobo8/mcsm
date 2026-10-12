@@ -241,3 +241,11 @@ func TestValidacionEndurecida(t *testing.T) {
 		})
 	}
 }
+
+func TestValidSlug(t *testing.T) {
+	for s, want := range map[string]bool{"alpha": true, "a-1": true, "": false, ".": false, "..": false, "a/b": false, "-a": false, "A": false, strings.Repeat("a", 41): false, strings.Repeat("a", 40): true} {
+		if got := ValidSlug(s); got != want {
+			t.Errorf("ValidSlug(%q) = %v, want %v", s, got, want)
+		}
+	}
+}
