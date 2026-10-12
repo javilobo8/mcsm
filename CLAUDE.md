@@ -118,9 +118,19 @@ conocer.)
 - Fastify: decora servicios/repos (`app.nodes`, `app.servers`, `app.agents`,
   `app.events`, `app.serversService`…) en `buildApp()` o con `fastify-plugin`; nunca
   dentro de un plugin encapsulado (quedan invisibles para el resto). Las rutas sí van
-  encapsuladas, con su propio `setErrorHandler` si lo necesitan. Errores HTTP:
-  `{ error: "mensaje en castellano" }`; 5xx genéricos ("Error interno") salvo el 502
-  con el texto del agente/Docker, que es intencionado (spec §10).
+  encapsuladas. Errores HTTP: lanza `HttpError` (`panel/apps/api/src/lib/http.ts`; también
+  re-exportado desde `servers/service.ts`) y deja que el manejador global (registrado en
+  `buildApp`) responda `{ error: "mensaje en castellano" }`: 5xx genéricos ("Error interno")
+  salvo 502/504; ZodError → 400; un `AgentError` se traduce con `agentErrorToHttp` (502 con
+  el texto del agente/Docker, spec §10). No hace falta `setErrorHandler` propio.
+- Códigos de `Error.code` del agente: catálogo en el comentario de `message Error`
+  (`agent.proto`), constantes en `agent/internal/errcode` y
+  `panel/apps/api/src/agents/error-codes.ts`; un código nuevo va a los tres sitios y, si no
+  es 502, a la tabla de `agentErrorToHttp`. El agente responde `unsupported` a cuerpos que no
+  conoce y nunca contesta a un Ack/Error.
+- `AgentConn.ready`: ninguna petición sale al agente antes del Ack de `SyncSpecs`;
+  `request`/`openStream` esperan solas (plazo vencido retenida → `syncing`, 409). El agente
+  confirma `SyncSpecs` tras guardar en el store y reconcilia en segundo plano.
 - Guard de sesión: decide por la ruta enrutada (`req.routeOptions.url`), no por
   `req.url` (los paths percent-encoded saltaban la auth). Allowlist pública exacta.
 - `@fastify/websocket` se registra una sola vez en toda la app (antes de `authPlugin`).
@@ -134,6 +144,21 @@ conocer.)
   lock por servidor), nunca PutSpec+Reconcile a mano; `rec.Remove` borra la spec
   dentro del lock. El observer del reconciliador se invoca con el lock tomado: no
   reentrar. RCON con cliente Source propio (`internal/mc`), no `mcutil/rcon`.
+- Agente: las operaciones que mutan Docker o disco usan el contexto de vida del agente
+  (`App.life`), no el `ctx` de la sesión WS que recibe `Handle`; el de la sesión es solo
+  para streams, transferencias y RCON. `send` sigue ligado a la sesión.
+- Agente: `Power` solo persiste el estado deseado si la acción Docker tiene éxito. El
+  `Hello` lleva `spec_versions` y `desired_states`; el panel reenvía en `SyncSpecs` lo que
+  difiera en cualquiera de los dos (`specDiffers`).
+- `BuildContainer` y `mcsm.spec_hash`: cambiar su salida recrea **todos** los contenedores
+  al actualizar el agente. El hash se calcula sobre `hashInput` (forma canónica propia +
+  `hashSchema`); lo que se añada al contenedor debe entrar en `hashInput`, y los campos
+  nuevos de spec deben dejar el hash igual cuando vienen vacíos (`omitempty`, nada en el
+  env). `TestHashGolden` fija el hash de la fixture. Contenedores con `CapDrop ALL` + el
+  mínimo de itzg, `no-new-privileges`, `PidsLimit` 4096 y memoria `memory + 1G` sin
+  `memLimit`.
+- Web: toda ruta de la API con valores se construye con `apiPath` (`lib/api.ts`), que
+  codifica cada valor: ``api.get(apiPath`/api/servers/${id}`)``.
 - Fake de Docker (`internal/docker/fake.go`): semántica real (puertos se enlazan en
   Start; Kill sobre parado = conflicto). Mantén `CreateErr`, `Calls`, `Pulled`.
 - WS del navegador: `log_reset {serverId}` precede a la cola de líneas al (re)abrir
@@ -144,8 +169,9 @@ conocer.)
 - Validación de spec (Go y zod idénticas): nombres de env `^[A-Za-z_][A-Za-z0-9_]*$`
   y reservadas; memoria `^[1-9]\d*[MmGg]$`; puertos extra sin container 25575;
   properties con clave `^[a-z0-9][a-z0-9._-]*$`, sin saltos de línea y sin
-  `server-port`/`enable-rcon`/`rcon.port`/`rcon.password`; `imageTag` por defecto
-  `latest`. Slug autogenerado repetido → sufijo `-2`, `-3`…
+  `server-port`/`enable-rcon`/`rcon.port`/`rcon.password`; `imageTag`
+  `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, por defecto `latest`. Slug autogenerado repetido
+  → sufijo `-2`, `-3`…
 - Tests sin `time.Sleep`/`setTimeout` para sincronizar: relojes y planificadores
   inyectables.
 
