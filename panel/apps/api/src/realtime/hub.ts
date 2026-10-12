@@ -59,6 +59,10 @@ export class BrowserHub {
     app.events.on("job", onJob);
     app.events.on("backups", onBackups);
     this.offs.push(() => app.events.off("job", onJob), () => app.events.off("backups", onBackups));
+    // plan-8: estado del mc-router de un nodo, en el topic "nodes".
+    const onRouter = (nodeId: unknown, router: unknown) => this.publish("nodes", { type: "router", nodeId, router });
+    app.events.on("router", onRouter);
+    this.offs.push(() => app.events.off("router", onRouter));
   }
 
   dispose() {

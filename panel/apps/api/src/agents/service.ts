@@ -89,6 +89,9 @@ export class AgentService {
       // ── plan-6 ──
       // ── plan-7 ──
       // ── plan-8 ──
+      case "routerObserved": // no solicitado (id=0)
+        this.app.routerService.onObserved(nodeId, env.body.value);
+        return;
       // ── plan-9 ──
       default:
         this.app.log.warn({ nodeId, type: env.body.case }, "mensaje de agente no esperado");

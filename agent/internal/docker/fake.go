@@ -31,6 +31,7 @@ type Fake struct {
 	stats      map[string]Stats    // lecturas fijadas con SetStats, por id de contenedor
 	logPipes   map[string][]*io.PipeWriter
 	subs       []*eventSub
+	subscribed chan struct{} // se cierra con el primer suscriptor de Events (Subscribed)
 }
 
 // eventSub es un suscriptor de Events.
@@ -61,6 +62,10 @@ type FakeContainer struct {
 	HostConfig *container.HostConfig
 	Net        *network.NetworkingConfig
 	Aliases    map[string][]string // plan-6: red → alias añadidos con ConnectNetwork
+	// startFailed: un Start falló por el puerto. Como Docker 29.7.2, los Start siguientes
+	// funcionan pero no publican los puertos (unpublished), aunque se pare y se arranque.
+	startFailed bool
+	unpublished bool
 }
 
 // FakeID es el id del n-ésimo contenedor que crea el fake: 64 hex, como los de Docker.
@@ -118,7 +123,8 @@ func (f *Fake) Inspect(_ context.Context, id string) (*Inspect, error) {
 	if c.Config != nil {
 		labels = copyLabels(c.Config.Labels)
 	}
-	return &Inspect{ID: c.ID, Name: c.Name, State: c.State, Running: c.State == "running", Health: c.Health, ExitCode: c.ExitCode, StartedAt: c.StartedAt, Labels: labels}, nil
+	return &Inspect{ID: c.ID, Name: c.Name, State: c.State, Running: c.State == "running", Health: c.Health, ExitCode: c.ExitCode, StartedAt: c.StartedAt, Labels: labels,
+		PortsMissing: c.State == "running" && c.unpublished && len(hostPorts(c.HostConfig)) > 0}, nil
 }
 
 func (f *Fake) Create(_ context.Context, name string, cfg *container.Config, host *container.HostConfig, net *network.NetworkingConfig) (string, error) {
@@ -158,6 +164,8 @@ func hostPorts(hc *container.HostConfig) map[string]bool {
 // Start imita a Docker: sobre un contenedor ya running es no-op, y los puertos de
 // host se enlazan aquí (no en Create), así que una colisión con otro contenedor
 // running falla con "port is already allocated" dejando el contenedor en created.
+// Como Docker 29.7.2, tras un Start fallido por el puerto los siguientes arrancan sin
+// publicar los puertos (Inspect.PortsMissing) y sin ocuparlos.
 func (f *Fake) Start(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -176,17 +184,22 @@ func (f *Fake) Start(_ context.Context, id string) error {
 		return fmt.Errorf("cannot start a paused container, try unpause instead: %w", cerrdefs.ErrConflict)
 	}
 	mine := hostPorts(c.HostConfig)
+	if c.startFailed {
+		mine = nil // no publicará nada: no compite por los puertos
+	}
 	for _, o := range f.Containers {
-		if o.ID == id || o.State != "running" {
+		if o.ID == id || o.State != "running" || o.unpublished {
 			continue
 		}
 		for p := range hostPorts(o.HostConfig) {
 			if mine[p] {
+				c.startFailed = true
 				return fmt.Errorf("driver failed programming external connectivity: Bind for 0.0.0.0:%s failed: port is already allocated", p)
 			}
 		}
 	}
 	c.State, c.StartedAt, c.Health = "running", time.Now(), "starting"
+	c.unpublished = c.startFailed
 	return nil
 }
 
@@ -266,6 +279,12 @@ func (f *Fake) Events(ctx context.Context) (<-chan Event, <-chan error) {
 	sub := &eventSub{ch: make(chan Event, eventBuffer), errs: make(chan error, 1)}
 	f.mu.Lock()
 	f.subs = append(f.subs, sub)
+	f.subscribedLocked() // crea el canal si hace falta
+	select {
+	case <-f.subscribed:
+	default:
+		close(f.subscribed)
+	}
 	f.mu.Unlock()
 	go func() {
 		<-ctx.Done()
@@ -280,6 +299,21 @@ func (f *Fake) Events(ctx context.Context) (<-chan Event, <-chan error) {
 		close(sub.ch)
 	}()
 	return sub.ch, sub.errs
+}
+
+// Subscribed devuelve un canal que se cierra en cuanto alguien se suscribe a Events: los tests
+// esperan a él antes de EmitEvent (que descarta los eventos sin suscriptores) sin reintentar.
+func (f *Fake) Subscribed() <-chan struct{} {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.subscribedLocked()
+}
+
+func (f *Fake) subscribedLocked() chan struct{} {
+	if f.subscribed == nil {
+		f.subscribed = make(chan struct{})
+	}
+	return f.subscribed
 }
 
 // EmitEvent entrega un evento a todos los suscriptores activos de Events. Nunca

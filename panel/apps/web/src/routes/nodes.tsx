@@ -12,6 +12,7 @@ import { api, apiPath } from "@/lib/api";
 import { dialogSubmit } from "@/lib/dialog-form";
 import { validateDataRoot } from "@/lib/nodes";
 import { useNodes } from "@/hooks/use-nodes";
+import { NodeRouterCell } from "@/components/node-router";
 
 interface EnrollResp { token: string; expiresAt: string; dockerRun: string }
 
@@ -74,14 +75,15 @@ export function NodesPage() {
 
       {nodes.isError && <p role="alert" className="text-sm text-red-400">No se pudieron cargar los nodos: {nodes.error.message}</p>}
       <Table>
-        <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Estado</TableHead><TableHead>Agente</TableHead><TableHead>Docker</TableHead><TableHead>Host</TableHead><TableHead>Datos</TableHead><TableHead>Última vez</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Estado</TableHead><TableHead>Router</TableHead><TableHead>Agente</TableHead><TableHead>Docker</TableHead><TableHead>Host</TableHead><TableHead>Datos</TableHead><TableHead>Última vez</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
         <TableBody>
-          {nodes.isPending && <TableRow><TableCell colSpan={8} className="text-center text-zinc-400">Cargando nodos…</TableCell></TableRow>}
-          {nodes.data?.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-zinc-400">No hay nodos. Pulsa «Añadir nodo» para dar de alta el primero.</TableCell></TableRow>}
+          {nodes.isPending && <TableRow><TableCell colSpan={9} className="text-center text-zinc-400">Cargando nodos…</TableCell></TableRow>}
+          {nodes.data?.length === 0 && <TableRow><TableCell colSpan={9} className="text-center text-zinc-400">No hay nodos. Pulsa «Añadir nodo» para dar de alta el primero.</TableCell></TableRow>}
           {nodes.data?.map((n) => (
             <TableRow key={n.id}>
               <TableCell className="font-medium">{n.name}</TableCell>
               <TableCell><Badge variant="outline" className={n.status === "online" ? "border-emerald-700 text-emerald-300" : "border-zinc-700 text-zinc-400"}>{n.status === "online" ? "Conectado" : "Desconectado"}</Badge></TableCell>
+              <TableCell><NodeRouterCell node={n} /></TableCell>
               <TableCell>{n.agentVersion ?? "—"}</TableCell>
               <TableCell>{n.dockerVersion ?? "—"}</TableCell>
               <TableCell className="text-xs text-zinc-400">{n.hostInfo?.hostname ? `${n.hostInfo.hostname} · ${n.hostInfo.os ?? "?"}/${n.hostInfo.arch ?? "?"}` : "—"}</TableCell>

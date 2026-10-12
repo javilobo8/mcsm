@@ -208,5 +208,19 @@ ALTER TABLE migrations ADD COLUMN pending_error TEXT;
 `,
   },
   // ── plan-8 ──
+  {
+    // mc-router por nodo (spec §4 router_deployments): spec = RouterDeploymentSpec (shared/router.ts),
+    // observed = último RouterObserved del agente. Sin fila = el panel nunca lo configuró.
+    name: "070_router_deployments",
+    sql: `
+CREATE TABLE router_deployments (
+  node_id TEXT PRIMARY KEY REFERENCES nodes(id) ON DELETE CASCADE,
+  spec TEXT NOT NULL,
+  observed TEXT,
+  observed_at TEXT,
+  updated_at TEXT
+);
+`,
+  },
   // ── plan-9 ──
 ];

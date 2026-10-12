@@ -126,6 +126,49 @@ func TestFakeStartPortCollision(t *testing.T) {
 	if err := f.Start(ctx, b); err != nil {
 		t.Fatalf("con a parado debe arrancar: %v", err)
 	}
+	// Docker 29.7.2: un start tras otro fallido por el puerto arranca SIN publicar los puertos,
+	// y así se queda aunque se pare y se vuelva a arrancar.
+	if ins, _ := f.Inspect(ctx, b); !ins.Running || !ins.PortsMissing {
+		t.Fatalf("b arranca sin puertos: %+v", ins)
+	}
+	_ = f.Stop(ctx, b, time.Second)
+	_ = f.Start(ctx, b)
+	if ins, _ := f.Inspect(ctx, b); !ins.PortsMissing {
+		t.Fatal("parar y arrancar no lo arregla")
+	}
+	// Sin publicar no ocupa el puerto: otro contenedor puede publicarlo.
+	c, _ := f.Create(ctx, "mcsm-c", &container.Config{}, portHost("25565"), nil)
+	if err := f.Start(ctx, c); err != nil {
+		t.Fatalf("el puerto está libre: %v", err)
+	}
+	if ins, _ := f.Inspect(ctx, c); ins.PortsMissing {
+		t.Fatal("un contenedor sin arranques fallidos publica sus puertos")
+	}
+	if ins, _ := f.Inspect(ctx, a); ins.PortsMissing {
+		t.Fatal("parado no cuenta como sin puertos")
+	}
+}
+
+func TestPortsMissing(t *testing.T) {
+	p := network.MustParsePort("25565/tcp")
+	q := network.MustParsePort("8100/udp")
+	want := network.PortMap{p: {{HostPort: "25565"}}, q: {{HostPort: "8100"}}}
+	cases := []struct {
+		name      string
+		want, got network.PortMap
+		missing   bool
+	}{
+		{"sin puertos pedidos", nil, nil, false},
+		{"todos publicados", want, network.PortMap{p: {{HostPort: "25565"}}, q: {{HostPort: "8100"}}}, false},
+		{"ninguno (fallo de Docker)", want, network.PortMap{}, true},
+		{"expuesto sin binding", want, network.PortMap{p: nil, q: {{HostPort: "8100"}}}, true},
+		{"binding sin puerto de host no cuenta", network.PortMap{p: {{}}}, network.PortMap{}, false},
+	}
+	for _, c := range cases {
+		if got := PortsMissing(c.want, c.got); got != c.missing {
+			t.Errorf("%s: PortsMissing = %v", c.name, got)
+		}
+	}
 }
 
 func TestFakeStartErr(t *testing.T) {
@@ -258,4 +301,24 @@ func TestFakeEmitEventNeverBlocks(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("EmitEvent se bloqueó")
 	}
+}
+
+func TestFakeSubscribed(t *testing.T) {
+	f := NewFake()
+	sub := f.Subscribed()
+	select {
+	case <-sub:
+		t.Fatal("sin suscriptores no está cerrado")
+	default:
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f.Events(ctx)
+	select {
+	case <-sub:
+	default:
+		t.Fatal("con un suscriptor se cierra")
+	}
+	f.Events(ctx) // un segundo suscriptor no lo vuelve a cerrar (no hay pánico)
+	<-f.Subscribed()
 }

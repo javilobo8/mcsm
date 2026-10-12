@@ -118,6 +118,8 @@ type Spec struct {
 	Adopt *Adopt `json:"adopt,omitempty"`
 	// ── plan-7 ──
 	// ── plan-8 ──
+	// Router: entrada por hostname con el mc-router del nodo. nil = ausente (hash sin cambios).
+	Router *Router `json:"router,omitempty"`
 	// ── plan-9 ──
 }
 
@@ -251,6 +253,9 @@ func (s Spec) Validate() error {
 	}
 	// ── plan-7 ──
 	// ── plan-8 ──
+	if err := s.Router.Validate(); err != nil {
+		return err
+	}
 	// ── plan-9 ──
 	return nil
 }
@@ -333,6 +338,8 @@ func BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, er
 		host.Resources.NanoCPUs = int64(s.Resources.Cpus * 1e9)
 	}
 	net := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{networkName: {}}}
+	// plan-8: etiquetas de mc-router; entran en el hash con el resto (hashInput.Labels).
+	s.Router.addLabels(cfg.Labels, networkName)
 
 	hash, err := hashOf(name, networkName, cfg, host)
 	if err != nil {

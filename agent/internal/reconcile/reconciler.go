@@ -40,6 +40,7 @@ type Reconciler struct {
 	status   mc.StatusFunc
 	observer Observer
 	log      *slog.Logger
+	onDemand func(spec.Spec) bool // plan-8: servidores que arranca y para mc-router (SetOnDemand)
 
 	mu      sync.Mutex
 	locks   map[string]*sync.Mutex
@@ -295,11 +296,23 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 		}
 		existing = &docker.Container{ID: id, Name: build.Name, State: "created", Labels: build.Config.Labels}
 	}
+	// plan-8: con el autoscale del router, mc-router arranca y para los servidores con hostname: el
+	// estado deseado no se impone. Un contenedor que nunca arrancó (recién creado o recreado, también
+	// al liberar una reserva tras Park) se arranca: mc-router no ve los contenedores que nunca
+	// arrancaron, así que no lo podría despertar; él lo duerme tras los minutos sin jugadores.
+	if r.onDemand != nil && r.onDemand(parsed) {
+		if existing.State == "created" {
+			if err := r.startOrDiscard(ctx, existing); err != nil {
+				return fmt.Errorf("arrancar: %w", err)
+			}
+		}
+		return r.st.SetApplied(serverID, sp.Version)
+	}
 	switch {
 	// En pausa cuenta como activo: Docker no arranca un contenedor en pausa (hay que reanudarlo) y el
 	// panel nunca pausa; se deja como está (plan-6, m6: un importado en pausa).
 	case wantRunning && !isActive(existing.State):
-		if err := r.eng.Start(ctx, existing.ID); err != nil {
+		if err := r.startOrDiscard(ctx, existing); err != nil {
 			return fmt.Errorf("arrancar: %w", err)
 		}
 	case !wantRunning && isActive(existing.State):
@@ -418,7 +431,8 @@ func (r *Reconciler) dataPath(slug string) (string, error) {
 // acción Docker tiene éxito (el panel tampoco lo cambia sin Ack): un fallo lo deja como
 // estaba y el error queda en Observed hasta la siguiente reconciliación con éxito.
 // Sin contenedor, fija el deseado y reconcilia (crea y arranca, o lo deja parado); si
-// eso falla, restaura el deseado anterior.
+// eso falla, restaura el deseado anterior. plan-8: igual si al arrancar se descartó el
+// contenedor (startOrDiscard): se recrea al momento.
 func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.PowerActionType) (err error) {
 	unlock := r.lock(serverID)
 	defer unlock()
@@ -457,25 +471,31 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	if err != nil {
 		return err
 	}
-	if c == nil {
-		prev := sp.DesiredState
-		if err := r.putDesired(sp, desired); err != nil {
+	if c != nil {
+		err := r.powerContainer(ctx, c, action)
+		if err == nil {
+			return r.putDesired(sp, desired)
+		}
+		if !errors.Is(err, errDiscarded) {
+			r.setLastErr(serverID, err.Error())
 			return err
 		}
-		published = true // reconcileLocked publica el estado observado
-		if err := r.reconcileLocked(ctx, serverID); err != nil {
-			if rerr := r.putDesired(sp, prev); rerr != nil {
-				r.log.Error("restaurar el estado deseado", "server", sp.Slug, "err", rerr)
-			}
-			return err
-		}
-		return nil
+		// plan-8: el contenedor arrancó sin puertos o no pudo arrancar y se descartó (fallo de
+		// Docker 29.7.2): se recrea ya, como si no existiera, con el estado pedido.
+		r.log.Warn("contenedor descartado al arrancar; se recrea", "server", sp.Slug, "err", err)
 	}
-	if err := r.powerContainer(ctx, c, action); err != nil {
-		r.setLastErr(serverID, err.Error())
+	prev := sp.DesiredState
+	if err := r.putDesired(sp, desired); err != nil {
 		return err
 	}
-	return r.putDesired(sp, desired)
+	published = true // reconcileLocked publica el estado observado
+	if err := r.reconcileLocked(ctx, serverID); err != nil {
+		if rerr := r.putDesired(sp, prev); rerr != nil {
+			r.log.Error("restaurar el estado deseado", "server", sp.Slug, "err", rerr)
+		}
+		return err
+	}
+	return nil
 }
 
 // powerContainer ejecuta la acción sobre un contenedor existente.
@@ -483,7 +503,7 @@ func (r *Reconciler) powerContainer(ctx context.Context, c *docker.Container, ac
 	switch action {
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_START:
 		if c.State != "running" {
-			return r.eng.Start(ctx, c.ID)
+			return r.startOrDiscard(ctx, c)
 		}
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP:
 		if isActive(c.State) {
@@ -495,7 +515,7 @@ func (r *Reconciler) powerContainer(ctx context.Context, c *docker.Container, ac
 				return err
 			}
 		}
-		return r.eng.Start(ctx, c.ID)
+		return r.startOrDiscard(ctx, c)
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_KILL:
 		// Docker devuelve conflicto al matar algo que no corre: solo matamos si está activo.
 		if isActive(c.State) {
@@ -576,7 +596,42 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 		// plan-6: el slug del contenedor encontrado (el adoptado no tiene etiquetas en Docker).
 		obs.Mc = r.status(ctx, spec.ContainerName(c.Labels[spec.LabelSlug]), uint16(spec.GamePort))
 	}
+	if ins.PortsMissing && obs.Error == "" { // plan-8: lo arrancó otro (política de reinicio, mc-router)
+		obs.Error = errPortsMissing.Error() + ": pulsa Reiniciar para recrear el contenedor"
+	}
 	return obs
+}
+
+// plan-8: fallo de Docker 29.7.2. Un contenedor cuyo arranque falló por el puerto del host arranca
+// después SIN publicar sus puertos, y así se queda aunque se pare y se vuelva a arrancar.
+var (
+	errPortsMissing = errors.New("en marcha sin publicar sus puertos (fallo de Docker tras un arranque fallido)")
+	errDiscarded    = errors.New("contenedor descartado: se recreará")
+)
+
+// startOrDiscard arranca el contenedor y comprueba que publica sus puertos. Si el arranque falla, o
+// arranca sin puertos (lo contaminó un arranque fallido de otro: la política de reinicio, mc-router),
+// lo borra (force) y devuelve el error envuelto en errDiscarded: los datos están en el bind y la
+// siguiente pasada lo recrea con el backoff de §6.2 (Power lo recrea al momento). Con ctx cancelado
+// no se descarta nada: el Start pudo llegar a Docker.
+func (r *Reconciler) startOrDiscard(ctx context.Context, c *docker.Container) error {
+	err := r.eng.Start(ctx, c.ID)
+	if err == nil {
+		ins, ierr := r.eng.Inspect(ctx, c.ID)
+		if ierr != nil || !ins.PortsMissing {
+			return nil
+		}
+		err = errPortsMissing
+	}
+	if ctx.Err() != nil {
+		return err
+	}
+	// Punto de enganche del Plan 6: un contenedor adoptado (Adopted, el original del usuario) no se
+	// borra nunca; ahí solo se devuelve el error, sin descartarlo.
+	if rerr := r.eng.Remove(ctx, c.ID); rerr != nil && !errors.Is(rerr, docker.ErrNotFound) {
+		return fmt.Errorf("%w (y no se pudo descartar el contenedor: %v)", err, rerr)
+	}
+	return fmt.Errorf("%w (%w)", err, errDiscarded)
 }
 
 // find devuelve el contenedor del servidor: el gestionado (etiqueta mcsm.server_id) o, si no hay,

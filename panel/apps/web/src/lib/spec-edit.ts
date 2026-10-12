@@ -1,7 +1,7 @@
 import {
   MODPACK_PLATFORMS, DIGITS_RE, ENTRY_RE, URL_RE, PLAYER_RE, ENV_KEY_RE, MEMORY_RE, PROPERTY_KEY_RE, RESERVED_ENV, RESERVED_PROPS,
-  canonicalJson, envSectionConflicts, formatZodError, memoryToBytes, portMappingSchema, specInputSchema, templateSpecSchema,
-  type ModpackPlatform, type SpecInput, type SpecPatch, type TemplateSpec,
+  canonicalJson, envSectionConflicts, formatZodError, hostnameError, memoryToBytes, portMappingSchema, specInputSchema, templateSpecSchema,
+  type ModpackPlatform, type ServerRouter, type SpecInput, type SpecPatch, type TemplateSpec,
 } from "@mcsm/shared";
 import { PROPERTY_DEFS, TYPED_PROPERTY_KEYS } from "./spec-catalog";
 
@@ -12,6 +12,7 @@ export type EditableSpec = SpecInput;
 export const FORM_KEYS = [
   "imageTag", "type", "version", "memory", "properties", "env", "resources", "restartPolicy", "ports",
   "modpack", "mods", "plugins", "whitelist", "ops",
+  "router", // plan-8
 ] as const;
 
 /** Una entrada por línea; también acepta comas (pegar "lithium,sodium"). */
@@ -116,7 +117,7 @@ export function typeChangeNotice(spec: EditableSpec, type: string): string | nul
 }
 
 /** Secciones OPCIONALES: las únicas para las que el PATCH admite `null` (eliminar). El resto se resetearía a su default. */
-export const OPTIONAL_KEYS: ReadonlySet<string> = new Set(["modpack", "mods", "plugins", "whitelist", "ops"]);
+export const OPTIONAL_KEYS: ReadonlySet<string> = new Set(["modpack", "mods", "plugins", "whitelist", "ops", "router"]);
 
 /**
  * PATCH mínimo (merge de primer nivel, ver mergeSpecPatch en @mcsm/shared): solo las secciones
@@ -242,4 +243,22 @@ export function shouldResyncNumber(o: { text: string; incoming: number | undefin
   const norm = (v: number | undefined) => (o.zeroIsEmpty && v === 0 ? undefined : v);
   if (norm(o.incoming) === norm(o.emitted)) return false;
   return norm(parseNumberText(o.text)) !== norm(o.incoming);
+}
+
+// plan-8: sección router (mc-router)
+
+/** Fija la sección router; desactivada y sin hostname vuelve a «ausente» (no se envía ni versiona nada). */
+export function withRouter(spec: EditableSpec, router: ServerRouter): EditableSpec {
+  if (!router.enabled && router.hostname === "") {
+    const { router: _router, ...rest } = spec;
+    return rest;
+  }
+  return { ...spec, router };
+}
+
+/** Error del hostname del router (mismas reglas que la API); null si vale o la sección no está. */
+export function routerSectionError(router: ServerRouter | undefined): string | null {
+  if (!router) return null;
+  if (router.enabled && router.hostname === "") return "Indica el hostname para entrar por el router";
+  return hostnameError(router.hostname);
 }

@@ -15,7 +15,7 @@ sus criterios de aceptación para que no haya que volver a diseñar.
 | 5 | [Archivos](2026-10-12-05-archivos.md) | §6.6, transferencias HTTP §5.1, §8 (pestaña Archivos) | hecho (rama `feat/wave-a`) |
 | 6 | [Importación de servidores existentes](2026-10-12-06-importacion.md) | §6.7, §7 `ImportService`, §8 (Nodos → Importar) | escrito |
 | 7 | [Migración entre nodos](2026-10-12-07-migracion.md) | §7 `MigrationService` | escrito |
-| 8 | mc-router | §4 `router_deployments`, §7 `RouterService` | pendiente |
+| 8 | [mc-router](2026-10-12-08-mc-router.md) | §4 `router_deployments`, §7 `RouterService` | escrito |
 | 9 | Pruebas de interfaz y pulido | §11 (Playwright), §8 (Ajustes) | pendiente |
 
 Ejecución en oleadas paralelas: ver [COORDINATION.md](COORDINATION.md).

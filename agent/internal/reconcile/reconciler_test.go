@@ -239,7 +239,8 @@ func TestStartPortConflictIsObservedAndRetried(t *testing.T) {
 		t.Fatal("esperaba error")
 	}
 	obs := rec.get("a")
-	if obs.State != "created" || !strings.Contains(obs.Error, "already allocated") {
+	// plan-8: el contenedor que no pudo arrancar se descarta (fallo de Docker 29.7.2) y se recrea.
+	if obs.State != "missing" || !strings.Contains(obs.Error, "already allocated") {
 		t.Fatalf("obs = %+v", obs)
 	}
 	if v, _ := st.Applied("a"); v != 0 {
@@ -248,7 +249,7 @@ func TestStartPortConflictIsObservedAndRetried(t *testing.T) {
 	fake.StartErr = nil
 	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) }
 	r.ReconcileAll(context.Background())
-	if rec.get("a").State != "running" || rec.get("a").Error != "" || calls(fake, "Create") != 1 {
+	if rec.get("a").State != "running" || rec.get("a").Error != "" || calls(fake, "Create") != 2 {
 		t.Fatalf("obs = %+v calls=%v", rec.get("a"), fake.Calls)
 	}
 }

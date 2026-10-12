@@ -59,6 +59,9 @@ message Envelope {
     MigrateRetire migrate_retire = 104;
     MigrateConfirm migrate_confirm = 105;
     // ── plan-8 ──
+    RouterApply router_apply = 110;
+    RouterRemove router_remove = 111;
+    RouterObserved router_observed = 112;
     // ── plan-9 ──
   }
 }
@@ -605,4 +608,43 @@ message MigrateConfirm {
   string migration_id = 3;
 }
 // ── plan-8 ──
+// mc-router por nodo (spec §4 router_deployments, §5.3 RouterApply/RouterRemove). El agente mantiene
+// un contenedor `mcsm-router` (itzg/mc-router con -in-docker) en la red de los servidores, que enruta
+// por el hostname del handshake a los contenedores con la etiqueta mc-router.host. El panel es la
+// verdad: tras cada SyncSpecs le reenvía RouterApply o RouterRemove si tiene configuración del nodo.
+
+// Configuración del router de un nodo.
+message RouterSpec {
+  uint32 host_port = 1; // puerto TCP del host (1-65535); dentro del contenedor siempre es 25565
+  bool autoscale = 2; // mc-router arranca al entrar un jugador y para tras autoscale_down_after_minutes sin jugadores
+  uint32 autoscale_down_after_minutes = 3; // 1-1440; 0 = 10
+  // Con autoscale, solo estos jugadores (nombre de perfil o UUID) despiertan un servidor dormido o
+  // cancelan su parada (-auto-scale-allow-deny de mc-router). Vacío = cualquiera. Máx. 1000.
+  repeated string autoscale_allow_players = 4;
+}
+
+// Panel → agente. Guarda la spec (sobrevive a reinicios del agente) y reconcilia el contenedor en
+// segundo plano. Respuesta: Ack (guardada; el resultado llega por RouterObserved) o Error
+// (invalid_request: spec ausente o fuera de rango).
+message RouterApply {
+  RouterSpec spec = 1;
+}
+
+// Panel → agente. Borra la spec guardada y, en segundo plano, el contenedor del router. Idempotente.
+// Respuesta: Ack, o Error (io_error) si no se pudo borrar del store del agente.
+message RouterRemove {}
+
+// Agente → panel, no solicitado (id = 0): estado del router tras cada reconciliación (al recibir
+// RouterApply/RouterRemove, cada 30 s y con los eventos de Docker de su contenedor).
+message RouterObserved {
+  bool configured = 1; // el agente tiene una spec de router guardada
+  string state = 2; // missing|created|running|restarting|exited|dead|paused
+  string container_id = 3;
+  string image = 4; // imagen del contenedor, p. ej. itzg/mc-router:1.47.1
+  uint32 host_port = 5; // puerto de la spec aplicada (0 sin spec)
+  bool autoscale = 6;
+  string error = 7; // error de la última reconciliación ("" si fue bien)
+  int64 ts_unix_ms = 8;
+  RouterSpec spec = 9; // spec guardada en el agente (ausente sin spec): la web compara con la del panel
+}
 // ── plan-9 ──

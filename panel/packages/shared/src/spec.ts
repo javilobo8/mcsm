@@ -3,6 +3,7 @@ import "./zod-locale.js";
 import { specPatchSchema, type SpecPatch } from "./spec-patch.js";
 import { contentCheck, contentFields } from "./spec-content.js";
 import { limitsCheck } from "./spec-limits.js";
+import { serverRouterSchema } from "./router.js";
 import { backupsSchema } from "./backups.js";
 import { dataPathCheck, dataPathSchema } from "./data-path.js";
 
@@ -71,6 +72,7 @@ const baseFields = {
   // ── plan-6 ──
   // ── plan-7 ──
   // ── plan-8 ──
+  router: serverRouterSchema.optional(),
   // ── plan-9 ──
 };
 
@@ -168,4 +170,5 @@ export function specPatchNullError(patch: SpecPatch): string | null {
 // ── plan-6 ──
 // ── plan-7 ──
 // ── plan-8 ──
+export * from "./router.js";
 // ── plan-9 ──
