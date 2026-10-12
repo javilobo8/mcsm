@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +44,8 @@ type Reconciler struct {
 	locks   map[string]*sync.Mutex
 	retryAt map[string]time.Time
 	fails   map[string]int
+	failVer map[string]uint64
+	lastErr map[string]string
 	now     func() time.Time
 }
 
@@ -54,6 +57,7 @@ func New(st *store.Store, eng docker.Engine, dataRoot, network string, status mc
 		st: st, eng: eng, dataRoot: dataRoot, network: network, status: status, observer: obs,
 		log:   slog.Default().With("component", "reconcile"),
 		locks: map[string]*sync.Mutex{}, retryAt: map[string]time.Time{}, fails: map[string]int{},
+		failVer: map[string]uint64{}, lastErr: map[string]string{},
 		now: time.Now,
 	}
 }
@@ -74,7 +78,8 @@ func isActive(state string) bool {
 	return state == "running" || state == "restarting" || state == "paused"
 }
 
-// ReconcileAll recorre todas las specs, saltando las que están en backoff.
+// ReconcileAll recorre todas las specs, saltando las que están en backoff
+// (salvo que la versión de la spec haya cambiado desde el último fallo).
 func (r *Reconciler) ReconcileAll(ctx context.Context) {
 	specs, err := r.st.ListSpecs()
 	if err != nil {
@@ -82,30 +87,73 @@ func (r *Reconciler) ReconcileAll(ctx context.Context) {
 		return
 	}
 	for _, sp := range specs {
-		r.mu.Lock()
-		until, waiting := r.retryAt[sp.ServerId]
-		r.mu.Unlock()
-		if waiting && r.now().Before(until) {
-			continue
-		}
-		if err := r.Reconcile(ctx, sp.ServerId); err != nil {
+		if err := r.reconcileTick(ctx, sp.ServerId); err != nil {
 			r.log.Warn("reconciliar", "server", sp.Slug, "err", err)
 		}
 	}
 }
 
-// Reconcile aplica la spec de un servidor y siempre publica el estado observado.
-// Un fallo queda en Observed.Error y programa un reintento con backoff.
-func (r *Reconciler) Reconcile(ctx context.Context, serverID string) (err error) {
+// reconcileTick reconcilia un servidor desde el tick: la comprobación de backoff se
+// hace con el lock por servidor tomado para que dos ticks concurrentes no reintenten
+// (ni escalen el backoff) dos veces. Ignora servidores sin spec.
+func (r *Reconciler) reconcileTick(ctx context.Context, serverID string) error {
 	unlock := r.lock(serverID)
 	defer unlock()
+	sp, err := r.st.GetSpec(serverID)
+	if err != nil {
+		return err
+	}
+	if sp == nil {
+		return nil
+	}
+	r.mu.Lock()
+	until, waiting := r.retryAt[serverID]
+	sameVersion := r.failVer[serverID] == sp.Version
+	r.mu.Unlock()
+	if waiting && sameVersion && r.now().Before(until) {
+		return nil
+	}
+	return r.reconcileLocked(ctx, serverID)
+}
+
+// Reconcile aplica la spec de un servidor y siempre publica el estado observado.
+// Un fallo queda en Observed.Error y programa un reintento con backoff.
+func (r *Reconciler) Reconcile(ctx context.Context, serverID string) error {
+	unlock := r.lock(serverID)
+	defer unlock()
+	return r.reconcileLocked(ctx, serverID)
+}
+
+// Apply guarda la spec y la reconcilia, todo bajo el lock del servidor. Una spec con
+// versión menor que la guardada (fuera de orden) se ignora y devuelve nil.
+func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
+	unlock := r.lock(sp.ServerId)
+	defer unlock()
+	stored, err := r.st.GetSpec(sp.ServerId)
+	if err != nil {
+		return err
+	}
+	if stored != nil && sp.Version < stored.Version {
+		r.log.Info("spec fuera de orden ignorada", "server", sp.Slug, "version", sp.Version, "guardada", stored.Version)
+		return nil
+	}
+	if err := r.st.PutSpec(sp); err != nil {
+		return err
+	}
+	return r.reconcileLocked(ctx, sp.ServerId)
+}
+
+func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err error) {
+	var version uint64
 	defer func() {
+		if err != nil {
+			r.markFailure(serverID, version, err.Error())
+		} else {
+			r.clearFailure(serverID)
+		}
 		obs := r.observeLocked(ctx, serverID)
 		if err != nil {
 			obs.Error = err.Error()
-			r.markFailure(serverID)
-		} else {
-			r.clearFailure(serverID)
 		}
 		r.observer(serverID, obs)
 	}()
@@ -117,6 +165,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, serverID string) (err error)
 	if sp == nil {
 		return nil
 	}
+	version = sp.Version
 	parsed, err := spec.Parse(sp.SpecJson)
 	if err != nil {
 		return err
@@ -133,10 +182,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, serverID string) (err error)
 	}
 	if existing != nil && existing.Labels[spec.LabelHash] != build.Hash {
 		r.log.Info("spec cambiada, recreando contenedor", "server", sp.Slug)
-		if isActive(existing.State) {
-			if err := r.eng.Stop(ctx, existing.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-				return fmt.Errorf("parar: %w", err)
-			}
+		// Siempre Stop (Docker no hace nada sobre uno parado): evita decidir con una foto del estado.
+		if err := r.eng.Stop(ctx, existing.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
+			return fmt.Errorf("parar: %w", err)
 		}
 		if err := r.eng.Remove(ctx, existing.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			return fmt.Errorf("eliminar: %w", err)
@@ -148,7 +196,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, serverID string) (err error)
 			return fmt.Errorf("crear directorio de datos: %w", err)
 		}
 		if err := r.eng.EnsureImage(ctx, build.Config.Image); err != nil {
-			return err
+			return fmt.Errorf("descargar imagen: %w", err)
 		}
 		id, err := r.eng.Create(ctx, build.Name, build.Config, build.HostConfig, build.Networking)
 		if err != nil {
@@ -169,39 +217,62 @@ func (r *Reconciler) Reconcile(ctx context.Context, serverID string) (err error)
 	return r.st.SetApplied(serverID, sp.Version)
 }
 
-// Remove para y borra el contenedor; con deleteData borra también <dataRoot>/<slug>.
+// Remove borra la spec (bajo el lock, antes de parar, para que ningún tick lo
+// resucite), para y borra el contenedor; con deleteData borra también <dataRoot>/<slug>.
 // Solo se invoca cuando el panel lo indica.
 func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData bool) error {
 	unlock := r.lock(serverID)
 	defer unlock()
+	sp, err := r.st.GetSpec(serverID)
+	if err != nil {
+		return err
+	}
 	c, err := r.find(ctx, serverID)
 	if err != nil {
 		return err
 	}
+	if err := r.st.DeleteSpec(serverID); err != nil {
+		return err
+	}
+	r.clearFailure(serverID)
+	slug := ""
+	if sp != nil {
+		slug = sp.Slug
+	} else if c != nil {
+		slug = c.Labels[spec.LabelSlug]
+	}
 	if c != nil {
-		if isActive(c.State) {
-			_ = r.eng.Stop(ctx, c.ID, StopTimeout)
+		if err := r.eng.Stop(ctx, c.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
+			r.log.Warn("parada limpia fallida antes de borrar", "server", slug, "err", err)
 		}
 		if err := r.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			return err
 		}
 	}
 	if deleteData {
-		sp, _ := r.st.GetSpec(serverID)
-		slug := ""
-		if sp != nil {
-			slug = sp.Slug
-		} else if c != nil {
-			slug = c.Labels[spec.LabelSlug]
+		target, err := r.dataPath(slug)
+		if err != nil {
+			return err
 		}
-		if slug != "" {
-			if err := os.RemoveAll(filepath.Join(r.dataRoot, slug)); err != nil {
-				return fmt.Errorf("borrar datos: %w", err)
-			}
+		if err := os.RemoveAll(target); err != nil {
+			return fmt.Errorf("borrar datos: %w", err)
 		}
 	}
-	r.clearFailure(serverID)
 	return nil
+}
+
+// dataPath devuelve <dataRoot>/<slug> solo si el slug es válido y la ruta queda
+// estrictamente dentro de dataRoot.
+func (r *Reconciler) dataPath(slug string) (string, error) {
+	if !spec.ValidSlug(slug) {
+		return "", fmt.Errorf("slug inválido %q: no se borran datos", slug)
+	}
+	root := filepath.Clean(r.dataRoot)
+	target := filepath.Clean(filepath.Join(root, slug))
+	if !strings.HasPrefix(target, root+string(filepath.Separator)) {
+		return "", fmt.Errorf("ruta de datos fuera de DATA_ROOT: %q", target)
+	}
+	return target, nil
 }
 
 // Power actualiza el estado deseado en el store y ejecuta la acción.
@@ -290,6 +361,9 @@ func (r *Reconciler) ContainerID(ctx context.Context, serverID string) string {
 func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1.Observed {
 	obs := &mcsmv1.Observed{State: "missing", Mc: &mcsmv1.McStatus{}}
 	obs.AppliedVersion, _ = r.st.Applied(serverID)
+	r.mu.Lock()
+	obs.Error = r.lastErr[serverID]
+	r.mu.Unlock()
 	c, err := r.find(ctx, serverID)
 	if err != nil {
 		obs.Error = err.Error()
@@ -332,9 +406,14 @@ func (r *Reconciler) find(ctx context.Context, serverID string) (*docker.Contain
 	return nil, nil
 }
 
-func (r *Reconciler) markFailure(id string) {
+// markFailure registra un fallo de la versión ver. Si la versión cambió desde el
+// último fallo, el backoff empieza de nuevo.
+func (r *Reconciler) markFailure(id string, ver uint64, msg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.failVer[id] != ver {
+		r.fails[id] = 0
+	}
 	n := r.fails[id]
 	wait := maxBackoff
 	if n < 10 {
@@ -343,6 +422,8 @@ func (r *Reconciler) markFailure(id string) {
 		}
 	}
 	r.fails[id] = n + 1
+	r.failVer[id] = ver
+	r.lastErr[id] = msg
 	r.retryAt[id] = r.now().Add(wait)
 }
 
@@ -350,5 +431,7 @@ func (r *Reconciler) clearFailure(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.fails, id)
+	delete(r.failVer, id)
+	delete(r.lastErr, id)
 	delete(r.retryAt, id)
 }

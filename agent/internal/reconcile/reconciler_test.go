@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/container"
+
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/store"
@@ -254,15 +256,177 @@ func TestBackoffGrowsAndIsCapped(t *testing.T) {
 	r, _, _, _, _ := setup(t)
 	want := []time.Duration{30 * time.Second, 60 * time.Second, 120 * time.Second, 240 * time.Second, 5 * time.Minute, 5 * time.Minute}
 	for i, w := range want {
-		r.markFailure("a")
+		r.markFailure("a", 1, "x")
 		if got := r.retryAt["a"].Sub(r.now()); got != w {
 			t.Fatalf("fallo %d: backoff = %v, want %v", i+1, got, w)
 		}
 	}
 	for i := 0; i < 100; i++ {
-		r.markFailure("a")
+		r.markFailure("a", 1, "x")
 	}
 	if got := r.retryAt["a"].Sub(r.now()); got != 5*time.Minute {
 		t.Fatalf("backoff = %v, want 5m", got)
+	}
+}
+
+func TestObserveKeepsLastErrorUntilSuccess(t *testing.T) {
+	r, st, fake, rec, _ := setup(t)
+	fake.StartErr = errors.New("port is already allocated")
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	_ = r.Reconcile(context.Background(), "a")
+	if obs := r.Observe(context.Background(), "a"); !strings.Contains(obs.Error, "already allocated") {
+		t.Fatalf("Observe debe conservar el error: %+v", obs)
+	}
+	if !strings.Contains(rec.get("a").Error, "already allocated") {
+		t.Fatal("el observer también debe verlo")
+	}
+	fake.StartErr = nil
+	if err := r.Reconcile(context.Background(), "a"); err != nil {
+		t.Fatal(err)
+	}
+	if obs := r.Observe(context.Background(), "a"); obs.Error != "" {
+		t.Fatalf("error debe limpiarse tras éxito: %+v", obs)
+	}
+}
+
+func TestApplyIgnoresOlderSpec(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	mk := func(v uint64, js string) *mcsmv1.ServerSpec {
+		return &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: v, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(js)}
+	}
+	if err := r.Apply(ctx, mk(5, specJSON)); err != nil {
+		t.Fatal(err)
+	}
+	old := strings.Replace(specJSON, `"memory":"2G"`, `"memory":"3G"`, 1)
+	if err := r.Apply(ctx, mk(4, old)); err != nil {
+		t.Fatal(err)
+	}
+	if calls(fake, "Create") != 1 || calls(fake, "Remove") != 0 {
+		t.Fatalf("spec vieja no debe recrear: %v", fake.Calls)
+	}
+	if sp, _ := st.GetSpec("a"); sp.Version != 5 {
+		t.Fatalf("version = %d", sp.Version)
+	}
+	if v, _ := st.Applied("a"); v != 5 {
+		t.Fatalf("applied = %d", v)
+	}
+}
+
+func TestApplyAndPowerConcurrent(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	ctx := context.Background()
+	if err := r.Apply(ctx, &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 1, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(specJSON)}); err != nil {
+		t.Fatal(err)
+	}
+	const n = 60
+	var wg sync.WaitGroup
+	for v := uint64(2); v < n+2; v++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = r.Apply(ctx, &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: v, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(specJSON)})
+		}()
+		go func() {
+			defer wg.Done()
+			_ = r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP)
+		}()
+	}
+	wg.Wait()
+	sp, _ := st.GetSpec("a")
+	if sp.Version != n+1 {
+		t.Fatalf("versión final = %d, want %d", sp.Version, n+1)
+	}
+	// Power llegado después se respeta.
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err != nil {
+		t.Fatal(err)
+	}
+	sp, _ = st.GetSpec("a")
+	if sp.Version != n+1 || sp.DesiredState != mcsmv1.DesiredState_DESIRED_STATE_RUNNING {
+		t.Fatalf("sp = %+v", sp)
+	}
+}
+
+func TestRemoveDeletesSpecAndNoResurrection(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	_ = r.Reconcile(ctx, "a")
+	if err := r.Remove(ctx, "a", false); err != nil {
+		t.Fatal(err)
+	}
+	if sp, _ := st.GetSpec("a"); sp != nil {
+		t.Fatal("Remove debe borrar la spec")
+	}
+	r.ReconcileAll(ctx)
+	_ = r.Reconcile(ctx, "a")
+	if list, _ := fake.ListManaged(ctx); len(list) != 0 || calls(fake, "Create") != 1 {
+		t.Fatalf("no debe resucitar: %v", fake.Calls)
+	}
+}
+
+func TestRemoveWithConcurrentReconcileAll(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	_ = r.Reconcile(ctx, "a")
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); r.ReconcileAll(ctx) }()
+	}
+	if err := r.Remove(ctx, "a", false); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+	if list, _ := fake.ListManaged(ctx); len(list) != 0 {
+		t.Fatalf("contenedor huérfano: %+v", list)
+	}
+}
+
+func TestRemoveRejectsUnsafeSlug(t *testing.T) {
+	for _, slug := range []string{".", "..", "", "a/../.."} {
+		r, st, _, _, root := setup(t)
+		if err := os.MkdirAll(filepath.Join(root, "otro", "data"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		put(t, st, "a", slug, 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
+		if err := r.Remove(context.Background(), "a", true); err == nil {
+			t.Fatalf("slug %q: esperaba error", slug)
+		}
+		if _, err := os.Stat(filepath.Join(root, "otro", "data")); err != nil {
+			t.Fatalf("slug %q: no debe borrar datos ajenos", slug)
+		}
+	}
+}
+
+func TestBackoffResetsWhenSpecVersionChanges(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	fake.CreateErr = errors.New("boom")
+	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	_ = r.Reconcile(ctx, "a")
+	n := calls(fake, "Create")
+	r.ReconcileAll(ctx)
+	if calls(fake, "Create") != n {
+		t.Fatal("en backoff no debe reintentar")
+	}
+	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
+	r.ReconcileAll(ctx)
+	if calls(fake, "Create") != n+1 {
+		t.Fatal("una versión nueva debe reintentar de inmediato")
+	}
+}
+
+func TestNeverDeletesUnknownManagedContainer(t *testing.T) {
+	r, _, fake, _, _ := setup(t)
+	ctx := context.Background()
+	cfg := &container.Config{Image: "x", Labels: map[string]string{"mcsm.managed": "true", "mcsm.server_id": "ghost", "mcsm.slug": "ghost"}}
+	if _, err := fake.Create(ctx, "mcsm-ghost", cfg, &container.HostConfig{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	r.ReconcileAll(ctx)
+	if list, _ := fake.ListManaged(ctx); len(list) != 1 || calls(fake, "Remove") != 0 {
+		t.Fatalf("no debe tocar contenedores sin spec: %v", fake.Calls)
 	}
 }

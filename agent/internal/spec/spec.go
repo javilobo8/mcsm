@@ -187,12 +187,15 @@ func (s Spec) Validate() error {
 
 func validPort(p int) bool { return p >= 1 && p <= 65535 }
 
+// ValidSlug indica si slug es un slug de servidor válido (seguro como nombre de directorio).
+func ValidSlug(slug string) bool { return slugRe.MatchString(slug) }
+
 func ContainerName(slug string) string { return "mcsm-" + slug }
 
 // BuildContainer traduce la spec a una configuración de contenedor. Es una
 // función pura: misma entrada, misma salida, mismo Hash.
 func BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, error) {
-	if !slugRe.MatchString(meta.Slug) {
+	if !ValidSlug(meta.Slug) {
 		return nil, fmt.Errorf("slug inválido %q", meta.Slug)
 	}
 	if err := s.Validate(); err != nil {
