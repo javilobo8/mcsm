@@ -16,6 +16,7 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
+	"mcsm/agent/internal/backup"
 	"mcsm/agent/internal/conn"
 	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/errcode"
@@ -72,6 +73,8 @@ type App struct {
 	forced  map[string]bool // reconciliaciones pedidas sin backoff (SyncSpecs), pendientes de ejecutar
 	sem     chan struct{}
 	bg      sync.WaitGroup // tareas de fondo (sincronización y despachos)
+
+	bk *backupService // plan-4: copias, restauraciones, jobs y programación
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
@@ -83,6 +86,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 		return a.status(ctx, host, port)
 	}, a.onObserved)
 	a.hub = logs.NewHub(eng)
+	a.bk = newBackupService(a, backup.RealClock) // plan-4
 	return a
 }
 
@@ -143,6 +147,11 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	})
 	a.send = func(e *mcsmv1.Envelope) error { return client.Send(ctx, e) }
 	a.life = ctx
+	// plan-4 (fuera de ancla: tiene que ir antes de la primera reconciliación y de aceptar
+	// jobs): save-on y jobs que un cierre o crash dejó a medias, y el disco de cada servidor.
+	// Una restauración interrumpida puede dejar un servidor sin data, y reconcileAll lo
+	// arrancaría con un mundo nuevo.
+	a.bk.recoverAtStart(ctx)
 
 	go a.eventLoop(ctx)
 	go a.tickers(ctx)
@@ -151,12 +160,16 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-2 ──
 	// ── plan-3 ──
 	// ── plan-4 ──
+	a.bk.start(ctx)
 	// ── plan-5 ──
 	// ── plan-6 ──
 	// ── plan-7 ──
 	// ── plan-8 ──
 	// ── plan-9 ──
 	client.Run(ctx)
+	// plan-4 (fuera de ancla: tras client.Run, con ctx ya cancelado): las copias en curso
+	// abortan y su defer envía save-on; se esperan, con tope, antes de cerrar el store.
+	a.bk.wait(shutdownWait)
 	return nil
 }
 
@@ -184,6 +197,7 @@ func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 
 // onObserved se invoca con el lock por servidor tomado: no puede llamar al reconciliador.
 func (a *App) onObserved(serverID string, obs *mcsmv1.Observed) {
+	a.bk.players.Observe(serverID, obs.GetMc().GetPlayersOnline()) // plan-4: onlyIfPlayersSince (solo su propio mutex)
 	_ = a.send(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_ServerObserved{ServerObserved: &mcsmv1.ServerObserved{
 		ServerId: serverID, Observed: obs, TsUnixMs: time.Now().UnixMilli(),
 	}}})
@@ -365,6 +379,14 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	// ── plan-2 ──
 	// ── plan-3 ──
 	// ── plan-4 ──
+	case *mcsmv1.Envelope_BackupNow:
+		a.bk.handleBackupNow(env.Id, b.BackupNow, send)
+	case *mcsmv1.Envelope_BackupRestore:
+		a.bk.handleBackupRestore(env.Id, b.BackupRestore, send)
+	case *mcsmv1.Envelope_BackupDelete:
+		a.bk.handleBackupDelete(env.Id, b.BackupDelete, send)
+	case *mcsmv1.Envelope_BackupList:
+		a.bk.handleBackupList(env.Id, b.BackupList, send)
 	// ── plan-5 ──
 	// ── plan-6 ──
 	// ── plan-7 ──
