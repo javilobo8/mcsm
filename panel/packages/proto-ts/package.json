@@ -1,0 +1,10 @@
+{
+  "name": "@mcsm/proto",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "echo no tests" },
+  "dependencies": { "@bufbuild/protobuf": "^2.16.0" },
+  "devDependencies": { "typescript": "^5.9.0" }
+}

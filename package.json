@@ -1,0 +1,13 @@
+{
+  "name": "mcsm",
+  "private": true,
+  "packageManager": "pnpm@12.10.1",
+  "scripts": {
+    "gen": "buf generate",
+    "lint:proto": "buf lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "dev:api": "pnpm --filter @mcsm/api dev",
+    "dev:web": "pnpm --filter @mcsm/web dev"
+  }
+}

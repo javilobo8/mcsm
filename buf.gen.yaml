@@ -1,0 +1,13 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: mcsm/agent/gen
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.36.12
+    out: agent/gen
+    opt: paths=source_relative
+  - remote: buf.build/bufbuild/es:v2.16.0
+    out: panel/packages/proto-ts/src/gen
+    opt: target=ts

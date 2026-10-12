@@ -1,0 +1,10 @@
+node_modules/
+dist/
+agent/bin/
+*.db
+*.db-wal
+*.db-shm
+.env
+/data/
+deploy/data/
+coverage/
