@@ -720,3 +720,18 @@ func (b *backupService) stopForRetire(id string) error {
 	}
 	return nil
 }
+
+// preMigrationReady: la copia previa a una migración exige el servidor parado (el panel lo para en
+// el paso 1; un arranque que llegara después la haría en caliente y el origen seguiría vivo junto
+// al destino) y sin escrituras de archivos a medias (como la restauración). Se llama con la reserva
+// tomada: Power y Files ya responden busy.
+func (b *backupService) preMigrationReady(serverID string, j *jobs.Job) error {
+	running, err := b.isRunning(b.a.life, serverID)
+	if err != nil {
+		return err
+	}
+	if running {
+		return fmt.Errorf("%w: el servidor está en marcha; la copia previa a una migración se hace con el servidor parado", errBadRequest)
+	}
+	return b.drainFileWrites(serverID, j)
+}

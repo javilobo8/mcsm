@@ -539,6 +539,18 @@ func (b *backupService) startBackup(jobID, serverID, trigger string) error {
 		b.finish(j, err, "")
 		return err
 	}
+	if trigger == backup.TriggerPreMigration {
+		// plan-7: la copia que se migra se hace en frío y sin escrituras a medias (como una
+		// restauración): un arranque o una subida que llegaran después del paso 1 la dejarían
+		// desfasada respecto a lo que siga escribiendo el origen.
+		if err := b.preMigrationReady(serverID, j); err != nil {
+			// En línea, como al fallar el lanzamiento: el servidor está parado o sin cambios (la
+			// reconciliación es inmediata) y el panel lo vuelve a arrancar en cuanto recibe el error.
+			release(b.a.life)
+			b.finish(j, err, "")
+			return err
+		}
+	}
 	return b.launchBackup(j, serverID, trigger, release)
 }
 

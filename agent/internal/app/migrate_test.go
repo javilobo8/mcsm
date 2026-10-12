@@ -76,6 +76,7 @@ func (e *backupEnv) call(t *testing.T, id uint64, body any) *mcsmv1.Envelope {
 // preMigration hace una copia pre_migration de "a" y devuelve su aviso.
 func preMigration(t *testing.T, e *backupEnv) *mcsmv1.BackupInfo {
 	t.Helper()
+	stopServer(t, e, 9) // paso 1 de la migración: la copia previa exige el servidor parado
 	if r := e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-pre", Trigger: mcsmv1.BackupTrigger_BACKUP_TRIGGER_PRE_MIGRATION}); r.GetAck() == nil {
 		t.Fatalf("BackupNow = %+v", r)
 	}
@@ -798,5 +799,33 @@ func TestMigrateOpsSerializedPerServer(t *testing.T) {
 	})
 	if r.GetAck() == nil {
 		t.Fatalf("retire = %+v", r)
+	}
+}
+
+// m2: la copia previa a una migración exige el servidor parado y espera a las escrituras de archivos.
+func TestBackupNowPreMigrationRefusesRunningServerAndWaitsFileWrites(t *testing.T) {
+	e := newMigrateEnv(t)
+	pre := func(id uint64, job string) *mcsmv1.Envelope {
+		return e.handle(id, &mcsmv1.BackupNow{ServerId: "a", JobId: job, Trigger: mcsmv1.BackupTrigger_BACKUP_TRIGGER_PRE_MIGRATION})
+	}
+	if r := pre(10, "job-1"); errCode(r) != errcode.InvalidRequest || !strings.Contains(r.GetError().GetMessage(), "en marcha") {
+		t.Fatalf("en marcha = %+v", r)
+	}
+	stopServer(t, e, 11)
+	e.a.bk.drainWait = 0
+	leave := e.a.fileWrites.enter("a")
+	if r := pre(12, "job-2"); errCode(r) != errcode.Busy || !strings.Contains(r.GetError().GetMessage(), "archivos") {
+		t.Fatalf("escrituras en curso = %+v", r)
+	}
+	leave()
+	if r := pre(13, "job-3"); r.GetAck() == nil {
+		t.Fatalf("parado y sin escrituras = %+v", r)
+	}
+	e.settle(t)
+	if cr := e.col.created(); len(cr) != 1 {
+		t.Fatalf("una sola copia: %+v", cr)
+	}
+	if e.a.rec.Held("a") {
+		t.Fatal("reserva liberada")
 	}
 }
