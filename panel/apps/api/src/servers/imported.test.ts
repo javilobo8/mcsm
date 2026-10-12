@@ -46,7 +46,7 @@ describe("servidores importados", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it("PATCH: el formulario conserva dataPath; cambiarlo da 400; null lo quita (versión +1)", async () => {
+  it("PATCH: el formulario conserva dataPath; cambiarlo o quitarlo (null) da 400", async () => {
     const row = imported();
     let res = await req("PATCH", `/api/servers/${row.id}`, { spec: { memory: "3G" } });
     expect(res.statusCode).toBe(200);
@@ -56,9 +56,10 @@ describe("servidores importados", () => {
     res = await req("PATCH", `/api/servers/${row.id}`, { spec: { dataPath: DATA } });
     expect(res.json().specVersion).toBe(2);
     res = await req("PATCH", `/api/servers/${row.id}`, { spec: { dataPath: null } });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().specVersion).toBe(3);
-    expect(res.json().spec).not.toHaveProperty("dataPath");
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("importación");
+    const after = (await req("GET", `/api/servers/${row.id}`)).json();
+    expect(after).toMatchObject({ specVersion: 2, spec: { dataPath: DATA } });
   });
 
   it("con dataPath no se pueden programar copias", async () => {

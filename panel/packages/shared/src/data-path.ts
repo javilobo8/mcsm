@@ -51,11 +51,13 @@ export function dataPathCheck(s: { dataPath?: string | undefined; backups?: { en
 
 /**
  * PATCH de spec: dataPath solo lo fija la importación (es la carpeta real del contenedor adoptado). El
- * PATCH puede reenviarlo igual o quitarlo con null (vuelve a <DATA_ROOT>/<slug>/data). Mensaje del 400 o null.
+ * PATCH solo puede reenviarlo igual; cambiarlo o quitarlo (null) es 400: quitarlo recrearía el servidor
+ * sobre <DATA_ROOT>/<slug>/data, vacía, y el mundo «desaparecería». `null` sin dataPath previo no cambia
+ * nada. Mensaje del 400 o null.
  */
 export function dataPathPatchError(patch: Record<string, unknown>, previous: { dataPath?: string | undefined }): string | null {
   if (!Object.hasOwn(patch, "dataPath")) return null;
   const v = patch.dataPath;
-  if (v === null || v === previous.dataPath) return null;
-  return "La carpeta de datos (dataPath) solo la fija la importación de un servidor: no se puede cambiar por aquí";
+  if (v === previous.dataPath || (v === null && previous.dataPath === undefined)) return null;
+  return "La carpeta de datos (dataPath) solo la fija la importación de un servidor: no se puede cambiar ni quitar por aquí. Para llevar los datos a DATA_ROOT, elimina el servidor sin borrar datos, mueve la carpeta a DATA_ROOT/<slug>/data y vuelve a importarlo";
 }

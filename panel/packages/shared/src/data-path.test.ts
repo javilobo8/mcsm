@@ -51,13 +51,14 @@ describe("dataPath en la spec", () => {
     expect(specSchema.safeParse({ ...withData, backups: { enabled: false } }).success).toBe(true);
     expect(specInputSchema.safeParse({ dataPath: "/home/lobo/mc/survival", backups: { enabled: true, cron: "0 4 * * *" } }).success).toBe(false);
   });
-  it("PATCH: null lo quita (permitido); otro valor no", () => {
+  it("PATCH: solo puede reenviar el mismo dataPath; cambiarlo o quitarlo (null) no", () => {
     expect(specPatchNullError({ dataPath: null })).toBeNull();
     const prev = { dataPath: "/home/lobo/mc/survival" };
     expect(dataPathPatchError({}, prev)).toBeNull();
-    expect(dataPathPatchError({ dataPath: null }, prev)).toBeNull();
     expect(dataPathPatchError({ dataPath: "/home/lobo/mc/survival" }, prev)).toBeNull();
+    expect(dataPathPatchError({ dataPath: null }, prev)).not.toBeNull(); // recrearía sobre DATA_ROOT/<slug>/data, vacía
     expect(dataPathPatchError({ dataPath: "/home/lobo/otra" }, prev)).not.toBeNull();
     expect(dataPathPatchError({ dataPath: "/home/lobo/otra" }, {})).not.toBeNull();
+    expect(dataPathPatchError({ dataPath: null }, {})).toBeNull(); // no había: no cambia nada
   });
 });
