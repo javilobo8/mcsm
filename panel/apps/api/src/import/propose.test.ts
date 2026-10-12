@@ -236,3 +236,19 @@ describe("proposeImport: usuario del contenedor (m7)", () => {
     }
   });
 });
+
+describe("proposeImport: avisos de la revisión", () => {
+  it("m8: un dataPath bajo /tmp avisa (tmpfs o systemd-tmpfiles lo borran)", () => {
+    const at = (source: string) => proposeImport(cand({ mounts: [{ type: "bind", source, destination: "/data", readWrite: true }] }), ctx());
+    expect(at("/tmp/mc/survival").dataPath).toBe("/tmp/mc/survival");
+    expect(at("/tmp/mc/survival").warnings.join(" ")).toMatch(/temporal/);
+    expect(at("/var/tmp/mc").warnings.join(" ")).toMatch(/temporal/);
+    expect(at("/home/lobo/tmp/mc").warnings.join(" ")).not.toMatch(/temporal/);
+  });
+  it("m11: RCON_PASSWORD_FILE y CF_API_KEY_FILE no pasan a env (el secreto montado no se conserva) y se avisa", () => {
+    const p = proposeImport(cand({ env: env({ RCON_PASSWORD_FILE: "/run/secrets/rcon", CF_API_KEY_FILE: "/run/secrets/cf", MOTD: "Hola" }) }), ctx());
+    expect(p.spec.env).toEqual({ MOTD: "Hola" });
+    expect(p.warnings.join(" ")).toMatch(/RCON_PASSWORD_FILE/);
+    expect(p.warnings.join(" ")).toMatch(/CF_API_KEY_FILE/);
+  });
+});

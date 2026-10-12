@@ -41,6 +41,10 @@ const PLUGIN_TYPES = new Set(["PAPER", "PURPUR", "SPIGOT", "FOLIA", "BUKKIT", "P
 const PLATFORMS = new Set(["MODRINTH", "AUTO_CURSEFORGE", "FTBA"]);
 const RESTART = new Set(["no", "always", "unless-stopped", "on-failure"]);
 const SECRET_ENV = ["RCON_PASSWORD", "CF_API_KEY"] as const;
+/** Variables de itzg que leen un secreto de un fichero montado (Docker secrets): el montaje no se conserva. */
+const SECRET_FILE_ENV = ["RCON_PASSWORD_FILE", "CF_API_KEY_FILE"] as const;
+/** Carpetas que el sistema vacía (tmpfs al reiniciar, systemd-tmpfiles). */
+const TEMP_DIRS = ["/tmp", "/var/tmp"] as const;
 export const COMPOSE_PROJECT = "com.docker.compose.project";
 export const COMPOSE_SERVICE = "com.docker.compose.service";
 const SLUG_DATA_RE = /^\/([a-z0-9][a-z0-9-]{0,39})\/data$/;
@@ -118,6 +122,9 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
       else {
         dataPath = src;
         warn(`Los datos quedan fuera de DATA_ROOT (${src}): este servidor no tendrá copias de seguridad ni navegador de archivos. Para tenerlos, para el contenedor y mueve la carpeta a ${root}/<slug>/data antes de importar`);
+        if (TEMP_DIRS.some((d) => pathWithin(src, d))) {
+          warn(`${src} es una carpeta temporal: el sistema puede vaciarla (tmpfs al reiniciar, systemd-tmpfiles) y se perdería el mundo. Muévela a una carpeta estable antes de importar`);
+        }
       }
     }
   }
@@ -173,6 +180,12 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
 
   // RCON y secretos.
   take("EULA");
+  for (const k of SECRET_FILE_ENV) {
+    if (take(k) === undefined) continue;
+    warn(k === "RCON_PASSWORD_FILE"
+      ? "RCON_PASSWORD_FILE lee la contraseña RCON de un fichero montado que no se conserva al recrearlo: se descarta (la contraseña RCON la gestiona el panel)"
+      : "CF_API_KEY_FILE lee la API key de CurseForge de un fichero montado que no se conserva al recrearlo: se descarta; configúrala en Ajustes");
+  }
   const rconEnv = take("RCON_PASSWORD");
   const rconOk = rconEnv !== undefined && rconEnv.length >= 8 && utf8Bytes(rconEnv) <= MAX_STRING_BYTES;
   const rconOff = falsy(take("ENABLE_RCON"));
