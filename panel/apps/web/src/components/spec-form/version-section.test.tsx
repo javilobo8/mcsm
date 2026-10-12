@@ -43,3 +43,12 @@ describe("VersionSection: visibilidad estable", () => {
     expect(html).toContain("SPIGET_RESOURCES");
   });
 });
+
+describe("VersionSection: aria-describedby heredado de Field", () => {
+  it("sf-version y sf-mp-slug referencian su hint", () => {
+    const html = render({ ...withType(defaultSpecInput(), "MODRINTH"), modpack: { platform: "MODRINTH", slugOrUrl: "x", versionId: "", loader: "" } });
+    expect(html).toMatch(/id="sf-version"[^>]*aria-describedby="sf-version-hint"|aria-describedby="sf-version-hint"[^>]*id="sf-version"/);
+    expect(html).toMatch(/id="sf-mp-slug"[^>]*aria-describedby="sf-mp-slug-hint"|aria-describedby="sf-mp-slug-hint"[^>]*id="sf-mp-slug"/);
+    expect(html).toContain('id="sf-version-hint"');
+  });
+});

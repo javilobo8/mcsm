@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { cloneElement, isValidElement, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,11 +14,12 @@ export const errId = (id: string) => `${id}-err`;
 export const describedBy = (id: string, hint: unknown, error: string | null | undefined) =>
   [hint ? hintId(id) : null, error ? errId(id) : null].filter(Boolean).join(" ") || undefined;
 
+/** Envuelve UN control: le inyecta aria-describedby con el hint y el error presentes (el control debe aceptar esa prop). */
 export function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: React.ReactNode; error?: string | null; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      {children}
+      {isValidElement<{ "aria-describedby"?: string }>(children) ? cloneElement(children, { "aria-describedby": describedBy(id, hint, error) }) : children}
       {hint && <p id={hintId(id)} className="text-xs text-muted-foreground">{hint}</p>}
       {error && <p id={errId(id)} role="alert" className="text-xs text-red-400">{error}</p>}
     </div>
@@ -73,7 +74,7 @@ export function KvField({ id, label, value, onChange, onError, placeholder, hint
   );
 }
 
-/** Número opcional (vacío = undefined). Avisa con onError si no es un número válido en [min, max]. */
+/** Número opcional (vacío = undefined). Solo acepta enteros NO negativos (o decimales no negativos con integer=false): si hace falta un negativo, ampliar la regex.  Avisa con onError si no es un número válido en [min, max]. */
 export function NumberField({ id, label, value, onChange, onError, min, max, integer = true, placeholder, hint }: {
   id: string; label: string; value: number | undefined; onChange: (v: number | undefined) => void; onError: ReportError;
   min?: number; max?: number; integer?: boolean; placeholder?: string; hint?: React.ReactNode;
@@ -105,14 +106,14 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
 const DEFAULT = "__default__"; // Radix Select no admite value=""
 
 /** Select con opción "(por defecto)" que equivale a no fijar el valor. */
-export function OptionalSelect({ id, value, options, onChange, defaultLabel = "(por defecto)" }: {
-  id: string; value: string | undefined; options: readonly { value: string; label: string }[]; onChange: (v: string | undefined) => void; defaultLabel?: string;
+export function OptionalSelect({ id, value, options, onChange, defaultLabel = "(por defecto)", "aria-describedby": describedby }: {
+  id: string; "aria-describedby"?: string; value: string | undefined; options: readonly { value: string; label: string }[]; onChange: (v: string | undefined) => void; defaultLabel?: string;
 }) {
   const known = value === undefined || options.some((o) => o.value === value);
   const all = known ? options : [{ value: value!, label: value! }, ...options];
   return (
     <Select value={value ?? DEFAULT} onValueChange={(v) => onChange(v === DEFAULT ? undefined : v)}>
-      <SelectTrigger id={id}><SelectValue /></SelectTrigger>
+      <SelectTrigger id={id} aria-describedby={describedby}><SelectValue /></SelectTrigger>
       <SelectContent>
         <SelectItem value={DEFAULT}>{defaultLabel}</SelectItem>
         {all.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
@@ -122,13 +123,13 @@ export function OptionalSelect({ id, value, options, onChange, defaultLabel = "(
 }
 
 /** Select obligatorio; si el valor actual no está en la lista (p. ej. un tipo importado) se añade. */
-export function RequiredSelect({ id, value, options, onChange }: {
-  id: string; value: string; options: readonly { value: string; label: string }[]; onChange: (v: string) => void;
+export function RequiredSelect({ id, value, options, onChange, "aria-describedby": describedby }: {
+  id: string; "aria-describedby"?: string; value: string; options: readonly { value: string; label: string }[]; onChange: (v: string) => void;
 }) {
   const all = options.some((o) => o.value === value) ? options : [{ value, label: value }, ...options];
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger id={id}><SelectValue /></SelectTrigger>
+      <SelectTrigger id={id} aria-describedby={describedby}><SelectValue /></SelectTrigger>
       <SelectContent>{all.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
     </Select>
   );
