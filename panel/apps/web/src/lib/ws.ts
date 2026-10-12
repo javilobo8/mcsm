@@ -5,9 +5,11 @@ type Handler = (msg: ServerMessage) => void;
 /** Cierre por falta de sesión (política/no autorizado) */
 const AUTH_CLOSE_CODES = new Set([1008, 4401]);
 
-// Topics del panel: "servers", "nodes" y "server:<id>:logs".
+// Topics del panel: "servers", "nodes", "jobs" y "server:<id>:logs".
 export function topicOf(msg: ServerMessage): string | null {
   switch (msg.type) {
+    case "job":
+    case "backups": return "jobs"; // plan-4
     case "node":
     case "node_metrics": return "nodes";
     case "observed": return "servers";

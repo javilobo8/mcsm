@@ -18,12 +18,12 @@ export function errorMessage(status: number, statusText: string, data: unknown):
   return statusText || `Error HTTP ${status}`;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
       method,
-      headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+      headers: body !== undefined || extraHeaders ? { ...(body !== undefined ? { "content-type": "application/json" } : {}), ...extraHeaders } : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
       credentials: "same-origin",
     });
@@ -50,7 +50,7 @@ export function apiPath(strings: TemplateStringsArray, ...values: (string | numb
 
 export const api = {
   get: <T>(p: string) => request<T>("GET", p),
-  post: <T>(p: string, b?: unknown) => request<T>("POST", p, b),
+  post: <T>(p: string, b?: unknown, headers?: Record<string, string>) => request<T>("POST", p, b, headers),
   patch: <T>(p: string, b?: unknown) => request<T>("PATCH", p, b),
   put: <T>(p: string, b?: unknown) => request<T>("PUT", p, b),
   del: <T>(p: string) => request<T>("DELETE", p),
@@ -72,7 +72,23 @@ export interface ServerDto {
   spec: import("@mcsm/shared").SpecInput & { ports: { game: number }; rconPassword?: string };
 }
 
+// plan-4: copias y jobs
+export type JobState = "queued" | "running" | "ok" | "failed" | "cancelled";
+export interface JobDto {
+  id: string; type: string; serverId: string | null; nodeId: string | null; status: JobState; progress: number; message: string;
+  payload: Record<string, unknown>; createdAt: string; updatedAt: string; startedAt: string | null; finishedAt: string | null;
+}
+export interface JobDetailDto extends JobDto { log: string }
+export type BackupTriggerName = "manual" | "scheduled" | "pre_migration" | "pre_restore";
+export interface BackupDto {
+  id: string; serverId: string; nodeId: string; filename: string; sizeBytes: number; sha256: string; specVersion: number;
+  trigger: BackupTriggerName; status: "running" | "ok" | "failed" | "deleted"; startedAt: string; finishedAt: string | null;
+  kind: "archive" | "directory";
+}
+
 export type ServerMessage =
+  | { type: "job"; job: JobDto; logChunk: string; /** Log completo (reemplaza al acumulado); el panel hoy no lo envía. */ log?: string }
+  | { type: "backups"; serverId: string }
   | { type: "observed"; serverId: string; observed: ObservedDto; observedAt: string }
   | { type: "node"; node: NodeDto }
   | { type: "log"; serverId: string; ts: number; line: string }

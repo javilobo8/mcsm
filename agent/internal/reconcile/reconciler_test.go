@@ -528,15 +528,24 @@ func TestForgetDeletesSpecButKeepsContainer(t *testing.T) {
 	if list, _ := fake.ListManaged(ctx); len(list) != 1 {
 		t.Fatal("Forget no toca Docker")
 	}
-	r.ReconcileAll(ctx)
-	if calls(fake, "Create") != 1 {
-		t.Fatal("una spec olvidada no se reconcilia")
+	// El tick de specs no la ve: ni la recrea ni la arranca ni la borra.
+	if err := r.ReconcileTick(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if calls(fake, "Create") != 1 || calls(fake, "Stop") != 0 || calls(fake, "Remove") != 0 {
+		t.Fatalf("una spec olvidada no se reconcilia: %v", fake.Calls)
+	}
+	if list, _ := fake.ListManaged(ctx); len(list) != 1 {
+		t.Fatal("el contenedor sigue hasta el Remove")
 	}
 	if err := r.Remove(ctx, "a", false); err != nil {
 		t.Fatal(err)
 	}
-	if list, _ := fake.ListManaged(ctx); len(list) != 0 {
-		t.Fatal("Remove tras Forget debe borrar el contenedor huérfano")
+	if list, _ := fake.ListManaged(ctx); len(list) != 0 || calls(fake, "Remove") != 1 {
+		t.Fatalf("Remove tras Forget debe borrar el contenedor huérfano: %v", fake.Calls)
+	}
+	if has, _ := st.HasTombstone("a"); has {
+		t.Fatal("Remove con éxito borra la lápida")
 	}
 }
 

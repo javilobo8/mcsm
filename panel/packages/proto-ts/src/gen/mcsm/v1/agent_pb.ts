@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file mcsm/v1/agent.proto.
  */
 export const file_mcsm_v1_agent: GenFile = /*@__PURE__*/
-  fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIukJCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAEiwKDG1ldHJpY19iYXRjaBgeIAEoCzIULm1jc20udjEuTWV0cmljQmF0Y2hIABIoCgpmaWxlc19saXN0GEYgASgLMhIubWNzbS52MS5GaWxlc0xpc3RIABI1ChFmaWxlc19saXN0X3Jlc3VsdBhHIAEoCzIYLm1jc20udjEuRmlsZXNMaXN0UmVzdWx0SAASKAoKZmlsZXNfc3RhdBhIIAEoCzISLm1jc20udjEuRmlsZXNTdGF0SAASNQoRZmlsZXNfc3RhdF9yZXN1bHQYSSABKAsyGC5tY3NtLnYxLkZpbGVzU3RhdFJlc3VsdEgAEigKCmZpbGVzX3JlYWQYSiABKAsyEi5tY3NtLnYxLkZpbGVzUmVhZEgAEjUKEWZpbGVzX3JlYWRfcmVzdWx0GEsgASgLMhgubWNzbS52MS5GaWxlc1JlYWRSZXN1bHRIABIqCgtmaWxlc193cml0ZRhMIAEoCzITLm1jc20udjEuRmlsZXNXcml0ZUgAEioKC2ZpbGVzX21rZGlyGE0gASgLMhMubWNzbS52MS5GaWxlc01rZGlySAASLAoMZmlsZXNfcmVuYW1lGE4gASgLMhQubWNzbS52MS5GaWxlc1JlbmFtZUgAEiwKDGZpbGVzX2RlbGV0ZRhPIAEoCzIULm1jc20udjEuRmlsZXNEZWxldGVIABIwCg5maWxlc19kb3dubG9hZBhQIAEoCzIWLm1jc20udjEuRmlsZXNEb3dubG9hZEgAEiwKDGZpbGVzX3VwbG9hZBhRIAEoCzIULm1jc20udjEuRmlsZXNVcGxvYWRIAEIGCgRib2R5Il0KCEhvc3RJbmZvEhAKCGhvc3RuYW1lGAEgASgJEgwKBGNwdXMYAiABKA0SFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEgoKAm9zGAQgASgJEgwKBGFyY2gYBSABKAkizQIKBUhlbGxvEhUKDWFnZW50X3ZlcnNpb24YASABKAkSFgoOZG9ja2VyX3ZlcnNpb24YAiABKAkSHwoEaG9zdBgDIAEoCzIRLm1jc20udjEuSG9zdEluZm8SNwoNc3BlY192ZXJzaW9ucxgEIAMoCzIgLm1jc20udjEuSGVsbG8uU3BlY1ZlcnNpb25zRW50cnkSOQoOZGVzaXJlZF9zdGF0ZXMYBSADKAsyIS5tY3NtLnYxLkhlbGxvLkRlc2lyZWRTdGF0ZXNFbnRyeRozChFTcGVjVmVyc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBGksKEkRlc2lyZWRTdGF0ZXNFbnRyeRILCgNrZXkYASABKAkSJAoFdmFsdWUYAiABKA4yFS5tY3NtLnYxLkRlc2lyZWRTdGF0ZToCOAEiGwoISGVsbG9BY2sSDwoHbm9kZV9pZBgBIAEoCSJ/CgpTZXJ2ZXJTcGVjEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEg8KB3ZlcnNpb24YAyABKAQSLAoNZGVzaXJlZF9zdGF0ZRgEIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlEhEKCXNwZWNfanNvbhgFIAEoDCJGCglTeW5jU3BlY3MSJAoHc2VydmVycxgBIAMoCzITLm1jc20udjEuU2VydmVyU3BlYxITCgtyZW1vdmVkX2lkcxgCIAMoCSIwCglBcHBseVNwZWMSIwoGc2VydmVyGAEgASgLMhMubWNzbS52MS5TZXJ2ZXJTcGVjIjYKDFJlbW92ZVNlcnZlchIRCglzZXJ2ZXJfaWQYASABKAkSEwoLZGVsZXRlX2RhdGEYAiABKAgiSgoLUG93ZXJBY3Rpb24SEQoJc2VydmVyX2lkGAEgASgJEigKBmFjdGlvbhgCIAEoDjIYLm1jc20udjEuUG93ZXJBY3Rpb25UeXBlIjEKC1NlbmRDb21tYW5kEhEKCXNlcnZlcl9pZBgBIAEoCRIPCgdjb21tYW5kGAIgASgJIh8KDUNvbW1hbmRSZXN1bHQSDgoGb3V0cHV0GAEgASgJIjAKDVN1YnNjcmliZUxvZ3MSEQoJc2VydmVyX2lkGAEgASgJEgwKBHRhaWwYAiABKA0iPgoHTG9nTGluZRIRCglzZXJ2ZXJfaWQYASABKAkSEgoKdHNfdW5peF9tcxgCIAEoAxIMCgRsaW5lGAMgASgJIh0KC1N0cmVhbUNsb3NlEg4KBnJlYXNvbhgBIAEoCSJsCghNY1N0YXR1cxIOCgZvbmxpbmUYASABKAgSFgoOcGxheWVyc19vbmxpbmUYAiABKA0SEwoLcGxheWVyc19tYXgYAyABKA0SDwoHdmVyc2lvbhgEIAEoCRISCgpsYXRlbmN5X21zGAUgASgNIrIBCghPYnNlcnZlZBIUCgxjb250YWluZXJfaWQYASABKAkSDQoFc3RhdGUYAiABKAkSDgoGaGVhbHRoGAMgASgJEhcKD3N0YXJ0ZWRfYXRfdW5peBgEIAEoAxIRCglleGl0X2NvZGUYBSABKAUSFwoPYXBwbGllZF92ZXJzaW9uGAYgASgEEg0KBWVycm9yGAcgASgJEh0KAm1jGAggASgLMhEubWNzbS52MS5NY1N0YXR1cyJcCg5TZXJ2ZXJPYnNlcnZlZBIRCglzZXJ2ZXJfaWQYASABKAkSIwoIb2JzZXJ2ZWQYAiABKAsyES5tY3NtLnYxLk9ic2VydmVkEhIKCnRzX3VuaXhfbXMYAyABKAMiBQoDQWNrIiYKBUVycm9yEgwKBGNvZGUYASABKAkSDwoHbWVzc2FnZRgCIAEoCSJ1CgtNZXRyaWNCYXRjaBIPCgd0c191bml4GAEgASgDEicKBGhvc3QYAiABKAsyGS5tY3NtLnYxLkhvc3RNZXRyaWNTYW1wbGUSLAoHc2VydmVycxgDIAMoCzIbLm1jc20udjEuU2VydmVyTWV0cmljU2FtcGxlIocBChBIb3N0TWV0cmljU2FtcGxlEg8KB2NwdV9wY3QYASABKAESFgoObWVtX3VzZWRfYnl0ZXMYAiABKAQSFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEhcKD2Rpc2tfdXNlZF9ieXRlcxgEIAEoBBIYChBkaXNrX3RvdGFsX2J5dGVzGAUgASgEIvsBChJTZXJ2ZXJNZXRyaWNTYW1wbGUSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NwdV9wY3QYAiABKAESEQoJbWVtX2J5dGVzGAMgASgEEhcKD21lbV9saW1pdF9ieXRlcxgEIAEoBBIUCgxuZXRfcnhfYnl0ZXMYBSABKAQSFAoMbmV0X3R4X2J5dGVzGAYgASgEEhEKCW1jX29ubGluZRgHIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgIIAEoDRITCgtwbGF5ZXJzX21heBgJIAEoDRIPCgdwaW5nX21zGAogASgNEhAKA3RwcxgLIAEoAUgAiAEBQgYKBF90cHMibQoJRmlsZUVudHJ5EgwKBG5hbWUYASABKAkSCwoDZGlyGAIgASgIEg8KB3N5bWxpbmsYAyABKAgSDAoEc2l6ZRgEIAEoBBIYChBtb2RfdGltZV91bml4X21zGAUgASgDEgwKBG1vZGUYBiABKA0iLAoJRmlsZXNMaXN0EhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJIkkKD0ZpbGVzTGlzdFJlc3VsdBIjCgdlbnRyaWVzGAEgAygLMhIubWNzbS52MS5GaWxlRW50cnkSEQoJdHJ1bmNhdGVkGAIgASgIIiwKCUZpbGVzU3RhdBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCSI0Cg9GaWxlc1N0YXRSZXN1bHQSIQoFZW50cnkYASABKAsyEi5tY3NtLnYxLkZpbGVFbnRyeSI/CglGaWxlc1JlYWQSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkSEQoJbWF4X2J5dGVzGAMgASgNIjAKD0ZpbGVzUmVhZFJlc3VsdBIPCgdjb250ZW50GAEgASgMEgwKBHNpemUYAiABKAQiPgoKRmlsZXNXcml0ZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIPCgdjb250ZW50GAMgASgMIi0KCkZpbGVzTWtkaXISEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiOgoLRmlsZXNSZW5hbWUSEQoJc2VydmVyX2lkGAEgASgJEgwKBGZyb20YAiABKAkSCgoCdG8YAyABKAkiLgoLRmlsZXNEZWxldGUSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiRQoNRmlsZXNEb3dubG9hZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCSJRCgtGaWxlc1VwbG9hZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCRIMCgRzaXplGAQgASgDKmMKDERlc2lyZWRTdGF0ZRIdChlERVNJUkVEX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVREVTSVJFRF9TVEFURV9SVU5OSU5HEAESGQoVREVTSVJFRF9TVEFURV9TVE9QUEVEEAIqqAEKD1Bvd2VyQWN0aW9uVHlwZRIhCh1QT1dFUl9BQ1RJT05fVFlQRV9VTlNQRUNJRklFRBAAEhsKF1BPV0VSX0FDVElPTl9UWVBFX1NUQVJUEAESGgoWUE9XRVJfQUNUSU9OX1RZUEVfU1RPUBACEh0KGVBPV0VSX0FDVElPTl9UWVBFX1JFU1RBUlQQAxIaChZQT1dFUl9BQ1RJT05fVFlQRV9LSUxMEARCdQoLY29tLm1jc20udjFCCkFnZW50UHJvdG9QAVodbWNzbS9hZ2VudC9nZW4vbWNzbS92MTttY3NtdjGiAgNNWFiqAgdNY3NtLlYxygIHTWNzbVxWMeICE01jc21cVjFcR1BCTWV0YWRhdGHqAghNY3NtOjpWMWIGcHJvdG8z");
+  fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIukMCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAEiwKDG1ldHJpY19iYXRjaBgeIAEoCzIULm1jc20udjEuTWV0cmljQmF0Y2hIABIoCgpiYWNrdXBfbm93GDIgASgLMhIubWNzbS52MS5CYWNrdXBOb3dIABIwCg5iYWNrdXBfcmVzdG9yZRgzIAEoCzIWLm1jc20udjEuQmFja3VwUmVzdG9yZUgAEi4KDWJhY2t1cF9kZWxldGUYNCABKAsyFS5tY3NtLnYxLkJhY2t1cERlbGV0ZUgAEioKC2JhY2t1cF9saXN0GDUgASgLMhMubWNzbS52MS5CYWNrdXBMaXN0SAASNAoQYmFja3VwX2ludmVudG9yeRg2IAEoCzIYLm1jc20udjEuQmFja3VwSW52ZW50b3J5SAASMAoOYmFja3VwX2NyZWF0ZWQYNyABKAsyFi5tY3NtLnYxLkJhY2t1cENyZWF0ZWRIABIwCg5iYWNrdXBfZGVsZXRlZBg4IAEoCzIWLm1jc20udjEuQmFja3VwRGVsZXRlZEgAEiwKDGpvYl9wcm9ncmVzcxg5IAEoCzIULm1jc20udjEuSm9iUHJvZ3Jlc3NIABIoCgpmaWxlc19saXN0GEYgASgLMhIubWNzbS52MS5GaWxlc0xpc3RIABI1ChFmaWxlc19saXN0X3Jlc3VsdBhHIAEoCzIYLm1jc20udjEuRmlsZXNMaXN0UmVzdWx0SAASKAoKZmlsZXNfc3RhdBhIIAEoCzISLm1jc20udjEuRmlsZXNTdGF0SAASNQoRZmlsZXNfc3RhdF9yZXN1bHQYSSABKAsyGC5tY3NtLnYxLkZpbGVzU3RhdFJlc3VsdEgAEigKCmZpbGVzX3JlYWQYSiABKAsyEi5tY3NtLnYxLkZpbGVzUmVhZEgAEjUKEWZpbGVzX3JlYWRfcmVzdWx0GEsgASgLMhgubWNzbS52MS5GaWxlc1JlYWRSZXN1bHRIABIqCgtmaWxlc193cml0ZRhMIAEoCzITLm1jc20udjEuRmlsZXNXcml0ZUgAEioKC2ZpbGVzX21rZGlyGE0gASgLMhMubWNzbS52MS5GaWxlc01rZGlySAASLAoMZmlsZXNfcmVuYW1lGE4gASgLMhQubWNzbS52MS5GaWxlc1JlbmFtZUgAEiwKDGZpbGVzX2RlbGV0ZRhPIAEoCzIULm1jc20udjEuRmlsZXNEZWxldGVIABIwCg5maWxlc19kb3dubG9hZBhQIAEoCzIWLm1jc20udjEuRmlsZXNEb3dubG9hZEgAEiwKDGZpbGVzX3VwbG9hZBhRIAEoCzIULm1jc20udjEuRmlsZXNVcGxvYWRIAEIGCgRib2R5Il0KCEhvc3RJbmZvEhAKCGhvc3RuYW1lGAEgASgJEgwKBGNwdXMYAiABKA0SFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEgoKAm9zGAQgASgJEgwKBGFyY2gYBSABKAkizQIKBUhlbGxvEhUKDWFnZW50X3ZlcnNpb24YASABKAkSFgoOZG9ja2VyX3ZlcnNpb24YAiABKAkSHwoEaG9zdBgDIAEoCzIRLm1jc20udjEuSG9zdEluZm8SNwoNc3BlY192ZXJzaW9ucxgEIAMoCzIgLm1jc20udjEuSGVsbG8uU3BlY1ZlcnNpb25zRW50cnkSOQoOZGVzaXJlZF9zdGF0ZXMYBSADKAsyIS5tY3NtLnYxLkhlbGxvLkRlc2lyZWRTdGF0ZXNFbnRyeRozChFTcGVjVmVyc2lvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAQ6AjgBGksKEkRlc2lyZWRTdGF0ZXNFbnRyeRILCgNrZXkYASABKAkSJAoFdmFsdWUYAiABKA4yFS5tY3NtLnYxLkRlc2lyZWRTdGF0ZToCOAEiGwoISGVsbG9BY2sSDwoHbm9kZV9pZBgBIAEoCSJ/CgpTZXJ2ZXJTcGVjEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEg8KB3ZlcnNpb24YAyABKAQSLAoNZGVzaXJlZF9zdGF0ZRgEIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlEhEKCXNwZWNfanNvbhgFIAEoDCJGCglTeW5jU3BlY3MSJAoHc2VydmVycxgBIAMoCzITLm1jc20udjEuU2VydmVyU3BlYxITCgtyZW1vdmVkX2lkcxgCIAMoCSIwCglBcHBseVNwZWMSIwoGc2VydmVyGAEgASgLMhMubWNzbS52MS5TZXJ2ZXJTcGVjIjYKDFJlbW92ZVNlcnZlchIRCglzZXJ2ZXJfaWQYASABKAkSEwoLZGVsZXRlX2RhdGEYAiABKAgiSgoLUG93ZXJBY3Rpb24SEQoJc2VydmVyX2lkGAEgASgJEigKBmFjdGlvbhgCIAEoDjIYLm1jc20udjEuUG93ZXJBY3Rpb25UeXBlIjEKC1NlbmRDb21tYW5kEhEKCXNlcnZlcl9pZBgBIAEoCRIPCgdjb21tYW5kGAIgASgJIh8KDUNvbW1hbmRSZXN1bHQSDgoGb3V0cHV0GAEgASgJIjAKDVN1YnNjcmliZUxvZ3MSEQoJc2VydmVyX2lkGAEgASgJEgwKBHRhaWwYAiABKA0iPgoHTG9nTGluZRIRCglzZXJ2ZXJfaWQYASABKAkSEgoKdHNfdW5peF9tcxgCIAEoAxIMCgRsaW5lGAMgASgJIh0KC1N0cmVhbUNsb3NlEg4KBnJlYXNvbhgBIAEoCSJsCghNY1N0YXR1cxIOCgZvbmxpbmUYASABKAgSFgoOcGxheWVyc19vbmxpbmUYAiABKA0SEwoLcGxheWVyc19tYXgYAyABKA0SDwoHdmVyc2lvbhgEIAEoCRISCgpsYXRlbmN5X21zGAUgASgNIrIBCghPYnNlcnZlZBIUCgxjb250YWluZXJfaWQYASABKAkSDQoFc3RhdGUYAiABKAkSDgoGaGVhbHRoGAMgASgJEhcKD3N0YXJ0ZWRfYXRfdW5peBgEIAEoAxIRCglleGl0X2NvZGUYBSABKAUSFwoPYXBwbGllZF92ZXJzaW9uGAYgASgEEg0KBWVycm9yGAcgASgJEh0KAm1jGAggASgLMhEubWNzbS52MS5NY1N0YXR1cyJcCg5TZXJ2ZXJPYnNlcnZlZBIRCglzZXJ2ZXJfaWQYASABKAkSIwoIb2JzZXJ2ZWQYAiABKAsyES5tY3NtLnYxLk9ic2VydmVkEhIKCnRzX3VuaXhfbXMYAyABKAMiBQoDQWNrIiYKBUVycm9yEgwKBGNvZGUYASABKAkSDwoHbWVzc2FnZRgCIAEoCSJ1CgtNZXRyaWNCYXRjaBIPCgd0c191bml4GAEgASgDEicKBGhvc3QYAiABKAsyGS5tY3NtLnYxLkhvc3RNZXRyaWNTYW1wbGUSLAoHc2VydmVycxgDIAMoCzIbLm1jc20udjEuU2VydmVyTWV0cmljU2FtcGxlIocBChBIb3N0TWV0cmljU2FtcGxlEg8KB2NwdV9wY3QYASABKAESFgoObWVtX3VzZWRfYnl0ZXMYAiABKAQSFwoPbWVtX3RvdGFsX2J5dGVzGAMgASgEEhcKD2Rpc2tfdXNlZF9ieXRlcxgEIAEoBBIYChBkaXNrX3RvdGFsX2J5dGVzGAUgASgEIvsBChJTZXJ2ZXJNZXRyaWNTYW1wbGUSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NwdV9wY3QYAiABKAESEQoJbWVtX2J5dGVzGAMgASgEEhcKD21lbV9saW1pdF9ieXRlcxgEIAEoBBIUCgxuZXRfcnhfYnl0ZXMYBSABKAQSFAoMbmV0X3R4X2J5dGVzGAYgASgEEhEKCW1jX29ubGluZRgHIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgIIAEoDRITCgtwbGF5ZXJzX21heBgJIAEoDRIPCgdwaW5nX21zGAogASgNEhAKA3RwcxgLIAEoAUgAiAEBQgYKBF90cHMixwEKCkJhY2t1cEluZm8SEQoJc2VydmVyX2lkGAEgASgJEhAKCGZpbGVuYW1lGAIgASgJEhIKCnNpemVfYnl0ZXMYAyABKAQSDgoGc2hhMjU2GAQgASgJEhQKDHNwZWNfdmVyc2lvbhgFIAEoBBInCgd0cmlnZ2VyGAYgASgOMhYubWNzbS52MS5CYWNrdXBUcmlnZ2VyEhcKD3N0YXJ0ZWRfdW5peF9tcxgHIAEoAxIYChBmaW5pc2hlZF91bml4X21zGAggASgDIlcKCUJhY2t1cE5vdxIRCglzZXJ2ZXJfaWQYASABKAkSDgoGam9iX2lkGAIgASgJEicKB3RyaWdnZXIYAyABKA4yFi5tY3NtLnYxLkJhY2t1cFRyaWdnZXIiRAoNQmFja3VwUmVzdG9yZRIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkSDgoGam9iX2lkGAMgASgJIjMKDEJhY2t1cERlbGV0ZRIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkiHwoKQmFja3VwTGlzdBIRCglzZXJ2ZXJfaWQYASABKAkibQoPQmFja3VwSW52ZW50b3J5EhIKCnNlcnZlcl9pZHMYASADKAkSJAoHYmFja3VwcxgCIAMoCzITLm1jc20udjEuQmFja3VwSW5mbxIgCgRqb2JzGAMgAygLMhIubWNzbS52MS5Kb2JSZWNvcmQiRAoNQmFja3VwQ3JlYXRlZBIjCgZiYWNrdXAYASABKAsyEy5tY3NtLnYxLkJhY2t1cEluZm8SDgoGam9iX2lkGAIgASgJIkQKDUJhY2t1cERlbGV0ZWQSEQoJc2VydmVyX2lkGAEgASgJEhAKCGZpbGVuYW1lGAIgASgJEg4KBnJlYXNvbhgDIAEoCSKsAQoLSm9iUHJvZ3Jlc3MSDgoGam9iX2lkGAEgASgJEhEKCXNlcnZlcl9pZBgCIAEoCRIMCgR0eXBlGAMgASgJEiIKBnN0YXR1cxgEIAEoDjISLm1jc20udjEuSm9iU3RhdHVzEhAKCHByb2dyZXNzGAUgASgNEg8KB21lc3NhZ2UYBiABKAkSEQoJbG9nX2NodW5rGAcgASgJEhIKCnRzX3VuaXhfbXMYCCABKAMiwwEKCUpvYlJlY29yZBIOCgZqb2JfaWQYASABKAkSEQoJc2VydmVyX2lkGAIgASgJEgwKBHR5cGUYAyABKAkSIgoGc3RhdHVzGAQgASgOMhIubWNzbS52MS5Kb2JTdGF0dXMSEAoIcHJvZ3Jlc3MYBSABKA0SDwoHbWVzc2FnZRgGIAEoCRILCgNsb2cYByABKAkSFwoPc3RhcnRlZF91bml4X21zGAggASgDEhgKEGZpbmlzaGVkX3VuaXhfbXMYCSABKAMibQoJRmlsZUVudHJ5EgwKBG5hbWUYASABKAkSCwoDZGlyGAIgASgIEg8KB3N5bWxpbmsYAyABKAgSDAoEc2l6ZRgEIAEoBBIYChBtb2RfdGltZV91bml4X21zGAUgASgDEgwKBG1vZGUYBiABKA0iLAoJRmlsZXNMaXN0EhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJIkkKD0ZpbGVzTGlzdFJlc3VsdBIjCgdlbnRyaWVzGAEgAygLMhIubWNzbS52MS5GaWxlRW50cnkSEQoJdHJ1bmNhdGVkGAIgASgIIiwKCUZpbGVzU3RhdBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCSI0Cg9GaWxlc1N0YXRSZXN1bHQSIQoFZW50cnkYASABKAsyEi5tY3NtLnYxLkZpbGVFbnRyeSI/CglGaWxlc1JlYWQSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkSEQoJbWF4X2J5dGVzGAMgASgNIjAKD0ZpbGVzUmVhZFJlc3VsdBIPCgdjb250ZW50GAEgASgMEgwKBHNpemUYAiABKAQiPgoKRmlsZXNXcml0ZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIPCgdjb250ZW50GAMgASgMIi0KCkZpbGVzTWtkaXISEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiOgoLRmlsZXNSZW5hbWUSEQoJc2VydmVyX2lkGAEgASgJEgwKBGZyb20YAiABKAkSCgoCdG8YAyABKAkiLgoLRmlsZXNEZWxldGUSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiRQoNRmlsZXNEb3dubG9hZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCSJRCgtGaWxlc1VwbG9hZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCRIMCgRzaXplGAQgASgDKmMKDERlc2lyZWRTdGF0ZRIdChlERVNJUkVEX1NUQVRFX1VOU1BFQ0lGSUVEEAASGQoVREVTSVJFRF9TVEFURV9SVU5OSU5HEAESGQoVREVTSVJFRF9TVEFURV9TVE9QUEVEEAIqqAEKD1Bvd2VyQWN0aW9uVHlwZRIhCh1QT1dFUl9BQ1RJT05fVFlQRV9VTlNQRUNJRklFRBAAEhsKF1BPV0VSX0FDVElPTl9UWVBFX1NUQVJUEAESGgoWUE9XRVJfQUNUSU9OX1RZUEVfU1RPUBACEh0KGVBPV0VSX0FDVElPTl9UWVBFX1JFU1RBUlQQAxIaChZQT1dFUl9BQ1RJT05fVFlQRV9LSUxMEAQqqgEKDUJhY2t1cFRyaWdnZXISHgoaQkFDS1VQX1RSSUdHRVJfVU5TUEVDSUZJRUQQABIZChVCQUNLVVBfVFJJR0dFUl9NQU5VQUwQARIcChhCQUNLVVBfVFJJR0dFUl9TQ0hFRFVMRUQQAhIgChxCQUNLVVBfVFJJR0dFUl9QUkVfTUlHUkFUSU9OEAMSHgoaQkFDS1VQX1RSSUdHRVJfUFJFX1JFU1RPUkUQBCppCglKb2JTdGF0dXMSGgoWSk9CX1NUQVRVU19VTlNQRUNJRklFRBAAEhYKEkpPQl9TVEFUVVNfUlVOTklORxABEhEKDUpPQl9TVEFUVVNfT0sQAhIVChFKT0JfU1RBVFVTX0ZBSUxFRBADQnUKC2NvbS5tY3NtLnYxQgpBZ2VudFByb3RvUAFaHW1jc20vYWdlbnQvZ2VuL21jc20vdjE7bWNzbXYxogIDTVhYqgIHTWNzbS5WMcoCB01jc21cVjHiAhNNY3NtXFYxXEdQQk1ldGFkYXRh6gIITWNzbTo6VjFiBnByb3RvMw");
 
 /**
  * Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
@@ -128,6 +128,55 @@ export type Envelope = Message<"mcsm.v1.Envelope"> & {
     /**
      * ── plan-3 ──
      * ── plan-4 ──
+     *
+     * @generated from field: mcsm.v1.BackupNow backup_now = 50;
+     */
+    value: BackupNow;
+    case: "backupNow";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.BackupRestore backup_restore = 51;
+     */
+    value: BackupRestore;
+    case: "backupRestore";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.BackupDelete backup_delete = 52;
+     */
+    value: BackupDelete;
+    case: "backupDelete";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.BackupList backup_list = 53;
+     */
+    value: BackupList;
+    case: "backupList";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.BackupInventory backup_inventory = 54;
+     */
+    value: BackupInventory;
+    case: "backupInventory";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.BackupCreated backup_created = 55;
+     */
+    value: BackupCreated;
+    case: "backupCreated";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.BackupDeleted backup_deleted = 56;
+     */
+    value: BackupDeleted;
+    case: "backupDeleted";
+  } | {
+    /**
+     * @generated from field: mcsm.v1.JobProgress job_progress = 57;
+     */
+    value: JobProgress;
+    case: "jobProgress";
+  } | {
+    /**
      * ── plan-5 ──
      *
      * @generated from field: mcsm.v1.FilesList files_list = 70;
@@ -691,6 +740,7 @@ export const AckSchema: GenMessage<Ack> = /*@__PURE__*/
  *   io_error         error de E/S del host                              502
  *   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
  *                    del agente o de Docker (spec §10)
+ *   backup_failed    fallo de una copia, restauración o borrado de copias  502
  * Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
  * timeout (504), protocol (502).
  * El agente nunca responde a un Ack o un Error recibidos.
@@ -872,6 +922,377 @@ export const ServerMetricSampleSchema: GenMessage<ServerMetricSample> = /*@__PUR
   messageDesc(file_mcsm_v1_agent, 21);
 
 /**
+ * BackupInfo describe una copia en el disco del nodo. `filename` es el .tar.zst de
+ * <DATA_ROOT>/<slug>/backups/ o, con trigger PRE_RESTORE, el directorio
+ * data.pre-restore-<ts> que se conserva junto a data/.
+ *
+ * @generated from message mcsm.v1.BackupInfo
+ */
+export type BackupInfo = Message<"mcsm.v1.BackupInfo"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string filename = 2;
+   */
+  filename: string;
+
+  /**
+   * @generated from field: uint64 size_bytes = 3;
+   */
+  sizeBytes: bigint;
+
+  /**
+   * vacío en los directorios pre-restore
+   *
+   * @generated from field: string sha256 = 4;
+   */
+  sha256: string;
+
+  /**
+   * @generated from field: uint64 spec_version = 5;
+   */
+  specVersion: bigint;
+
+  /**
+   * @generated from field: mcsm.v1.BackupTrigger trigger = 6;
+   */
+  trigger: BackupTrigger;
+
+  /**
+   * @generated from field: int64 started_unix_ms = 7;
+   */
+  startedUnixMs: bigint;
+
+  /**
+   * @generated from field: int64 finished_unix_ms = 8;
+   */
+  finishedUnixMs: bigint;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupInfo.
+ * Use `create(BackupInfoSchema)` to create a new message.
+ */
+export const BackupInfoSchema: GenMessage<BackupInfo> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 22);
+
+/**
+ * Panel → agente. Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error
+ * (code busy | unknown_server | invalid_request | backup_failed). Un job_id repetido
+ * no se ejecuta dos veces: el agente reenvía su estado guardado.
+ *
+ * @generated from message mcsm.v1.BackupNow
+ */
+export type BackupNow = Message<"mcsm.v1.BackupNow"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string job_id = 2;
+   */
+  jobId: string;
+
+  /**
+   * MANUAL si no se indica; PRE_MIGRATION lo usará el Plan 7
+   *
+   * @generated from field: mcsm.v1.BackupTrigger trigger = 3;
+   */
+  trigger: BackupTrigger;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupNow.
+ * Use `create(BackupNowSchema)` to create a new message.
+ */
+export const BackupNowSchema: GenMessage<BackupNow> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 23);
+
+/**
+ * Panel → agente. Restaura una copia .tar.zst por nombre (el agente no conoce los ids
+ * del panel). Respuesta: Ack o Error, como BackupNow.
+ *
+ * @generated from message mcsm.v1.BackupRestore
+ */
+export type BackupRestore = Message<"mcsm.v1.BackupRestore"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string filename = 2;
+   */
+  filename: string;
+
+  /**
+   * @generated from field: string job_id = 3;
+   */
+  jobId: string;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupRestore.
+ * Use `create(BackupRestoreSchema)` to create a new message.
+ */
+export const BackupRestoreSchema: GenMessage<BackupRestore> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 24);
+
+/**
+ * Panel → agente. Borra una copia o un directorio pre-restore. Respuesta: Ack o Error.
+ *
+ * @generated from message mcsm.v1.BackupDelete
+ */
+export type BackupDelete = Message<"mcsm.v1.BackupDelete"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string filename = 2;
+   */
+  filename: string;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupDelete.
+ * Use `create(BackupDeleteSchema)` to create a new message.
+ */
+export const BackupDeleteSchema: GenMessage<BackupDelete> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 25);
+
+/**
+ * Panel → agente. Respuesta: Ack y un BackupInventory no solicitado (id 0), que puede llegar
+ * antes o después del Ack. server_id vacío = todos los servidores del nodo.
+ *
+ * @generated from message mcsm.v1.BackupList
+ */
+export type BackupList = Message<"mcsm.v1.BackupList"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupList.
+ * Use `create(BackupListSchema)` to create a new message.
+ */
+export const BackupListSchema: GenMessage<BackupList> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 26);
+
+/**
+ * Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
+ * son los servidores cuyo listado está completo: el panel marca como borradas las copias de
+ * esos servidores que no aparezcan en `backups` (solo las que ya conocía antes de pedir el
+ * inventario). El agente lo envía en orden con BackupCreated y BackupDeleted: un cambio que el
+ * listado no vio llega después.
+ *
+ * @generated from message mcsm.v1.BackupInventory
+ */
+export type BackupInventory = Message<"mcsm.v1.BackupInventory"> & {
+  /**
+   * @generated from field: repeated string server_ids = 1;
+   */
+  serverIds: string[];
+
+  /**
+   * @generated from field: repeated mcsm.v1.BackupInfo backups = 2;
+   */
+  backups: BackupInfo[];
+
+  /**
+   * @generated from field: repeated mcsm.v1.JobRecord jobs = 3;
+   */
+  jobs: JobRecord[];
+};
+
+/**
+ * Describes the message mcsm.v1.BackupInventory.
+ * Use `create(BackupInventorySchema)` to create a new message.
+ */
+export const BackupInventorySchema: GenMessage<BackupInventory> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 27);
+
+/**
+ * Agente → panel (id 0): copia nueva (manual, programada o datos pre-restore).
+ *
+ * @generated from message mcsm.v1.BackupCreated
+ */
+export type BackupCreated = Message<"mcsm.v1.BackupCreated"> & {
+  /**
+   * @generated from field: mcsm.v1.BackupInfo backup = 1;
+   */
+  backup?: BackupInfo | undefined;
+
+  /**
+   * vacío en las pre-restore
+   *
+   * @generated from field: string job_id = 2;
+   */
+  jobId: string;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupCreated.
+ * Use `create(BackupCreatedSchema)` to create a new message.
+ */
+export const BackupCreatedSchema: GenMessage<BackupCreated> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 28);
+
+/**
+ * Agente → panel (id 0): copia borrada en el nodo, por la poda (reason "poda") o porque la
+ * pidió el panel con BackupDelete (reason "borrada").
+ *
+ * @generated from message mcsm.v1.BackupDeleted
+ */
+export type BackupDeleted = Message<"mcsm.v1.BackupDeleted"> & {
+  /**
+   * @generated from field: string server_id = 1;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string filename = 2;
+   */
+  filename: string;
+
+  /**
+   * @generated from field: string reason = 3;
+   */
+  reason: string;
+};
+
+/**
+ * Describes the message mcsm.v1.BackupDeleted.
+ * Use `create(BackupDeletedSchema)` to create a new message.
+ */
+export const BackupDeletedSchema: GenMessage<BackupDeleted> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 29);
+
+/**
+ * Agente → panel (id 0): avance de un job. log_chunk trae solo las líneas nuevas.
+ *
+ * @generated from message mcsm.v1.JobProgress
+ */
+export type JobProgress = Message<"mcsm.v1.JobProgress"> & {
+  /**
+   * @generated from field: string job_id = 1;
+   */
+  jobId: string;
+
+  /**
+   * @generated from field: string server_id = 2;
+   */
+  serverId: string;
+
+  /**
+   * backup | restore
+   *
+   * @generated from field: string type = 3;
+   */
+  type: string;
+
+  /**
+   * @generated from field: mcsm.v1.JobStatus status = 4;
+   */
+  status: JobStatus;
+
+  /**
+   * 0-100
+   *
+   * @generated from field: uint32 progress = 5;
+   */
+  progress: number;
+
+  /**
+   * @generated from field: string message = 6;
+   */
+  message: string;
+
+  /**
+   * @generated from field: string log_chunk = 7;
+   */
+  logChunk: string;
+
+  /**
+   * @generated from field: int64 ts_unix_ms = 8;
+   */
+  tsUnixMs: bigint;
+};
+
+/**
+ * Describes the message mcsm.v1.JobProgress.
+ * Use `create(JobProgressSchema)` to create a new message.
+ */
+export const JobProgressSchema: GenMessage<JobProgress> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 30);
+
+/**
+ * Estado completo de un job guardado en el agente (inventario tras reconectar).
+ *
+ * @generated from message mcsm.v1.JobRecord
+ */
+export type JobRecord = Message<"mcsm.v1.JobRecord"> & {
+  /**
+   * @generated from field: string job_id = 1;
+   */
+  jobId: string;
+
+  /**
+   * @generated from field: string server_id = 2;
+   */
+  serverId: string;
+
+  /**
+   * @generated from field: string type = 3;
+   */
+  type: string;
+
+  /**
+   * @generated from field: mcsm.v1.JobStatus status = 4;
+   */
+  status: JobStatus;
+
+  /**
+   * @generated from field: uint32 progress = 5;
+   */
+  progress: number;
+
+  /**
+   * @generated from field: string message = 6;
+   */
+  message: string;
+
+  /**
+   * @generated from field: string log = 7;
+   */
+  log: string;
+
+  /**
+   * @generated from field: int64 started_unix_ms = 8;
+   */
+  startedUnixMs: bigint;
+
+  /**
+   * @generated from field: int64 finished_unix_ms = 9;
+   */
+  finishedUnixMs: bigint;
+};
+
+/**
+ * Describes the message mcsm.v1.JobRecord.
+ * Use `create(JobRecordSchema)` to create a new message.
+ */
+export const JobRecordSchema: GenMessage<JobRecord> = /*@__PURE__*/
+  messageDesc(file_mcsm_v1_agent, 31);
+
+/**
  * @generated from message mcsm.v1.FileEntry
  */
 export type FileEntry = Message<"mcsm.v1.FileEntry"> & {
@@ -913,7 +1334,7 @@ export type FileEntry = Message<"mcsm.v1.FileEntry"> & {
  * Use `create(FileEntrySchema)` to create a new message.
  */
 export const FileEntrySchema: GenMessage<FileEntry> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 22);
+  messageDesc(file_mcsm_v1_agent, 32);
 
 /**
  * @generated from message mcsm.v1.FilesList
@@ -935,7 +1356,7 @@ export type FilesList = Message<"mcsm.v1.FilesList"> & {
  * Use `create(FilesListSchema)` to create a new message.
  */
 export const FilesListSchema: GenMessage<FilesList> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 23);
+  messageDesc(file_mcsm_v1_agent, 33);
 
 /**
  * @generated from message mcsm.v1.FilesListResult
@@ -961,7 +1382,7 @@ export type FilesListResult = Message<"mcsm.v1.FilesListResult"> & {
  * Use `create(FilesListResultSchema)` to create a new message.
  */
 export const FilesListResultSchema: GenMessage<FilesListResult> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 24);
+  messageDesc(file_mcsm_v1_agent, 34);
 
 /**
  * @generated from message mcsm.v1.FilesStat
@@ -983,7 +1404,7 @@ export type FilesStat = Message<"mcsm.v1.FilesStat"> & {
  * Use `create(FilesStatSchema)` to create a new message.
  */
 export const FilesStatSchema: GenMessage<FilesStat> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 25);
+  messageDesc(file_mcsm_v1_agent, 35);
 
 /**
  * @generated from message mcsm.v1.FilesStatResult
@@ -1000,7 +1421,7 @@ export type FilesStatResult = Message<"mcsm.v1.FilesStatResult"> & {
  * Use `create(FilesStatResultSchema)` to create a new message.
  */
 export const FilesStatResultSchema: GenMessage<FilesStatResult> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 26);
+  messageDesc(file_mcsm_v1_agent, 36);
 
 /**
  * Lectura inline: como máximo 2 MiB (o max_bytes si es menor); si no, too_large.
@@ -1029,7 +1450,7 @@ export type FilesRead = Message<"mcsm.v1.FilesRead"> & {
  * Use `create(FilesReadSchema)` to create a new message.
  */
 export const FilesReadSchema: GenMessage<FilesRead> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 27);
+  messageDesc(file_mcsm_v1_agent, 37);
 
 /**
  * @generated from message mcsm.v1.FilesReadResult
@@ -1051,7 +1472,7 @@ export type FilesReadResult = Message<"mcsm.v1.FilesReadResult"> & {
  * Use `create(FilesReadResultSchema)` to create a new message.
  */
 export const FilesReadResultSchema: GenMessage<FilesReadResult> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 28);
+  messageDesc(file_mcsm_v1_agent, 38);
 
 /**
  * Escritura inline atómica (temporal + rename), como máximo 2 MiB. Respuesta: Ack.
@@ -1080,7 +1501,7 @@ export type FilesWrite = Message<"mcsm.v1.FilesWrite"> & {
  * Use `create(FilesWriteSchema)` to create a new message.
  */
 export const FilesWriteSchema: GenMessage<FilesWrite> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 29);
+  messageDesc(file_mcsm_v1_agent, 39);
 
 /**
  * @generated from message mcsm.v1.FilesMkdir
@@ -1102,7 +1523,7 @@ export type FilesMkdir = Message<"mcsm.v1.FilesMkdir"> & {
  * Use `create(FilesMkdirSchema)` to create a new message.
  */
 export const FilesMkdirSchema: GenMessage<FilesMkdir> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 30);
+  messageDesc(file_mcsm_v1_agent, 40);
 
 /**
  * No sobrescribe: si `to` existe responde exists.
@@ -1131,7 +1552,7 @@ export type FilesRename = Message<"mcsm.v1.FilesRename"> & {
  * Use `create(FilesRenameSchema)` to create a new message.
  */
 export const FilesRenameSchema: GenMessage<FilesRename> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 31);
+  messageDesc(file_mcsm_v1_agent, 41);
 
 /**
  * Una carpeta se borra con todo su contenido; un enlace se borra a sí mismo.
@@ -1155,7 +1576,7 @@ export type FilesDelete = Message<"mcsm.v1.FilesDelete"> & {
  * Use `create(FilesDeleteSchema)` to create a new message.
  */
 export const FilesDeleteSchema: GenMessage<FilesDelete> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 32);
+  messageDesc(file_mcsm_v1_agent, 42);
 
 /**
  * El agente sube el fichero con PUT /agent/transfer/{transfer_id} y responde Ack
@@ -1185,7 +1606,7 @@ export type FilesDownload = Message<"mcsm.v1.FilesDownload"> & {
  * Use `create(FilesDownloadSchema)` to create a new message.
  */
 export const FilesDownloadSchema: GenMessage<FilesDownload> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 33);
+  messageDesc(file_mcsm_v1_agent, 43);
 
 /**
  * El agente descarga el contenido con GET /agent/transfer/{transfer_id}, lo escribe
@@ -1220,7 +1641,7 @@ export type FilesUpload = Message<"mcsm.v1.FilesUpload"> & {
  * Use `create(FilesUploadSchema)` to create a new message.
  */
 export const FilesUploadSchema: GenMessage<FilesUpload> = /*@__PURE__*/
-  messageDesc(file_mcsm_v1_agent, 34);
+  messageDesc(file_mcsm_v1_agent, 44);
 
 /**
  * @generated from enum mcsm.v1.DesiredState
@@ -1283,4 +1704,71 @@ export enum PowerActionType {
  */
 export const PowerActionTypeSchema: GenEnum<PowerActionType> = /*@__PURE__*/
   enumDesc(file_mcsm_v1_agent, 1);
+
+/**
+ * @generated from enum mcsm.v1.BackupTrigger
+ */
+export enum BackupTrigger {
+  /**
+   * @generated from enum value: BACKUP_TRIGGER_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: BACKUP_TRIGGER_MANUAL = 1;
+   */
+  MANUAL = 1,
+
+  /**
+   * @generated from enum value: BACKUP_TRIGGER_SCHEDULED = 2;
+   */
+  SCHEDULED = 2,
+
+  /**
+   * @generated from enum value: BACKUP_TRIGGER_PRE_MIGRATION = 3;
+   */
+  PRE_MIGRATION = 3,
+
+  /**
+   * @generated from enum value: BACKUP_TRIGGER_PRE_RESTORE = 4;
+   */
+  PRE_RESTORE = 4,
+}
+
+/**
+ * Describes the enum mcsm.v1.BackupTrigger.
+ */
+export const BackupTriggerSchema: GenEnum<BackupTrigger> = /*@__PURE__*/
+  enumDesc(file_mcsm_v1_agent, 2);
+
+/**
+ * @generated from enum mcsm.v1.JobStatus
+ */
+export enum JobStatus {
+  /**
+   * @generated from enum value: JOB_STATUS_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * @generated from enum value: JOB_STATUS_RUNNING = 1;
+   */
+  RUNNING = 1,
+
+  /**
+   * @generated from enum value: JOB_STATUS_OK = 2;
+   */
+  OK = 2,
+
+  /**
+   * @generated from enum value: JOB_STATUS_FAILED = 3;
+   */
+  FAILED = 3,
+}
+
+/**
+ * Describes the enum mcsm.v1.JobStatus.
+ */
+export const JobStatusSchema: GenEnum<JobStatus> = /*@__PURE__*/
+  enumDesc(file_mcsm_v1_agent, 3);
 

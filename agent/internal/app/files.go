@@ -32,7 +32,7 @@ const (
 var (
 	errTransfersBusy = fmt.Errorf("el nodo ya tiene %d transferencias de archivos en curso: espera a que termine alguna", maxTransfers)
 	errIdle          = errors.New("transferencia inactiva")
-	errClosing       = errors.New("el agente se está cerrando: inténtalo de nuevo cuando vuelva a conectar")
+	errFilesClosing  = errors.New("el agente se está cerrando: inténtalo de nuevo cuando vuelva a conectar")
 )
 
 // transferGate cuenta las transferencias en curso, lleva el reloj del vigilante de
@@ -312,7 +312,7 @@ func (a *App) handleFiles(ctx context.Context, env *mcsmv1.Envelope, send func(*
 		return
 	}
 	if !a.xfer.enter() {
-		_ = send(errMsg(env.Id, errcode.Busy, errClosing))
+		_ = send(errMsg(env.Id, errcode.Busy, errFilesClosing))
 		return
 	}
 	defer a.xfer.leave()

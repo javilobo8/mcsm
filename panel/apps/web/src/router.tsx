@@ -9,6 +9,7 @@ import { parseNewServerSearch } from "./lib/wizard";
 import { ServerPage } from "./routes/server";
 import { TemplatesPage } from "./routes/templates";
 import { EditTemplatePage, NewTemplatePage } from "./routes/template-edit";
+import { JobsPage } from "./routes/jobs";
 
 const getStatus = () => api.get<AuthStatus>("/api/auth/status");
 
@@ -49,6 +50,7 @@ export const templatesRoute = createRoute({ getParentRoute: () => appRoute, path
 export const newTemplateRoute = createRoute({ getParentRoute: () => appRoute, path: "/templates/new", component: NewTemplatePage });
 export const templateRoute = createRoute({ getParentRoute: () => appRoute, path: "/templates/$templateId", component: EditTemplatePage });
 // ── plan-4 ──
+export const jobsRoute = createRoute({ getParentRoute: () => appRoute, path: "/jobs", component: JobsPage });
 // ── plan-5 ──
 // ── plan-6 ──
 // ── plan-7 ──
@@ -69,6 +71,7 @@ const routeTree = rootRoute.addChildren([
     newTemplateRoute,
     templateRoute,
     // ── plan-4 ──
+    jobsRoute,
     // ── plan-5 ──
     // ── plan-6 ──
     // ── plan-7 ──

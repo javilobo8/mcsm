@@ -125,6 +125,113 @@ func (PowerActionType) EnumDescriptor() ([]byte, []int) {
 	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{1}
 }
 
+type BackupTrigger int32
+
+const (
+	BackupTrigger_BACKUP_TRIGGER_UNSPECIFIED   BackupTrigger = 0
+	BackupTrigger_BACKUP_TRIGGER_MANUAL        BackupTrigger = 1
+	BackupTrigger_BACKUP_TRIGGER_SCHEDULED     BackupTrigger = 2
+	BackupTrigger_BACKUP_TRIGGER_PRE_MIGRATION BackupTrigger = 3
+	BackupTrigger_BACKUP_TRIGGER_PRE_RESTORE   BackupTrigger = 4
+)
+
+// Enum value maps for BackupTrigger.
+var (
+	BackupTrigger_name = map[int32]string{
+		0: "BACKUP_TRIGGER_UNSPECIFIED",
+		1: "BACKUP_TRIGGER_MANUAL",
+		2: "BACKUP_TRIGGER_SCHEDULED",
+		3: "BACKUP_TRIGGER_PRE_MIGRATION",
+		4: "BACKUP_TRIGGER_PRE_RESTORE",
+	}
+	BackupTrigger_value = map[string]int32{
+		"BACKUP_TRIGGER_UNSPECIFIED":   0,
+		"BACKUP_TRIGGER_MANUAL":        1,
+		"BACKUP_TRIGGER_SCHEDULED":     2,
+		"BACKUP_TRIGGER_PRE_MIGRATION": 3,
+		"BACKUP_TRIGGER_PRE_RESTORE":   4,
+	}
+)
+
+func (x BackupTrigger) Enum() *BackupTrigger {
+	p := new(BackupTrigger)
+	*p = x
+	return p
+}
+
+func (x BackupTrigger) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BackupTrigger) Descriptor() protoreflect.EnumDescriptor {
+	return file_mcsm_v1_agent_proto_enumTypes[2].Descriptor()
+}
+
+func (BackupTrigger) Type() protoreflect.EnumType {
+	return &file_mcsm_v1_agent_proto_enumTypes[2]
+}
+
+func (x BackupTrigger) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BackupTrigger.Descriptor instead.
+func (BackupTrigger) EnumDescriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{2}
+}
+
+type JobStatus int32
+
+const (
+	JobStatus_JOB_STATUS_UNSPECIFIED JobStatus = 0
+	JobStatus_JOB_STATUS_RUNNING     JobStatus = 1
+	JobStatus_JOB_STATUS_OK          JobStatus = 2
+	JobStatus_JOB_STATUS_FAILED      JobStatus = 3
+)
+
+// Enum value maps for JobStatus.
+var (
+	JobStatus_name = map[int32]string{
+		0: "JOB_STATUS_UNSPECIFIED",
+		1: "JOB_STATUS_RUNNING",
+		2: "JOB_STATUS_OK",
+		3: "JOB_STATUS_FAILED",
+	}
+	JobStatus_value = map[string]int32{
+		"JOB_STATUS_UNSPECIFIED": 0,
+		"JOB_STATUS_RUNNING":     1,
+		"JOB_STATUS_OK":          2,
+		"JOB_STATUS_FAILED":      3,
+	}
+)
+
+func (x JobStatus) Enum() *JobStatus {
+	p := new(JobStatus)
+	*p = x
+	return p
+}
+
+func (x JobStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (JobStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_mcsm_v1_agent_proto_enumTypes[3].Descriptor()
+}
+
+func (JobStatus) Type() protoreflect.EnumType {
+	return &file_mcsm_v1_agent_proto_enumTypes[3]
+}
+
+func (x JobStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use JobStatus.Descriptor instead.
+func (JobStatus) EnumDescriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{3}
+}
+
 // Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
 // petición y su respuesta; `stream_id` agrupa los frames de un stream.
 type Envelope struct {
@@ -148,6 +255,14 @@ type Envelope struct {
 	//	*Envelope_Ack
 	//	*Envelope_Error
 	//	*Envelope_MetricBatch
+	//	*Envelope_BackupNow
+	//	*Envelope_BackupRestore
+	//	*Envelope_BackupDelete
+	//	*Envelope_BackupList
+	//	*Envelope_BackupInventory
+	//	*Envelope_BackupCreated
+	//	*Envelope_BackupDeleted
+	//	*Envelope_JobProgress
 	//	*Envelope_FilesList
 	//	*Envelope_FilesListResult
 	//	*Envelope_FilesStat
@@ -351,6 +466,78 @@ func (x *Envelope) GetMetricBatch() *MetricBatch {
 	return nil
 }
 
+func (x *Envelope) GetBackupNow() *BackupNow {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupNow); ok {
+			return x.BackupNow
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetBackupRestore() *BackupRestore {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupRestore); ok {
+			return x.BackupRestore
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetBackupDelete() *BackupDelete {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupDelete); ok {
+			return x.BackupDelete
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetBackupList() *BackupList {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupList); ok {
+			return x.BackupList
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetBackupInventory() *BackupInventory {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupInventory); ok {
+			return x.BackupInventory
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetBackupCreated() *BackupCreated {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupCreated); ok {
+			return x.BackupCreated
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetBackupDeleted() *BackupDeleted {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_BackupDeleted); ok {
+			return x.BackupDeleted
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetJobProgress() *JobProgress {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_JobProgress); ok {
+			return x.JobProgress
+		}
+	}
+	return nil
+}
+
 func (x *Envelope) GetFilesList() *FilesList {
 	if x != nil {
 		if x, ok := x.Body.(*Envelope_FilesList); ok {
@@ -524,9 +711,41 @@ type Envelope_MetricBatch struct {
 	MetricBatch *MetricBatch `protobuf:"bytes,30,opt,name=metric_batch,json=metricBatch,proto3,oneof"`
 }
 
-type Envelope_FilesList struct {
+type Envelope_BackupNow struct {
 	// ── plan-3 ──
 	// ── plan-4 ──
+	BackupNow *BackupNow `protobuf:"bytes,50,opt,name=backup_now,json=backupNow,proto3,oneof"`
+}
+
+type Envelope_BackupRestore struct {
+	BackupRestore *BackupRestore `protobuf:"bytes,51,opt,name=backup_restore,json=backupRestore,proto3,oneof"`
+}
+
+type Envelope_BackupDelete struct {
+	BackupDelete *BackupDelete `protobuf:"bytes,52,opt,name=backup_delete,json=backupDelete,proto3,oneof"`
+}
+
+type Envelope_BackupList struct {
+	BackupList *BackupList `protobuf:"bytes,53,opt,name=backup_list,json=backupList,proto3,oneof"`
+}
+
+type Envelope_BackupInventory struct {
+	BackupInventory *BackupInventory `protobuf:"bytes,54,opt,name=backup_inventory,json=backupInventory,proto3,oneof"`
+}
+
+type Envelope_BackupCreated struct {
+	BackupCreated *BackupCreated `protobuf:"bytes,55,opt,name=backup_created,json=backupCreated,proto3,oneof"`
+}
+
+type Envelope_BackupDeleted struct {
+	BackupDeleted *BackupDeleted `protobuf:"bytes,56,opt,name=backup_deleted,json=backupDeleted,proto3,oneof"`
+}
+
+type Envelope_JobProgress struct {
+	JobProgress *JobProgress `protobuf:"bytes,57,opt,name=job_progress,json=jobProgress,proto3,oneof"`
+}
+
+type Envelope_FilesList struct {
 	// ── plan-5 ──
 	FilesList *FilesList `protobuf:"bytes,70,opt,name=files_list,json=filesList,proto3,oneof"`
 }
@@ -604,6 +823,22 @@ func (*Envelope_Ack) isEnvelope_Body() {}
 func (*Envelope_Error) isEnvelope_Body() {}
 
 func (*Envelope_MetricBatch) isEnvelope_Body() {}
+
+func (*Envelope_BackupNow) isEnvelope_Body() {}
+
+func (*Envelope_BackupRestore) isEnvelope_Body() {}
+
+func (*Envelope_BackupDelete) isEnvelope_Body() {}
+
+func (*Envelope_BackupList) isEnvelope_Body() {}
+
+func (*Envelope_BackupInventory) isEnvelope_Body() {}
+
+func (*Envelope_BackupCreated) isEnvelope_Body() {}
+
+func (*Envelope_BackupDeleted) isEnvelope_Body() {}
+
+func (*Envelope_JobProgress) isEnvelope_Body() {}
 
 func (*Envelope_FilesList) isEnvelope_Body() {}
 
@@ -1650,6 +1885,7 @@ func (*Ack) Descriptor() ([]byte, []int) {
 //	io_error         error de E/S del host                              502
 //	apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
 //	                 del agente o de Docker (spec §10)
+//	backup_failed    fallo de una copia, restauración o borrado de copias  502
 //
 // Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
 // timeout (504), protocol (502).
@@ -1979,6 +2215,723 @@ func (x *ServerMetricSample) GetTps() float64 {
 	return 0
 }
 
+// BackupInfo describe una copia en el disco del nodo. `filename` es el .tar.zst de
+// <DATA_ROOT>/<slug>/backups/ o, con trigger PRE_RESTORE, el directorio
+// data.pre-restore-<ts> que se conserva junto a data/.
+type BackupInfo struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ServerId       string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Filename       string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	SizeBytes      uint64                 `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	Sha256         string                 `protobuf:"bytes,4,opt,name=sha256,proto3" json:"sha256,omitempty"` // vacío en los directorios pre-restore
+	SpecVersion    uint64                 `protobuf:"varint,5,opt,name=spec_version,json=specVersion,proto3" json:"spec_version,omitempty"`
+	Trigger        BackupTrigger          `protobuf:"varint,6,opt,name=trigger,proto3,enum=mcsm.v1.BackupTrigger" json:"trigger,omitempty"`
+	StartedUnixMs  int64                  `protobuf:"varint,7,opt,name=started_unix_ms,json=startedUnixMs,proto3" json:"started_unix_ms,omitempty"`
+	FinishedUnixMs int64                  `protobuf:"varint,8,opt,name=finished_unix_ms,json=finishedUnixMs,proto3" json:"finished_unix_ms,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *BackupInfo) Reset() {
+	*x = BackupInfo{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupInfo) ProtoMessage() {}
+
+func (x *BackupInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupInfo.ProtoReflect.Descriptor instead.
+func (*BackupInfo) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *BackupInfo) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *BackupInfo) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *BackupInfo) GetSizeBytes() uint64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *BackupInfo) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+func (x *BackupInfo) GetSpecVersion() uint64 {
+	if x != nil {
+		return x.SpecVersion
+	}
+	return 0
+}
+
+func (x *BackupInfo) GetTrigger() BackupTrigger {
+	if x != nil {
+		return x.Trigger
+	}
+	return BackupTrigger_BACKUP_TRIGGER_UNSPECIFIED
+}
+
+func (x *BackupInfo) GetStartedUnixMs() int64 {
+	if x != nil {
+		return x.StartedUnixMs
+	}
+	return 0
+}
+
+func (x *BackupInfo) GetFinishedUnixMs() int64 {
+	if x != nil {
+		return x.FinishedUnixMs
+	}
+	return 0
+}
+
+// Panel → agente. Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error
+// (code busy | unknown_server | invalid_request | backup_failed). Un job_id repetido
+// no se ejecuta dos veces: el agente reenvía su estado guardado.
+type BackupNow struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	JobId         string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Trigger       BackupTrigger          `protobuf:"varint,3,opt,name=trigger,proto3,enum=mcsm.v1.BackupTrigger" json:"trigger,omitempty"` // MANUAL si no se indica; PRE_MIGRATION lo usará el Plan 7
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupNow) Reset() {
+	*x = BackupNow{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupNow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupNow) ProtoMessage() {}
+
+func (x *BackupNow) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupNow.ProtoReflect.Descriptor instead.
+func (*BackupNow) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *BackupNow) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *BackupNow) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *BackupNow) GetTrigger() BackupTrigger {
+	if x != nil {
+		return x.Trigger
+	}
+	return BackupTrigger_BACKUP_TRIGGER_UNSPECIFIED
+}
+
+// Panel → agente. Restaura una copia .tar.zst por nombre (el agente no conoce los ids
+// del panel). Respuesta: Ack o Error, como BackupNow.
+type BackupRestore struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	JobId         string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupRestore) Reset() {
+	*x = BackupRestore{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupRestore) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupRestore) ProtoMessage() {}
+
+func (x *BackupRestore) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupRestore.ProtoReflect.Descriptor instead.
+func (*BackupRestore) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *BackupRestore) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *BackupRestore) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *BackupRestore) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+// Panel → agente. Borra una copia o un directorio pre-restore. Respuesta: Ack o Error.
+type BackupDelete struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupDelete) Reset() {
+	*x = BackupDelete{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupDelete) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupDelete) ProtoMessage() {}
+
+func (x *BackupDelete) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupDelete.ProtoReflect.Descriptor instead.
+func (*BackupDelete) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *BackupDelete) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *BackupDelete) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+// Panel → agente. Respuesta: Ack y un BackupInventory no solicitado (id 0), que puede llegar
+// antes o después del Ack. server_id vacío = todos los servidores del nodo.
+type BackupList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupList) Reset() {
+	*x = BackupList{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupList) ProtoMessage() {}
+
+func (x *BackupList) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupList.ProtoReflect.Descriptor instead.
+func (*BackupList) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *BackupList) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+// Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
+// son los servidores cuyo listado está completo: el panel marca como borradas las copias de
+// esos servidores que no aparezcan en `backups` (solo las que ya conocía antes de pedir el
+// inventario). El agente lo envía en orden con BackupCreated y BackupDeleted: un cambio que el
+// listado no vio llega después.
+type BackupInventory struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerIds     []string               `protobuf:"bytes,1,rep,name=server_ids,json=serverIds,proto3" json:"server_ids,omitempty"`
+	Backups       []*BackupInfo          `protobuf:"bytes,2,rep,name=backups,proto3" json:"backups,omitempty"`
+	Jobs          []*JobRecord           `protobuf:"bytes,3,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupInventory) Reset() {
+	*x = BackupInventory{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupInventory) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupInventory) ProtoMessage() {}
+
+func (x *BackupInventory) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupInventory.ProtoReflect.Descriptor instead.
+func (*BackupInventory) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *BackupInventory) GetServerIds() []string {
+	if x != nil {
+		return x.ServerIds
+	}
+	return nil
+}
+
+func (x *BackupInventory) GetBackups() []*BackupInfo {
+	if x != nil {
+		return x.Backups
+	}
+	return nil
+}
+
+func (x *BackupInventory) GetJobs() []*JobRecord {
+	if x != nil {
+		return x.Jobs
+	}
+	return nil
+}
+
+// Agente → panel (id 0): copia nueva (manual, programada o datos pre-restore).
+type BackupCreated struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Backup        *BackupInfo            `protobuf:"bytes,1,opt,name=backup,proto3" json:"backup,omitempty"`
+	JobId         string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"` // vacío en las pre-restore
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupCreated) Reset() {
+	*x = BackupCreated{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupCreated) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupCreated) ProtoMessage() {}
+
+func (x *BackupCreated) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupCreated.ProtoReflect.Descriptor instead.
+func (*BackupCreated) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *BackupCreated) GetBackup() *BackupInfo {
+	if x != nil {
+		return x.Backup
+	}
+	return nil
+}
+
+func (x *BackupCreated) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+// Agente → panel (id 0): copia borrada en el nodo, por la poda (reason "poda") o porque la
+// pidió el panel con BackupDelete (reason "borrada").
+type BackupDeleted struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Filename      string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BackupDeleted) Reset() {
+	*x = BackupDeleted{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackupDeleted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackupDeleted) ProtoMessage() {}
+
+func (x *BackupDeleted) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackupDeleted.ProtoReflect.Descriptor instead.
+func (*BackupDeleted) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *BackupDeleted) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *BackupDeleted) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *BackupDeleted) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+// Agente → panel (id 0): avance de un job. log_chunk trae solo las líneas nuevas.
+type JobProgress struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	ServerId      string                 `protobuf:"bytes,2,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"` // backup | restore
+	Status        JobStatus              `protobuf:"varint,4,opt,name=status,proto3,enum=mcsm.v1.JobStatus" json:"status,omitempty"`
+	Progress      uint32                 `protobuf:"varint,5,opt,name=progress,proto3" json:"progress,omitempty"` // 0-100
+	Message       string                 `protobuf:"bytes,6,opt,name=message,proto3" json:"message,omitempty"`
+	LogChunk      string                 `protobuf:"bytes,7,opt,name=log_chunk,json=logChunk,proto3" json:"log_chunk,omitempty"`
+	TsUnixMs      int64                  `protobuf:"varint,8,opt,name=ts_unix_ms,json=tsUnixMs,proto3" json:"ts_unix_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobProgress) Reset() {
+	*x = JobProgress{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobProgress) ProtoMessage() {}
+
+func (x *JobProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobProgress.ProtoReflect.Descriptor instead.
+func (*JobProgress) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *JobProgress) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobProgress) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *JobProgress) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *JobProgress) GetStatus() JobStatus {
+	if x != nil {
+		return x.Status
+	}
+	return JobStatus_JOB_STATUS_UNSPECIFIED
+}
+
+func (x *JobProgress) GetProgress() uint32 {
+	if x != nil {
+		return x.Progress
+	}
+	return 0
+}
+
+func (x *JobProgress) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *JobProgress) GetLogChunk() string {
+	if x != nil {
+		return x.LogChunk
+	}
+	return ""
+}
+
+func (x *JobProgress) GetTsUnixMs() int64 {
+	if x != nil {
+		return x.TsUnixMs
+	}
+	return 0
+}
+
+// Estado completo de un job guardado en el agente (inventario tras reconectar).
+type JobRecord struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	JobId          string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	ServerId       string                 `protobuf:"bytes,2,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
+	Type           string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Status         JobStatus              `protobuf:"varint,4,opt,name=status,proto3,enum=mcsm.v1.JobStatus" json:"status,omitempty"`
+	Progress       uint32                 `protobuf:"varint,5,opt,name=progress,proto3" json:"progress,omitempty"`
+	Message        string                 `protobuf:"bytes,6,opt,name=message,proto3" json:"message,omitempty"`
+	Log            string                 `protobuf:"bytes,7,opt,name=log,proto3" json:"log,omitempty"`
+	StartedUnixMs  int64                  `protobuf:"varint,8,opt,name=started_unix_ms,json=startedUnixMs,proto3" json:"started_unix_ms,omitempty"`
+	FinishedUnixMs int64                  `protobuf:"varint,9,opt,name=finished_unix_ms,json=finishedUnixMs,proto3" json:"finished_unix_ms,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *JobRecord) Reset() {
+	*x = JobRecord{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobRecord) ProtoMessage() {}
+
+func (x *JobRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobRecord.ProtoReflect.Descriptor instead.
+func (*JobRecord) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *JobRecord) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobRecord) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *JobRecord) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *JobRecord) GetStatus() JobStatus {
+	if x != nil {
+		return x.Status
+	}
+	return JobStatus_JOB_STATUS_UNSPECIFIED
+}
+
+func (x *JobRecord) GetProgress() uint32 {
+	if x != nil {
+		return x.Progress
+	}
+	return 0
+}
+
+func (x *JobRecord) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *JobRecord) GetLog() string {
+	if x != nil {
+		return x.Log
+	}
+	return ""
+}
+
+func (x *JobRecord) GetStartedUnixMs() int64 {
+	if x != nil {
+		return x.StartedUnixMs
+	}
+	return 0
+}
+
+func (x *JobRecord) GetFinishedUnixMs() int64 {
+	if x != nil {
+		return x.FinishedUnixMs
+	}
+	return 0
+}
+
 type FileEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1993,7 +2946,7 @@ type FileEntry struct {
 
 func (x *FileEntry) Reset() {
 	*x = FileEntry{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[22]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2005,7 +2958,7 @@ func (x *FileEntry) String() string {
 func (*FileEntry) ProtoMessage() {}
 
 func (x *FileEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[22]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2018,7 +2971,7 @@ func (x *FileEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileEntry.ProtoReflect.Descriptor instead.
 func (*FileEntry) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{22}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *FileEntry) GetName() string {
@@ -2073,7 +3026,7 @@ type FilesList struct {
 
 func (x *FilesList) Reset() {
 	*x = FilesList{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[23]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2085,7 +3038,7 @@ func (x *FilesList) String() string {
 func (*FilesList) ProtoMessage() {}
 
 func (x *FilesList) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[23]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2098,7 +3051,7 @@ func (x *FilesList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesList.ProtoReflect.Descriptor instead.
 func (*FilesList) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{23}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *FilesList) GetServerId() string {
@@ -2125,7 +3078,7 @@ type FilesListResult struct {
 
 func (x *FilesListResult) Reset() {
 	*x = FilesListResult{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[24]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2137,7 +3090,7 @@ func (x *FilesListResult) String() string {
 func (*FilesListResult) ProtoMessage() {}
 
 func (x *FilesListResult) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[24]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2150,7 +3103,7 @@ func (x *FilesListResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesListResult.ProtoReflect.Descriptor instead.
 func (*FilesListResult) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{24}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *FilesListResult) GetEntries() []*FileEntry {
@@ -2177,7 +3130,7 @@ type FilesStat struct {
 
 func (x *FilesStat) Reset() {
 	*x = FilesStat{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[25]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2189,7 +3142,7 @@ func (x *FilesStat) String() string {
 func (*FilesStat) ProtoMessage() {}
 
 func (x *FilesStat) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[25]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2202,7 +3155,7 @@ func (x *FilesStat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesStat.ProtoReflect.Descriptor instead.
 func (*FilesStat) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{25}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *FilesStat) GetServerId() string {
@@ -2228,7 +3181,7 @@ type FilesStatResult struct {
 
 func (x *FilesStatResult) Reset() {
 	*x = FilesStatResult{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[26]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2240,7 +3193,7 @@ func (x *FilesStatResult) String() string {
 func (*FilesStatResult) ProtoMessage() {}
 
 func (x *FilesStatResult) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[26]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2253,7 +3206,7 @@ func (x *FilesStatResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesStatResult.ProtoReflect.Descriptor instead.
 func (*FilesStatResult) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{26}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *FilesStatResult) GetEntry() *FileEntry {
@@ -2275,7 +3228,7 @@ type FilesRead struct {
 
 func (x *FilesRead) Reset() {
 	*x = FilesRead{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[27]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2287,7 +3240,7 @@ func (x *FilesRead) String() string {
 func (*FilesRead) ProtoMessage() {}
 
 func (x *FilesRead) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[27]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2300,7 +3253,7 @@ func (x *FilesRead) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesRead.ProtoReflect.Descriptor instead.
 func (*FilesRead) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{27}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *FilesRead) GetServerId() string {
@@ -2334,7 +3287,7 @@ type FilesReadResult struct {
 
 func (x *FilesReadResult) Reset() {
 	*x = FilesReadResult{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[28]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2346,7 +3299,7 @@ func (x *FilesReadResult) String() string {
 func (*FilesReadResult) ProtoMessage() {}
 
 func (x *FilesReadResult) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[28]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2359,7 +3312,7 @@ func (x *FilesReadResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesReadResult.ProtoReflect.Descriptor instead.
 func (*FilesReadResult) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{28}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *FilesReadResult) GetContent() []byte {
@@ -2388,7 +3341,7 @@ type FilesWrite struct {
 
 func (x *FilesWrite) Reset() {
 	*x = FilesWrite{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[29]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2400,7 +3353,7 @@ func (x *FilesWrite) String() string {
 func (*FilesWrite) ProtoMessage() {}
 
 func (x *FilesWrite) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[29]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2413,7 +3366,7 @@ func (x *FilesWrite) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesWrite.ProtoReflect.Descriptor instead.
 func (*FilesWrite) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{29}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *FilesWrite) GetServerId() string {
@@ -2447,7 +3400,7 @@ type FilesMkdir struct {
 
 func (x *FilesMkdir) Reset() {
 	*x = FilesMkdir{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[30]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2459,7 +3412,7 @@ func (x *FilesMkdir) String() string {
 func (*FilesMkdir) ProtoMessage() {}
 
 func (x *FilesMkdir) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[30]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2472,7 +3425,7 @@ func (x *FilesMkdir) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesMkdir.ProtoReflect.Descriptor instead.
 func (*FilesMkdir) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{30}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *FilesMkdir) GetServerId() string {
@@ -2501,7 +3454,7 @@ type FilesRename struct {
 
 func (x *FilesRename) Reset() {
 	*x = FilesRename{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[31]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2513,7 +3466,7 @@ func (x *FilesRename) String() string {
 func (*FilesRename) ProtoMessage() {}
 
 func (x *FilesRename) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[31]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2526,7 +3479,7 @@ func (x *FilesRename) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesRename.ProtoReflect.Descriptor instead.
 func (*FilesRename) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{31}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *FilesRename) GetServerId() string {
@@ -2561,7 +3514,7 @@ type FilesDelete struct {
 
 func (x *FilesDelete) Reset() {
 	*x = FilesDelete{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[32]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2573,7 +3526,7 @@ func (x *FilesDelete) String() string {
 func (*FilesDelete) ProtoMessage() {}
 
 func (x *FilesDelete) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[32]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2586,7 +3539,7 @@ func (x *FilesDelete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesDelete.ProtoReflect.Descriptor instead.
 func (*FilesDelete) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{32}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *FilesDelete) GetServerId() string {
@@ -2616,7 +3569,7 @@ type FilesDownload struct {
 
 func (x *FilesDownload) Reset() {
 	*x = FilesDownload{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[33]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2628,7 +3581,7 @@ func (x *FilesDownload) String() string {
 func (*FilesDownload) ProtoMessage() {}
 
 func (x *FilesDownload) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[33]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2641,7 +3594,7 @@ func (x *FilesDownload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesDownload.ProtoReflect.Descriptor instead.
 func (*FilesDownload) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{33}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *FilesDownload) GetServerId() string {
@@ -2679,7 +3632,7 @@ type FilesUpload struct {
 
 func (x *FilesUpload) Reset() {
 	*x = FilesUpload{}
-	mi := &file_mcsm_v1_agent_proto_msgTypes[34]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2691,7 +3644,7 @@ func (x *FilesUpload) String() string {
 func (*FilesUpload) ProtoMessage() {}
 
 func (x *FilesUpload) ProtoReflect() protoreflect.Message {
-	mi := &file_mcsm_v1_agent_proto_msgTypes[34]
+	mi := &file_mcsm_v1_agent_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2704,7 +3657,7 @@ func (x *FilesUpload) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FilesUpload.ProtoReflect.Descriptor instead.
 func (*FilesUpload) Descriptor() ([]byte, []int) {
-	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{34}
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *FilesUpload) GetServerId() string {
@@ -2739,7 +3692,7 @@ var File_mcsm_v1_agent_proto protoreflect.FileDescriptor
 
 const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xc5\f\n" +
+	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xb5\x10\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tstream_id\x18\x02 \x01(\x04R\bstreamId\x12&\n" +
@@ -2761,6 +3714,16 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x03ack\x18\x16 \x01(\v2\f.mcsm.v1.AckH\x00R\x03ack\x12&\n" +
 	"\x05error\x18\x17 \x01(\v2\x0e.mcsm.v1.ErrorH\x00R\x05error\x129\n" +
 	"\fmetric_batch\x18\x1e \x01(\v2\x14.mcsm.v1.MetricBatchH\x00R\vmetricBatch\x123\n" +
+	"\n" +
+	"backup_now\x182 \x01(\v2\x12.mcsm.v1.BackupNowH\x00R\tbackupNow\x12?\n" +
+	"\x0ebackup_restore\x183 \x01(\v2\x16.mcsm.v1.BackupRestoreH\x00R\rbackupRestore\x12<\n" +
+	"\rbackup_delete\x184 \x01(\v2\x15.mcsm.v1.BackupDeleteH\x00R\fbackupDelete\x126\n" +
+	"\vbackup_list\x185 \x01(\v2\x13.mcsm.v1.BackupListH\x00R\n" +
+	"backupList\x12E\n" +
+	"\x10backup_inventory\x186 \x01(\v2\x18.mcsm.v1.BackupInventoryH\x00R\x0fbackupInventory\x12?\n" +
+	"\x0ebackup_created\x187 \x01(\v2\x16.mcsm.v1.BackupCreatedH\x00R\rbackupCreated\x12?\n" +
+	"\x0ebackup_deleted\x188 \x01(\v2\x16.mcsm.v1.BackupDeletedH\x00R\rbackupDeleted\x129\n" +
+	"\fjob_progress\x189 \x01(\v2\x14.mcsm.v1.JobProgressH\x00R\vjobProgress\x123\n" +
 	"\n" +
 	"files_list\x18F \x01(\v2\x12.mcsm.v1.FilesListH\x00R\tfilesList\x12F\n" +
 	"\x11files_list_result\x18G \x01(\v2\x18.mcsm.v1.FilesListResultH\x00R\x0ffilesListResult\x123\n" +
@@ -2886,7 +3849,64 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\aping_ms\x18\n" +
 	" \x01(\rR\x06pingMs\x12\x15\n" +
 	"\x03tps\x18\v \x01(\x01H\x00R\x03tps\x88\x01\x01B\x06\n" +
-	"\x04_tps\"\x9c\x01\n" +
+	"\x04_tps\"\xa3\x02\n" +
+	"\n" +
+	"BackupInfo\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x03 \x01(\x04R\tsizeBytes\x12\x16\n" +
+	"\x06sha256\x18\x04 \x01(\tR\x06sha256\x12!\n" +
+	"\fspec_version\x18\x05 \x01(\x04R\vspecVersion\x120\n" +
+	"\atrigger\x18\x06 \x01(\x0e2\x16.mcsm.v1.BackupTriggerR\atrigger\x12&\n" +
+	"\x0fstarted_unix_ms\x18\a \x01(\x03R\rstartedUnixMs\x12(\n" +
+	"\x10finished_unix_ms\x18\b \x01(\x03R\x0efinishedUnixMs\"q\n" +
+	"\tBackupNow\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x15\n" +
+	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x120\n" +
+	"\atrigger\x18\x03 \x01(\x0e2\x16.mcsm.v1.BackupTriggerR\atrigger\"_\n" +
+	"\rBackupRestore\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\"G\n" +
+	"\fBackupDelete\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\")\n" +
+	"\n" +
+	"BackupList\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\x87\x01\n" +
+	"\x0fBackupInventory\x12\x1d\n" +
+	"\n" +
+	"server_ids\x18\x01 \x03(\tR\tserverIds\x12-\n" +
+	"\abackups\x18\x02 \x03(\v2\x13.mcsm.v1.BackupInfoR\abackups\x12&\n" +
+	"\x04jobs\x18\x03 \x03(\v2\x12.mcsm.v1.JobRecordR\x04jobs\"S\n" +
+	"\rBackupCreated\x12+\n" +
+	"\x06backup\x18\x01 \x01(\v2\x13.mcsm.v1.BackupInfoR\x06backup\x12\x15\n" +
+	"\x06job_id\x18\x02 \x01(\tR\x05jobId\"`\n" +
+	"\rBackupDeleted\x12\x1b\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\"\xf2\x01\n" +
+	"\vJobProgress\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1b\n" +
+	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x12*\n" +
+	"\x06status\x18\x04 \x01(\x0e2\x12.mcsm.v1.JobStatusR\x06status\x12\x1a\n" +
+	"\bprogress\x18\x05 \x01(\rR\bprogress\x12\x18\n" +
+	"\amessage\x18\x06 \x01(\tR\amessage\x12\x1b\n" +
+	"\tlog_chunk\x18\a \x01(\tR\blogChunk\x12\x1c\n" +
+	"\n" +
+	"ts_unix_ms\x18\b \x01(\x03R\btsUnixMs\"\x99\x02\n" +
+	"\tJobRecord\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1b\n" +
+	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x12*\n" +
+	"\x06status\x18\x04 \x01(\x0e2\x12.mcsm.v1.JobStatusR\x06status\x12\x1a\n" +
+	"\bprogress\x18\x05 \x01(\rR\bprogress\x12\x18\n" +
+	"\amessage\x18\x06 \x01(\tR\amessage\x12\x10\n" +
+	"\x03log\x18\a \x01(\tR\x03log\x12&\n" +
+	"\x0fstarted_unix_ms\x18\b \x01(\x03R\rstartedUnixMs\x12(\n" +
+	"\x10finished_unix_ms\x18\t \x01(\x03R\x0efinishedUnixMs\"\x9c\x01\n" +
 	"\tFileEntry\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x10\n" +
 	"\x03dir\x18\x02 \x01(\bR\x03dir\x12\x18\n" +
@@ -2948,7 +3968,18 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x17POWER_ACTION_TYPE_START\x10\x01\x12\x1a\n" +
 	"\x16POWER_ACTION_TYPE_STOP\x10\x02\x12\x1d\n" +
 	"\x19POWER_ACTION_TYPE_RESTART\x10\x03\x12\x1a\n" +
-	"\x16POWER_ACTION_TYPE_KILL\x10\x04Bu\n" +
+	"\x16POWER_ACTION_TYPE_KILL\x10\x04*\xaa\x01\n" +
+	"\rBackupTrigger\x12\x1e\n" +
+	"\x1aBACKUP_TRIGGER_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15BACKUP_TRIGGER_MANUAL\x10\x01\x12\x1c\n" +
+	"\x18BACKUP_TRIGGER_SCHEDULED\x10\x02\x12 \n" +
+	"\x1cBACKUP_TRIGGER_PRE_MIGRATION\x10\x03\x12\x1e\n" +
+	"\x1aBACKUP_TRIGGER_PRE_RESTORE\x10\x04*i\n" +
+	"\tJobStatus\x12\x1a\n" +
+	"\x16JOB_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12JOB_STATUS_RUNNING\x10\x01\x12\x11\n" +
+	"\rJOB_STATUS_OK\x10\x02\x12\x15\n" +
+	"\x11JOB_STATUS_FAILED\x10\x03Bu\n" +
 	"\vcom.mcsm.v1B\n" +
 	"AgentProtoP\x01Z\x1dmcsm/agent/gen/mcsm/v1;mcsmv1\xa2\x02\x03MXX\xaa\x02\aMcsm.V1\xca\x02\aMcsm\\V1\xe2\x02\x13Mcsm\\V1\\GPBMetadata\xea\x02\bMcsm::V1b\x06proto3"
 
@@ -2964,96 +3995,123 @@ func file_mcsm_v1_agent_proto_rawDescGZIP() []byte {
 	return file_mcsm_v1_agent_proto_rawDescData
 }
 
-var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
+var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 47)
 var file_mcsm_v1_agent_proto_goTypes = []any{
 	(DesiredState)(0),          // 0: mcsm.v1.DesiredState
 	(PowerActionType)(0),       // 1: mcsm.v1.PowerActionType
-	(*Envelope)(nil),           // 2: mcsm.v1.Envelope
-	(*HostInfo)(nil),           // 3: mcsm.v1.HostInfo
-	(*Hello)(nil),              // 4: mcsm.v1.Hello
-	(*HelloAck)(nil),           // 5: mcsm.v1.HelloAck
-	(*ServerSpec)(nil),         // 6: mcsm.v1.ServerSpec
-	(*SyncSpecs)(nil),          // 7: mcsm.v1.SyncSpecs
-	(*ApplySpec)(nil),          // 8: mcsm.v1.ApplySpec
-	(*RemoveServer)(nil),       // 9: mcsm.v1.RemoveServer
-	(*PowerAction)(nil),        // 10: mcsm.v1.PowerAction
-	(*SendCommand)(nil),        // 11: mcsm.v1.SendCommand
-	(*CommandResult)(nil),      // 12: mcsm.v1.CommandResult
-	(*SubscribeLogs)(nil),      // 13: mcsm.v1.SubscribeLogs
-	(*LogLine)(nil),            // 14: mcsm.v1.LogLine
-	(*StreamClose)(nil),        // 15: mcsm.v1.StreamClose
-	(*McStatus)(nil),           // 16: mcsm.v1.McStatus
-	(*Observed)(nil),           // 17: mcsm.v1.Observed
-	(*ServerObserved)(nil),     // 18: mcsm.v1.ServerObserved
-	(*Ack)(nil),                // 19: mcsm.v1.Ack
-	(*Error)(nil),              // 20: mcsm.v1.Error
-	(*MetricBatch)(nil),        // 21: mcsm.v1.MetricBatch
-	(*HostMetricSample)(nil),   // 22: mcsm.v1.HostMetricSample
-	(*ServerMetricSample)(nil), // 23: mcsm.v1.ServerMetricSample
-	(*FileEntry)(nil),          // 24: mcsm.v1.FileEntry
-	(*FilesList)(nil),          // 25: mcsm.v1.FilesList
-	(*FilesListResult)(nil),    // 26: mcsm.v1.FilesListResult
-	(*FilesStat)(nil),          // 27: mcsm.v1.FilesStat
-	(*FilesStatResult)(nil),    // 28: mcsm.v1.FilesStatResult
-	(*FilesRead)(nil),          // 29: mcsm.v1.FilesRead
-	(*FilesReadResult)(nil),    // 30: mcsm.v1.FilesReadResult
-	(*FilesWrite)(nil),         // 31: mcsm.v1.FilesWrite
-	(*FilesMkdir)(nil),         // 32: mcsm.v1.FilesMkdir
-	(*FilesRename)(nil),        // 33: mcsm.v1.FilesRename
-	(*FilesDelete)(nil),        // 34: mcsm.v1.FilesDelete
-	(*FilesDownload)(nil),      // 35: mcsm.v1.FilesDownload
-	(*FilesUpload)(nil),        // 36: mcsm.v1.FilesUpload
-	nil,                        // 37: mcsm.v1.Hello.SpecVersionsEntry
-	nil,                        // 38: mcsm.v1.Hello.DesiredStatesEntry
+	(BackupTrigger)(0),         // 2: mcsm.v1.BackupTrigger
+	(JobStatus)(0),             // 3: mcsm.v1.JobStatus
+	(*Envelope)(nil),           // 4: mcsm.v1.Envelope
+	(*HostInfo)(nil),           // 5: mcsm.v1.HostInfo
+	(*Hello)(nil),              // 6: mcsm.v1.Hello
+	(*HelloAck)(nil),           // 7: mcsm.v1.HelloAck
+	(*ServerSpec)(nil),         // 8: mcsm.v1.ServerSpec
+	(*SyncSpecs)(nil),          // 9: mcsm.v1.SyncSpecs
+	(*ApplySpec)(nil),          // 10: mcsm.v1.ApplySpec
+	(*RemoveServer)(nil),       // 11: mcsm.v1.RemoveServer
+	(*PowerAction)(nil),        // 12: mcsm.v1.PowerAction
+	(*SendCommand)(nil),        // 13: mcsm.v1.SendCommand
+	(*CommandResult)(nil),      // 14: mcsm.v1.CommandResult
+	(*SubscribeLogs)(nil),      // 15: mcsm.v1.SubscribeLogs
+	(*LogLine)(nil),            // 16: mcsm.v1.LogLine
+	(*StreamClose)(nil),        // 17: mcsm.v1.StreamClose
+	(*McStatus)(nil),           // 18: mcsm.v1.McStatus
+	(*Observed)(nil),           // 19: mcsm.v1.Observed
+	(*ServerObserved)(nil),     // 20: mcsm.v1.ServerObserved
+	(*Ack)(nil),                // 21: mcsm.v1.Ack
+	(*Error)(nil),              // 22: mcsm.v1.Error
+	(*MetricBatch)(nil),        // 23: mcsm.v1.MetricBatch
+	(*HostMetricSample)(nil),   // 24: mcsm.v1.HostMetricSample
+	(*ServerMetricSample)(nil), // 25: mcsm.v1.ServerMetricSample
+	(*BackupInfo)(nil),         // 26: mcsm.v1.BackupInfo
+	(*BackupNow)(nil),          // 27: mcsm.v1.BackupNow
+	(*BackupRestore)(nil),      // 28: mcsm.v1.BackupRestore
+	(*BackupDelete)(nil),       // 29: mcsm.v1.BackupDelete
+	(*BackupList)(nil),         // 30: mcsm.v1.BackupList
+	(*BackupInventory)(nil),    // 31: mcsm.v1.BackupInventory
+	(*BackupCreated)(nil),      // 32: mcsm.v1.BackupCreated
+	(*BackupDeleted)(nil),      // 33: mcsm.v1.BackupDeleted
+	(*JobProgress)(nil),        // 34: mcsm.v1.JobProgress
+	(*JobRecord)(nil),          // 35: mcsm.v1.JobRecord
+	(*FileEntry)(nil),          // 36: mcsm.v1.FileEntry
+	(*FilesList)(nil),          // 37: mcsm.v1.FilesList
+	(*FilesListResult)(nil),    // 38: mcsm.v1.FilesListResult
+	(*FilesStat)(nil),          // 39: mcsm.v1.FilesStat
+	(*FilesStatResult)(nil),    // 40: mcsm.v1.FilesStatResult
+	(*FilesRead)(nil),          // 41: mcsm.v1.FilesRead
+	(*FilesReadResult)(nil),    // 42: mcsm.v1.FilesReadResult
+	(*FilesWrite)(nil),         // 43: mcsm.v1.FilesWrite
+	(*FilesMkdir)(nil),         // 44: mcsm.v1.FilesMkdir
+	(*FilesRename)(nil),        // 45: mcsm.v1.FilesRename
+	(*FilesDelete)(nil),        // 46: mcsm.v1.FilesDelete
+	(*FilesDownload)(nil),      // 47: mcsm.v1.FilesDownload
+	(*FilesUpload)(nil),        // 48: mcsm.v1.FilesUpload
+	nil,                        // 49: mcsm.v1.Hello.SpecVersionsEntry
+	nil,                        // 50: mcsm.v1.Hello.DesiredStatesEntry
 }
 var file_mcsm_v1_agent_proto_depIdxs = []int32{
-	4,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
-	5,  // 1: mcsm.v1.Envelope.hello_ack:type_name -> mcsm.v1.HelloAck
-	7,  // 2: mcsm.v1.Envelope.sync_specs:type_name -> mcsm.v1.SyncSpecs
-	8,  // 3: mcsm.v1.Envelope.apply_spec:type_name -> mcsm.v1.ApplySpec
-	9,  // 4: mcsm.v1.Envelope.remove_server:type_name -> mcsm.v1.RemoveServer
-	10, // 5: mcsm.v1.Envelope.power_action:type_name -> mcsm.v1.PowerAction
-	11, // 6: mcsm.v1.Envelope.send_command:type_name -> mcsm.v1.SendCommand
-	12, // 7: mcsm.v1.Envelope.command_result:type_name -> mcsm.v1.CommandResult
-	13, // 8: mcsm.v1.Envelope.subscribe_logs:type_name -> mcsm.v1.SubscribeLogs
-	14, // 9: mcsm.v1.Envelope.log_line:type_name -> mcsm.v1.LogLine
-	15, // 10: mcsm.v1.Envelope.stream_close:type_name -> mcsm.v1.StreamClose
-	18, // 11: mcsm.v1.Envelope.server_observed:type_name -> mcsm.v1.ServerObserved
-	19, // 12: mcsm.v1.Envelope.ack:type_name -> mcsm.v1.Ack
-	20, // 13: mcsm.v1.Envelope.error:type_name -> mcsm.v1.Error
-	21, // 14: mcsm.v1.Envelope.metric_batch:type_name -> mcsm.v1.MetricBatch
-	25, // 15: mcsm.v1.Envelope.files_list:type_name -> mcsm.v1.FilesList
-	26, // 16: mcsm.v1.Envelope.files_list_result:type_name -> mcsm.v1.FilesListResult
-	27, // 17: mcsm.v1.Envelope.files_stat:type_name -> mcsm.v1.FilesStat
-	28, // 18: mcsm.v1.Envelope.files_stat_result:type_name -> mcsm.v1.FilesStatResult
-	29, // 19: mcsm.v1.Envelope.files_read:type_name -> mcsm.v1.FilesRead
-	30, // 20: mcsm.v1.Envelope.files_read_result:type_name -> mcsm.v1.FilesReadResult
-	31, // 21: mcsm.v1.Envelope.files_write:type_name -> mcsm.v1.FilesWrite
-	32, // 22: mcsm.v1.Envelope.files_mkdir:type_name -> mcsm.v1.FilesMkdir
-	33, // 23: mcsm.v1.Envelope.files_rename:type_name -> mcsm.v1.FilesRename
-	34, // 24: mcsm.v1.Envelope.files_delete:type_name -> mcsm.v1.FilesDelete
-	35, // 25: mcsm.v1.Envelope.files_download:type_name -> mcsm.v1.FilesDownload
-	36, // 26: mcsm.v1.Envelope.files_upload:type_name -> mcsm.v1.FilesUpload
-	3,  // 27: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
-	37, // 28: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
-	38, // 29: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
-	0,  // 30: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
-	6,  // 31: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
-	6,  // 32: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
-	1,  // 33: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
-	16, // 34: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
-	17, // 35: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
-	22, // 36: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
-	23, // 37: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
-	24, // 38: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
-	24, // 39: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
-	0,  // 40: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
-	41, // [41:41] is the sub-list for method output_type
-	41, // [41:41] is the sub-list for method input_type
-	41, // [41:41] is the sub-list for extension type_name
-	41, // [41:41] is the sub-list for extension extendee
-	0,  // [0:41] is the sub-list for field type_name
+	6,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
+	7,  // 1: mcsm.v1.Envelope.hello_ack:type_name -> mcsm.v1.HelloAck
+	9,  // 2: mcsm.v1.Envelope.sync_specs:type_name -> mcsm.v1.SyncSpecs
+	10, // 3: mcsm.v1.Envelope.apply_spec:type_name -> mcsm.v1.ApplySpec
+	11, // 4: mcsm.v1.Envelope.remove_server:type_name -> mcsm.v1.RemoveServer
+	12, // 5: mcsm.v1.Envelope.power_action:type_name -> mcsm.v1.PowerAction
+	13, // 6: mcsm.v1.Envelope.send_command:type_name -> mcsm.v1.SendCommand
+	14, // 7: mcsm.v1.Envelope.command_result:type_name -> mcsm.v1.CommandResult
+	15, // 8: mcsm.v1.Envelope.subscribe_logs:type_name -> mcsm.v1.SubscribeLogs
+	16, // 9: mcsm.v1.Envelope.log_line:type_name -> mcsm.v1.LogLine
+	17, // 10: mcsm.v1.Envelope.stream_close:type_name -> mcsm.v1.StreamClose
+	20, // 11: mcsm.v1.Envelope.server_observed:type_name -> mcsm.v1.ServerObserved
+	21, // 12: mcsm.v1.Envelope.ack:type_name -> mcsm.v1.Ack
+	22, // 13: mcsm.v1.Envelope.error:type_name -> mcsm.v1.Error
+	23, // 14: mcsm.v1.Envelope.metric_batch:type_name -> mcsm.v1.MetricBatch
+	27, // 15: mcsm.v1.Envelope.backup_now:type_name -> mcsm.v1.BackupNow
+	28, // 16: mcsm.v1.Envelope.backup_restore:type_name -> mcsm.v1.BackupRestore
+	29, // 17: mcsm.v1.Envelope.backup_delete:type_name -> mcsm.v1.BackupDelete
+	30, // 18: mcsm.v1.Envelope.backup_list:type_name -> mcsm.v1.BackupList
+	31, // 19: mcsm.v1.Envelope.backup_inventory:type_name -> mcsm.v1.BackupInventory
+	32, // 20: mcsm.v1.Envelope.backup_created:type_name -> mcsm.v1.BackupCreated
+	33, // 21: mcsm.v1.Envelope.backup_deleted:type_name -> mcsm.v1.BackupDeleted
+	34, // 22: mcsm.v1.Envelope.job_progress:type_name -> mcsm.v1.JobProgress
+	37, // 23: mcsm.v1.Envelope.files_list:type_name -> mcsm.v1.FilesList
+	38, // 24: mcsm.v1.Envelope.files_list_result:type_name -> mcsm.v1.FilesListResult
+	39, // 25: mcsm.v1.Envelope.files_stat:type_name -> mcsm.v1.FilesStat
+	40, // 26: mcsm.v1.Envelope.files_stat_result:type_name -> mcsm.v1.FilesStatResult
+	41, // 27: mcsm.v1.Envelope.files_read:type_name -> mcsm.v1.FilesRead
+	42, // 28: mcsm.v1.Envelope.files_read_result:type_name -> mcsm.v1.FilesReadResult
+	43, // 29: mcsm.v1.Envelope.files_write:type_name -> mcsm.v1.FilesWrite
+	44, // 30: mcsm.v1.Envelope.files_mkdir:type_name -> mcsm.v1.FilesMkdir
+	45, // 31: mcsm.v1.Envelope.files_rename:type_name -> mcsm.v1.FilesRename
+	46, // 32: mcsm.v1.Envelope.files_delete:type_name -> mcsm.v1.FilesDelete
+	47, // 33: mcsm.v1.Envelope.files_download:type_name -> mcsm.v1.FilesDownload
+	48, // 34: mcsm.v1.Envelope.files_upload:type_name -> mcsm.v1.FilesUpload
+	5,  // 35: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
+	49, // 36: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
+	50, // 37: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
+	0,  // 38: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
+	8,  // 39: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
+	8,  // 40: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
+	1,  // 41: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
+	18, // 42: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
+	19, // 43: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
+	24, // 44: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
+	25, // 45: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
+	2,  // 46: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
+	2,  // 47: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
+	26, // 48: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
+	35, // 49: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
+	26, // 50: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
+	3,  // 51: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
+	3,  // 52: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
+	36, // 53: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
+	36, // 54: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
+	0,  // 55: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	56, // [56:56] is the sub-list for method output_type
+	56, // [56:56] is the sub-list for method input_type
+	56, // [56:56] is the sub-list for extension type_name
+	56, // [56:56] is the sub-list for extension extendee
+	0,  // [0:56] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }
@@ -3077,6 +4135,14 @@ func file_mcsm_v1_agent_proto_init() {
 		(*Envelope_Ack)(nil),
 		(*Envelope_Error)(nil),
 		(*Envelope_MetricBatch)(nil),
+		(*Envelope_BackupNow)(nil),
+		(*Envelope_BackupRestore)(nil),
+		(*Envelope_BackupDelete)(nil),
+		(*Envelope_BackupList)(nil),
+		(*Envelope_BackupInventory)(nil),
+		(*Envelope_BackupCreated)(nil),
+		(*Envelope_BackupDeleted)(nil),
+		(*Envelope_JobProgress)(nil),
 		(*Envelope_FilesList)(nil),
 		(*Envelope_FilesListResult)(nil),
 		(*Envelope_FilesStat)(nil),
@@ -3096,8 +4162,8 @@ func file_mcsm_v1_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mcsm_v1_agent_proto_rawDesc), len(file_mcsm_v1_agent_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   37,
+			NumEnums:      4,
+			NumMessages:   47,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -108,6 +108,7 @@ type Spec struct {
 	// spec del panel ni viaja al navegador.
 	CurseForgeAPIKey string `json:"curseforgeApiKey,omitempty"`
 	// ── plan-4 ──
+	Backups *Backups `json:"backups,omitempty"`
 	// ── plan-5 ──
 	// ── plan-6 ──
 	// ── plan-7 ──
@@ -235,6 +236,9 @@ func (s Spec) Validate() error {
 		return err
 	}
 	// ── plan-4 ──
+	if err := s.Backups.Validate(); err != nil {
+		return err
+	}
 	// ── plan-5 ──
 	// ── plan-6 ──
 	// ── plan-7 ──

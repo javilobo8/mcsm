@@ -22,6 +22,8 @@ import { metricsPlugin } from "./metrics/plugin.js";
 import { TemplatesRepo } from "./templates/repo.js";
 import { templateRoutes } from "./templates/routes.js";
 import { errorHandler } from "./lib/http.js";
+import { backupRoutes } from "./backups/routes.js";
+import { jobRoutes } from "./jobs/routes.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
 
@@ -58,6 +60,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.decorate("templates", new TemplatesRepo(opts.db));
   await app.register(templateRoutes);
   // ── plan-4 ──
+  await app.register(jobRoutes);
+  await app.register(backupRoutes);
   // ── plan-5 ──
   await app.register(transfersPlugin);
   await app.register(fileRoutes);

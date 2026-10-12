@@ -170,6 +170,7 @@ describe("AgentConn.ready: nada sale al agente antes del Ack de SyncSpecs", () =
     await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
     expect(ready).toBe(false);
     agent.ack(sync.id);
+    await agent.waitFor("backupList"); // inventario que el panel pide solo tras cada Hello (Plan 4), antes que estas
     const r1 = await agent.next();
     const r2 = await agent.next();
     expect([r1.body.case, r2.body.case]).toEqual(["powerAction", "sendCommand"]);
@@ -194,6 +195,7 @@ describe("AgentConn.ready: nada sale al agente antes del Ack de SyncSpecs", () =
     const { agent, sync, conn } = await syncing();
     await expect(conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 100)).rejects.toMatchObject({ code: "syncing" });
     agent.ack(sync.id);
+    await agent.waitFor("backupList"); // la del inventario (Plan 4) sí sale
     await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
   });
 

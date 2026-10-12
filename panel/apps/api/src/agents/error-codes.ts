@@ -17,6 +17,7 @@ export const AgentErrorCode = {
   RemoveFailed: "remove_failed",
   PowerFailed: "power_failed",
   BadSpec: "bad_spec",
+  BackupFailed: "backup_failed",
   RconFailed: "rcon_failed",
   // Archivos.
   InvalidPath: "invalid_path",

@@ -3,6 +3,7 @@ import "./zod-locale.js";
 import { specPatchSchema, type SpecPatch } from "./spec-patch.js";
 import { contentCheck, contentFields } from "./spec-content.js";
 import { limitsCheck } from "./spec-limits.js";
+import { backupsSchema } from "./backups.js";
 
 export const RESERVED_ENV = new Set([
   "EULA", "TYPE", "VERSION", "MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "RCON_PORT", "SERVER_PORT", "CUSTOM_SERVER_PROPERTIES",
@@ -64,6 +65,7 @@ const baseFields = {
   // ── plan-3 ──
   ...contentFields,
   // ── plan-4 ──
+  backups: backupsSchema.optional(),
   // ── plan-5 ──
   // ── plan-6 ──
   // ── plan-7 ──

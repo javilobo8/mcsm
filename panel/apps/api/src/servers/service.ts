@@ -69,7 +69,11 @@ export class ServersService {
 
   private completeSpec(nodeId: string, input: SpecInput, previous?: Spec): Spec {
     const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId, new Set(input.ports.extra.map((e) => e.host)));
-    const candidate = { ...input, ports: { game, extra: input.ports.extra }, rconPassword: previous?.rconPassword ?? randomToken() };
+    const candidate = {
+      ...input,
+      ports: { game, extra: input.ports.extra },
+      rconPassword: previous?.rconPassword ?? randomToken(),
+    };
     const parsed = specSchema.safeParse(candidate);
     if (!parsed.success) throw new HttpError(400, formatZodError(parsed.error));
     // Tope de la spec ya fusionada (crear, PATCH, instanciar plantilla): cada PATCH cabe en el bodyLimit
@@ -79,7 +83,8 @@ export class ServersService {
     return parsed.data;
   }
 
-  private async push(row: ServerRow): Promise<void> {
+  /** Envía la spec al agente si el nodo está conectado (si no, irá en el próximo SyncSpecs). */
+  async push(row: ServerRow): Promise<void> {
     const conn = this.app.agents.get(row.node_id);
     if (!conn) return; // se entregará en el próximo SyncSpecs
     try {

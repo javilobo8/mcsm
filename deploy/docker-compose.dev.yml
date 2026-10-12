@@ -5,7 +5,8 @@ services:
   agent:
     build: { context: ../agent }
     image: mcsm-agent:dev
-    # docker stop mata a los 10 s; el agente espera hasta 20 s a sus operaciones de archivos.
+    # docker stop mata a los 10 s; al pararlo, el agente espera a la vez, hasta 25 s, a sus
+    # operaciones de archivos y a las copias en curso (save-on) antes de salir.
     stop_grace_period: 30s
     environment:
       PANEL_URL: http://host.docker.internal:8080

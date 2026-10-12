@@ -18,6 +18,7 @@ const (
 	PowerFailed    = "power_failed"    // fallo de la acción de encendido
 	BadSpec        = "bad_spec"        // la spec guardada no se puede leer
 	RconFailed     = "rcon_failed"     // fallo de RCON
+	BackupFailed   = "backup_failed"   // fallo de una copia, restauración o borrado de copias
 )
 
 // Archivos (Plan 5). unknown_server, not_found, exists y too_large están arriba.

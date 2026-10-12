@@ -26,6 +26,14 @@ message Envelope {
     MetricBatch metric_batch = 30;
     // ── plan-3 ──
     // ── plan-4 ──
+    BackupNow backup_now = 50;
+    BackupRestore backup_restore = 51;
+    BackupDelete backup_delete = 52;
+    BackupList backup_list = 53;
+    BackupInventory backup_inventory = 54;
+    BackupCreated backup_created = 55;
+    BackupDeleted backup_deleted = 56;
+    JobProgress job_progress = 57;
     // ── plan-5 ──
     FilesList files_list = 70;
     FilesListResult files_list_result = 71;
@@ -182,6 +190,7 @@ message Ack {}
 //   io_error         error de E/S del host                              502
 //   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
 //                    del agente o de Docker (spec §10)
+//   backup_failed    fallo de una copia, restauración o borrado de copias  502
 // Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
 // timeout (504), protocol (502).
 // El agente nunca responde a un Ack o un Error recibidos.
@@ -234,6 +243,116 @@ message ServerMetricSample {
 }
 // ── plan-3 ──
 // ── plan-4 ──
+
+// Copias de seguridad (spec §6.5) y jobs largos del agente (spec §5.3–5.4).
+
+enum BackupTrigger {
+  BACKUP_TRIGGER_UNSPECIFIED = 0;
+  BACKUP_TRIGGER_MANUAL = 1;
+  BACKUP_TRIGGER_SCHEDULED = 2;
+  BACKUP_TRIGGER_PRE_MIGRATION = 3;
+  BACKUP_TRIGGER_PRE_RESTORE = 4;
+}
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_RUNNING = 1;
+  JOB_STATUS_OK = 2;
+  JOB_STATUS_FAILED = 3;
+}
+
+// BackupInfo describe una copia en el disco del nodo. `filename` es el .tar.zst de
+// <DATA_ROOT>/<slug>/backups/ o, con trigger PRE_RESTORE, el directorio
+// data.pre-restore-<ts> que se conserva junto a data/.
+message BackupInfo {
+  string server_id = 1;
+  string filename = 2;
+  uint64 size_bytes = 3;
+  string sha256 = 4; // vacío en los directorios pre-restore
+  uint64 spec_version = 5;
+  BackupTrigger trigger = 6;
+  int64 started_unix_ms = 7;
+  int64 finished_unix_ms = 8;
+}
+
+// Panel → agente. Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error
+// (code busy | unknown_server | invalid_request | backup_failed). Un job_id repetido
+// no se ejecuta dos veces: el agente reenvía su estado guardado.
+message BackupNow {
+  string server_id = 1;
+  string job_id = 2;
+  BackupTrigger trigger = 3; // MANUAL si no se indica; PRE_MIGRATION lo usará el Plan 7
+}
+
+// Panel → agente. Restaura una copia .tar.zst por nombre (el agente no conoce los ids
+// del panel). Respuesta: Ack o Error, como BackupNow.
+message BackupRestore {
+  string server_id = 1;
+  string filename = 2;
+  string job_id = 3;
+}
+
+// Panel → agente. Borra una copia o un directorio pre-restore. Respuesta: Ack o Error.
+message BackupDelete {
+  string server_id = 1;
+  string filename = 2;
+}
+
+// Panel → agente. Respuesta: Ack y un BackupInventory no solicitado (id 0), que puede llegar
+// antes o después del Ack. server_id vacío = todos los servidores del nodo.
+message BackupList {
+  string server_id = 1;
+}
+
+// Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
+// son los servidores cuyo listado está completo: el panel marca como borradas las copias de
+// esos servidores que no aparezcan en `backups` (solo las que ya conocía antes de pedir el
+// inventario). El agente lo envía en orden con BackupCreated y BackupDeleted: un cambio que el
+// listado no vio llega después.
+message BackupInventory {
+  repeated string server_ids = 1;
+  repeated BackupInfo backups = 2;
+  repeated JobRecord jobs = 3;
+}
+
+// Agente → panel (id 0): copia nueva (manual, programada o datos pre-restore).
+message BackupCreated {
+  BackupInfo backup = 1;
+  string job_id = 2; // vacío en las pre-restore
+}
+
+// Agente → panel (id 0): copia borrada en el nodo, por la poda (reason "poda") o porque la
+// pidió el panel con BackupDelete (reason "borrada").
+message BackupDeleted {
+  string server_id = 1;
+  string filename = 2;
+  string reason = 3;
+}
+
+// Agente → panel (id 0): avance de un job. log_chunk trae solo las líneas nuevas.
+message JobProgress {
+  string job_id = 1;
+  string server_id = 2;
+  string type = 3; // backup | restore
+  JobStatus status = 4;
+  uint32 progress = 5; // 0-100
+  string message = 6;
+  string log_chunk = 7;
+  int64 ts_unix_ms = 8;
+}
+
+// Estado completo de un job guardado en el agente (inventario tras reconectar).
+message JobRecord {
+  string job_id = 1;
+  string server_id = 2;
+  string type = 3;
+  JobStatus status = 4;
+  uint32 progress = 5;
+  string message = 6;
+  string log = 7;
+  int64 started_unix_ms = 8;
+  int64 finished_unix_ms = 9;
+}
 // ── plan-5 ──
 // Archivos de un servidor (spec §5.3, §6.6). Las rutas son relativas a /data del
 // servidor, con "/" como separador ("/" es la raíz); el agente rechaza ".." y

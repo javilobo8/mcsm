@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -770,5 +771,165 @@ func TestMutatingHandlersSurviveSessionCancel(t *testing.T) {
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
 		t.Fatalf("el contenedor debe borrarse: %+v", list)
+	}
+}
+
+// failRemoveEngine hace fallar Remove mientras fail esté activo.
+type failRemoveEngine struct {
+	*docker.Fake
+	mu   sync.Mutex
+	fail bool
+}
+
+func (e *failRemoveEngine) setFail(v bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.fail = v
+}
+
+func (e *failRemoveEngine) Remove(ctx context.Context, id string) error {
+	e.mu.Lock()
+	fail := e.fail
+	e.mu.Unlock()
+	if fail {
+		return errors.New("docker: no se pudo borrar")
+	}
+	return e.Fake.Remove(ctx, id)
+}
+
+// Si el borrado en segundo plano de un servidor retirado por SyncSpecs falla, el tick de
+// reconciliación lo reintenta aunque su spec ya no exista (lápida del reconciliador).
+func TestSyncSpecsFailedRemovalIsRetriedByTick(t *testing.T) {
+	fake := docker.NewFake()
+	eng := &failRemoveEngine{Fake: fake}
+	a, st := newAppEngine(t, eng)
+	s := newSink()
+	a.send = s.send
+	ctx := context.Background()
+	a.Handle(ctx, applyMsg(1, specMsg("a", "alpha", 1)), s.send)
+	s.waitID(t, 1)
+	eng.setFail(true)
+	a.Handle(ctx, syncMsg(2, nil, "a"), s.send)
+	s.waitID(t, 2)
+	waitBackground(t, a)
+	if list, _ := fake.ListManaged(ctx); len(list) != 1 {
+		t.Fatalf("el borrado falló: el contenedor sigue: %+v", list)
+	}
+	if vers, _ := st.SpecVersions(); len(vers) != 0 {
+		t.Fatalf("el servidor retirado no vuelve al Hello: %v", vers)
+	}
+	eng.setFail(false)
+	a.reconcileAll(ctx) // tick
+	waitBackground(t, a)
+	if list, _ := fake.ListManaged(ctx); len(list) != 0 {
+		t.Fatalf("el tick debe reintentar el borrado: %+v", list)
+	}
+	if calls := strings.Join(fake.Calls, ";"); strings.Count(calls, "Create") != 1 {
+		t.Fatalf("no debe resucitar: %v", fake.Calls)
+	}
+}
+
+func powerMsg(id uint64, serverID string, act mcsmv1.PowerActionType) *mcsmv1.Envelope {
+	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: serverID, Action: act}}}
+}
+
+func removeMsg(id uint64, serverID string, deleteData bool) *mcsmv1.Envelope {
+	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_RemoveServer{RemoveServer: &mcsmv1.RemoveServer{ServerId: serverID, DeleteData: deleteData}}}
+}
+
+// Power y Remove sobre un servidor reservado (copia o restauración en curso) responden
+// busy, que el panel traduce a 409, no power_failed/remove_failed (502).
+func TestPowerAndRemoveOnHeldServerAreBusy(t *testing.T) {
+	a, fake, st := newApp(t)
+	s := newSink()
+	a.send = s.send
+	ctx := context.Background()
+	a.Handle(ctx, applyMsg(1, specMsg("a", "alpha", 1)), s.send)
+	if e := s.waitID(t, 1); e.GetAck() == nil {
+		t.Fatalf("resp = %+v", e)
+	}
+	release, err := a.rec.Hold("a", "copia de seguridad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Handle(ctx, powerMsg(2, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP), s.send)
+	if e := s.waitID(t, 2); e.GetError().GetCode() != errcode.Busy {
+		t.Fatalf("Power reservado = %+v, want busy", e)
+	}
+	a.Handle(ctx, removeMsg(3, "a", false), s.send)
+	if e := s.waitID(t, 3); e.GetError().GetCode() != errcode.Busy {
+		t.Fatalf("Remove reservado = %+v, want busy", e)
+	}
+	if sp, _ := st.GetSpec("a"); sp == nil {
+		t.Fatal("la spec sigue")
+	}
+	if list, _ := fake.ListManaged(ctx); len(list) != 1 || list[0].State != "running" {
+		t.Fatalf("el contenedor no se toca: %+v", list)
+	}
+	release(ctx)
+	a.Handle(ctx, powerMsg(4, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP), s.send)
+	if e := s.waitID(t, 4); e.GetAck() == nil {
+		t.Fatalf("tras liberar, Power = %+v", e)
+	}
+}
+
+// ApplySpec con el servidor reservado no falla: guarda la spec, responde Ack y la aplica
+// al liberar la reserva.
+func TestApplySpecOnHeldServerIsDeferred(t *testing.T) {
+	a, fake, st := newApp(t)
+	s := newSink()
+	a.send = s.send
+	ctx := context.Background()
+	a.Handle(ctx, applyMsg(1, specMsg("a", "alpha", 1)), s.send)
+	s.waitID(t, 1)
+	release, err := a.rec.Hold("a", "restauración")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Handle(ctx, applyMsg(2, withMemory(specMsg("a", "alpha", 2), "3G")), s.send)
+	if e := s.waitID(t, 2); e.GetAck() == nil {
+		t.Fatalf("ApplySpec reservado = %+v, want Ack", e)
+	}
+	waitBackground(t, a)
+	if mem := containerEnv(t, fake, "a")["MEMORY"]; mem != "2G" {
+		t.Fatalf("durante la reserva no se recrea: MEMORY=%s", mem)
+	}
+	release(ctx)
+	if mem := containerEnv(t, fake, "a")["MEMORY"]; mem != "3G" {
+		t.Fatalf("al liberar se aplica la spec aplazada: MEMORY=%s", mem)
+	}
+	if v, _ := st.Applied("a"); v != 2 {
+		t.Fatalf("applied = %d, want 2", v)
+	}
+}
+
+// Un slug retirado (con su contenedor aún por borrar) y recreado con otro id: el tick borra
+// primero el contenedor viejo y después reconcilia el nuevo, que no choca con el nombre
+// ni cae en backoff.
+func TestTickRemovesTombstonesBeforeReconciling(t *testing.T) {
+	fake := docker.NewFake()
+	eng := &failRemoveEngine{Fake: fake}
+	a, st := newAppEngine(t, eng)
+	s := newSink()
+	a.send = s.send
+	ctx := context.Background()
+	a.Handle(ctx, applyMsg(1, specMsg("old", "alpha", 1)), s.send)
+	s.waitID(t, 1)
+	eng.setFail(true)
+	a.Handle(ctx, syncMsg(2, nil, "old"), s.send)
+	s.waitID(t, 2)
+	waitBackground(t, a)
+	eng.setFail(false)
+	if err := a.rec.StoreForce(specMsg("new", "alpha", 1)); err != nil {
+		t.Fatal(err)
+	}
+	a.reconcileAll(ctx) // tick
+	waitBackground(t, a)
+	list, _ := fake.ListManaged(ctx)
+	if len(list) != 1 || list[0].Labels["mcsm.server_id"] != "new" || list[0].State != "running" {
+		t.Fatalf("debe quedar solo el contenedor nuevo en marcha: %+v (calls %v)", list, fake.Calls)
+	}
+	if v, _ := st.Applied("new"); v != 1 {
+		t.Fatalf("el servidor nuevo se aplica en el mismo tick: applied = %d", v)
 	}
 }

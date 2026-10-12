@@ -16,6 +16,7 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
+	"mcsm/agent/internal/backup"
 	"mcsm/agent/internal/conn"
 	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/errcode"
@@ -73,7 +74,8 @@ type App struct {
 	sem     chan struct{}
 	bg      sync.WaitGroup // tareas de fondo (sincronización y despachos)
 
-	xfer transferGate // transferencias de archivos en curso (files.go)
+	xfer transferGate   // transferencias de archivos en curso (files.go)
+	bk   *backupService // plan-4: copias, restauraciones, jobs y programación
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
@@ -85,6 +87,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 		return a.status(ctx, host, port)
 	}, a.onObserved)
 	a.hub = logs.NewHub(eng)
+	a.bk = newBackupService(a, backup.RealClock) // plan-4
 	return a
 }
 
@@ -145,6 +148,11 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	})
 	a.send = func(e *mcsmv1.Envelope) error { return client.Send(ctx, e) }
 	a.life = ctx
+	// plan-4 (fuera de ancla: tiene que ir antes de la primera reconciliación y de aceptar
+	// jobs): save-on y jobs que un cierre o crash dejó a medias, y el disco de cada servidor.
+	// Una restauración interrumpida puede dejar un servidor sin data, y reconcileAll lo
+	// arrancaría con un mundo nuevo.
+	a.bk.recoverAtStart(ctx)
 
 	go a.eventLoop(ctx)
 	go a.tickers(ctx)
@@ -154,6 +162,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	go a.runMetrics(ctx)
 	// ── plan-3 ──
 	// ── plan-4 ──
+	a.bk.start(ctx)
 	// ── plan-5 ──
 	go a.sweepTemps(ctx) // temporales huérfanos de subidas cortadas (kill -9, corte de luz)
 	// ── plan-6 ──
@@ -161,10 +170,20 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-8 ──
 	// ── plan-9 ──
 	client.Run(ctx)
-	// Cierre: los Files* en curso (ya cortados por ctx) terminan de limpiar sus temporales.
-	if !a.xfer.wait(filesShutdownWait) {
-		log.Warn("cierre sin esperar a las operaciones de archivos en curso: venció el plazo", "plazo", filesShutdownWait)
-	}
+	// Cierre (ctx ya cancelado), las dos esperas EN PARALELO para que el total no pase de
+	// shutdownWait (25 s < stop_grace_period de 30 s):
+	//   - los Files* en curso (ya cortados por ctx) terminan de limpiar sus temporales;
+	//   - plan-4: las copias en curso abortan y su defer envía save-on.
+	waitAll(
+		func() bool {
+			if !a.xfer.wait(filesShutdownWait) {
+				log.Warn("cierre sin esperar a las operaciones de archivos en curso: venció el plazo", "plazo", filesShutdownWait)
+				return false
+			}
+			return true
+		},
+		func() bool { return a.bk.wait(shutdownWait) },
+	)
 	return nil
 }
 
@@ -192,6 +211,7 @@ func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 
 // onObserved se invoca con el lock por servidor tomado: no puede llamar al reconciliador.
 func (a *App) onObserved(serverID string, obs *mcsmv1.Observed) {
+	a.bk.players.Observe(serverID, obs.GetMc().GetPlayersOnline()) // plan-4: onlyIfPlayersSince (solo su propio mutex)
 	_ = a.send(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_ServerObserved{ServerObserved: &mcsmv1.ServerObserved{
 		ServerId: serverID, Observed: obs, TsUnixMs: time.Now().UnixMilli(),
 	}}})
@@ -225,9 +245,18 @@ func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string
 		return errcode.InvalidSpec, err
 	}
 	if err := a.rec.Apply(ctx, sp); err != nil {
-		return errcode.ApplyFailed, err
+		return busyOr(err, errcode.ApplyFailed), err
 	}
 	return "", nil
+}
+
+// busyOr devuelve errcode.Busy (409 en el panel) si err es un servidor reservado por una
+// copia o restauración (reconcile.ErrBusy), y fallback en otro caso.
+func busyOr(err error, fallback string) string {
+	if errors.Is(err, reconcile.ErrBusy) {
+		return errcode.Busy
+	}
+	return fallback
 }
 
 // syncSpecs aplica la foto del panel al reconectar (spec §3: el panel es la verdad).
@@ -308,7 +337,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	case *mcsmv1.Envelope_RemoveServer:
 		if err := a.rec.Remove(life, b.RemoveServer.ServerId, b.RemoveServer.DeleteData); err != nil {
-			_ = send(errMsg(env.Id, errcode.RemoveFailed, err))
+			_ = send(errMsg(env.Id, busyOr(err, errcode.RemoveFailed), err))
 			return
 		}
 		a.hub.Reset(b.RemoveServer.ServerId)
@@ -316,7 +345,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	case *mcsmv1.Envelope_PowerAction:
 		if err := a.rec.Power(life, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
-			_ = send(errMsg(env.Id, errcode.PowerFailed, err))
+			_ = send(errMsg(env.Id, busyOr(err, errcode.PowerFailed), err))
 			return
 		}
 		_ = send(ack(env.Id))
@@ -364,6 +393,14 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	// ── plan-2 ──
 	// ── plan-3 ──
 	// ── plan-4 ──
+	case *mcsmv1.Envelope_BackupNow:
+		a.bk.handleBackupNow(env.Id, b.BackupNow, send)
+	case *mcsmv1.Envelope_BackupRestore:
+		a.bk.handleBackupRestore(env.Id, b.BackupRestore, send)
+	case *mcsmv1.Envelope_BackupDelete:
+		a.bk.handleBackupDelete(env.Id, b.BackupDelete, send)
+	case *mcsmv1.Envelope_BackupList:
+		a.bk.handleBackupList(env.Id, b.BackupList, send)
 	// ── plan-5 ──
 	case *mcsmv1.Envelope_FilesList, *mcsmv1.Envelope_FilesStat, *mcsmv1.Envelope_FilesRead,
 		*mcsmv1.Envelope_FilesWrite, *mcsmv1.Envelope_FilesMkdir, *mcsmv1.Envelope_FilesRename,
@@ -527,16 +564,25 @@ func (a *App) observeAsync(ctx context.Context, id string) {
 	a.dispatch(ctx, "obs:"+id, func() { a.rec.Observe(ctx, id) })
 }
 
-// reconcileAll reconcilia cada servidor por separado y sin esperar a ninguno.
+// reconcileAll ejecuta una pasada de reconciliación sin bloquear al llamador. Primero
+// reintenta los borrados pendientes de servidores retirados (lápidas; acotados por pasada
+// y con backoff en el reconciliador): un slug retirado y recreado con otro id reutiliza el
+// nombre del contenedor. Después reconcilia cada servidor por separado y sin esperar a
+// ninguno.
 func (a *App) reconcileAll(ctx context.Context) {
-	specs, err := a.st.ListSpecs()
-	if err != nil {
-		a.log.Error("listar specs", "err", err)
-		return
-	}
-	for _, sp := range specs {
-		a.reconcileAsync(ctx, sp.ServerId, false)
-	}
+	a.dispatch(ctx, "reconcile-all", func() {
+		for _, id := range a.rec.RetryRemovals(ctx) {
+			a.hub.Reset(id)
+		}
+		specs, err := a.st.ListSpecs()
+		if err != nil {
+			a.log.Error("listar specs", "err", err)
+			return
+		}
+		for _, sp := range specs {
+			a.reconcileAsync(ctx, sp.ServerId, false)
+		}
+	})
 }
 
 // reconcileAsync reconcilia un servidor con el despachador por servidor. Con force se
@@ -598,4 +644,19 @@ func (a *App) dispatch(ctx context.Context, key string, fn func()) {
 			return
 		}
 	}()
+}
+
+// waitAll ejecuta a la vez las esperas del cierre (cada una con su propio tope) y vuelve
+// cuando han terminado todas: el total es el mayor de los topes, no la suma. false si
+// alguna venció su plazo.
+func waitAll(waits ...func() bool) bool {
+	results := make(chan bool, len(waits))
+	for _, w := range waits {
+		go func() { results <- w() }()
+	}
+	ok := true
+	for range waits {
+		ok = <-results && ok
+	}
+	return ok
 }

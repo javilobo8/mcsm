@@ -7,6 +7,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StateBadge } from "@/components/state-badge";
+import { BackupsTab } from "@/components/backups-tab";
+import { JobList } from "@/components/job-list";
 import { PowerButtons } from "@/components/power-buttons";
 import { Console } from "@/components/console";
 import { ServerCharts } from "@/components/server-charts";
@@ -81,6 +83,8 @@ export function ServerPage() {
           {/* ── plan-2 ── */}
           {/* ── plan-3 ── */}
           {/* ── plan-4 ── */}
+          <TabsTrigger value="backups">Backups</TabsTrigger>
+          <TabsTrigger value="history">Historial</TabsTrigger>
           {/* ── plan-5 ── */}
           <TabsTrigger value="files">Archivos</TabsTrigger>
           {/* ── plan-6 ── */}
@@ -104,6 +108,8 @@ export function ServerPage() {
         {/* ── plan-2 ── */}
         {/* ── plan-3 ── */}
         {/* ── plan-4 ── */}
+        <TabsContent value="backups"><BackupsTab server={s} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="history"><JobList key={s.id} filter={{ serverId: s.id }} showServer={false} /></TabsContent>
         {/* ── plan-5 ── */}
         <TabsContent value="files"><FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
         {/* ── plan-6 ── */}
