@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProgressBar } from "@/components/job-progress";
+import { useTabGuard } from "@/components/guarded-tabs";
 import { useJobs, useJobsLive } from "@/hooks/use-jobs";
-import { startMigration, useMigration, useMigrationProposal } from "@/hooks/use-migration";
+import { closeMigration, startMigration, useMigration, useMigrationProposal } from "@/hooks/use-migration";
 import { useNodes } from "@/hooks/use-nodes";
 import type { JobDto, ServerDto } from "@/lib/api";
 import {
-  activeMigrationJob, confirmText, lastMigrationJob, migrateBlockedReason, migrationBody, migrationKey, parsePortInput, pendingText, portHint,
-  stepStates, targetOptions, type StepState,
+  activeMigrationJob, canCloseMigration, closeMigrationText, confirmText, lastMigrationJob, migrateBlockedReason, migrateFormDirty, migrationBody, migrationKey,
+  parsePortInput, pendingText, portHint, stepStates, targetOptions, type StepState,
 } from "@/lib/migration";
 import { cn } from "@/lib/utils";
 
@@ -50,19 +51,37 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
   const [portText, setPortText] = useState("");
   const [deleteSource, setDeleteSource] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [closing, setClosing] = useState(false);
+  // Elegir destino y puerto no es mucho trabajo, pero se avisa antes de perderlo al cambiar de pestaña (m9).
+  useTabGuard(migrateFormDirty(targetId, portText, deleteSource), {
+    title: "Migración sin lanzar", description: "Has elegido a dónde migrar el servidor. Si cambias de pestaña se perderá la selección.", confirmLabel: "Descartar y cambiar",
+  });
 
   const active = activeMigrationJob(jobs.data);
   const last = lastMigrationJob(jobs.data);
   const options = targetOptions(nodes.data, server.nodeId);
   const target = options.find((o) => o.id === targetId);
-  const proposal = useMigrationProposal(server.id, target && !target.disabled ? target.id : null);
   const port = parsePortInput(portText);
+  // Con el puerto escrito, la propuesta comprueba ese puerto (m8): su error solo bloquea si de verdad no vale.
+  const proposal = useMigrationProposal(server.id, target && !target.disabled ? target.id : null, port ?? undefined);
   const nodeName = (id: string) => nodes.data?.find((n) => n.id === id)?.name ?? "otro nodo";
-  const pending = migration.data ? pendingText(migration.data, nodeName) : null;
+  const nodeOnlineById = (id: string) => (nodes.data ? nodes.data.find((n) => n.id === id)?.status === "online" : undefined);
+  const pending = migration.data ? pendingText(migration.data, nodeName, nodeOnlineById) : null;
+  const closable = canCloseMigration(migration.data, active);
   const blocked = migrateBlockedReason({
     sourceOnline: nodeOnline, active, migration: migration.data, target, portInvalid: port === null, proposalError: proposal.error?.message ?? null,
   });
   const finalPort = port ?? proposal.data?.port;
+
+  const close = useMutation({
+    mutationFn: () => closeMigration(server.id),
+    onSuccess: () => {
+      setClosing(false);
+      void qc.invalidateQueries({ queryKey: migrationKey(server.id) });
+      void qc.invalidateQueries({ queryKey: ["server", server.id] });
+      void qc.invalidateQueries({ queryKey: ["servers"] });
+    },
+  });
 
   const start = useMutation({
     mutationFn: () => startMigration(server.id, migrationBody(targetId, port ?? undefined, deleteSource)),
@@ -98,6 +117,11 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
         )}
         {!active && last?.status === "ok" && <p className="text-sm text-emerald-400">{last.message}</p>}
         {pending && <p role="status" className="text-sm text-amber-400">{pending}</p>}
+        {closable && (
+          <div>
+            <Button variant="outline" size="sm" onClick={() => { close.reset(); setClosing(true); }}>Cerrar la migración a mano…</Button>
+          </div>
+        )}
       </section>
 
       {!active && (
@@ -132,6 +156,22 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
           </div>
         </section>
       )}
+
+      <AlertDialog open={closing} onOpenChange={(open) => { if (!close.isPending) setClosing(open); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cerrar a mano la migración de «{server.name}»?</AlertDialogTitle>
+            <AlertDialogDescription>{migration.data ? closeMigrationText(migration.data, nodeName) : ""}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {close.error && <p role="alert" className="text-sm text-red-400">{close.error.message}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={close.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={close.isPending} onClick={(e) => { e.preventDefault(); close.mutate(); }}>
+              {close.isPending ? "Cerrando…" : "Cerrar la migración"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={confirming} onOpenChange={(open) => { if (!start.isPending) setConfirming(open); }}>
         <AlertDialogContent>

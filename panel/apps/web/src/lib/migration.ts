@@ -1,9 +1,20 @@
-import { MIGRATION_STEPS, OPEN_PHASES, stepOfProgress, type MigrationDto, type MigrationProposalDto, type MigrationRequestInput } from "@mcsm/shared";
-import type { JobDto, NodeDto } from "./api";
+import { MIGRATION_STEPS, OPEN_PHASES, migrationLeftovers, stepOfProgress, type MigrationDto, type MigrationProposalDto, type MigrationRequestInput } from "@mcsm/shared";
+import { apiPath, type JobDto, type NodeDto } from "./api";
 import { isActive } from "./jobs";
 
 export const migrationKey = (serverId: string) => ["migration", serverId] as const;
-export const proposalKey = (serverId: string, targetNodeId: string) => ["migration-proposal", serverId, targetNodeId] as const;
+export const proposalKey = (serverId: string, targetNodeId: string, port?: number) => ["migration-proposal", serverId, targetNodeId, port ?? null] as const;
+
+/** Ruta de la propuesta: con el puerto escrito, el panel comprueba ese y no propone otro (m8). */
+export function proposalPath(serverId: string, targetNodeId: string, port: number | undefined): string {
+  const q = new URLSearchParams({ targetNodeId });
+  if (port !== undefined) q.set("port", String(port));
+  return `${apiPath`/api/servers/${serverId}/migration/proposal`}?${q}`;
+}
+
+/** El formulario tiene algo que perder al cambiar de pestaña (m9): un destino, un puerto o «borrar origen» elegidos. */
+export const migrateFormDirty = (targetId: string, portText: string, deleteSource: boolean): boolean =>
+  targetId !== "" || portText.trim() !== "" || deleteSource;
 
 export interface TargetOption { id: string; label: string; disabled: boolean }
 
@@ -71,20 +82,56 @@ export function stepStates(job: Pick<JobDto, "progress" | "status">): StepState[
   });
 }
 
-/** Lo que queda pendiente de una migración abierta, o null si no hay nada que contar. */
-export function pendingText(m: MigrationDto, nodeName: (id: string) => string): string | null {
+/** «: motivo» del último fallo de un pendiente (pending_error lleva el nombre del pendiente delante), o "". */
+function reason(m: MigrationDto, label: string): string {
+  const prefix = `${label}: `;
+  return m.pendingError?.startsWith(prefix) ? `: ${m.pendingError.slice(prefix.length)}` : "";
+}
+
+/**
+ * Lo que queda pendiente de una migración, o null si no hay nada que contar. `online` dice si un nodo está conectado
+ * (undefined = no se sabe): con el nodo conectado no se dice «cuando vuelva a conectar», sino que se reintenta y por qué.
+ */
+export function pendingText(m: MigrationDto, nodeName: (id: string) => string, online: (id: string) => boolean | undefined = () => undefined): string | null {
   const src = nodeName(m.sourceNodeId);
   const dst = nodeName(m.targetNodeId);
+  const when = (nodeId: string, label: string) => online(nodeId) === false ? " cuando vuelva a conectar" : ` (se reintenta cada 30 s${reason(m, label)})`;
   if (m.phase === "rolling_back") {
     const parts: string[] = [];
-    if (m.targetPending) parts.push(`borrar la copia a medias en «${dst}» cuando vuelva a conectar`);
-    if (m.sourcePending) parts.push(m.targetPending ? `después, volver a arrancar el servidor en «${src}»` : `volver a arrancar el servidor en «${src}» cuando vuelva a conectar`);
-    return `La migración falló y se está deshaciendo: falta ${parts.join("; ")}.`;
+    if (m.targetPending) parts.push(`borrar la copia a medias en «${dst}»${when(m.targetNodeId, "Limpiar el destino")}`);
+    if (m.sourcePending) {
+      parts.push(m.targetPending && m.targetStarted
+        ? `después, volver a arrancar el servidor en «${src}»`
+        : `volver a arrancar el servidor en «${src}»${when(m.sourceNodeId, "Volver a arrancar el origen")}`);
+    }
+    const usable = !m.sourcePending && !(m.targetPending && m.targetStarted) ? ` El servidor ya se puede usar en «${src}».` : "";
+    return `La migración falló y se está deshaciendo: falta ${parts.join("; ")}.${usable}`;
   }
   if (m.phase === "committed") {
-    return `Migrado a «${dst}». Falta retirar el servidor del nodo «${src}» (${m.deleteSource ? "borrando sus datos" : `sus datos quedarán en ${m.sourceSlug}.migrated-…`}) cuando vuelva a conectar.`;
+    const parts: string[] = [];
+    if (m.sourcePending) {
+      parts.push(`retirar el servidor del nodo «${src}» (${m.deleteSource ? "borrando sus datos" : `sus datos quedarán en ${m.sourceSlug}.migrated-…`})${when(m.sourceNodeId, "Retirar el origen")}`);
+    }
+    if (m.targetConfirmPending) parts.push(`confirmar la migración en «${dst}»${when(m.targetNodeId, "Confirmar en el destino")}`);
+    return `Migrado a «${dst}». Falta ${parts.join("; ")}.`;
   }
+  if (m.pendingError && (m.phase === "done" || m.phase === "failed")) return `Queda algo por resolver a mano: ${m.pendingError}`;
   return null;
+}
+
+/** Se puede cerrar a mano: abierta, sin pasos en curso (solo queda lo pendiente) y sin su job activo. */
+export function canCloseMigration(m: MigrationDto | null | undefined, active: JobDto | undefined): boolean {
+  return !!m && (m.phase === "rolling_back" || m.phase === "committed") && !active;
+}
+
+/** Texto del diálogo que confirma cerrar a mano una migración atascada. */
+export function closeMigrationText(m: MigrationDto, nodeName: (id: string) => string): string {
+  const left = migrationLeftovers(m, nodeName);
+  return [
+    "El panel dejará de reintentar lo que falta de esta migración y no enviará nada a los nodos.",
+    left.length ? `Quedará sin hacer: ${left.join("; ")}.` : "No queda nada pendiente.",
+    "Hazlo solo si un nodo no va a volver o si ya lo has resuelto a mano.",
+  ].join(" ");
 }
 
 /** Texto del diálogo de confirmación. */
@@ -105,4 +152,21 @@ export function migrationFinished(prevActiveId: string | null, jobs: JobDto[] | 
   if (!prevActiveId || !jobs) return false;
   const j = jobs.find((x) => x.id === prevActiveId);
   return !j || !isActive(j);
+}
+
+/** Migración en curso que se sigue para refrescar el servidor: su job y el paso en el que va. */
+export interface MigrationSyncState { id: string; step: number }
+
+/**
+ * Cuándo refrescar el servidor (puede haber cambiado de nodo): al entrar la migración en curso en el paso 7 (el panel
+ * confirma el cambio de nodo justo al empezarlo, en el mismo turno: la recarga ya lo ve) y al terminar (m6). Sin lista
+ * (cargando) no cambia nada.
+ */
+export function migrationSync(prev: MigrationSyncState | null, jobs: JobDto[] | undefined): { refresh: boolean; next: MigrationSyncState | null } {
+  if (!jobs) return { refresh: false, next: prev };
+  const active = activeMigrationJob(jobs);
+  const next = active ? { id: active.id, step: stepOfProgress(active.progress) } : null;
+  if (prev && prev.id !== next?.id) return { refresh: migrationFinished(prev.id, jobs), next };
+  const entered7 = !!prev && !!next && prev.step < 7 && next.step === 7;
+  return { refresh: entered7, next };
 }

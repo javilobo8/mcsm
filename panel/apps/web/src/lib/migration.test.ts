@@ -3,7 +3,8 @@ import type { MigrationDto } from "@mcsm/shared";
 import type { JobDto, NodeDto } from "./api";
 import { jobTypeLabel } from "./jobs";
 import {
-  activeMigrationJob, confirmText, lastMigrationJob, migrateBlockedReason, migrationBody, migrationFinished, parsePortInput, pendingText, portHint, stepStates, targetOptions,
+  activeMigrationJob, canCloseMigration, closeMigrationText, confirmText, lastMigrationJob, migrateBlockedReason, migrateFormDirty, migrationBody, migrationFinished,
+  migrationSync, parsePortInput, pendingText, portHint, proposalPath, stepStates, targetOptions,
 } from "./migration";
 
 const node = (id: string, name: string, status: "online" | "offline" = "online"): NodeDto => ({
@@ -71,14 +72,68 @@ describe("migración en la web", () => {
     expect(stepStates({ progress: 100, status: "ok" })).toEqual(Array(7).fill("done"));
   });
 
-  it("lo pendiente de una migración abierta", () => {
-    expect(pendingText(mig({ phase: "rolling_back", targetPending: true, sourcePending: true }), names))
+  it("lo pendiente de una migración abierta, según si los nodos están conectados", () => {
+    const off = () => false;
+    const on = () => true;
+    expect(pendingText(mig({ phase: "rolling_back", targetPending: true, sourcePending: true, targetStarted: true }), names, off))
       .toBe("La migración falló y se está deshaciendo: falta borrar la copia a medias en «Garaje» cuando vuelva a conectar; después, volver a arrancar el servidor en «Casa».");
-    expect(pendingText(mig({ phase: "rolling_back", sourcePending: true }), names)).toMatch(/volver a arrancar el servidor en «Casa» cuando vuelva a conectar/);
-    expect(pendingText(mig({ phase: "committed", sourcePending: true }), names)).toMatch(/Migrado a «Garaje».*retirar el servidor del nodo «Casa».*x\.migrated/);
-    expect(pendingText(mig({ phase: "committed", sourcePending: true, deleteSource: true }), names)).toMatch(/borrando sus datos/);
-    expect(pendingText(mig({ phase: "done" }), names)).toBeNull();
-    expect(pendingText(mig({ phase: "running" }), names)).toBeNull();
+    expect(pendingText(mig({ phase: "rolling_back", sourcePending: true }), names, off)).toMatch(/volver a arrancar el servidor en «Casa» cuando vuelva a conectar/);
+    // Conectado: no «cuando vuelva a conectar», sino el motivo y que se reintenta.
+    const online = pendingText(mig({ phase: "rolling_back", sourcePending: true, pendingError: "Volver a arrancar el origen: ocupado" }), names, on)!;
+    expect(online).toMatch(/se reintenta cada 30 s.*ocupado/);
+    expect(online).not.toMatch(/vuelva a conectar/);
+    // I2: solo falta limpiar un destino que nunca arrancó: el servidor ya se usa en el origen.
+    expect(pendingText(mig({ phase: "rolling_back", targetPending: true }), names, off)).toMatch(/ya se puede usar en «Casa»/);
+    expect(pendingText(mig({ phase: "rolling_back", targetPending: true, targetStarted: true }), names, off)).not.toMatch(/ya se puede usar/);
+    expect(pendingText(mig({ phase: "committed", sourcePending: true }), names, off)).toMatch(/Migrado a «Garaje».*retirar el servidor del nodo «Casa».*x\.migrated.*cuando vuelva a conectar/);
+    expect(pendingText(mig({ phase: "committed", sourcePending: true, deleteSource: true }), names, off)).toMatch(/borrando sus datos/);
+    expect(pendingText(mig({ phase: "committed", targetConfirmPending: true }), names, on)).toMatch(/confirmar la migración en «Garaje».*se reintenta/);
+    expect(pendingText(mig({ phase: "done" }), names, on)).toBeNull();
+    expect(pendingText(mig({ phase: "running" }), names, on)).toBeNull();
+    // Cerrada o con un rechazo definitivo: queda anotado lo que hay que resolver a mano.
+    expect(pendingText(mig({ phase: "done", pendingError: "Retirar el origen: versión 3; no se reintenta: revisa x" }), names, on)).toMatch(/resolver a mano.*versión 3/);
+    expect(pendingText(mig({ phase: "failed", pendingError: "Cerrada a mano: algo" }), names, on)).toMatch(/Cerrada a mano/);
+  });
+
+  it("cierre manual: solo de una migración abierta sin pasos en curso; el texto dice lo que queda sin hacer", () => {
+    expect(canCloseMigration(mig({ phase: "rolling_back", targetPending: true }), undefined)).toBe(true);
+    expect(canCloseMigration(mig({ phase: "committed", sourcePending: true }), undefined)).toBe(true);
+    expect(canCloseMigration(mig({ phase: "committed", sourcePending: true }), job({}))).toBe(false);
+    expect(canCloseMigration(mig({ phase: "running" }), undefined)).toBe(false);
+    expect(canCloseMigration(mig({ phase: "done" }), undefined)).toBe(false);
+    expect(canCloseMigration(null, undefined)).toBe(false);
+    const t = closeMigrationText(mig({ phase: "rolling_back", targetPending: true, sourcePending: true }), names);
+    expect(t).toMatch(/dejará de reintentar/);
+    expect(t).toMatch(/«Garaje»/);
+    expect(t).toMatch(/no se vuelve a arrancar en «Casa»/);
+  });
+
+  it("la propuesta lleva el puerto escrito (m8)", () => {
+    expect(proposalPath("s/1", "b", undefined)).toBe("/api/servers/s%2F1/migration/proposal?targetNodeId=b");
+    expect(proposalPath("s1", "b", 25570)).toBe("/api/servers/s1/migration/proposal?targetNodeId=b&port=25570");
+  });
+
+  it("el formulario solo tiene algo que perder si se eligió algo (m9)", () => {
+    expect(migrateFormDirty("", "", false)).toBe(false);
+    expect(migrateFormDirty("b", "", false)).toBe(true);
+    expect(migrateFormDirty("", "25570", false)).toBe(true);
+    expect(migrateFormDirty("", "", true)).toBe(true);
+  });
+
+  it("refresca el servidor al entrar en el paso 7 (commit) y al terminar (m6)", () => {
+    const at = (progress: number, status: JobDto["status"] = "running") => [job({ id: "j", progress, status })];
+    let st = migrationSync(null, at(40));
+    expect(st).toEqual({ refresh: false, next: { id: "j", step: 3 } });
+    st = migrationSync(st.next, at(83));
+    expect(st.refresh).toBe(false);
+    st = migrationSync(st.next, at(95));
+    expect(st).toEqual({ refresh: true, next: { id: "j", step: 7 } });
+    st = migrationSync(st.next, at(97));
+    expect(st.refresh).toBe(false); // ya refrescado al entrar en el paso
+    st = migrationSync(st.next, at(100, "ok"));
+    expect(st).toEqual({ refresh: true, next: null });
+    expect(migrationSync({ id: "j", step: 3 }, undefined)).toEqual({ refresh: false, next: { id: "j", step: 3 } }); // cargando
+    expect(migrationSync(null, at(95)).refresh).toBe(false); // al abrir la página ya en el paso 7: lo trae la carga normal
   });
 
   it("texto de confirmación", () => {

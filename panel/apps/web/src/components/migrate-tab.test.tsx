@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MigrateTab, MigrationSteps } from "./migrate-tab";
+import type { MigrationDto } from "@mcsm/shared";
 import type { JobDto, NodeDto, ServerDto } from "@/lib/api";
 import { jobsKey } from "@/lib/jobs";
 import { migrationKey } from "@/lib/migration";
@@ -20,11 +21,11 @@ const job = (over: Partial<JobDto>): JobDto => ({
   payload: {}, createdAt: "2026-10-12T04:00:00Z", updatedAt: "", startedAt: null, finishedAt: null, ...over,
 });
 
-function render(jobs: JobDto[]) {
+function render(jobs: JobDto[], migration: MigrationDto | null = null) {
   const qc = new QueryClient();
   qc.setQueryData(["nodes"], nodes);
   qc.setQueryData(jobsKey({ serverId: "s1" }), jobs);
-  qc.setQueryData(migrationKey("s1"), null);
+  qc.setQueryData(migrationKey("s1"), migration);
   return renderToString(<QueryClientProvider client={qc}><MigrateTab server={server} nodeOnline /></QueryClientProvider>);
 }
 
@@ -48,5 +49,17 @@ describe("MigrateTab", () => {
     expect(html).toContain("puerto ocupado");
     expect(html).toContain("Migrar…");
     expect(html).toContain("Borrar el origen al terminar");
+  });
+
+  it("una migración atascada enseña lo pendiente con su motivo y la acción de cerrarla a mano (M4)", () => {
+    const stuck: MigrationDto = {
+      id: "j0", serverId: "s1", sourceNodeId: "a", targetNodeId: "b", sourceSlug: "survival", targetSlug: "survival", targetPort: 25565,
+      targetVersion: 2, wasRunning: true, deleteSource: false, phase: "committed", sourcePending: true, targetPending: false, targetStarted: true,
+      targetConfirmPending: false, error: null, pendingError: "Retirar el origen: el contenedor aún no se ha podido borrar", createdAt: "", updatedAt: "",
+    };
+    const html = render([job({ id: "j0", status: "ok", progress: 100, message: "Migración completada" })], stuck);
+    expect(html).toContain("se reintenta cada 30 s: el contenedor aún no se ha podido borrar");
+    expect(html).toContain("Cerrar la migración a mano…");
+    expect(render([job({ status: "failed" })])).not.toContain("Cerrar la migración a mano…");
   });
 });
