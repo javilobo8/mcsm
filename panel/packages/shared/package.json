@@ -1,0 +1,10 @@
+{
+  "name": "@mcsm/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc -p tsconfig.json", "test": "vitest run" },
+  "dependencies": { "zod": "^4.6.0" },
+  "devDependencies": { "typescript": "^5.9.0", "vitest": "^4.1.11", "@types/node": "^26.0.0" }
+}

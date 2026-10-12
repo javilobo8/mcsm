@@ -1,0 +1,12 @@
+{
+  "imageTag": "java21",
+  "type": "PAPER",
+  "version": "1.21.4",
+  "memory": "4G",
+  "properties": { "motd": "Servidor de casa", "max-players": "10", "difficulty": "normal" },
+  "env": { "USE_AIKAR_FLAGS": "true" },
+  "ports": { "game": 25565, "extra": [ { "host": 19132, "container": 19132, "proto": "udp", "label": "Geyser" } ] },
+  "resources": { "cpus": 2, "memLimit": "5G" },
+  "restartPolicy": "unless-stopped",
+  "rconPassword": "s3cretpassw0rd"
+}
