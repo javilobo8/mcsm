@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -153,8 +154,13 @@ func (r *Reconciler) verifyAdoptable(ctx context.Context, serverID, containerID,
 	}
 	src := ""
 	for _, m := range info.Mounts {
-		if m.Destination == "/data" && m.Type == "bind" {
+		dest := path.Clean(m.Destination)
+		if dest == "/data" && m.Type == "bind" {
 			src = filepath.Clean(m.Source)
+		}
+		// Al recrearlo solo se monta /data: lo montado debajo (/data/world…) sería otra carpeta, vacía.
+		if strings.HasPrefix(dest, "/data/") {
+			return nil, fmt.Errorf("%w: %s monta %s en %s, dentro de /data; muévelo a la carpeta de /data para importarlo", ErrAdoptMismatch, info.Name, m.Source, dest)
 		}
 	}
 	if src != filepath.Clean(dataDir) {

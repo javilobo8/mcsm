@@ -217,6 +217,12 @@ func TestAdoptChecks(t *testing.T) {
 		{"otro /data", func(t *testing.T, f *docker.Fake, root string) string {
 			return external(t, f, "mc", filepath.Join(root, "beta", "data"), false)
 		}, ErrAdoptMismatch},
+		// Al recrearlo solo se monta /data: el mundo de /data/world sería otro (Review Focus 1).
+		{"montaje bajo /data", func(t *testing.T, f *docker.Fake, root string) string {
+			return external(t, f, "mc", filepath.Join(root, "alpha", "data"), false, func(_ *container.Config, h *container.HostConfig) {
+				h.Binds = append(h.Binds, "/srv/mundos/survival:/data/world")
+			})
+		}, ErrAdoptMismatch},
 		{"red host", func(t *testing.T, f *docker.Fake, root string) string {
 			return external(t, f, "mc", filepath.Join(root, "alpha", "data"), false, func(_ *container.Config, h *container.HostConfig) { h.NetworkMode = "host" })
 		}, ErrAdoptMismatch},

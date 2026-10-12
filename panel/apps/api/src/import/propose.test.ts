@@ -177,3 +177,26 @@ describe("toCandidateDto", () => {
     expect(dto.proposal).not.toHaveProperty("curseforgeApiKey");
   });
 });
+
+describe("proposeImport: arreglos de la revisión", () => {
+  it("I2: un montaje dentro de /data (/data/world…) bloquea: al recrearlo solo se monta /data y el mundo sería otro", () => {
+    const p = proposeImport(cand({
+      mounts: [
+        { type: "bind", source: "/home/lobo/mc/survival", destination: "/data", readWrite: true },
+        { type: "bind", source: "/srv/mundos/survival", destination: "/data/world", readWrite: true },
+      ],
+    }), ctx());
+    expect(p.blockers).toHaveLength(1);
+    expect(p.blockers[0]).toMatch(/\/data\/world/);
+    // Fuera de /data sigue siendo solo un aviso.
+    const q = proposeImport(cand({
+      mounts: [
+        { type: "bind", source: "/home/lobo/mc/survival", destination: "/data", readWrite: true },
+        { type: "bind", source: "/home/lobo/mc/extra", destination: "/extra", readWrite: true },
+        { type: "bind", source: "/home/lobo/mc/datos", destination: "/datos", readWrite: true },
+      ],
+    }), ctx());
+    expect(q.blockers).toEqual([]);
+    expect(q.warnings.join(" ")).toMatch(/\/extra/);
+  });
+});

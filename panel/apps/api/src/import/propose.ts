@@ -121,7 +121,17 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
       }
     }
   }
-  for (const m of c.mounts) if (m.destination !== "/data") warn(`El montaje ${m.source || m.name} → ${m.destination} no se conserva al recrear el contenedor`);
+  for (const m of c.mounts) {
+    const dest = m.destination.replace(/\/+$/, "");
+    if (dest === "/data") continue;
+    // Al recrearlo solo se monta /data: lo montado debajo sería la carpeta (vacía) del punto de montaje,
+    // y el mundo de /data/world sería otro. Igual que verifyAdoptable en el agente.
+    if (dest.startsWith("/data/")) {
+      blockers.push(`Monta ${m.source || m.name} en ${dest}, dentro de /data: al recrearlo solo se conserva /data y esa carpeta quedaría vacía. Mueve su contenido a la carpeta montada en /data (${data?.source ?? "/data"}${dest.slice("/data".length)}), quita ese montaje y vuelve a buscar`);
+      continue;
+    }
+    warn(`El montaje ${m.source || m.name} → ${m.destination} no se conserva al recrear el contenedor`);
+  }
 
   // Puertos.
   let game: number | undefined;
