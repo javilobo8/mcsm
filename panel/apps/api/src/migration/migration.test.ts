@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { BackupTrigger, DesiredState, JobStatus, PowerActionType } from "@mcsm/proto";
-import { specSchema, type Spec } from "@mcsm/shared";
+import { routerDeploymentSpecSchema, specSchema, type Spec } from "@mcsm/shared";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
 import type { JobDto } from "../jobs/repo.js";
@@ -40,10 +40,10 @@ async function finished(jobId: string): Promise<JobDto> {
   return app.jobs.get(jobId)!;
 }
 
-async function setup(opts: { desired?: "running" | "stopped"; busyPorts?: number[] } = {}) {
+async function setup(opts: { desired?: "running" | "stopped"; busyPorts?: number[]; spec?: Spec } = {}) {
   const a = await FakeNode.enroll(app, url, cookie, "nodo-a");
   const b = await FakeNode.enroll(app, url, cookie, "nodo-b");
-  const s = app.servers.create({ nodeId: a.id, name: "Survival", slug: "survival", spec: spec(25565), desiredState: opts.desired ?? "running" });
+  const s = app.servers.create({ nodeId: a.id, name: "Survival", slug: "survival", spec: opts.spec ?? spec(25565), desiredState: opts.desired ?? "running" });
   for (const [i, port] of (opts.busyPorts ?? []).entries()) {
     app.servers.create({ nodeId: b.id, name: `Ocupa ${i}`, slug: `ocupa-${i}`, spec: spec(port), desiredState: "stopped" });
   }
@@ -318,6 +318,47 @@ describe("migración", () => {
     expect(offline.statusCode).toBe(409);
     expect(offline.json().error).toMatch(/destino «nodo-b» está desconectado/);
     expect(app.migrations.latestForServer(s.id)).toBeNull();
+  });
+});
+
+describe("migración y router (Plan 8): comprobación al confirmar", () => {
+  const routed = (game: number): Spec => ({ ...spec(game), router: { enabled: true, hostname: "survival.lan" } });
+
+  /** Lleva la migración hasta el destino sano; `meanwhile` corre justo antes (mientras arranca allí). */
+  async function untilCommit(meanwhile: (b: FakeNode) => void) {
+    const { a, b, s } = await setup({ spec: routed(25565) });
+    const payload = randomBytes(10_000);
+    const job = (await begin(s.id, { targetNodeId: b.id })).json() as JobDto;
+    await sourceBackup(a, s.id, payload);
+    await sourcePush(a, payload);
+    await targetReceive(b, s.id, payload);
+    b.ack(await targetApplyAndStart(b, s.id, 25565));
+    meanwhile(b);
+    b.observed(s.id, { state: "running", health: "healthy" });
+    b.ack(await b.next("migrateAbort")); // no se confirma: se deshace
+    a.ack(await a.next("powerAction")); // y el origen vuelve a arrancar
+    const done = await finished(job.id);
+    expect(app.servers.get(s.id)).toMatchObject({ node_id: a.id, spec_version: 1 });
+    expect(app.migrations.get(job.id)).toMatchObject({ phase: "failed" });
+    return done;
+  }
+
+  it("si otro servidor del destino coge el hostname durante la migración, no se confirma", async () => {
+    const done = await untilCommit((b) => {
+      // Escritura directa: la API ya lo impide (el hostname queda reservado por la migración).
+      app.servers.create({ nodeId: b.id, name: "Intruso", slug: "intruso", spec: routed(25570), desiredState: "stopped" });
+    });
+    expect(done.status).toBe("failed");
+    expect(done.message).toMatch(/Paso 7\/7.*hostname «survival\.lan» lo usa ya «Intruso» en «nodo-b»/);
+  });
+
+  it("si el router del destino se activa en su puerto durante la migración, no se confirma", async () => {
+    const done = await untilCommit((b) => {
+      app.db.prepare("INSERT INTO router_deployments (node_id, spec, updated_at) VALUES (?, ?, ?)")
+        .run(b.id, JSON.stringify(routerDeploymentSpecSchema.parse({ enabled: true, port: 25565 })), new Date().toISOString());
+    });
+    expect(done.status).toBe("failed");
+    expect(done.message).toMatch(/Paso 7\/7.*puerto 25565 lo usa ahora el router \(mc-router\) de «nodo-b»/);
   });
 });
 

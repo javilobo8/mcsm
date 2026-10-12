@@ -125,14 +125,19 @@ export class MigrationsRepo {
    * usados. Tras el commit ya no hace falta: la fila del servidor está en el nodo.
    */
   reservedPorts(nodeId: string, exceptServerId?: string): Set<number> {
+    const out = new Set<number>();
+    for (const m of this.incoming(nodeId, exceptServerId)) for (const p of specPorts(m.spec)) out.add(p);
+    return out;
+  }
+
+  /**
+   * Servidor y spec en el destino de las migraciones hacia `nodeId` que aún pueden tener (o tener pronto) allí su
+   * copia (como `reservedPorts`). Plan 8: sus hostnames del router también están ocupados en ese nodo.
+   */
+  incoming(nodeId: string, exceptServerId?: string): { serverId: string; spec: Spec }[] {
     const rows = this.db.prepare(`SELECT server_id, target_spec FROM migrations WHERE target_node_id = ? AND ${TARGET_BUSY}`)
       .all(nodeId) as unknown as { server_id: string; target_spec: string }[];
-    const out = new Set<number>();
-    for (const r of rows) {
-      if (r.server_id === exceptServerId) continue;
-      for (const p of specPorts(JSON.parse(r.target_spec) as Spec)) out.add(p);
-    }
-    return out;
+    return rows.filter((r) => r.server_id !== exceptServerId).map((r) => ({ serverId: r.server_id, spec: JSON.parse(r.target_spec) as Spec }));
   }
 
   /** Bloquea borrar el nodo mientras una migración que lo usa está en curso (deshaciéndose, sí se puede). */

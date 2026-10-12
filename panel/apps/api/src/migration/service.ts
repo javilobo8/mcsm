@@ -184,6 +184,8 @@ export class MigrationService {
     if (spec.dataPath) {
       throw new HttpError(409, `Los datos de «${row.name}» están en ${spec.dataPath}, fuera de DATA_ROOT, y el agente no puede copiarlos: no se puede migrar. Para migrarlo, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${row.slug}/data del nodo y vuelve a importarlo`);
     }
+    // Plan 8: el hostname del router, libre también en el destino (contando las migraciones abiertas hacia él).
+    this.app.routerService.checkHostname(targetNodeId, spec, row.id, target.name);
     const targetServers: TargetServer[] = this.app.servers.list(targetNodeId).map((r) => ({ slug: r.slug, spec: JSON.parse(r.spec) as Spec }));
     // Lo que ya reservan otras migraciones sin confirmar hacia ese nodo y, si el nodo es el origen de una migración
     // confirmada con la retirada pendiente, su slug: <DATA_ROOT>/<slug> sigue allí hasta MigrateRetire, que lo
@@ -270,8 +272,24 @@ export class MigrationService {
   /** Commit: la fila pasa al destino en una transacción (si la versión no cambió). Lanza StepError si no se pudo. */
   private commit(id: string, observed: ObservedDto | null): void {
     const m = this.app.migrations.get(id)!;
+    this.checkRouterOnCommit(m); // síncrono, sin await hasta la transacción
     if (!this.app.migrations.commit(m, m.was_running ? "running" : "stopped", observed)) {
       throw new StepError("No se pudo confirmar: la configuración del servidor cambió durante la migración, o su slug o su puerto dejaron de estar libres en el destino");
+    }
+  }
+
+  /**
+   * Plan 8, justo antes del commit: durante la migración otro servidor del destino pudo coger el hostname del router, o
+   * activarse allí el router en uno de sus puertos (la API ya lo impide; esto cubre lo que se cuele). Lanza StepError.
+   */
+  private checkRouterOnCommit(m: MigrationRow): void {
+    const spec = JSON.parse(m.target_spec) as Spec;
+    const target = this.nodeName(m.target_node_id);
+    const user = this.app.routerService.hostnameUser(m.target_node_id, spec, m.server_id);
+    if (user) throw new StepError(`No se pudo confirmar: el hostname «${spec.router!.hostname}» lo usa ya «${user.name}» en «${target}»`);
+    const port = this.app.routerService.reservedPort(m.target_node_id);
+    if (port !== null && (spec.ports.game === port || spec.ports.extra.some((e) => e.host === port))) {
+      throw new StepError(`No se pudo confirmar: el puerto ${port} lo usa ahora el router (mc-router) de «${target}»`);
     }
   }
 

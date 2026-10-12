@@ -76,11 +76,32 @@ export class RouterService {
     return spec.enabled ? spec.port : null;
   }
 
-  /** 409 si el hostname del router de `spec` ya lo usa otro servidor del nodo (con el router activo). */
-  checkHostname(nodeId: string, spec: Spec, selfId?: string) {
-    if (!spec.router?.enabled) return;
-    const owner = hostnameOwner(this.app.servers.list(nodeId), spec.router.hostname, selfId);
-    if (owner) throw new HttpError(409, `El hostname «${spec.router.hostname}» ya lo usa el servidor «${owner.name}» de este nodo`);
+  /**
+   * Quién usa ya en `nodeId` el hostname del router de `spec` (null si está libre o `spec` no lo usa): un servidor del
+   * nodo con el router activo, o uno que se está migrando a ese nodo (Plan 7: su copia puede estar ya allí, con las
+   * etiquetas de mc-router). `selfId` es el propio servidor.
+   */
+  hostnameUser(nodeId: string, spec: Spec, selfId?: string): { name: string; migrating: boolean } | null {
+    if (!spec.router?.enabled) return null;
+    const hostname = spec.router.hostname;
+    const owner = hostnameOwner(this.app.servers.list(nodeId), hostname, selfId);
+    if (owner) return { name: owner.name, migrating: false };
+    const m = this.app.migrations.incoming(nodeId, selfId).find((i) => i.spec.router?.enabled && i.spec.router.hostname === hostname);
+    return m ? { name: this.app.servers.get(m.serverId)?.name ?? "otro servidor", migrating: true } : null;
+  }
+
+  /**
+   * 409 si el hostname del router de `spec` ya está en uso en el nodo (ver `hostnameUser`). `targetName`: el nodo es el
+   * destino de una migración con ese nombre (cambia el texto).
+   */
+  checkHostname(nodeId: string, spec: Spec, selfId?: string, targetName?: string) {
+    const user = this.hostnameUser(nodeId, spec, selfId);
+    if (!user) return;
+    const hostname = spec.router!.hostname;
+    if (user.migrating) {
+      throw new HttpError(409, `El hostname «${hostname}» lo reserva «${user.name}», que se está migrando ${targetName ? `al nodo destino «${targetName}»` : "a este nodo"}`);
+    }
+    throw new HttpError(409, `El hostname «${hostname}» ya lo usa el servidor «${user.name}» ${targetName ? `del nodo destino «${targetName}»` : "de este nodo"}`);
   }
 
   async put(nodeId: string, input: unknown): Promise<RouterDto> {

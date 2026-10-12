@@ -58,4 +58,38 @@ describe("migración y router (Planes 7 y 8)", () => {
     routerRow(b.id, { enabled: false, port: 25565 });
     expect((await proposal(s.id, b.id)).json()).toMatchObject({ port: 25565, portChanged: false });
   });
+
+  it("el hostname del servidor tiene que estar libre en el destino", async () => {
+    const { b, s } = await nodes(spec(25565, "survival.lan"));
+    app.servers.create({ nodeId: b.id, name: "Apagado", slug: "apagado", spec: spec(25570, "survival.lan", false), desiredState: "stopped" });
+    expect((await proposal(s.id, b.id)).statusCode).toBe(200); // con el router desactivado no compite
+    app.servers.create({ nodeId: b.id, name: "Creativo", slug: "creativo", spec: spec(25571, "survival.lan"), desiredState: "stopped" });
+    const res = await proposal(s.id, b.id);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("El hostname «survival.lan» ya lo usa el servidor «Creativo» del nodo destino «nodo-b»");
+    const begin = await app.inject({ method: "POST", url: `/api/servers/${s.id}/migration`, headers: { cookie }, payload: { targetNodeId: b.id } });
+    expect(begin.statusCode).toBe(409);
+    expect(app.migrations.latestForServer(s.id)).toBeNull();
+  });
+
+  it("el hostname de una migración abierta hacia un nodo queda reservado allí", async () => {
+    const { a, b, s } = await nodes(spec(25565, "survival.lan"));
+    const c = await FakeNode.enroll(app, url, cookie, "nodo-c");
+    const t = app.servers.create({ nodeId: c.id, name: "Copia", slug: "copia", spec: spec(25566, "survival.lan"), desiredState: "stopped" });
+    const other = app.servers.create({ nodeId: b.id, name: "Creativo", slug: "creativo", spec: spec(25571, "creativo.lan"), desiredState: "stopped" });
+    const m = app.migrations.insert({
+      id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "survival", target_slug: "survival",
+      source_version: 1, target_version: 2, target_port: 25565, target_spec: JSON.stringify(spec(25565, "survival.lan")), was_running: 1, delete_source: 0,
+    });
+    let res = await proposal(t.id, b.id);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("El hostname «survival.lan» lo reserva «Survival», que se está migrando al nodo destino «nodo-b»");
+    // Tampoco lo coge un servidor de ese nodo mientras tanto.
+    res = await app.inject({ method: "PATCH", url: `/api/servers/${other.id}`, headers: { cookie }, payload: { spec: { router: { enabled: true, hostname: "survival.lan" } } } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("El hostname «survival.lan» lo reserva «Survival», que se está migrando a este nodo");
+    // Deshecha (sin nada en el destino), queda libre.
+    app.migrations.update(m.id, { phase: "failed" });
+    expect((await proposal(t.id, b.id)).statusCode).toBe(200);
+  });
 });
