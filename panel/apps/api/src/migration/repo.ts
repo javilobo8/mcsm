@@ -15,13 +15,19 @@ export interface MigrationRow {
   source_pending: number;
   /** rolling_back: falta MigrateAbort en el destino. */
   target_pending: number;
-  error: string | null; created_at: string; updated_at: string;
+  /** committed: falta MigrateConfirm en el destino. */
+  target_confirm_pending: number;
+  error: string | null;
+  /** Último fallo de lo pendiente, o por qué se dejó de reintentar (rechazo definitivo o cierre manual). */
+  pending_error: string | null;
+  created_at: string; updated_at: string;
 }
 
 export type NewMigration = Pick<MigrationRow,
   "id" | "server_id" | "source_node_id" | "target_node_id" | "source_slug" | "target_slug" | "source_version" | "target_version" |
   "target_port" | "target_spec" | "was_running" | "delete_source">;
-export type MigrationPatch = Partial<Pick<MigrationRow, "phase" | "target_touched" | "target_started" | "source_pending" | "target_pending" | "error">>;
+export type MigrationPatch = Partial<Pick<MigrationRow,
+  "phase" | "target_touched" | "target_started" | "source_pending" | "target_pending" | "target_confirm_pending" | "error" | "pending_error">>;
 
 const OPEN = "('running', 'rolling_back', 'committed')";
 /**
@@ -32,7 +38,7 @@ const OPEN = "('running', 'rolling_back', 'committed')";
 const SERVER_BLOCKING = `(phase = 'running' OR (phase = 'rolling_back' AND (source_pending = 1 OR (target_started = 1 AND target_pending = 1))))`;
 /** El destino puede tener algo de la migración: pasos en curso o limpieza pendiente. */
 const TARGET_BUSY = `(phase = 'running' OR (phase = 'rolling_back' AND target_pending = 1))`;
-const PATCHABLE = ["phase", "target_touched", "target_started", "source_pending", "target_pending", "error"] as const;
+const PATCHABLE = ["phase", "target_touched", "target_started", "source_pending", "target_pending", "target_confirm_pending", "error", "pending_error"] as const;
 /** Fases tras el commit: el servidor ya es del destino. */
 const CONFIRMED: ReadonlySet<MigrationPhase> = new Set<MigrationPhase>(["committed", "done"]);
 /** Fases a las que una migración confirmada no puede volver. */
@@ -43,7 +49,8 @@ export function toMigrationDto(r: MigrationRow): MigrationDto {
     id: r.id, serverId: r.server_id, sourceNodeId: r.source_node_id, targetNodeId: r.target_node_id,
     sourceSlug: r.source_slug, targetSlug: r.target_slug, targetPort: r.target_port, targetVersion: r.target_version,
     wasRunning: r.was_running === 1, deleteSource: r.delete_source === 1, phase: r.phase,
-    sourcePending: r.source_pending === 1, targetPending: r.target_pending === 1, error: r.error,
+    sourcePending: r.source_pending === 1, targetPending: r.target_pending === 1, targetStarted: r.target_started === 1,
+    targetConfirmPending: r.target_confirm_pending === 1, error: r.error, pendingError: r.pending_error,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -163,7 +170,7 @@ export class MigrationsRepo {
   /**
    * Confirma la migración en UNA transacción: la fila del servidor pasa al destino (nodo, slug, spec, versión, estado
    * deseado y último observado) solo si sigue en el origen con la versión del inicio, y la migración pasa a
-   * `committed` con la retirada del origen pendiente. Devuelve false (sin cambiar nada) si la versión cambió, o el
+   * `committed` con la retirada del origen y la confirmación en el destino pendientes. Devuelve false (sin cambiar nada) si la versión cambió, o el
    * slug o alguno de sus puertos ya está ocupado en el destino.
    */
   commit(m: MigrationRow, desired: "running" | "stopped", observed: ObservedDto | null): boolean {
@@ -186,7 +193,8 @@ export class MigrationsRepo {
         .run(m.target_node_id, m.target_slug, m.target_spec, m.target_version, desired,
           observed ? JSON.stringify(observed) : null, m.target_version, observed ? now : null, now,
           m.server_id, m.source_node_id, m.source_version);
-      const done = this.db.prepare("UPDATE migrations SET phase = 'committed', source_pending = 1, error = NULL, updated_at = ? WHERE id = ? AND phase = 'running'")
+      const done = this.db.prepare(`UPDATE migrations SET phase = 'committed', source_pending = 1, target_confirm_pending = 1, error = NULL,
+          updated_at = ? WHERE id = ? AND phase = 'running'`)
         .run(now, m.id);
       if (Number(moved.changes) !== 1 || Number(done.changes) !== 1) {
         this.db.exec("ROLLBACK");

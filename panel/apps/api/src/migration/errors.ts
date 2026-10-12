@@ -1,4 +1,5 @@
 import { AgentError } from "../agents/hub.js";
+import { AgentErrorCode } from "../agents/error-codes.js";
 import { HttpError, agentErrorToHttp } from "../lib/http.js";
 import { TransferError } from "../transfers/service.js";
 
@@ -16,4 +17,15 @@ export function errorText(e: unknown): string {
   if (e instanceof StepError || e instanceof HttpError || e instanceof TransferError) return e.message;
   if (e instanceof AgentError) return agentErrorToHttp(e).message;
   return "error interno del panel (mira su log)";
+}
+
+/**
+ * Rechazos que no se arreglan reintentando lo pendiente (deshacer, confirmar, retirar): el agente dice que el estado
+ * del nodo no es el que el panel cree (invalid_request), no entiende la orden (unsupported: agente desactualizado), o
+ * el panel ya no tiene el servidor (404). Se dejan anotados y se dejan de reintentar; el usuario decide.
+ */
+export function isDefinitive(e: unknown): boolean {
+  if (e instanceof AgentError) return e.code === AgentErrorCode.InvalidRequest || e.code === AgentErrorCode.Unsupported;
+  if (e instanceof HttpError) return e.status === 400 || e.status === 404;
+  return false;
 }

@@ -49,8 +49,14 @@ export const MIGRATION_CLAIM_TTL_MS = 30 * 60_000;
 
 /** Sin plazo total (máximo de setTimeout): una transferencia que avanza dura lo que haga falta (como en Archivos). */
 const NO_DEADLINE_MS = 2 ** 31 - 1;
-/** Retirar o deshacer puede borrar un mundo entero en un disco lento. */
+/** Apartar un directorio (rename) o confirmar un marcador: rápido, salvo esperar el turno del servidor en el agente. */
 const LONG_MS = 5 * 60_000;
+/**
+ * Borrar un mundo entero (deshacer en el destino, o retirar con «borrar origen») en una SD o un disco lento puede
+ * tardar mucho más. El agente hace abort/retire/confirm de un servidor de uno en uno: si el plazo vence, el reintento
+ * espera su turno detrás del borrado en curso y luego no tiene nada que hacer.
+ */
+const REMOVE_WORLD_MS = 30 * 60_000;
 
 export const stagingId = (migrationId: string): string => `mig-${migrationId}`;
 
@@ -294,10 +300,23 @@ export async function stopTarget(d: StepDeps, m: MigrationRow): Promise<void> {
   }
 }
 
-/** Paso 7 (tras el commit). Retira el servidor del origen: <slug>.migrated-<ts> o borrado con «borrar origen». */
+/**
+ * Paso 7 (tras el commit). Retira el servidor del origen: <slug>.migrated-<ts> o borrado con «borrar origen». Lleva la
+ * versión que se migró: el agente no toca un servidor que tenga otra (p. ej. volvió después a ese nodo).
+ */
 export async function retireSource(d: StepDeps, m: MigrationRow): Promise<void> {
   await connOf(d.app, m.source_node_id).request({ case: "migrateRetire", value: {
-    serverId: m.server_id, slug: m.source_slug, migrationId: m.id, deleteData: m.delete_source === 1,
+    serverId: m.server_id, slug: m.source_slug, migrationId: m.id, deleteData: m.delete_source === 1, sourceVersion: BigInt(m.source_version),
+  } }, m.delete_source === 1 ? REMOVE_WORLD_MS : LONG_MS);
+}
+
+/**
+ * Paso 7 (tras el commit). Confirma la migración en el destino (MigrateConfirm): su marcador pasa a «committed» y
+ * desde entonces ningún MigrateAbort (p. ej. de un panel restaurado desde una foto anterior al commit) lo borra.
+ */
+export async function confirmTarget(d: StepDeps, m: MigrationRow): Promise<void> {
+  await connOf(d.app, m.target_node_id).request({ case: "migrateConfirm", value: {
+    serverId: m.server_id, slug: m.target_slug, migrationId: m.id,
   } }, LONG_MS);
 }
 
@@ -312,7 +331,7 @@ export async function abortTarget(d: StepDeps, m: MigrationRow): Promise<void> {
   if (!cur || (cur.phase !== "running" && cur.phase !== "rolling_back")) {
     throw new StepError(`La migración ya está ${cur ? "confirmada o cerrada" : "borrada"}: no se deshace nada en el destino`);
   }
-  await connOf(d.app, m.target_node_id).request({ case: "migrateAbort", value: { serverId: m.server_id, slug: m.target_slug, migrationId: m.id } }, LONG_MS);
+  await connOf(d.app, m.target_node_id).request({ case: "migrateAbort", value: { serverId: m.server_id, slug: m.target_slug, migrationId: m.id } }, REMOVE_WORLD_MS);
 }
 
 /** Deshacer: vuelve a arrancar el servidor en el origen (estado deseado `running` en el agente y en la fila). */

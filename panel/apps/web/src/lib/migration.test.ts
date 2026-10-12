@@ -15,7 +15,8 @@ const job = (over: Partial<JobDto>): JobDto => ({
 });
 const mig = (over: Partial<MigrationDto>): MigrationDto => ({
   id: "m", serverId: "s1", sourceNodeId: "a", targetNodeId: "b", sourceSlug: "x", targetSlug: "x", targetPort: 25565, targetVersion: 2,
-  wasRunning: true, deleteSource: false, phase: "done", sourcePending: false, targetPending: false, error: null, createdAt: "", updatedAt: "", ...over,
+  wasRunning: true, deleteSource: false, phase: "done", sourcePending: false, targetPending: false, targetStarted: false, targetConfirmPending: false,
+  error: null, pendingError: null, createdAt: "", updatedAt: "", ...over,
 });
 const names = (id: string) => ({ a: "Casa", b: "Garaje" })[id] ?? "?";
 

@@ -14,6 +14,8 @@ export const migrationRoutes = fp(async function migrationRoutes(root: FastifyIn
     app.get<{ Params: { id: string } }>("/api/servers/:id/migration", async (req) => svc.latest(req.params.id));
     app.get<{ Params: { id: string } }>("/api/servers/:id/migration/proposal", async (req) => svc.proposal(req.params.id, req.query));
     app.post<{ Params: { id: string } }>("/api/servers/:id/migration", async (req, reply) => reply.code(202).send(svc.begin(req.params.id, req.body)));
+    // Cierre manual de una migración atascada (deshaciéndose o pendiente de retirar): deja de reintentar lo pendiente.
+    app.post<{ Params: { id: string } }>("/api/servers/:id/migration/close", async (req) => svc.closeManually(req.params.id));
   });
 }, { name: "migration" });
 

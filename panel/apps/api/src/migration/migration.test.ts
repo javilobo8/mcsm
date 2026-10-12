@@ -119,15 +119,19 @@ describe("migración", () => {
     b.ack(await targetApplyAndStart(b, s.id, 25565));
     b.observed(s.id, { state: "running", health: "starting" });
     b.observed(s.id, { state: "running", health: "healthy", online: true, appliedVersion: 2n });
+    const confirm = await b.next("migrateConfirm");
+    if (confirm.body.case !== "migrateConfirm") throw new Error();
+    expect(confirm.body.value).toMatchObject({ serverId: s.id, slug: "survival", migrationId: job.id });
+    b.ack(confirm);
     const retire = await a.next("migrateRetire");
     if (retire.body.case !== "migrateRetire") throw new Error();
-    expect(retire.body.value).toMatchObject({ serverId: s.id, slug: "survival", migrationId: job.id, deleteData: false });
+    expect(retire.body.value).toMatchObject({ serverId: s.id, slug: "survival", migrationId: job.id, deleteData: false, sourceVersion: 1n });
     a.ack(retire);
     const done = await finished(job.id);
     expect(done.status).toBe("ok");
     expect(done.message).toMatch(/Migración completada: «Survival» está en «nodo-b», puerto 25565/);
     expect(app.servers.get(s.id)).toMatchObject({ node_id: b.id, slug: "survival", spec_version: 2, desired_state: "running", observed_spec_version: 2 });
-    expect(app.migrations.get(job.id)).toMatchObject({ phase: "done", source_pending: 0 });
+    expect(app.migrations.get(job.id)).toMatchObject({ phase: "done", source_pending: 0, target_confirm_pending: 0, pending_error: null });
     expect(stagingFiles()).toEqual([]);
     const log = app.jobs.get(job.id)!.log;
     for (let n = 1; n <= 7; n++) expect(log).toContain(`Paso ${n}/7`);
@@ -195,6 +199,7 @@ describe("migración", () => {
     if (stop.body.case !== "powerAction") throw new Error();
     expect(stop.body.value.action).toBe(PowerActionType.STOP);
     b.ack(stop);
+    b.ack(await b.next("migrateConfirm"));
     const retire = await a.next("migrateRetire");
     if (retire.body.case !== "migrateRetire") throw new Error();
     expect(retire.body.value.deleteData).toBe(true);
@@ -230,9 +235,10 @@ describe("migración", () => {
     a.close();
     await vi.waitFor(() => expect(app.agents.get(a.id)).toBeUndefined());
     b.observed(s.id, { state: "running", health: "healthy" });
+    b.ack(await b.next("migrateConfirm"));
     const done = await finished(job.id);
     expect(done.status).toBe("ok");
-    expect(done.message).toMatch(/«nodo-a» no respondió.*cuando vuelva a conectar/);
+    expect(done.message).toMatch(/«nodo-a» está desconectado.*cuando vuelva a conectar/);
     expect(app.migrations.get(job.id)).toMatchObject({ phase: "committed", source_pending: 1 });
     // Al volver, el origen no recibe el servidor en removed_ids (lo retira la migración) y sí MigrateRetire.
     const sync = await a.connect({ [s.id]: 1n });
@@ -299,6 +305,7 @@ describe("migración: invariantes", () => {
     await targetReceive(b, s.id, payload);
     b.ack(await targetApplyAndStart(b, s.id, 25565));
     b.observed(s.id, { state: "running", health: "healthy" });
+    b.ack(await b.next("migrateConfirm"));
     a.ack(await a.next("migrateRetire"));
     const done = await finished(job.id);
     expect(done.status).toBe("ok");
@@ -320,5 +327,103 @@ describe("migración: invariantes", () => {
     const t = app.servers.create({ nodeId: c.id, name: "Otro", slug: "survival", spec: spec(25565), desiredState: "stopped" });
     const p = await app.inject({ method: "GET", url: `/api/servers/${t.id}/migration/proposal?targetNodeId=${a.id}`, headers: { cookie } });
     expect(p.json()).toMatchObject({ slug: "survival-2" });
+  });
+});
+
+describe("migración: pendientes (I1, M4)", () => {
+  async function committed(opts: { confirm?: "ack" | "busy"; retire?: "ack" | "busy" | "invalid" } = {}) {
+    const { a, b, s } = await setup();
+    const payload = randomBytes(20_000);
+    const job = (await begin(s.id, { targetNodeId: b.id })).json() as JobDto;
+    await sourceBackup(a, s.id, payload);
+    await sourcePush(a, payload);
+    await targetReceive(b, s.id, payload);
+    b.ack(await targetApplyAndStart(b, s.id, 25565));
+    b.observed(s.id, { state: "running", health: "healthy" });
+    const confirm = await b.next("migrateConfirm");
+    if (opts.confirm === "busy") b.fail(confirm, "busy", "servidor ocupado o reservado");
+    else b.ack(confirm);
+    const retire = await a.next("migrateRetire");
+    if (opts.retire === "busy") a.fail(retire, "busy", "el contenedor aún no se ha podido borrar");
+    else if (opts.retire === "invalid") a.fail(retire, "invalid_request", "el servidor de este nodo tiene la versión 3 y la migración se hizo con la 1");
+    else a.ack(retire);
+    return { a, b, s, job: await finished(job.id) };
+  }
+
+  it("la confirmación en el destino se reintenta hasta el Ack sin frenar la retirada del origen", async () => {
+    const { a, b, job } = await committed({ confirm: "busy" });
+    expect(job.status).toBe("ok");
+    expect(job.message).toMatch(/confirmar la migración en «nodo-b».*servidor ocupado.*se reintentará/);
+    expect(app.migrations.get(job.id)).toMatchObject({ phase: "committed", source_pending: 0, target_confirm_pending: 1 });
+    expect(app.migrations.get(job.id)!.pending_error).toMatch(/servidor ocupado/);
+    expect(app.migrations.blockingNodeCreate(a.id)).toBeNull(); // el origen ya está retirado
+    const pending = app.migrationService.runPending(b.id);
+    b.ack(await b.next("migrateConfirm"));
+    await pending;
+    expect(app.migrations.get(job.id)).toMatchObject({ phase: "done", target_confirm_pending: 0, pending_error: null });
+    await a.nothingFor(100);
+  });
+
+  it("con el nodo conectado, el texto dice por qué falta la retirada y no «cuando vuelva a conectar» (M4, m5)", async () => {
+    const { job } = await committed({ retire: "busy" });
+    expect(job.message).toMatch(/No se pudo retirar el servidor de «nodo-a».*aún no se ha podido borrar.*se reintentará/);
+    expect(job.message).not.toMatch(/vuelva a conectar|no respondió/);
+    expect(app.migrations.get(job.id)).toMatchObject({ phase: "committed", source_pending: 1 });
+  });
+
+  it("un rechazo invalid_request de la retirada no se reintenta: queda el motivo y el origen se libera (M4)", async () => {
+    const { a, job } = await committed({ retire: "invalid" });
+    expect(job.status).toBe("ok");
+    expect(job.message).toMatch(/no se retiró.*versión 3/);
+    const m = app.migrations.get(job.id)!;
+    expect(m).toMatchObject({ phase: "done", source_pending: 0 });
+    expect(m.pending_error).toMatch(/versión 3/);
+    expect(app.migrations.blockingNodeCreate(a.id)).toBeNull();
+    await app.migrationService.runPending(a.id);
+    await a.nothingFor(100);
+    const latest = await app.inject({ method: "GET", url: `/api/servers/${m.server_id}/migration`, headers: { cookie } });
+    expect(latest.json().migration).toMatchObject({ phase: "done", pendingError: expect.stringMatching(/versión 3/) });
+  });
+
+  it("un MigrateAbort rechazado (invalid_request) no se reintenta y, si el destino llegó a arrancar, el origen no arranca solo (M4)", async () => {
+    const { a, b, s } = await setup();
+    const payload = randomBytes(20_000);
+    const job = (await begin(s.id, { targetNodeId: b.id })).json() as JobDto;
+    await sourceBackup(a, s.id, payload);
+    await sourcePush(a, payload);
+    await targetReceive(b, s.id, payload);
+    b.fail(await targetApplyAndStart(b, s.id, 25565), "power_failed", "no arranca");
+    b.fail(await b.next("migrateAbort"), "invalid_request", "el servidor de este nodo no es una copia sin confirmar de esta migración");
+    const done = await finished(job.id);
+    expect(done.status).toBe("failed");
+    expect(done.message).toMatch(/no es una copia sin confirmar.*arráncalo a mano/);
+    expect(app.migrations.get(job.id)).toMatchObject({ phase: "failed", target_pending: 0, source_pending: 0 });
+    await app.migrationService.runPending();
+    await a.nothingFor(100);
+    await b.nothingFor(100);
+    expect(app.servers.get(s.id)).toMatchObject({ node_id: a.id, desired_state: "stopped" });
+  });
+
+  it("cierre manual de una migración atascada, con el nodo destino desaparecido (M4)", async () => {
+    const { a, b, s } = await setup();
+    const id = newId();
+    app.jobs.create({ id, type: "migrate", serverId: s.id, nodeId: a.id, status: "running" });
+    app.jobs.finish(id, "failed", "Paso 6/7: no arranca");
+    app.migrations.insert({
+      id, server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "survival", target_slug: "survival",
+      source_version: 1, target_version: 2, target_port: 25565, target_spec: JSON.stringify(spec(25565)), was_running: 1, delete_source: 0,
+    });
+    const close = () => app.inject({ method: "POST", url: `/api/servers/${s.id}/migration/close`, headers: { cookie } });
+    expect((await close()).statusCode).toBe(409); // en curso: no se cierra a mano
+    app.migrations.update(id, { phase: "rolling_back", target_pending: 1, target_started: 1, source_pending: 1 });
+    b.close();
+    await vi.waitFor(() => expect(app.agents.get(b.id)).toBeUndefined());
+    const r = await close();
+    expect(r.statusCode).toBe(200);
+    expect(r.json().migration).toMatchObject({ phase: "failed", targetPending: false, sourcePending: false });
+    expect(r.json().migration.pendingError).toMatch(/Cerrada a mano/);
+    expect(app.migrations.blockingServer(s.id)).toBeNull();
+    expect((await close()).statusCode).toBe(404); // ya no hay nada abierto
+    await a.nothingFor(100); // cerrar no arranca nada
   });
 });

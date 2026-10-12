@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  MIGRATION_PROGRESS, MIGRATION_STEPS, OPEN_PHASES, migrationProposalQuerySchema, migrationRequestSchema, stepMessage, stepOfProgress, stepProgress,
+  MIGRATION_PROGRESS, MIGRATION_STEPS, OPEN_PHASES, migrationLeftovers, migrationProposalQuerySchema, migrationRequestSchema, stepMessage, stepOfProgress, stepProgress,
   type MigrationStep,
 } from "./migration.js";
 
@@ -42,5 +42,19 @@ describe("migración", () => {
   it("stepMessage", () => {
     expect(stepMessage(3, "subiendo")).toBe("Paso 3/7 · Subir la copia al panel: subiendo");
     expect(stepMessage(1)).toBe("Paso 1/7 · Parar el servidor en el origen");
+  });
+
+  it("migrationLeftovers: lo que queda sin hacer al cerrar a mano", () => {
+    const names = (id: string) => ({ a: "Casa", b: "Garaje" })[id] ?? "?";
+    const base = { sourceNodeId: "a", targetNodeId: "b", sourceSlug: "uno", targetSlug: "uno-2", sourcePending: false, targetPending: false, targetConfirmPending: false };
+    expect(migrationLeftovers({ ...base, phase: "rolling_back", targetPending: true, sourcePending: true }, names)).toEqual([
+      expect.stringMatching(/«Garaje».*uno-2/),
+      expect.stringMatching(/no se vuelve a arrancar en «Casa»/),
+    ]);
+    expect(migrationLeftovers({ ...base, phase: "committed", sourcePending: true, targetConfirmPending: true }, names)).toEqual([
+      expect.stringMatching(/no se retira de «Casa».*uno sigue/),
+      expect.stringMatching(/no se confirma en «Garaje»/),
+    ]);
+    expect(migrationLeftovers({ ...base, phase: "done" }, names)).toEqual([]);
   });
 });

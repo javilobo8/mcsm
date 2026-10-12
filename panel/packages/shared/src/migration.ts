@@ -28,7 +28,19 @@ export const OPEN_PHASES: ReadonlySet<MigrationPhase> = new Set<MigrationPhase>(
 export interface MigrationDto {
   id: string; serverId: string; sourceNodeId: string; targetNodeId: string; sourceSlug: string; targetSlug: string;
   targetPort: number; targetVersion: number; wasRunning: boolean; deleteSource: boolean; phase: MigrationPhase;
-  sourcePending: boolean; targetPending: boolean; error: string | null; createdAt: string; updatedAt: string;
+  /** rolling_back: falta arrancar el origen. committed: falta retirarlo. */
+  sourcePending: boolean;
+  /** rolling_back: falta borrar lo que la migración dejó en el destino. */
+  targetPending: boolean;
+  /** El destino recibió la orden de arrancar: el origen no arranca hasta limpiar el destino. */
+  targetStarted: boolean;
+  /** committed: falta confirmar la migración en el destino (MigrateConfirm). */
+  targetConfirmPending: boolean;
+  /** Por qué falló el paso. */
+  error: string | null;
+  /** Último fallo de lo pendiente (deshacer, confirmar, retirar) o por qué se dejó de reintentar. */
+  pendingError: string | null;
+  createdAt: string; updatedAt: string;
 }
 
 export interface MigrationProposalDto { targetNodeId: string; slug: string; port: number; currentPort: number; portChanged: boolean }
@@ -65,4 +77,22 @@ export function stepOfProgress(progress: number): MigrationStep {
 /** Mensaje del job: «Paso 3/7 · Subir la copia al panel: detalle». */
 export function stepMessage(step: MigrationStep, detail = ""): string {
   return `Paso ${step}/7 · ${MIGRATION_STEPS[step - 1]}${detail ? `: ${detail}` : ""}`;
+}
+
+/**
+ * Lo que dejaría sin hacer cerrar a mano una migración abierta (rolling_back o committed): una frase por pendiente,
+ * para el diálogo de confirmación y la nota que queda en la migración. Vacío si no queda nada.
+ */
+export function migrationLeftovers(m: Pick<MigrationDto, "phase" | "sourceNodeId" | "targetNodeId" | "sourceSlug" | "targetSlug" | "sourcePending" | "targetPending" | "targetConfirmPending">, nodeName: (id: string) => string): string[] {
+  const src = nodeName(m.sourceNodeId);
+  const dst = nodeName(m.targetNodeId);
+  const out: string[] = [];
+  if (m.phase === "rolling_back") {
+    if (m.targetPending) out.push(`la copia a medias de «${dst}» no se borra: si llegó a crearse, borra a mano ${m.targetSlug} en su DATA_ROOT (y su contenedor, si sigue en marcha)`);
+    if (m.sourcePending) out.push(`el servidor no se vuelve a arrancar en «${src}»: arráncalo tú cuando hayas comprobado «${dst}»`);
+  } else if (m.phase === "committed") {
+    if (m.sourcePending) out.push(`el servidor no se retira de «${src}»: ${m.sourceSlug} sigue en su DATA_ROOT (apártalo o bórralo a mano antes de crear allí otro servidor con ese slug)`);
+    if (m.targetConfirmPending) out.push(`la migración no se confirma en «${dst}»: no restaures la base de datos del panel a una copia anterior a esta migración`);
+  }
+  return out;
 }

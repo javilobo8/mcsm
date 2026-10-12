@@ -166,6 +166,8 @@ CREATE INDEX backups_server_idx ON backups(server_id, started_at);
     sql: `
 CREATE TABLE migrations (
   id TEXT PRIMARY KEY,
+  -- Sin clave foránea a servers a propósito: tras el commit el servidor puede borrarse y la retirada del origen
+  -- (o la limpieza del destino) sigue pendiente y debe salir igual.
   server_id TEXT NOT NULL,
   source_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   target_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
@@ -188,6 +190,15 @@ CREATE TABLE migrations (
 );
 CREATE INDEX migrations_server_idx ON migrations(server_id, created_at);
 CREATE INDEX migrations_phase_idx ON migrations(phase);
+`,
+  },
+  {
+    // target_confirm_pending: tras el commit falta MigrateConfirm en el destino (su marcador queda «committed»).
+    // pending_error: último fallo de lo pendiente (deshacer, confirmar, retirar) o por qué se dejó de reintentar.
+    name: "061_migrations_pending",
+    sql: `
+ALTER TABLE migrations ADD COLUMN target_confirm_pending INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE migrations ADD COLUMN pending_error TEXT;
 `,
   },
   // ── plan-8 ──
