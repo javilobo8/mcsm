@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState
 import { ArrowDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api, ApiError, type ServerMessage } from "@/lib/api";
+import { api, apiPath, ApiError, type ServerMessage } from "@/lib/api";
 import { addHistory, applyBatch, filterLines, initialConsole, isAtBottom, navigateHistory, pushLine, type ConsoleState, type LineKind } from "@/lib/console";
 import { realtime } from "@/lib/ws";
 
@@ -75,7 +75,7 @@ export function Console({ serverId, nodeOnline }: { serverId: string; nodeOnline
     dispatch({ kind: "line", text: `> ${c}`, line: "cmd" });
     stick.current = true; setFollowing(true);
     try {
-      const { output } = await api.post<{ output: string }>(`/api/servers/${serverId}/command`, { command: c });
+      const { output } = await api.post<{ output: string }>(apiPath`/api/servers/${serverId}/command`, { command: c });
       setCmd("");
       for (const l of (output.trim() ? output.replace(/\n+$/, "") : "(sin salida)").split("\n")) dispatch({ kind: "line", text: l, line: "out" });
     } catch (e) {

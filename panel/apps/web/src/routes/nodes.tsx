@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { api } from "@/lib/api";
+import { api, apiPath } from "@/lib/api";
 import { validateDataRoot } from "@/lib/nodes";
 import { useNodes } from "@/hooks/use-nodes";
 
@@ -31,7 +31,7 @@ export function NodesPage() {
     onSuccess: (r) => { if (openRef.current) setResult(r); },
   });
   const del = useMutation({
-    mutationFn: (id: string) => api.del(`/api/nodes/${id}`),
+    mutationFn: (id: string) => api.del(apiPath`/api/nodes/${id}`),
     onSettled: () => { void qc.invalidateQueries({ queryKey: ["nodes"] }); },
   });
   const copy = async (text: string) => {

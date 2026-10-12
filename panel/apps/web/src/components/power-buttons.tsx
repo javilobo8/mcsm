@@ -2,14 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Play, Square, RotateCcw, Skull } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { canPower } from "@/lib/format";
-import { api, ApiError, type ServerDto } from "@/lib/api";
+import { api, apiPath, ApiError, type ServerDto } from "@/lib/api";
 
 type Action = "start" | "stop" | "restart" | "kill";
 
 export function PowerButtons({ server, size = "sm", nodeOnline }: { server: ServerDto; size?: "sm" | "default"; nodeOnline?: boolean }) {
   const qc = useQueryClient();
   const m = useMutation({
-    mutationFn: (action: Action) => api.post<ServerDto>(`/api/servers/${server.id}/power`, { action }),
+    mutationFn: (action: Action) => api.post<ServerDto>(apiPath`/api/servers/${server.id}/power`, { action }),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: ["servers"] });
       void qc.invalidateQueries({ queryKey: ["server", server.id] });

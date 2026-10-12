@@ -36,6 +36,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+/**
+ * Ruta de la API con cada valor interpolado codificado con encodeURIComponent (L8): un id con
+ * `?`, `#` o `/` no puede añadir parámetros ni cambiar de ruta. Úsalo en toda ruta con valores:
+ * apiPath`/api/servers/${id}/power`.
+ */
+export function apiPath(strings: TemplateStringsArray, ...values: (string | number | boolean)[]): string {
+  return strings.reduce((out, s, i) => out + s + (i < values.length ? encodeURIComponent(String(values[i])) : ""), "");
+}
+
 export const api = {
   get: <T>(p: string) => request<T>("GET", p),
   post: <T>(p: string, b?: unknown) => request<T>("POST", p, b),

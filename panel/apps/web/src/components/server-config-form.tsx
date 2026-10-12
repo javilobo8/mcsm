@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { api, ApiError, type ServerDto } from "@/lib/api";
+import { api, apiPath, ApiError, type ServerDto } from "@/lib/api";
 import { buildSpec, diffSpec, valuesFromSpec, type Change, type FormValues } from "@/lib/spec-form";
 import { JAVA_TAGS, SERVER_TYPES } from "@/routes/new-server";
 
@@ -37,7 +37,7 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
 
   const save = useMutation({
     // El PATCH reemplaza la spec entera: siempre se envía la completa (la del GET, modificada).
-    mutationFn: (p: Pending) => api.patch<ServerDto>(`/api/servers/${server.id}`, { name: p.name, spec: p.spec }),
+    mutationFn: (p: Pending) => api.patch<ServerDto>(apiPath`/api/servers/${server.id}`, { name: p.name, spec: p.spec }),
     onSuccess: (dto) => {
       setPending(null);
       const nv = valuesFromSpec(dto.spec);

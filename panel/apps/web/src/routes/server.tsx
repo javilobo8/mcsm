@@ -12,7 +12,7 @@ import { Console } from "@/components/console";
 import { ServerConfigForm } from "@/components/server-config-form";
 import { useServer } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
-import { api, ApiError } from "@/lib/api";
+import { api, apiPath, ApiError } from "@/lib/api";
 import { formatUptime } from "@/lib/format";
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
@@ -28,7 +28,7 @@ export function ServerPage() {
   const [confirmDel, setConfirmDel] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
   const del = useMutation({
-    mutationFn: () => api.del(`/api/servers/${serverId}?deleteData=${deleteData}`),
+    mutationFn: () => api.del(apiPath`/api/servers/${serverId}?deleteData=${deleteData}`),
     onSuccess: () => {
       void navigate({ to: "/" }).then(() => {
         qc.removeQueries({ queryKey: ["server", serverId] });
