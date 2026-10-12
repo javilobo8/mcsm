@@ -14,6 +14,7 @@ import (
 	"mcsm/agent/internal/conn"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/files"
+	"mcsm/agent/internal/reconcile"
 )
 
 const (
@@ -319,7 +320,7 @@ func (a *App) handleFiles(ctx context.Context, env *mcsmv1.Envelope, send func(*
 	resp, err := a.filesOp(ctx, env, req)
 	if err != nil {
 		code := files.Code(err)
-		if errors.Is(err, errTransfersBusy) {
+		if errors.Is(err, errTransfersBusy) || errors.Is(err, reconcile.ErrBusy) {
 			code = errcode.Busy
 		}
 		_ = send(errMsg(env.Id, code, err))
@@ -333,6 +334,13 @@ func (a *App) filesOp(ctx context.Context, env *mcsmv1.Envelope, req serverScope
 	fsys, err := a.serverFS(req.GetServerId())
 	if err != nil {
 		return nil, err
+	}
+	// Con el servidor reservado (copia, restauración o bloqueado sin data) no se escribe: una
+	// restauración aparta data con rename y lo escrito acabaría en el pre-restore. Las
+	// lecturas siguen: cada una ve el data viejo o el nuevo, entero (un fichero abierto
+	// conserva su inodo tras el rename).
+	if isFilesMutation(env) && a.rec.Held(req.GetServerId()) {
+		return nil, fmt.Errorf("%w: no se pueden modificar sus archivos hasta que termine", reconcile.ErrBusy)
 	}
 	switch b := env.Body.(type) {
 	case *mcsmv1.Envelope_FilesList:
@@ -458,4 +466,14 @@ func (a *App) filesUpload(ctx context.Context, fsys *files.FS, m *mcsmv1.FilesUp
 		}
 		return err
 	})
+}
+
+// isFilesMutation indica si el Files* escribe en el data del servidor.
+func isFilesMutation(env *mcsmv1.Envelope) bool {
+	switch env.Body.(type) {
+	case *mcsmv1.Envelope_FilesWrite, *mcsmv1.Envelope_FilesMkdir, *mcsmv1.Envelope_FilesRename,
+		*mcsmv1.Envelope_FilesDelete, *mcsmv1.Envelope_FilesUpload:
+		return true
+	}
+	return false
 }
