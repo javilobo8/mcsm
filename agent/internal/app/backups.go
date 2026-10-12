@@ -476,29 +476,34 @@ func (b *backupService) handleBackupDelete(id uint64, m *mcsmv1.BackupDelete, se
 }
 
 // handleBackupList encola el inventario como mensaje no solicitado (id 0) y responde Ack. Va
-// por la cola de avisos (ver invMu), así que puede llegar antes o después del Ack.
+// por la cola de avisos (ver invMu), así que puede llegar antes o después del Ack, e incluso
+// en la sesión siguiente: lleva el id de la petición en request_id para que el panel lo
+// correlacione.
 func (b *backupService) handleBackupList(id uint64, m *mcsmv1.BackupList, send func(*mcsmv1.Envelope) error) {
-	if err := b.postInventory(m.GetServerId()); err != nil {
+	if err := b.postInventory(m.GetServerId(), id); err != nil {
 		_ = send(errMsg(id, backupErrCode(err), err))
 		return
 	}
 	_ = send(ack(id))
 }
 
-// postInventory calcula el inventario y lo encola, todo bajo invMu.
-func (b *backupService) postInventory(serverID string) error {
+// postInventory calcula el inventario y lo encola, todo bajo invMu. requestID es el id del
+// BackupList al que contesta (0: periódico).
+func (b *backupService) postInventory(serverID string, requestID uint64) error {
 	b.invMu.Lock()
 	defer b.invMu.Unlock()
 	inv, err := b.inventory(serverID)
 	if err != nil {
 		return err
 	}
+	inv.RequestId = requestID
 	return b.out.post(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupInventory{BackupInventory: inv}})
 }
 
 // periodicInventory manda el inventario de todo el nodo sin que lo pidan (cada inventoryEvery).
+// Con request_id 0 el panel solo aplica lo positivo (altas de copias y estados de jobs).
 func (b *backupService) periodicInventory() {
-	if err := b.postInventory(""); err != nil {
+	if err := b.postInventory("", 0); err != nil {
 		b.a.log.Warn("inventario periódico de copias", "err", err)
 	}
 }

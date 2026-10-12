@@ -305,14 +305,21 @@ message BackupList {
 }
 
 // Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
-// son los servidores cuyo listado está completo: el panel marca como borradas las copias de
-// esos servidores que no aparezcan en `backups` (solo las que ya conocía antes de pedir el
-// inventario). El agente lo envía en orden con BackupCreated y BackupDeleted: un cambio que el
-// listado no vio llega después.
+// son los servidores cuyo listado está completo. El agente lo envía en orden con BackupCreated
+// y BackupDeleted (un cambio que el listado no vio llega después), por una cola que no está
+// ligada a la sesión: puede llegar en la sesión siguiente, tras su Hello.
+//
+// `request_id` es el id del BackupList al que contesta, o 0 si es el periódico. Solo un
+// inventario que contesta al último BackupList de la sesión vigente permite al panel la vía
+// negativa: marcar como borradas las copias de `server_ids` que no aparezcan en `backups` y
+// dar por perdidos los jobs abiertos que no aparezcan en `jobs` (en ambos casos, solo lo que
+// ya conocía antes de pedirlo). Cualquier otro (periódico o de una petición anterior) solo
+// aplica lo positivo: altas de copias y estados de jobs.
 message BackupInventory {
   repeated string server_ids = 1;
   repeated BackupInfo backups = 2;
   repeated JobRecord jobs = 3;
+  uint64 request_id = 4;
 }
 
 // Agente → panel (id 0): copia nueva (manual, programada o datos pre-restore).

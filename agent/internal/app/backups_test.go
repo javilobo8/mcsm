@@ -685,6 +685,11 @@ func TestBackupListSendsInventory(t *testing.T) {
 	if len(inv.Jobs) != 1 || inv.Jobs[0].JobId != "job-1" || inv.Jobs[0].Status != jobOK {
 		t.Fatalf("jobs = %+v", inv.Jobs)
 	}
+	// El panel correlaciona el inventario con su petición: solo el que contesta a su último
+	// BackupList le permite dar copias por borradas y jobs por perdidos.
+	if inv.RequestId != 30 {
+		t.Fatalf("request_id = %d, quiero el id del BackupList (30)", inv.RequestId)
+	}
 	for _, env := range e.col.all() {
 		if env.GetBackupInventory() != nil && env.Id != 0 {
 			t.Fatalf("el inventario es un mensaje no solicitado (id 0): %d", env.Id)
@@ -1452,6 +1457,9 @@ func TestPeriodicInventoryCarriesJobsAndBackups(t *testing.T) {
 	inv := e.col.inventory()
 	if inv == nil || len(inv.ServerIds) != 1 || len(inv.Backups) != 1 || len(inv.Jobs) != 1 || inv.Jobs[0].Status != jobOK {
 		t.Fatalf("inventario = %+v", inv)
+	}
+	if inv.RequestId != 0 {
+		t.Fatalf("el periódico no contesta a ninguna petición: request_id = %d", inv.RequestId)
 	}
 }
 

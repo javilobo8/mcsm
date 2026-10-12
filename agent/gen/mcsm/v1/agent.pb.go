@@ -2543,15 +2543,22 @@ func (x *BackupList) GetServerId() string {
 }
 
 // Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
-// son los servidores cuyo listado está completo: el panel marca como borradas las copias de
-// esos servidores que no aparezcan en `backups` (solo las que ya conocía antes de pedir el
-// inventario). El agente lo envía en orden con BackupCreated y BackupDeleted: un cambio que el
-// listado no vio llega después.
+// son los servidores cuyo listado está completo. El agente lo envía en orden con BackupCreated
+// y BackupDeleted (un cambio que el listado no vio llega después), por una cola que no está
+// ligada a la sesión: puede llegar en la sesión siguiente, tras su Hello.
+//
+// `request_id` es el id del BackupList al que contesta, o 0 si es el periódico. Solo un
+// inventario que contesta al último BackupList de la sesión vigente permite al panel la vía
+// negativa: marcar como borradas las copias de `server_ids` que no aparezcan en `backups` y
+// dar por perdidos los jobs abiertos que no aparezcan en `jobs` (en ambos casos, solo lo que
+// ya conocía antes de pedirlo). Cualquier otro (periódico o de una petición anterior) solo
+// aplica lo positivo: altas de copias y estados de jobs.
 type BackupInventory struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerIds     []string               `protobuf:"bytes,1,rep,name=server_ids,json=serverIds,proto3" json:"server_ids,omitempty"`
 	Backups       []*BackupInfo          `protobuf:"bytes,2,rep,name=backups,proto3" json:"backups,omitempty"`
 	Jobs          []*JobRecord           `protobuf:"bytes,3,rep,name=jobs,proto3" json:"jobs,omitempty"`
+	RequestId     uint64                 `protobuf:"varint,4,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2605,6 +2612,13 @@ func (x *BackupInventory) GetJobs() []*JobRecord {
 		return x.Jobs
 	}
 	return nil
+}
+
+func (x *BackupInventory) GetRequestId() uint64 {
+	if x != nil {
+		return x.RequestId
+	}
+	return 0
 }
 
 // Agente → panel (id 0): copia nueva (manual, programada o datos pre-restore).
@@ -3874,12 +3888,14 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\")\n" +
 	"\n" +
 	"BackupList\x12\x1b\n" +
-	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\x87\x01\n" +
+	"\tserver_id\x18\x01 \x01(\tR\bserverId\"\xa6\x01\n" +
 	"\x0fBackupInventory\x12\x1d\n" +
 	"\n" +
 	"server_ids\x18\x01 \x03(\tR\tserverIds\x12-\n" +
 	"\abackups\x18\x02 \x03(\v2\x13.mcsm.v1.BackupInfoR\abackups\x12&\n" +
-	"\x04jobs\x18\x03 \x03(\v2\x12.mcsm.v1.JobRecordR\x04jobs\"S\n" +
+	"\x04jobs\x18\x03 \x03(\v2\x12.mcsm.v1.JobRecordR\x04jobs\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x04 \x01(\x04R\trequestId\"S\n" +
 	"\rBackupCreated\x12+\n" +
 	"\x06backup\x18\x01 \x01(\v2\x13.mcsm.v1.BackupInfoR\x06backup\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\"`\n" +
