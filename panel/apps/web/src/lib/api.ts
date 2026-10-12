@@ -1,17 +1,38 @@
+import { isSessionExpired } from "./session";
+
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
+  constructor(public status: number, message: string) { super(message); this.name = "ApiError"; }
+}
+
+let unauthorizedHandler: (() => void) | null = null;
+/** Registra qué hacer cuando la API responde 401 con la sesión caducada. */
+export function setUnauthorizedHandler(h: (() => void) | null) { unauthorizedHandler = h; }
+
+export function errorMessage(status: number, statusText: string, data: unknown): string {
+  const msg = (data as { error?: unknown } | null)?.error;
+  if (typeof msg === "string" && msg) return msg;
+  if (status >= 500) return `El panel no responde correctamente (HTTP ${status})`;
+  return statusText || `Error HTTP ${status}`;
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method,
-    headers: body !== undefined ? { "content-type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    credentials: "same-origin",
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      method,
+      headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      credentials: "same-origin",
+    });
+  } catch {
+    throw new ApiError(0, "Error de red: no se pudo contactar con el panel");
+  }
   if (res.status === 204) return undefined as T;
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText);
+  const data: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    if (isSessionExpired(res.status, path)) unauthorizedHandler?.();
+    throw new ApiError(res.status, errorMessage(res.status, res.statusText, data));
+  }
   return data as T;
 }
 
@@ -42,5 +63,7 @@ export type ServerMessage =
   | { type: "observed"; serverId: string; observed: ObservedDto; observedAt: string }
   | { type: "node"; node: NodeDto }
   | { type: "log"; serverId: string; ts: number; line: string }
+  | { type: "log_reset"; serverId: string }
+  | { type: "log_dropped"; serverId: string; count: number }
   | { type: "stream_closed"; serverId: string; reason: string }
   | { type: "error"; message: string };

@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, redirect, Outlet } from "@tanstack/react-router";
+import { type ErrorComponentProps, createRootRoute, createRoute, createRouter, redirect, Outlet } from "@tanstack/react-router";
 import { api, type AuthStatus } from "./lib/api";
 import { Layout } from "./components/layout";
 import { LoginPage } from "./routes/login";
@@ -9,10 +9,21 @@ import { ServerPage } from "./routes/server";
 
 const getStatus = () => api.get<AuthStatus>("/api/auth/status");
 
-const rootRoute = createRootRoute({ component: () => <Outlet /> });
+function RouteError({ error, reset }: ErrorComponentProps) {
+  return (
+    <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <p className="text-lg font-semibold">Algo ha fallado</p>
+      <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Error inesperado"}</p>
+      <button type="button" className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent" onClick={reset}>Reintentar</button>
+    </div>
+  );
+}
+
+const rootRoute = createRootRoute({ component: () => <Outlet />, errorComponent: RouteError });
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/login", component: LoginPage,
+  validateSearch: (s: Record<string, unknown>): { redirect?: string } => (typeof s.redirect === "string" ? { redirect: s.redirect } : {}),
   beforeLoad: async () => { const s = await getStatus(); if (s.authenticated) throw redirect({ to: "/" }); return { configured: s.configured }; },
 });
 

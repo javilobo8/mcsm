@@ -1,5 +1,5 @@
 export function formatBytes(n: number): string {
-  if (!n) return "0 B";
+  if (!Number.isFinite(n) || n < 1) return "0 B";
   const u = ["B", "KiB", "MiB", "GiB", "TiB"];
   const i = Math.min(Math.floor(Math.log2(n) / 10), u.length - 1);
   return `${(n / 2 ** (10 * i)).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
@@ -15,7 +15,7 @@ export function formatUptime(startedAtUnix: number): string {
 export function stateLabel(o: { state: string; health: string; error: string } | null, desired: string): { text: string; tone: "ok" | "warn" | "bad" | "muted" } {
   if (!o) return { text: "Sin datos", tone: "muted" };
   if (o.error) return { text: "Error", tone: "bad" };
-  if (o.state === "running") return o.health === "healthy" ? { text: "En marcha", tone: "ok" } : { text: "Arrancando", tone: "warn" };
+  if (o.state === "running") return o.health === "starting" ? { text: "Arrancando", tone: "warn" } : o.health === "unhealthy" ? { text: "No saludable", tone: "bad" } : { text: "En marcha", tone: "ok" };
   if (o.state === "missing") return { text: desired === "running" ? "Creando…" : "Sin crear", tone: "muted" };
   if (o.state === "restarting") return { text: "Reiniciando", tone: "warn" };
   return { text: "Parado", tone: "muted" };
