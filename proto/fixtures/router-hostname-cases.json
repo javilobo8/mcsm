@@ -1,0 +1,34 @@
+{
+  "valid": [
+    "survival.lan",
+    "creativo.lan",
+    "mc",
+    "a",
+    "0",
+    "mi-servidor.casa.lan",
+    "x-1.y-2.z3",
+    "192.168.1.10",
+    "a1b2c3"
+  ],
+  "invalid": [
+    "",
+    "Survival.lan",
+    "SURVIVAL",
+    "survival..lan",
+    ".lan",
+    "lan.",
+    "-a.lan",
+    "a-.lan",
+    "a.-b",
+    "a_b.lan",
+    "a b.lan",
+    " survival.lan",
+    "survival.lan ",
+    "a,b.lan",
+    "ñandú.lan",
+    "survival.lan:25565",
+    "*.lan",
+    "survival.lan\n",
+    "survival/lan"
+  ]
+}
