@@ -253,8 +253,8 @@ func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string
 	return "", nil
 }
 
-// busyOr devuelve errcode.Busy (409 en el panel) si err es un servidor reservado por una
-// copia o restauración (reconcile.ErrBusy), y fallback en otro caso.
+// busyOr devuelve errcode.Busy (409 en el panel) si err es un servidor ocupado o reservado
+// (reconcile.ErrBusy: copia, restauración o bloqueado sin datos), y fallback en otro caso.
 func busyOr(err error, fallback string) string {
 	if errors.Is(err, reconcile.ErrBusy) {
 		return errcode.Busy

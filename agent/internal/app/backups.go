@@ -101,7 +101,7 @@ type backupService struct {
 	sched   *backup.Scheduler
 	players *backup.PlayerWatch
 	out     *outbox
-	slots   chan struct{} // semáforo de maxParallelJobs (ver acquireSlot)
+	slots   chan struct{} // semáforo de maxParallelJobs (ver withSlot)
 
 	// Inyectables en tests.
 	restore        func(ctx context.Context, req backup.RestoreRequest) (backup.Meta, error)
@@ -833,8 +833,8 @@ func (b *backupService) deleteBackup(serverID, filename string) error {
 	if !backup.ValidName(t.slug, filename) && !backup.ValidPreRestoreName(t.dataDir, filename) {
 		return fmt.Errorf("%w: nombre de copia inválido %q", errBadRequest, filename)
 	}
-	if b.a.rec.Held(serverID) {
-		return fmt.Errorf("%w: espera a que termine para borrar copias", reconcile.ErrBusy)
+	if reason := b.a.rec.HeldReason(serverID); reason != "" {
+		return fmt.Errorf("%w: no se pueden borrar copias mientras dure la reserva", reconcile.Busy(reason))
 	}
 	if err := backup.Delete(t.backupsDir, t.dataDir, t.slug, filename); err != nil {
 		return err

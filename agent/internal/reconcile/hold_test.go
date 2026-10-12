@@ -309,3 +309,26 @@ func TestContainerReportsDockerErrors(t *testing.T) {
 		t.Fatalf("con Docker fallando: %+v, %v", c, err)
 	}
 }
+
+// ErrBusy tiene un prefijo neutro y cada sitio añade el motivo concreto: un servidor
+// bloqueado sin datos no dice «ocupado con otra copia o restauración».
+func TestBusyMessageNamesTheReason(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	release, err := r.Hold("a", "sin directorio de datos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release(ctx)
+	want := "servidor ocupado o reservado (sin directorio de datos)"
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); err == nil || err.Error() != want {
+		t.Fatalf("Power = %v; quiero %q", err, want)
+	}
+	if err := r.Remove(ctx, "a", false); err == nil || err.Error() != want {
+		t.Fatalf("Remove = %v; quiero %q", err, want)
+	}
+	if _, err := r.Hold("a", "copia de seguridad"); err == nil || err.Error() != want {
+		t.Fatalf("Hold = %v; quiero %q", err, want)
+	}
+}

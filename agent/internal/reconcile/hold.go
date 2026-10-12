@@ -7,8 +7,13 @@ import (
 	"sync"
 )
 
-// ErrBusy: el servidor tiene en curso una copia o una restauración.
-var ErrBusy = errors.New("el servidor está ocupado con otra copia o restauración")
+// ErrBusy: el servidor está reservado (Hold: copia, restauración o bloqueado sin datos) o
+// tiene en curso algo que impide la orden. El texto es neutro: cada sitio añade el motivo
+// concreto (Busy con el de la reserva, o el suyo propio).
+var ErrBusy = errors.New("servidor ocupado o reservado")
+
+// Busy envuelve ErrBusy con el motivo de una reserva: «servidor ocupado o reservado (restauración)».
+func Busy(reason string) error { return fmt.Errorf("%w (%s)", ErrBusy, reason) }
 
 // Hold reserva un servidor para una operación de mantenimiento (copia, restauración).
 // Mientras dure, la reconciliación (Apply, la de fondo tras StoreForce/SyncSpecs, ticks)
@@ -32,7 +37,7 @@ func (r *Reconciler) Hold(serverID, reason string) (release func(ctx context.Con
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cur, ok := r.held[serverID]; ok {
-		return nil, fmt.Errorf("%w (%s)", ErrBusy, cur)
+		return nil, Busy(cur)
 	}
 	if reason == "" {
 		reason = "mantenimiento" // un motivo vacío desactivaría las comprobaciones de heldReason
@@ -82,6 +87,9 @@ func (r *Reconciler) HoldError(serverID, msg string) {
 
 // Held indica si el servidor está reservado por Hold.
 func (r *Reconciler) Held(serverID string) bool { return r.heldReason(serverID) != "" }
+
+// HeldReason es el motivo de la reserva del servidor, o "" si no está reservado.
+func (r *Reconciler) HeldReason(serverID string) string { return r.heldReason(serverID) }
 
 func (r *Reconciler) heldReason(serverID string) string {
 	r.mu.Lock()

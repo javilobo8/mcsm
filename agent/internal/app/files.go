@@ -342,8 +342,8 @@ func (a *App) filesOp(ctx context.Context, env *mcsmv1.Envelope, req serverScope
 	if isFilesMutation(env) {
 		leave := a.fileWrites.enter(req.GetServerId())
 		defer leave()
-		if a.rec.Held(req.GetServerId()) {
-			return nil, fmt.Errorf("%w: no se pueden modificar sus archivos hasta que termine", reconcile.ErrBusy)
+		if reason := a.rec.HeldReason(req.GetServerId()); reason != "" {
+			return nil, fmt.Errorf("%w: no se pueden modificar sus archivos mientras dure la reserva", reconcile.Busy(reason))
 		}
 	}
 	switch b := env.Body.(type) {

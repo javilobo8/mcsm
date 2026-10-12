@@ -474,7 +474,7 @@ func TestBackupNowWhileBusy(t *testing.T) {
 	if r := e.handle(12, &mcsmv1.BackupRestore{ServerId: "a", JobId: "job-3", Filename: "alpha-20261012T040000.000Z-1.tar.zst"}); r.GetError().GetCode() != errcode.Busy {
 		t.Fatalf("restaurar durante la copia = %+v", r)
 	}
-	if r := e.handle(13, &mcsmv1.BackupDelete{ServerId: "a", Filename: "alpha-20261012T040000.000Z-1.tar.zst"}); r.GetError().GetCode() != errcode.Busy {
+	if r := e.handle(13, &mcsmv1.BackupDelete{ServerId: "a", Filename: "alpha-20261012T040000.000Z-1.tar.zst"}); r.GetError().GetCode() != errcode.Busy || !strings.Contains(r.GetError().GetMessage(), "(copia de seguridad)") {
 		t.Fatalf("borrar durante la copia = %+v", r)
 	}
 	unblock()
@@ -601,6 +601,9 @@ func TestRestoreBusyWhenFileWritesDoNotDrain(t *testing.T) {
 	r := e.handle(20, &mcsmv1.BackupRestore{ServerId: "a", Filename: name, JobId: "job-r"})
 	if r.GetError().GetCode() != errcode.Busy {
 		t.Fatalf("resp = %+v", r)
+	}
+	if msg := r.GetError().GetMessage(); !strings.Contains(msg, "operaciones de archivos") || strings.Contains(msg, "otra copia") {
+		t.Fatalf("mensaje = %q", msg)
 	}
 	e.settle(t)
 	if fin := e.col.final("job-r"); fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "archivos") {

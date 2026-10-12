@@ -345,7 +345,7 @@ describe("acciones sobre copias", () => {
     agent.ack(list.id);
     const pending = post(`/api/servers/${s.id}/backups`);
     const req = await agent.waitFor("backupNow");
-    agent.send({ id: req.id, body: { case: "error", value: { code: "busy", message: "el servidor está ocupado con otra copia o restauración (restauración)" } } });
+    agent.send({ id: req.id, body: { case: "error", value: { code: "busy", message: "servidor ocupado o reservado (restauración)" } } });
     const res = await pending;
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toMatch(/ocupado/);
@@ -479,7 +479,7 @@ describe("acciones sobre copias", () => {
     const b = (await getBackups(s.id))[0];
     const r = post(`/api/servers/${s.id}/backups/${b.id}/restore`);
     const rreq = await agent.waitFor("backupRestore");
-    agent.send({ id: rreq.id, body: { case: "error", value: { code: "busy", message: "ocupado con otra copia" } } });
+    agent.send({ id: rreq.id, body: { case: "error", value: { code: "busy", message: "servidor ocupado o reservado (copia de seguridad)" } } });
     const rres = await r;
     expect(rres.statusCode).toBe(409);
     expect(app.jobs.list({ serverId: s.id })[0]).toMatchObject({ type: "restore", status: "failed" });

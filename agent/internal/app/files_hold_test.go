@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -78,6 +79,10 @@ func TestFilesMkdirOnBlockedServerWithoutDataIsBusy(t *testing.T) {
 	e := call(t, a, &mcsmv1.Envelope{Id: 2, Body: &mcsmv1.Envelope_FilesMkdir{FilesMkdir: &mcsmv1.FilesMkdir{ServerId: "a", Path: "world"}}})
 	if errCode(e) != errcode.Busy {
 		t.Fatalf("resp = %+v", e)
+	}
+	// El motivo es el de la reserva, no «otra copia o restauración».
+	if msg := e.GetError().GetMessage(); !strings.Contains(msg, "sin directorio de datos") || strings.Contains(msg, "otra copia") {
+		t.Fatalf("mensaje = %q", msg)
 	}
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
 		t.Fatalf("se creó data: %v", err)

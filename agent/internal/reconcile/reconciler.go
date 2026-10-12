@@ -274,7 +274,7 @@ func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData boo
 	defer unlock()
 	// plan-4: un servidor reservado (Hold) no se borra a mitad de una copia o restauración.
 	if reason := r.heldReason(serverID); reason != "" {
-		return fmt.Errorf("%w (%s)", ErrBusy, reason)
+		return Busy(reason)
 	}
 	return r.removeLocked(ctx, serverID, deleteData)
 }
@@ -366,7 +366,7 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	defer unlock()
 	// plan-4: antes del defer que publica: "ocupado" no es un error del servidor.
 	if reason := r.heldReason(serverID); reason != "" {
-		return fmt.Errorf("%w (%s)", ErrBusy, reason)
+		return Busy(reason)
 	}
 	published := false
 	defer func() {
