@@ -36,6 +36,12 @@ export type MetricColumn = (typeof METRIC_COLUMNS)[number];
  */
 export type MetricSeries = { range: MetricRange; step: number; t: number[] } & Record<MetricColumn, (number | null)[]>;
 
+/**
+ * Desfase de reloj tolerado, en segundos: el panel acepta el `ts` de un agente que difiere hasta esto
+ * de su hora, y la web acepta muestras con `ts` hasta esto en el futuro. Una sola tolerancia en los dos lados.
+ */
+export const MAX_CLOCK_SKEW_SECONDS = 45;
+
 /** Última muestra de un nodo; la emite el WS del navegador como `{ type: "node_metrics", nodeId, sample }`. */
 export interface NodeLiveSample {
   ts: number;

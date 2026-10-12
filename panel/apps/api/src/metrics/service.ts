@@ -1,14 +1,12 @@
 import type { EventEmitter } from "node:events";
 import type { MetricBatch } from "@mcsm/proto";
-import type { MetricRange, MetricSeries, NodeLiveSample } from "@mcsm/shared";
+import { MAX_CLOCK_SKEW_SECONDS, type MetricRange, type MetricSeries, type NodeLiveSample } from "@mcsm/shared";
 import type { MetricRow, MetricScope, MetricsRepo } from "./repo.js";
 
 /** Retención del histórico: 7 días (spec §4). */
 export const RETENTION_SECONDS = 7 * 86_400;
 /** Cada cuánto se purga lo que excede la retención. */
 export const PURGE_EVERY_MS = 3_600_000;
-/** Si el reloj del nodo difiere más que esto del panel, el lote se fecha con la hora del panel. */
-export const MAX_SKEW_SECONDS = 30;
 
 type Cancel = () => void;
 
@@ -49,7 +47,7 @@ export class MetricsService {
   /** Ventana de 10 s del lote: la del agente si su reloj es razonable; si no, la del panel. */
   slotOf(agentTs: number): number {
     const now = this.nowSec();
-    const ts = Number.isFinite(agentTs) && Math.abs(agentTs - now) <= MAX_SKEW_SECONDS ? agentTs : now;
+    const ts = Number.isFinite(agentTs) && Math.abs(agentTs - now) <= MAX_CLOCK_SKEW_SECONDS ? agentTs : now;
     return ts - (ts % 10);
   }
 

@@ -90,6 +90,12 @@ describe("MetricsService.ingest", () => {
     expect(repo.count("server", "s2")).toBe(1);
   });
 
+  it("acepta el ts del agente hasta MAX_CLOCK_SKEW_SECONDS en el futuro (45 s) y no más allá", () => {
+    const now = T0 + 5; // el panel está en T0 + 5 (ver nowSec del servicio)
+    expect(svc.slotOf(now + 40)).toBe(T0 + 40);
+    expect(svc.slotOf(now + 50)).toBe(T0);
+  });
+
   it("un CPU no finito (agente defectuoso) se guarda como 0", () => {
     svc.ingest("n1", batch(T0, { servers: [server("s1", { cpuPct: Number.NaN })] }));
     expect(svc.series("server", "s1", "1h").cpuPct.at(-1)).toBe(0);
