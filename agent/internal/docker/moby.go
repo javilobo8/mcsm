@@ -9,6 +9,7 @@ import (
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
+	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -133,13 +134,40 @@ func (m *Moby) Remove(ctx context.Context, id string) error {
 }
 
 func (m *Moby) Logs(ctx context.Context, id string, tail int) (io.ReadCloser, error) {
+	ins, err := m.cli.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
+	if err != nil {
+		return nil, notFound(err)
+	}
 	rc, err := m.cli.ContainerLogs(ctx, id, client.ContainerLogsOptions{
 		ShowStdout: true, ShowStderr: true, Follow: true, Timestamps: true, Tail: strconv.Itoa(tail),
 	})
 	if err != nil {
 		return nil, notFound(err)
 	}
-	return rc, nil
+	if c := ins.Container.Config; c != nil && c.Tty {
+		return rc, nil
+	}
+	// Sin TTY (los contenedores de Compose, p. ej. un importado aún adoptado) Docker multiplexa
+	// stdout y stderr con una cabecera de 8 bytes por trama: se separan aquí, en el mismo flujo.
+	pr, pw := io.Pipe()
+	go func() {
+		_, err := stdcopy.StdCopy(pw, pw, rc)
+		_ = pw.CloseWithError(err) // nil → EOF para el lector
+	}()
+	return &demuxedLogs{PipeReader: pr, src: rc}, nil
+}
+
+// demuxedLogs es el texto de unos logs multiplexados; Close cierra también el stream de Docker
+// (la goroutine de StdCopy termina al fallar su lectura o su escritura). Idempotente.
+type demuxedLogs struct {
+	*io.PipeReader
+	src io.Closer
+}
+
+func (d *demuxedLogs) Close() error {
+	err := d.src.Close()
+	_ = d.PipeReader.Close()
+	return err
 }
 
 // Events emite eventos de contenedores con la etiqueta mcsm.managed=true. El canal
