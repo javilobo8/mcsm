@@ -87,3 +87,20 @@ describe("MetricsRepo", () => {
     expect(plan.map((p) => p.detail).join(" | ")).toMatch(/USING PRIMARY KEY \(scope=\? AND scope_id=\? AND ts>\? AND ts<\?\)/);
   });
 });
+
+describe("planes de consulta", () => {
+  const plan = (sql: string, ...args: (string | number)[]) =>
+    (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args) as { detail: string }[]).map((r) => r.detail).join(" | ");
+
+  it("la purga usa un índice por ts, no recorre la tabla", () => {
+    const p = plan("DELETE FROM metric_samples WHERE ts < ?", 1);
+    expect(p).toMatch(/USING (COVERING )?INDEX/);
+    expect(p).not.toMatch(/SCAN metric_samples(?! USING)/);
+  });
+
+  it("la serie de 7 d usa la clave primaria (scope, scope_id, ts)", () => {
+    const p = plan("SELECT ts FROM metric_samples WHERE scope = ? AND scope_id = ? AND ts >= ? AND ts < ?", "server", "s1", 1, 2);
+    expect(p).toMatch(/SEARCH metric_samples USING (PRIMARY KEY|INDEX)/);
+    expect(p).toContain("scope=? AND scope_id=? AND ts>? AND ts<?");
+  });
+});

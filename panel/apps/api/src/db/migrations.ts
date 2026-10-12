@@ -80,6 +80,11 @@ CREATE TABLE metric_samples (
 ) WITHOUT ROWID;
 `,
   },
+  {
+    // La purga horaria (DELETE ... WHERE ts < ?) no filtra por scope: sin este índice recorre toda la tabla.
+    name: "011_metric_samples_ts",
+    sql: `CREATE INDEX metric_samples_ts ON metric_samples (ts);`,
+  },
   // ── plan-3 ──
   // ── plan-4 ──
   // ── plan-5 ──
