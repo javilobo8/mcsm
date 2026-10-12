@@ -1,5 +1,6 @@
 import { z } from "zod";
 import "./zod-locale.js";
+import { specPatchSchema } from "./spec-patch.js";
 import { contentCheck, contentFields } from "./spec-content.js";
 
 export const RESERVED_ENV = new Set([
@@ -114,7 +115,8 @@ export type ServerCreateInput = z.infer<typeof serverCreateSchema>;
 
 export const serverPatchSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
-  spec: specInputSchema.optional(),
+  /** Merge de primer nivel sobre la spec guardada (ver mergeSpecPatch). */
+  spec: specPatchSchema.optional(),
 });
 export const powerActionSchema = z.object({ action: z.enum(["start", "stop", "restart", "kill"]) });
 export type PowerActionName = z.infer<typeof powerActionSchema>["action"];
