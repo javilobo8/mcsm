@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { specSchema } from "@mcsm/shared";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
-import { isResponseCase } from "../agents/hub.js";
+import { AgentConn, isResponseCase } from "../agents/hub.js";
 import { FakeAgent } from "../../test/fake-agent.js";
 
 let app: FastifyInstance; let url: string; let cookie: string;
@@ -132,6 +132,30 @@ describe("archivos: operaciones inline con el agente", () => {
       agent.ack(req.id);
       expect((await pending).statusCode).toBe(204);
     }
+  });
+});
+
+describe("archivos: plazos de las peticiones al agente", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("borrar pide al agente con un plazo de 5 min: una carpeta grande en un disco lento tarda", async () => {
+    const agent = await online();
+    const request = vi.spyOn(AgentConn.prototype, "request");
+    const pending = app.inject({ method: "DELETE", url: `${files()}?path=/world`, headers: { cookie } });
+    const req = await agent.waitFor("filesDelete");
+    agent.ack(req.id);
+    expect((await pending).statusCode).toBe(204);
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ case: "filesDelete" }), 5 * 60_000);
+  });
+
+  it("el resto sigue con 30 s (renombrar es un rename(2): no depende del tamaño)", async () => {
+    const agent = await online();
+    const request = vi.spyOn(AgentConn.prototype, "request");
+    const pending = post(`${files()}/rename`, { from: "/a", to: "/b" });
+    const req = await agent.waitFor("filesRename");
+    agent.ack(req.id);
+    expect((await pending).statusCode).toBe(204);
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ case: "filesRename" }), 30_000);
   });
 });
 

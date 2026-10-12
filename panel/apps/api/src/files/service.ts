@@ -23,6 +23,12 @@ export const toEntryDto = (e: FileEntry): FileEntryDto => ({
 
 const REQUEST_TIMEOUT_MS = 30_000;
 /**
+ * Borrar una carpeta grande (un mundo en una SD o un disco lento) puede tardar minutos: con 30 s
+ * el navegador vería 504 mientras el agente sigue borrando. Renombrar no lo necesita: es un
+ * rename(2) y no depende del tamaño.
+ */
+const REMOVE_TIMEOUT_MS = 5 * 60_000;
+/**
  * Plazo de las peticiones FilesDownload/FilesUpload al agente: ninguno en la práctica (el máximo
  * de setTimeout, ~24,8 días). Una transferencia que avanza puede durar lo que haga falta; las
  * muertas las cortan la caducidad del reclamo (60 s), el vigilante de inactividad
@@ -98,10 +104,10 @@ export class FilesService {
     return { row, conn };
   }
 
-  private async call(serverId: string, body: Body, fallback: string) {
+  private async call(serverId: string, body: Body, fallback: string, timeoutMs = REQUEST_TIMEOUT_MS) {
     const { conn } = this.target(serverId);
     try {
-      return await conn.request(body, REQUEST_TIMEOUT_MS);
+      return await conn.request(body, timeoutMs);
     } catch (e) {
       throw toHttpError(e, fallback);
     }
@@ -149,7 +155,7 @@ export class FilesService {
 
   async remove(serverId: string, path: string): Promise<void> {
     if (path === "/") throw new HttpError(400, "No se puede borrar la carpeta raíz");
-    await this.call(serverId, { case: "filesDelete", value: { serverId, path } }, "No se pudo borrar");
+    await this.call(serverId, { case: "filesDelete", value: { serverId, path } }, "No se pudo borrar", REMOVE_TIMEOUT_MS);
   }
 
   /**
