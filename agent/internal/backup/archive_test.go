@@ -123,6 +123,10 @@ func TestExcluder(t *testing.T) {
 	if (*Excluder)(nil).Excluded("x") {
 		t.Fatal("sin exclusiones no se excluye nada")
 	}
+	// m-l: un Excluder nil excluye igualmente los temporales de las subidas (WriteArchive(…, nil, …)).
+	if !(*Excluder)(nil).Excluded("mods/.mcsm-tmp-0123456789abcdef") {
+		t.Fatal("un Excluder nil debe excluir los temporales de las escrituras atómicas")
+	}
 }
 
 // Los temporales de las escrituras atómicas de archivos (Plan 5) nunca entran en una copia,
@@ -139,7 +143,8 @@ func TestExcluderAlwaysSkipsUploadTemps(t *testing.T) {
 				t.Errorf("%v: Excluded(%q) = false", patterns, rel)
 			}
 		}
-		if e.Excluded("world/level.dat") || e.Excluded("mcsm-tmp-notas.txt") {
+		// Un fichero del usuario que solo empieza como un temporal sí entra (m-k).
+		if e.Excluded("world/level.dat") || e.Excluded("mcsm-tmp-notas.txt") || e.Excluded(".mcsm-tmp-x") || e.Excluded("plugins/.mcsm-tmp-notas.txt") {
 			t.Errorf("%v: excluye de más", patterns)
 		}
 	}
@@ -157,6 +162,11 @@ func TestExcluderAlwaysSkipsUploadTemps(t *testing.T) {
 	}
 	if st.Files != 1 {
 		t.Fatalf("ficheros = %d; el temporal no debe copiarse", st.Files)
+	}
+	// Sin Excluder (nil), igual: ningún llamador futuro (migración) puede meter temporales.
+	buf.Reset()
+	if st, err = WriteArchive(context.Background(), src, &buf, nil, nil); err != nil || st.Files != 1 {
+		t.Fatalf("WriteArchive sin Excluder: ficheros = %d, err = %v; el temporal no debe copiarse", st.Files, err)
 	}
 }
 

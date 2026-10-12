@@ -136,7 +136,8 @@ func TestTOCTOUSwapToSymlinkIsRefused(t *testing.T) {
 func TestList(t *testing.T) {
 	fsys, root, outside := layout(t)
 	write(t, filepath.Join(root, "B.txt"), "b")
-	write(t, filepath.Join(root, tmpPrefix+"x"), "temporal")
+	write(t, filepath.Join(root, tmpPrefix+"0123456789abcdef"), "temporal")
+	write(t, filepath.Join(root, tmpPrefix+"x"), "del usuario: no es un temporal") // se ve
 	must(t, os.Symlink("config", filepath.Join(root, "cfg")))
 	must(t, os.Symlink(outside, filepath.Join(root, "fuera")))
 	entries, truncated, err := fsys.List("/")
@@ -147,14 +148,14 @@ func TestList(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name)
 	}
-	want := []string{"cfg", "config", "mods", "B.txt", "fuera", "server.properties"}
+	want := []string{"cfg", "config", "mods", tmpPrefix + "x", "B.txt", "fuera", "server.properties"}
 	if fmt.Sprint(names) != fmt.Sprint(want) {
 		t.Fatalf("names = %v; quiero %v", names, want)
 	}
 	if !entries[0].Dir || !entries[0].Symlink {
 		t.Fatalf("cfg debe ser enlace a carpeta: %+v", entries[0])
 	}
-	if entries[4].Dir || !entries[4].Symlink {
+	if entries[5].Dir || !entries[5].Symlink {
 		t.Fatalf("fuera debe verse como enlace sin seguir: %+v", entries[4])
 	}
 	if _, _, err := fsys.List("server.properties"); !errors.Is(err, ErrNotDir) {
@@ -277,5 +278,32 @@ func TestPermissionDeniedIsIOError(t *testing.T) {
 	_, _, err := fsys.Read("locked/d/x", 0)
 	if Code(err) != "io_error" {
 		t.Fatalf("Read = %v (%s); quiero io_error", err, Code(err))
+	}
+}
+
+// TempGlob es exactamente el nombre de los temporales que crea WriteFrom y barre SweepTemps
+// (tmpPrefix + 16 hexadecimales en minúscula): un fichero del usuario que solo empiece igual
+// no se oculta, no se excluye de las copias y no se barre.
+func TestTempGlobMatchesExactlyTheTemps(t *testing.T) {
+	if TempGlob != tmpPrefix+strings.Repeat("[0-9a-f]", 16) {
+		t.Fatalf("TempGlob = %q", TempGlob)
+	}
+	for range 50 {
+		if name := tmpPrefix + randHex(); !IsTempName(name) {
+			t.Fatalf("un temporal de WriteFrom (%q) no casa con TempGlob", name)
+		}
+	}
+	for name, want := range map[string]bool{
+		tmpPrefix + "0123456789abcdef":       true,
+		tmpPrefix + "x":                      false,
+		tmpPrefix + "notas.txt":              false,
+		tmpPrefix + "0123456789ABCDEF":       false,
+		tmpPrefix + "0123456789abcdef0":      false,
+		tmpPrefix + "0123456789abcde":        false,
+		"a" + tmpPrefix + "0123456789abcdef": false,
+	} {
+		if got := IsTempName(name); got != want {
+			t.Errorf("IsTempName(%q) = %v; quiero %v", name, got, want)
+		}
 	}
 }

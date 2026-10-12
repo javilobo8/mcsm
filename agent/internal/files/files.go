@@ -31,12 +31,23 @@ const InlineMax = 2 << 20
 // maxEntries limita un listado; el resto se marca como truncado. Variable para los tests.
 var maxEntries = 5000
 
-// tmpPrefix marca los temporales de las escrituras atómicas (se ocultan en los listados).
+// tmpPrefix empieza el nombre de los temporales de las escrituras atómicas (ver TempGlob).
 const tmpPrefix = ".mcsm-tmp-"
 
-// TempGlob casa (path.Match) con el nombre de cualquier temporal de una escritura atómica.
-// Las copias de seguridad los excluyen siempre (backup.NewExcluder).
-const TempGlob = tmpPrefix + "*"
+// TempGlob casa (path.Match) exactamente con el nombre de un temporal de una escritura
+// atómica: tmpPrefix y 16 hexadecimales en minúscula (randHex). Esos se ocultan en los
+// listados, las copias de seguridad los excluyen siempre (backup.Excluder) y SweepTemps barre
+// los huérfanos. Un fichero del usuario que solo empiece igual («.mcsm-tmp-notas») es un
+// fichero más: se ve, se copia y no se barre.
+const TempGlob = tmpPrefix + "[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]" +
+	"[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]"
+
+// IsTempName indica si name (un nombre, sin carpetas) es el de un temporal de una escritura
+// atómica (TempGlob).
+func IsTempName(name string) bool {
+	ok, _ := path.Match(TempGlob, name)
+	return ok
+}
 
 var (
 	ErrInvalidPath   = errors.New("ruta inválida")
@@ -313,7 +324,7 @@ func (f *FS) List(p string) ([]Entry, bool, error) {
 	}
 	out := make([]Entry, 0, len(des))
 	for _, de := range des {
-		if strings.HasPrefix(de.Name(), tmpPrefix) {
+		if IsTempName(de.Name()) {
 			continue
 		}
 		info, err := de.Info()

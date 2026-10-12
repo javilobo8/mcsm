@@ -24,13 +24,15 @@ import (
 // datos y usan `/`. Un patrón sin `/` se compara con el nombre a cualquier profundidad
 // ("logs", "*.tmp"); uno con `/`, con la ruta relativa completa ("world/session.lock").
 // Un directorio excluido se salta entero.
+//
+// Los temporales de las escrituras atómicas de archivos (files.TempGlob, a cualquier
+// profundidad) quedan fuera siempre, también con un Excluder nil: una copia durante una
+// subida metería el temporal a medias.
 type Excluder struct{ base, full []string }
 
-// NewExcluder valida los patrones (sintaxis de path.Match). Además de ellos, excluye siempre
-// los temporales de las escrituras atómicas de archivos (files.TempGlob, a cualquier
-// profundidad): una copia durante una subida metería el temporal a medias.
+// NewExcluder valida los patrones (sintaxis de path.Match).
 func NewExcluder(patterns []string) (*Excluder, error) {
-	e := &Excluder{base: []string{files.TempGlob}}
+	e := &Excluder{}
 	for _, p := range patterns {
 		p = strings.Trim(p, "/")
 		if p == "" {
@@ -48,12 +50,16 @@ func NewExcluder(patterns []string) (*Excluder, error) {
 	return e, nil
 }
 
-// Excluded indica si la ruta relativa rel queda fuera de la copia.
+// Excluded indica si la ruta relativa rel queda fuera de la copia. Con e nil solo excluye
+// los temporales de las escrituras atómicas.
 func (e *Excluder) Excluded(rel string) bool {
+	name := path.Base(rel)
+	if files.IsTempName(name) {
+		return true
+	}
 	if e == nil {
 		return false
 	}
-	name := path.Base(rel)
 	for _, p := range e.base {
 		if ok, _ := path.Match(p, name); ok {
 			return true

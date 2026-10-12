@@ -3,12 +3,8 @@ package files
 import (
 	"context"
 	"io/fs"
-	"regexp"
 	"time"
 )
-
-// tmpName es el nombre exacto de un temporal de WriteFrom: tmpPrefix + 16 hexadecimales (randHex).
-var tmpName = regexp.MustCompile(`^\.mcsm-tmp-[0-9a-f]{16}$`)
 
 // SweepTemps borra los temporales de escrituras atómicas que quedaron huérfanos (el agente murió
 // o se cerró a mitad de una subida) y llevan más de olderThan sin modificarse: los de una
@@ -27,7 +23,7 @@ func (f *FS) SweepTemps(ctx context.Context, olderThan time.Duration, now time.T
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
-		if err != nil || d.IsDir() || !tmpName.MatchString(d.Name()) {
+		if err != nil || d.IsDir() || !IsTempName(d.Name()) {
 			return nil
 		}
 		info, err := r.Lstat(p)
