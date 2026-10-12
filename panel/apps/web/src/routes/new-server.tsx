@@ -1,0 +1,1 @@
+export function NewServerPage() { return <div className="p-6">Pendiente</div>; }
