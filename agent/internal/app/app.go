@@ -57,6 +57,10 @@ type App struct {
 	// send debe fijarse antes de lanzar goroutines (Run) o antes de usar la App (tests);
 	// después es de solo lectura. Por eso se lee sin lock.
 	send func(*mcsmv1.Envelope) error
+	// life es el contexto de vida del agente (el de Run). Las operaciones que mutan
+	// Docker o disco lo usan en vez del de la sesión WS: un corte de la conexión no
+	// debe dejar a medias un recreado ni un borrado. Mismo régimen que send.
+	life context.Context
 
 	mu      sync.Mutex // protege streams
 	streams map[uint64]*logStream
@@ -69,7 +73,7 @@ type App struct {
 // New construye la aplicación. send se fija después (Run) o en tests.
 func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App {
 	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{},
-		flights: map[string]*flight{}, sem: make(chan struct{}, maxConcurrent)}
+		flights: map[string]*flight{}, sem: make(chan struct{}, maxConcurrent), life: context.Background()}
 	a.send = func(*mcsmv1.Envelope) error { return conn.ErrNotConnected }
 	a.rec = reconcile.New(st, eng, cfg.DataRoot, cfg.Network, func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		return a.status(ctx, host, port)
@@ -129,6 +133,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		},
 	})
 	a.send = func(e *mcsmv1.Envelope) error { return client.Send(ctx, e) }
+	a.life = ctx
 
 	go a.eventLoop(ctx)
 	go a.tickers(ctx)
@@ -189,37 +194,39 @@ func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec, force bool) 
 	return "", nil
 }
 
-// Handle implementa conn.Handler.
+// Handle implementa conn.Handler. ctx es el de la sesión WS: solo vale para lo ligado a
+// ella (streams, RCON). Lo que muta Docker o disco usa a.life.
 func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv1.Envelope) error) {
+	life := a.life
 	switch b := env.Body.(type) {
 	case *mcsmv1.Envelope_HelloAck:
 		a.log.Info("panel confirmó la sesión", "node_id", b.HelloAck.NodeId)
 
 	case *mcsmv1.Envelope_SyncSpecs:
 		for _, sp := range b.SyncSpecs.Servers {
-			if _, err := a.applySpec(ctx, sp, true); err != nil { // el panel es la verdad al reconectar
+			if _, err := a.applySpec(life, sp, true); err != nil { // el panel es la verdad al reconectar
 				a.log.Warn("aplicar spec de la sincronización", "id", sp.GetServerId(), "err", err)
 			}
 		}
 		for _, id := range b.SyncSpecs.RemovedIds {
-			if err := a.rec.Remove(ctx, id, false); err != nil {
+			if err := a.rec.Remove(life, id, false); err != nil {
 				a.log.Warn("eliminar servidor retirado", "id", id, "err", err)
 				continue
 			}
 			a.hub.Reset(id)
 		}
-		a.reconcileAll(ctx)
+		a.reconcileAll(life)
 		_ = send(ack(env.Id))
 
 	case *mcsmv1.Envelope_ApplySpec:
-		if code, err := a.applySpec(ctx, b.ApplySpec.Server, false); err != nil {
+		if code, err := a.applySpec(life, b.ApplySpec.Server, false); err != nil {
 			_ = send(errMsg(env.Id, code, err))
 			return
 		}
 		_ = send(ack(env.Id))
 
 	case *mcsmv1.Envelope_RemoveServer:
-		if err := a.rec.Remove(ctx, b.RemoveServer.ServerId, b.RemoveServer.DeleteData); err != nil {
+		if err := a.rec.Remove(life, b.RemoveServer.ServerId, b.RemoveServer.DeleteData); err != nil {
 			_ = send(errMsg(env.Id, "remove_failed", err))
 			return
 		}
@@ -227,7 +234,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		_ = send(ack(env.Id))
 
 	case *mcsmv1.Envelope_PowerAction:
-		if err := a.rec.Power(ctx, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
+		if err := a.rec.Power(life, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
 			_ = send(errMsg(env.Id, "power_failed", err))
 			return
 		}

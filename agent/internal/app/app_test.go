@@ -452,3 +452,71 @@ func TestLoadConfigRequiresPanelURL(t *testing.T) {
 		t.Fatalf("cfg=%+v err=%v", cfg, err)
 	}
 }
+
+// ctxEngine imita a Moby: las operaciones fallan si el contexto está cancelado.
+type ctxEngine struct{ *docker.Fake }
+
+func (e ctxEngine) EnsureImage(ctx context.Context, ref string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return e.Fake.EnsureImage(ctx, ref)
+}
+
+func (e ctxEngine) ListManaged(ctx context.Context) ([]docker.Container, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return e.Fake.ListManaged(ctx)
+}
+
+func (e ctxEngine) Stop(ctx context.Context, id string, t time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return e.Fake.Stop(ctx, id, t)
+}
+
+func (e ctxEngine) Remove(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return e.Fake.Remove(ctx, id)
+}
+
+// Un corte de la sesión WS no debe cancelar las operaciones que mutan Docker: usan el
+// contexto de vida del agente, no el de la sesión.
+func TestMutatingHandlersSurviveSessionCancel(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "a.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	fake := docker.NewFake()
+	a := New(Config{DataRoot: filepath.Join(dir, "data"), Network: "mcsm", Version: "test"}, st, ctxEngine{fake}, slog.Default())
+	a.status = func(context.Context, string, uint16) *mcsmv1.McStatus { return &mcsmv1.McStatus{Online: true} }
+	s := newSink()
+	a.send = s.send
+	session, cancel := context.WithCancel(context.Background())
+	cancel() // la sesión ya se cortó cuando el handler llega a Docker
+
+	a.Handle(session, &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: specMsg("a", "alpha", 1)}}}, s.send)
+	if e := s.waitID(t, 1); e.GetAck() == nil {
+		t.Fatalf("ApplySpec con la sesión cortada: %+v", e)
+	}
+	if list, _ := fake.ListManaged(context.Background()); len(list) != 1 || list[0].State != "running" {
+		t.Fatalf("el contenedor debe crearse y arrancar: %+v", list)
+	}
+	a.Handle(session, &mcsmv1.Envelope{Id: 2, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP}}}, s.send)
+	if e := s.waitID(t, 2); e.GetAck() == nil {
+		t.Fatalf("PowerAction con la sesión cortada: %+v", e)
+	}
+	a.Handle(session, &mcsmv1.Envelope{Id: 3, Body: &mcsmv1.Envelope_RemoveServer{RemoveServer: &mcsmv1.RemoveServer{ServerId: "a"}}}, s.send)
+	if e := s.waitID(t, 3); e.GetAck() == nil {
+		t.Fatalf("RemoveServer con la sesión cortada: %+v", e)
+	}
+	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
+		t.Fatalf("el contenedor debe borrarse: %+v", list)
+	}
+}
