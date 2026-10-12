@@ -79,6 +79,16 @@ export function stepBlock(step: 1 | 2, c: StepContext): string | null {
   return null;
 }
 
+/**
+ * Qué se crea al pulsar «Crear servidor». Si la plantilla elegida ya no existe (borrada mientras se
+ * rellenaba el asistente y la lista se recargó), null: NUNCA se cae a crear «desde cero» con la spec
+ * por defecto, que no es lo que el usuario revisó.
+ */
+export function creationSource(source: string, tpl: { id: string } | undefined, spec: EditableSpec): { templateId: string } | { spec: EditableSpec } | null {
+  if (source === SCRATCH) return { spec };
+  return tpl ? { templateId: tpl.id } : null;
+}
+
 /** Paso donde se muestra el fallo de creación: 409 (slug o puerto en uso) se corrige en el paso 2. */
 export function createErrorStep(status: number | undefined): 2 | 3 {
   return status === 409 ? 2 : 3;

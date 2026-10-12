@@ -12,7 +12,7 @@ import { VersionSection } from "@/components/spec-form/version-section";
 import { api, ApiError, type ServerDto } from "@/lib/api";
 import { applyError, type FormErrors } from "@/lib/form-errors";
 import { validateMemory, validateSpec, type EditableSpec } from "@/lib/spec-edit";
-import { createErrorStep, createRequest, parsePort, SCRATCH, stepBlock, summarizeSpec } from "@/lib/wizard";
+import { createErrorStep, createRequest, creationSource, parsePort, SCRATCH, stepBlock, summarizeSpec } from "@/lib/wizard";
 import { typeLabel } from "@/lib/spec-catalog";
 import { cn } from "@/lib/utils";
 import { useNodes } from "@/hooks/use-nodes";
@@ -58,7 +58,9 @@ export function NewServerPage() {
 
   const create = useMutation({
     mutationFn: () => {
-      const req = createRequest(tpl ? { templateId: tpl.id } : { spec }, { nodeId, name, port: portNum, start });
+      const from = creationSource(source, tpl, spec);
+      if (!from) throw new Error("La plantilla elegida ya no existe: vuelve al paso 1 y elige otra");
+      const req = createRequest(from, { nodeId, name, port: portNum, start });
       return api.post<ServerDto>(req.url, req.body);
     },
     onSuccess: (s) => {

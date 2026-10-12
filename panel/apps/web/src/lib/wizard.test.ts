@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput, templateSpecSchema } from "@mcsm/shared";
-import { createErrorStep, createRequest, parseNewServerSearch, stepBlock, summarizeSpec } from "./wizard";
+import { createErrorStep, createRequest, creationSource, parseNewServerSearch, stepBlock, summarizeSpec } from "./wizard";
 
 describe("asistente de nuevo servidor", () => {
   it("desde plantilla llama al endpoint de la plantilla y solo pasa el puerto si se dio", () => {
@@ -68,5 +68,16 @@ describe("error de creación", () => {
     expect(createErrorStep(409)).toBe(2);
     expect(createErrorStep(502)).toBe(3);
     expect(createErrorStep(undefined)).toBe(3);
+  });
+});
+
+describe("origen al pulsar Crear", () => {
+  const spec = { ...defaultSpecInput(), type: "FABRIC" };
+  it("desde cero usa la spec; con plantilla, su id", () => {
+    expect(creationSource("scratch", undefined, spec)).toEqual({ spec });
+    expect(creationSource("t1", { id: "t1" }, spec)).toEqual({ templateId: "t1" });
+  });
+  it("si la plantilla elegida ya no existe NO cae a «desde cero»", () => {
+    expect(creationSource("t1", undefined, spec)).toBeNull();
   });
 });
