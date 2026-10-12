@@ -61,6 +61,11 @@ export class BackupService {
     try {
       await conn.request({ case: "backupList", value: { serverId: "" } }, 30_000);
     } catch (e) {
+      // Una desconexión es normal (el WS parpadea): el siguiente Hello vuelve a pedirlo.
+      if (e instanceof AgentError && e.code === AgentErrorCode.Disconnected) {
+        this.app.log.info({ nodeId }, "inventario de copias sin respuesta: el agente se desconectó; se pedirá al reconectar");
+        return;
+      }
       this.app.log.warn({ nodeId, err: e }, "no se pudo pedir el inventario de copias al agente");
     }
   }

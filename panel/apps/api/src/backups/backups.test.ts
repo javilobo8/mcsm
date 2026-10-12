@@ -1,5 +1,5 @@
 import type { EventEmitter } from "node:events";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import { BackupTrigger, JobStatus, type BackupInfoSchema, type Envelope } from "@mcsm/proto";
@@ -59,6 +59,16 @@ const info = (serverId: string, filename: string, over: Partial<InfoInit> = {}):
 });
 
 describe("inventario y avisos del agente", () => {
+  it("un inventario cortado por una desconexión no es un aviso (se vuelve a pedir en el siguiente Hello)", async () => {
+    const { nodeId, nodeToken } = await enrollNode("nas");
+    const warn = vi.spyOn(app.log, "warn");
+    const info = vi.spyOn(app.log, "info");
+    const { agent } = await connectAgent(nodeToken);
+    agent.close();
+    await vi.waitFor(() => expect(info).toHaveBeenCalledWith(expect.objectContaining({ nodeId }), expect.stringMatching(/inventario/)));
+    expect(warn).not.toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/inventario/));
+  });
+
   it("al conectar pide el inventario y lo refleja en copias y jobs", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
     const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
