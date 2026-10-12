@@ -202,3 +202,34 @@ conocer.)
   corre como contenedor `mcsm-test-panel` en la red `mcsm` (imagen de
   `deploy/panel.Dockerfile`) y el agente usa `PANEL_URL=http://mcsm-test-panel:8080`. El
   navegador automatizado no abre `localhost:8080`: las comprobaciones visuales son manuales.
+- Tras cada fusión busca duplicados que git no marca: claves YAML repetidas (`docker compose
+  config`), flags repetidos en snippets, `var`/`const` homónimas en un paquete Go, tests
+  duplicados; y compara `pnpm gen` con lo commiteado.
+- Archivos (`Files*`) que escriben responden `busy` si `rec.Held(id)`. Protocolo `fileWrites`:
+  la mutación hace `enter` antes de mirar `Held`; la restauración hace `Hold` antes de
+  `drained` (≤ 10 s, si no drena → busy). Toda operación nueva que escriba en `data`
+  (importación, migración) usa el mismo contador y la misma comprobación.
+- Copias: el excluder se construye con `backup.NewExcluder` (excluye `files.TempGlob`); nunca
+  `nil`. Toda sección de la spec cambia vía `serversService.patch` (p. ej. la programación es
+  `patch(id, {spec:{backups}})`), nunca `servers.updateSpec` directo desde otro servicio.
+- Cierre del agente: esperas en paralelo con `waitAll`, total ≤ 25 s frente a
+  `stop_grace_period: 30s` / `--stop-timeout 30`; una espera nueva entra en `waitAll`.
+- Avisos de copias (`BackupCreated`/`BackupDeleted`/inventario) van por la `outbox` FIFO, no
+  por el `send` de la sesión; lo encolado puede llegar tras el siguiente `Hello`: no
+  interpretes un mensaje no solicitado con el estado de la sesión actual sin correlacionarlo.
+  El panel solo marca borradas/perdidas filas con `created_at < since`.
+- Reserva y jobs: como mucho 2 copias/restauraciones por nodo (`withSlot`, antes de
+  `save-off`/`Stop`); mientras esperan, el servidor sigue reservado (Power 409, Files busy).
+  Sondas de Docker en operaciones peligrosas con `rec.Container` (devuelve error), nunca
+  `ContainerID`.
+- Espacio: lo que escribe mucho en el nodo (copias, restauraciones, importación, migración)
+  exige estimación + `max(5 %, 256 MiB)` libres y vigila durante la escritura.
+- Topes encadenados: `maxPayload` 4 MiB ↔ inventario 3 MiB ↔ `readLimit` del agente 4 MiB ↔
+  spec 64 KiB ↔ `FilesReadResult` 2 MiB. Si cambia uno, revisa los demás.
+- Plantillas: `templateSpecSchema = {...baseFields}`; toda sección nueva viaja en plantillas
+  salvo que se excluya en `specToTemplate` (`dataPath` va fuera de `baseFields`).
+- Web: el contenido de cada pestaña del servidor lleva `key={s.id}`; todo formulario con
+  estado sucio registra `useTabGuard` (y `useBlocker`); los diálogos con `<form>` usan
+  `dialogSubmit`.
+- Verificación completa: añade `buf breaking --against ".git#ref=feat/plan-1"` (funciona en
+  worktrees) mientras `feat/plan-1` sea la base.
