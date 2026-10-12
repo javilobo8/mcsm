@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -770,5 +771,60 @@ func TestMutatingHandlersSurviveSessionCancel(t *testing.T) {
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
 		t.Fatalf("el contenedor debe borrarse: %+v", list)
+	}
+}
+
+// failRemoveEngine hace fallar Remove mientras fail esté activo.
+type failRemoveEngine struct {
+	*docker.Fake
+	mu   sync.Mutex
+	fail bool
+}
+
+func (e *failRemoveEngine) setFail(v bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.fail = v
+}
+
+func (e *failRemoveEngine) Remove(ctx context.Context, id string) error {
+	e.mu.Lock()
+	fail := e.fail
+	e.mu.Unlock()
+	if fail {
+		return errors.New("docker: no se pudo borrar")
+	}
+	return e.Fake.Remove(ctx, id)
+}
+
+// Si el borrado en segundo plano de un servidor retirado por SyncSpecs falla, el tick de
+// reconciliación lo reintenta aunque su spec ya no exista (lápida del reconciliador).
+func TestSyncSpecsFailedRemovalIsRetriedByTick(t *testing.T) {
+	fake := docker.NewFake()
+	eng := &failRemoveEngine{Fake: fake}
+	a, st := newAppEngine(t, eng)
+	s := newSink()
+	a.send = s.send
+	ctx := context.Background()
+	a.Handle(ctx, applyMsg(1, specMsg("a", "alpha", 1)), s.send)
+	s.waitID(t, 1)
+	eng.setFail(true)
+	a.Handle(ctx, syncMsg(2, nil, "a"), s.send)
+	s.waitID(t, 2)
+	waitBackground(t, a)
+	if list, _ := fake.ListManaged(ctx); len(list) != 1 {
+		t.Fatalf("el borrado falló: el contenedor sigue: %+v", list)
+	}
+	if vers, _ := st.SpecVersions(); len(vers) != 0 {
+		t.Fatalf("el servidor retirado no vuelve al Hello: %v", vers)
+	}
+	eng.setFail(false)
+	a.reconcileAll(ctx) // tick
+	waitBackground(t, a)
+	if list, _ := fake.ListManaged(ctx); len(list) != 0 {
+		t.Fatalf("el tick debe reintentar el borrado: %+v", list)
+	}
+	if calls := strings.Join(fake.Calls, ";"); strings.Count(calls, "Create") != 1 {
+		t.Fatalf("no debe resucitar: %v", fake.Calls)
 	}
 }

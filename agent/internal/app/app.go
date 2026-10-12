@@ -514,8 +514,14 @@ func (a *App) observeAsync(ctx context.Context, id string) {
 	a.dispatch(ctx, "obs:"+id, func() { a.rec.Observe(ctx, id) })
 }
 
-// reconcileAll reconcilia cada servidor por separado y sin esperar a ninguno.
+// reconcileAll reconcilia cada servidor por separado y sin esperar a ninguno, y reintenta
+// los borrados de servidores retirados que fallaron (lápidas del reconciliador).
 func (a *App) reconcileAll(ctx context.Context) {
+	a.dispatch(ctx, "removals", func() {
+		for _, id := range a.rec.RetryRemovals(ctx) {
+			a.hub.Reset(id)
+		}
+	})
 	specs, err := a.st.ListSpecs()
 	if err != nil {
 		a.log.Error("listar specs", "err", err)
