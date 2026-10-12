@@ -1,6 +1,10 @@
 // Package jobs registra los jobs largos del agente (backup, restore): los persiste en el
 // store para responder a un job_id repetido sin repetir el trabajo (spec §5.4) y emite
 // JobProgress al panel.
+//
+// Limitación conocida del log: las líneas que caen dentro de la ventana LogEvery tras un
+// volcado solo se guardan y envían con la siguiente línea, Progress o Done (no hay volcado
+// diferido por temporizador). El log completo siempre queda guardado en Done.
 package jobs
 
 import (
@@ -161,8 +165,13 @@ func (t *Tracker) Inventory(serverID string) ([]*mcsmv1.JobRecord, error) {
 
 // Job es un job en curso. Sus métodos son seguros para uso concurrente. Nunca se llama a
 // send con el lock tomado: un envío lento no bloquea Record ni los demás métodos.
+//
+// Orden de locks fijo: sendMu -> mu. sendMu serializa guardar+enviar por job, de modo que los
+// avisos salen en el orden en que se producen y tras el terminal no sale ninguno (los métodos
+// ven j.done y vuelven antes de emitir).
 type Job struct {
 	t        *Tracker
+	sendMu   sync.Mutex
 	mu       sync.Mutex
 	rec      *mcsmv1.JobRecord
 	lastSent uint32
@@ -181,6 +190,8 @@ func (j *Job) Progress(pct uint32, msg string) {
 		pct = 99
 	}
 	msg = limit(clean(msg), MaxMessage)
+	j.sendMu.Lock()
+	defer j.sendMu.Unlock()
 	j.mu.Lock()
 	if j.done {
 		j.mu.Unlock()
@@ -206,6 +217,8 @@ func (j *Job) Progress(pct uint32, msg string) {
 // Done vuelca siempre lo que quede.
 func (j *Job) Log(line string) {
 	chunk := clean(strings.TrimRight(line, "\n")) + "\n"
+	j.sendMu.Lock()
+	defer j.sendMu.Unlock()
 	j.mu.Lock()
 	if j.done {
 		j.mu.Unlock()
@@ -229,6 +242,8 @@ func (j *Job) Log(line string) {
 // El estado en memoria queda final aunque falle el guardado; si tras reintentar sigue
 // fallando devuelve el error (el llamante debe registrarlo): en disco quedaría RUNNING.
 func (j *Job) Done(err error, okMsg string) error {
+	j.sendMu.Lock()
+	defer j.sendMu.Unlock()
 	j.mu.Lock()
 	if j.done {
 		j.mu.Unlock()
@@ -244,17 +259,19 @@ func (j *Job) Done(err error, okMsg string) error {
 		j.rec.Message = limit(clean(okMsg), MaxMessage)
 	}
 	j.rec.FinishedUnixMs = j.t.now().UnixMilli()
+	rec := proto.Clone(j.rec).(*mcsmv1.JobRecord)
+	env := j.snapshot()
+	j.mu.Unlock()
+	// Reintentos fuera de j.mu (Record no espera); sendMu los serializa con el resto.
 	var perr error
 	for i := 0; i < putAttempts; i++ {
-		if perr = j.t.st.PutJob(j.rec); perr == nil {
+		if perr = j.t.st.PutJob(rec); perr == nil {
 			break
 		}
 		if i < putAttempts-1 {
 			j.t.sleep(putRetryWait)
 		}
 	}
-	env := j.snapshot()
-	j.mu.Unlock()
 	_ = j.t.send(env)
 	if perr != nil {
 		return fmt.Errorf("guardar el estado final del job %s: %w", j.rec.JobId, perr)

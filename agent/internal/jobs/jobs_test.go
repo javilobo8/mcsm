@@ -375,3 +375,79 @@ func TestFailInterruptedPrunesOld(t *testing.T) {
 		t.Fatal("FailInterrupted debe podar los terminados antiguos")
 	}
 }
+
+func TestNothingIsSentAfterTheTerminalMessage(t *testing.T) {
+	for round := 0; round < 50; round++ {
+		tr, _, s, _ := newCounting(t)
+		j, _, _ := tr.Begin("j1", "srv", TypeBackup)
+		var wg sync.WaitGroup
+		for g := 0; g < 4; g++ {
+			wg.Add(1)
+			go func(g int) {
+				defer wg.Done()
+				for i := 0; i < 20; i++ {
+					j.Progress(uint32(i), fmt.Sprintf("g%d-%d", g, i))
+					j.Log(fmt.Sprintf("g%d linea %d", g, i))
+				}
+			}(g)
+		}
+		wg.Add(1)
+		go func() { defer wg.Done(); j.Done(nil, "fin") }()
+		wg.Wait()
+		msgs := s.all()
+		last := msgs[len(msgs)-1]
+		if last.Status != ok {
+			t.Fatalf("ronda %d: el último aviso no es el terminal: %+v", round, last)
+		}
+		for _, m := range msgs[:len(msgs)-1] {
+			if m.Status != running {
+				t.Fatalf("ronda %d: terminal antes del final: %+v", round, m)
+			}
+		}
+	}
+}
+
+// Determinista: un aviso RUNNING queda retenido en send mientras otra goroutine cierra el job.
+// Sin la serialización por job, el terminal se enviaría antes que el RUNNING retenido.
+func TestSlowSendCannotBeOvertakenByTerminal(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	var mu sync.Mutex
+	var order []mcsmv1.JobStatus
+	inSend := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	send := func(e *mcsmv1.Envelope) error {
+		p := e.GetJobProgress()
+		if p.Message == "lento" {
+			close(inSend)
+			select {
+			case <-release:
+			case <-time.After(100 * time.Millisecond): // serializado: el terminal espera, así que nadie libera
+			}
+		}
+		if p.Status != running {
+			once.Do(func() { close(release) })
+		}
+		mu.Lock()
+		order = append(order, p.Status)
+		mu.Unlock()
+		return nil
+	}
+	c := &testClock{t: time.Date(2026, 10, 12, 4, 0, 0, 0, time.UTC)}
+	tr := New(st, send, c.now)
+	j, _, _ := tr.Begin("j1", "srv", TypeBackup)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); j.Progress(10, "lento") }()
+	go func() { defer wg.Done(); <-inSend; j.Done(nil, "fin") }()
+	wg.Wait()
+	mu.Lock()
+	defer mu.Unlock()
+	if n := len(order); n != 3 || order[1] != running || order[2] != ok {
+		t.Fatalf("orden de avisos = %v", order)
+	}
+}
