@@ -415,6 +415,8 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	case *mcsmv1.Envelope_BackupPush:
 		// Disco y transferencia con el contexto de vida: un corte del WS no la aborta.
 		a.handleBackupPush(life, env.Id, b.BackupPush, send)
+	case *mcsmv1.Envelope_MigrateReceive:
+		a.bk.handleMigrateReceive(env.Id, b.MigrateReceive, send)
 	// ── plan-8 ──
 	// ── plan-9 ──
 
