@@ -3,8 +3,11 @@ package spec
 import (
 	"encoding/json"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/moby/moby/api/types/mount"
 )
 
 func TestDataPathCasesSharedWithZod(t *testing.T) {
@@ -50,14 +53,28 @@ func TestBuildContainerUsesDataPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.DataDir != s.DataPath || len(b.HostConfig.Binds) != 1 || b.HostConfig.Binds[0] != s.DataPath+":/data" {
-		t.Fatalf("dataDir = %q, binds = %v", b.DataDir, b.HostConfig.Binds)
+	// M3: Mounts de tipo bind, no Binds: Docker falla si la carpeta no existe (disco sin montar) en vez
+	// de crearla vacía y que itzg genere un mundo nuevo.
+	want := []mount.Mount{{Type: mount.TypeBind, Source: s.DataPath, Target: "/data"}}
+	if b.DataDir != s.DataPath || len(b.HostConfig.Binds) != 0 || !reflect.DeepEqual(b.HostConfig.Mounts, want) {
+		t.Fatalf("dataDir = %q, binds = %v, mounts = %+v", b.DataDir, b.HostConfig.Binds, b.HostConfig.Mounts)
+	}
+	if len(base.HostConfig.Mounts) != 0 || len(base.HostConfig.Binds) != 1 {
+		t.Fatalf("sin dataPath sigue el bind de siempre: %v %v", base.HostConfig.Binds, base.HostConfig.Mounts)
 	}
 	if b.Name != "mcsm-survival" {
 		t.Fatalf("name = %q", b.Name)
 	}
 	if b.Hash == base.Hash {
 		t.Fatal("otra carpeta de datos es otro contenedor: el hash debe cambiar")
+	}
+	s.DataPath = "/home/lobo/minecraft/otro/data"
+	other, err := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.Hash == b.Hash {
+		t.Fatal("el montaje entra en el hash: dos dataPath distintos son dos contenedores distintos")
 	}
 }
 

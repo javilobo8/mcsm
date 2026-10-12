@@ -426,7 +426,7 @@ func TestDataPathCreateNeverMkdirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	list, _ := fake.ListManaged(context.Background())
-	if len(list) != 1 || fake.Containers[list[0].ID].HostConfig.Binds[0] != extDataPath+":/data" {
+	if len(list) != 1 || dataSource(t, fake, list[0].ID) != extDataPath {
 		t.Fatalf("contenedor = %+v", list)
 	}
 	if _, err := os.Stat("/mcsm-test-noexiste"); !errors.Is(err, os.ErrNotExist) {

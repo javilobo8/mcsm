@@ -5,12 +5,15 @@ package docker
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 )
@@ -86,5 +89,33 @@ func TestMobyImportInspectAndConnect(t *testing.T) {
 	}
 	if _, err := m.InspectImport(ctx, "mcsm-test-no-existe"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// plan-6 (M3): con Mounts de tipo bind, Docker no crea la carpeta de origen si no existe (con Binds sí,
+// vacía): un disco externo sin montar no acaba en un mundo nuevo.
+func TestMobyBindMountMissingSourceFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	const name = "mcsm-test-missing-bind"
+	m, err := NewMoby()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.EnsureImage(ctx, "alpine:3.22"); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "no-existe", "data")
+	id, err := m.Create(ctx, name, &container.Config{Image: "alpine:3.22", Cmd: []string{"true"}, Labels: map[string]string{"mcsm.test": "true"}},
+		&container.HostConfig{Mounts: []mount.Mount{{Type: mount.TypeBind, Source: missing, Target: "/data"}}}, nil)
+	if err == nil {
+		defer m.Remove(context.Background(), id)
+		startErr := m.Start(ctx, id)
+		if startErr == nil {
+			t.Fatal("Docker aceptó un bind cuyo origen no existe")
+		}
+	}
+	if _, statErr := os.Stat(missing); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("Docker no debe crear la carpeta: %v", statErr)
 	}
 }

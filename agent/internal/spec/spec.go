@@ -14,6 +14,7 @@ import (
 
 	units "github.com/docker/go-units"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 )
 
@@ -305,12 +306,19 @@ func BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, er
 		},
 	}
 	host := &container.HostConfig{
-		Binds:         []string{dataDir + ":/data"},
 		PortBindings:  bindings,
 		RestartPolicy: container.RestartPolicy{Name: restartPolicies[s.RestartPolicy]},
 		SecurityOpt:   append([]string(nil), securityOpt...),
 		CapDrop:       append([]string(nil), capDrop...),
 		CapAdd:        append([]string(nil), capAdd...),
+	}
+	// plan-6 (M3): un dataPath se monta con Mounts (bind): si la carpeta no existe (disco externo sin
+	// montar), Docker falla en vez de crearla vacía y que itzg genere un mundo nuevo. La carpeta de
+	// DATA_ROOT la crea el agente: sigue con Binds y el hash de siempre.
+	if s.DataPath != "" {
+		host.Mounts = []mount.Mount{{Type: mount.TypeBind, Source: dataDir, Target: "/data"}}
+	} else {
+		host.Binds = []string{dataDir + ":/data"}
 	}
 	pids := int64(PidsLimit)
 	host.Resources.PidsLimit = &pids
@@ -399,6 +407,7 @@ type hashInput struct {
 	Labels      map[string]string `json:"labels"` // identidad; sin hash ni versión
 	Ports       []string          `json:"ports"`  // "25565/tcp->:25570", ordenados
 	Binds       []string          `json:"binds"`
+	Mounts      []string          `json:"mounts,omitempty"` // plan-6: "tipo:origen:destino:ro", ordenados
 	Network     string            `json:"network"`
 	Restart     string            `json:"restart"`
 	Memory      int64             `json:"memory"`
@@ -432,6 +441,10 @@ func hashOf(name, networkName string, cfg *container.Config, host *container.Hos
 		}
 	}
 	sort.Strings(in.Ports)
+	for _, m := range host.Mounts {
+		in.Mounts = append(in.Mounts, fmt.Sprintf("%s:%s:%s:%t", m.Type, m.Source, m.Target, m.ReadOnly))
+	}
+	sort.Strings(in.Mounts)
 	if host.Resources.PidsLimit != nil {
 		in.PidsLimit = *host.Resources.PidsLimit
 	}
