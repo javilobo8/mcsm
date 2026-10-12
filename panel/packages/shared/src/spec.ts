@@ -81,3 +81,19 @@ export type SpecInput = z.infer<typeof specInputSchema>;
 export function defaultSpecInput(): SpecInput {
   return specInputSchema.parse({});
 }
+
+export const serverCreateSchema = z.object({
+  nodeId: z.string().min(1),
+  name: z.string().trim().min(1).max(60),
+  slug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/).optional(),
+  desiredState: z.enum(["running", "stopped"]).default("stopped"),
+  spec: specInputSchema.prefault({}),
+});
+export type ServerCreateInput = z.infer<typeof serverCreateSchema>;
+
+export const serverPatchSchema = z.object({
+  name: z.string().trim().min(1).max(60).optional(),
+  spec: specInputSchema.optional(),
+});
+export const powerActionSchema = z.object({ action: z.enum(["start", "stop", "restart", "kill"]) });
+export type PowerActionName = z.infer<typeof powerActionSchema>["action"];

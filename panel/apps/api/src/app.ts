@@ -10,6 +10,7 @@ import { AgentHub } from "./agents/hub.js";
 import { agentRoutes } from "./agents/routes.js";
 import { AgentService } from "./agents/service.js";
 import { ServersRepo } from "./servers/repo.js";
+import { serverRoutes } from "./servers/routes.js";
 
 export interface AppOptions { db: Db; logger?: boolean; config?: Partial<Config> }
 
@@ -31,7 +32,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(agentRoutes);
   new AgentService(app).start();
   app.addHook("onReady", async () => app.nodes.markAllOffline());
-  // Task 14: await app.register(serverRoutes);
+  await app.register(serverRoutes);
   // Task 15: await app.register(realtimeRoutes);
   // Task 19: estáticos de la web si cfg.webDist
   return app;

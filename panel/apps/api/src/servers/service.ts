@@ -1,0 +1,139 @@
+import type { FastifyInstance } from "fastify";
+import { PowerActionType } from "@mcsm/proto";
+import { specSchema, slugify, type ServerCreateInput, type Spec, type SpecInput, type PowerActionName } from "@mcsm/shared";
+import type { z } from "zod";
+import { randomToken } from "../lib/tokens.js";
+import { AgentError } from "../agents/hub.js";
+import { toServerDto, toServerSpecMessage, type ServerRow } from "./repo.js";
+
+export class HttpError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+
+const POWER: Record<PowerActionName, PowerActionType> = {
+  start: PowerActionType.START, stop: PowerActionType.STOP, restart: PowerActionType.RESTART, kill: PowerActionType.KILL,
+};
+
+export class ServersService {
+  constructor(private app: FastifyInstance) {}
+
+  private requireNode(nodeId: string) {
+    const node = this.app.nodes.get(nodeId);
+    if (!node) throw new HttpError(404, "Nodo no encontrado");
+    return node;
+  }
+
+  private requireServer(id: string): ServerRow {
+    const row = this.app.servers.get(id);
+    if (!row) throw new HttpError(404, "Servidor no encontrado");
+    return row;
+  }
+
+  private onlineConn(nodeId: string) {
+    const conn = this.app.agents.get(nodeId);
+    if (!conn) throw new HttpError(409, "El nodo está desconectado");
+    return conn;
+  }
+
+  allocatePort(nodeId: string, exclude = new Set<number>()): number {
+    const used = this.app.servers.usedGamePorts(nodeId);
+    const { from, to } = this.app.config.gamePortRange;
+    for (let p = from; p <= to; p++) if (!used.has(p) && !exclude.has(p)) return p;
+    throw new HttpError(409, `No quedan puertos libres entre ${from} y ${to} en este nodo`);
+  }
+
+  private checkPorts(nodeId: string, spec: Spec, selfId?: string) {
+    const used = new Set<number>();
+    for (const r of this.app.servers.list(nodeId)) {
+      if (r.id === selfId) continue;
+      const s = JSON.parse(r.spec) as Spec;
+      used.add(s.ports.game);
+      for (const e of s.ports.extra) used.add(e.host);
+    }
+    const mine = [spec.ports.game, ...spec.ports.extra.map((e) => e.host)];
+    for (const p of mine) if (used.has(p)) throw new HttpError(409, `El puerto ${p} ya lo usa otro servidor de este nodo`);
+    if (new Set(mine).size !== mine.length) throw new HttpError(400, "La spec repite un puerto");
+  }
+
+  private completeSpec(nodeId: string, input: SpecInput, previous?: Spec): Spec {
+    const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId);
+    const candidate = { ...input, ports: { game, extra: input.ports.extra }, rconPassword: previous?.rconPassword ?? randomToken() };
+    const parsed = specSchema.safeParse(candidate);
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Spec inválida");
+    return parsed.data;
+  }
+
+  private async push(row: ServerRow): Promise<void> {
+    const conn = this.app.agents.get(row.node_id);
+    if (!conn) return; // se entregará en el próximo SyncSpecs
+    try {
+      await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row) } }, 120_000);
+    } catch (e) {
+      this.app.log.warn({ serverId: row.id, err: e }, "ApplySpec sin éxito; el agente lo reintentará");
+    }
+  }
+
+  async create(input: ServerCreateInput) {
+    this.requireNode(input.nodeId);
+    const slug = input.slug ?? slugify(input.name);
+    if (this.app.servers.getBySlug(input.nodeId, slug)) throw new HttpError(409, `Ya existe un servidor con slug "${slug}" en este nodo`);
+    const spec = this.completeSpec(input.nodeId, input.spec);
+    this.checkPorts(input.nodeId, spec);
+    const row = this.app.servers.create({ nodeId: input.nodeId, name: input.name, slug, spec, desiredState: input.desiredState });
+    void this.push(row);
+    return toServerDto(row, { includeSecrets: true });
+  }
+
+  async patch(id: string, input: { name?: string; spec?: SpecInput }) {
+    const row = this.requireServer(id);
+    let updated = row;
+    if (input.spec) {
+      const spec = this.completeSpec(row.node_id, input.spec, JSON.parse(row.spec) as Spec);
+      this.checkPorts(row.node_id, spec, row.id);
+      updated = this.app.servers.updateSpec(id, spec, input.name);
+      void this.push(updated);
+    } else if (input.name) {
+      updated = this.app.servers.rename(id, input.name); // sin cambio de spec: no se versiona
+    }
+    return toServerDto(updated, { includeSecrets: true });
+  }
+
+  async power(id: string, action: PowerActionName) {
+    const row = this.requireServer(id);
+    const conn = this.onlineConn(row.node_id);
+    try {
+      await conn.request({ case: "powerAction", value: { serverId: id, action: POWER[action] } }, 90_000);
+    } catch (e) {
+      throw new HttpError(502, e instanceof AgentError ? e.message : "Fallo al ejecutar la acción");
+    }
+    // Solo tras el Ack del agente, para que panel y agente no diverjan.
+    this.app.servers.setDesiredState(id, action === "start" || action === "restart" ? "running" : "stopped");
+    return toServerDto(this.app.servers.get(id)!);
+  }
+
+  async command(id: string, command: string): Promise<{ output: string }> {
+    const row = this.requireServer(id);
+    const conn = this.onlineConn(row.node_id);
+    try {
+      const res = await conn.request({ case: "sendCommand", value: { serverId: id, command } }, 20_000);
+      return { output: res.body.case === "commandResult" ? res.body.value.output : "" };
+    } catch (e) {
+      throw new HttpError(502, e instanceof AgentError ? e.message : "Fallo al enviar el comando");
+    }
+  }
+
+  async remove(id: string, deleteData: boolean) {
+    const row = this.requireServer(id);
+    const conn = this.app.agents.get(row.node_id);
+    if (conn) {
+      try {
+        await conn.request({ case: "removeServer", value: { serverId: id, deleteData } }, 120_000);
+      } catch (e) {
+        throw new HttpError(502, e instanceof AgentError ? e.message : "El agente no pudo eliminar el servidor");
+      }
+    } else if (deleteData) {
+      throw new HttpError(409, "El nodo está desconectado: no se pueden borrar los datos ahora. Borra sin datos o espera a que vuelva.");
+    }
+    this.app.servers.delete(id);
+  }
+}

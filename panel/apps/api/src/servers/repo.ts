@@ -71,6 +71,11 @@ export class ServersRepo {
       .run(JSON.stringify(spec), name ?? null, nowIso(), id);
     return this.get(id)!;
   }
+  /** Solo cambia el nombre: no toca spec_version (no hay nada que enviar al agente). */
+  rename(id: string, name: string): ServerRow {
+    this.db.prepare("UPDATE servers SET name = ?, updated_at = ? WHERE id = ?").run(name, nowIso(), id);
+    return this.get(id)!;
+  }
   setDesiredState(id: string, state: "running" | "stopped"): void {
     this.db.prepare("UPDATE servers SET desired_state = ?, updated_at = ? WHERE id = ?").run(state, nowIso(), id);
   }
