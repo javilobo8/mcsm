@@ -8,8 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
+	"sync"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/backup"
@@ -126,11 +126,15 @@ const (
 	// migrationMarker se crea en <DATA_ROOT>/<slug> al recibir una migración y contiene su id:
 	// MigrateAbort solo borra un directorio con el marcador de esa misma migración.
 	migrationMarker = ".mcsm-migration"
+	// committedMark precede al id en el marcador de una migración confirmada (MigrateConfirm):
+	// «committed <migration_id>». Desde entonces ningún MigrateAbort borra ese directorio.
+	committedMark = "committed "
+	// retiringMarker se escribe en <DATA_ROOT>/<slug> del origen, con el id de la migración, antes
+	// de olvidar la spec al retirarlo: un reintento sin spec solo toca un <slug> con esa marca.
+	retiringMarker = ".mcsm-retiring"
 	// maxMigrateBytes acota size_bytes y data_bytes (un valor absurdo desbordaría las cuentas).
 	maxMigrateBytes = 1 << 50
 )
-
-var migrateSHA256 = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func (b *backupService) handleMigrateReceive(id uint64, m *mcsmv1.MigrateReceive, send func(*mcsmv1.Envelope) error) {
 	if err := b.startReceive(m); err != nil {
@@ -150,7 +154,7 @@ func (b *backupService) startReceive(m *mcsmv1.MigrateReceive) error {
 	if !spec.ValidSlug(m.GetSlug()) || !backup.ValidName(m.GetSlug(), m.GetFilename()) {
 		return fmt.Errorf("%w: slug o nombre de copia no válidos", errBadRequest)
 	}
-	if m.GetSizeBytes() == 0 || m.GetSizeBytes() > maxMigrateBytes || m.GetDataBytes() > maxMigrateBytes || !migrateSHA256.MatchString(m.GetSha256()) {
+	if m.GetSizeBytes() == 0 || m.GetSizeBytes() > maxMigrateBytes || m.GetDataBytes() > maxMigrateBytes || !backup.ValidSHA256(m.GetSha256()) {
 		return fmt.Errorf("%w: tamaño o sha256 de la copia no válidos", errBadRequest)
 	}
 	j, existing, err := b.jobs.Begin(m.GetJobId(), m.GetServerId(), jobTypeMigrateIn)
@@ -282,6 +286,10 @@ func (b *backupService) handleMigrateRetire(id uint64, m *mcsmv1.MigrateRetire, 
 	b.respondAsync(id, send, func() error { return b.retireMigration(m) })
 }
 
+func (b *backupService) handleMigrateConfirm(id uint64, m *mcsmv1.MigrateConfirm, send func(*mcsmv1.Envelope) error) {
+	b.respondAsync(id, send, func() error { return b.confirmMigration(m) })
+}
+
 // respondAsync ejecuta fn en segundo plano, contada en wg como las copias (el cierre la espera), y
 // responde Ack o Error al terminar. Si el agente se está cerrando, busy.
 func (b *backupService) respondAsync(id uint64, send func(*mcsmv1.Envelope) error, fn func() error) {
@@ -303,16 +311,80 @@ func checkMigrationMsg(serverID, slug, migrationID string) error {
 	return nil
 }
 
+// migMark es el marcador .mcsm-migration de un <DATA_ROOT>/<slug> recibido por migración.
+type migMark struct {
+	present   bool
+	committed bool // «committed <id>»: confirmada (MigrateConfirm)
+	id        string
+}
+
+// pendingOf: el directorio lo creó la migración id y aún no se ha confirmado.
+func (m migMark) pendingOf(id string) bool { return m.present && !m.committed && m.id == id }
+
+func (m migMark) String() string {
+	switch {
+	case !m.present:
+		return "sin marcador de migración"
+	case m.committed:
+		return "migración " + m.id + " confirmada"
+	default:
+		return "migración " + m.id + " sin confirmar"
+	}
+}
+
+func readMigMark(dir string) (migMark, error) {
+	b, err := os.ReadFile(filepath.Join(dir, migrationMarker))
+	if errors.Is(err, fs.ErrNotExist) {
+		return migMark{}, nil
+	}
+	if err != nil {
+		return migMark{}, err
+	}
+	s := strings.TrimSpace(string(b))
+	if id, ok := strings.CutPrefix(s, committedMark); ok {
+		return migMark{present: true, committed: true, id: id}, nil
+	}
+	return migMark{present: true, id: s}, nil
+}
+
+// writeMarker escribe un marcador de forma atómica (temporal + rename): un corte a mitad nunca
+// deja un marcador vacío o a medias.
+func writeMarker(dir, name, content string) error {
+	tmp := filepath.Join(dir, name+".tmp")
+	if err := os.WriteFile(tmp, []byte(content+"\n"), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, filepath.Join(dir, name)); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
 // abortMigration deshace en el destino lo que dejó una migración no confirmada: la spec y el
 // contenedor (Forget y liberar la reserva, que lo para y lo borra por su lápida) y el directorio,
-// solo si lleva el marcador de esta migración, ningún otro servidor del nodo lo usa y ya no hay
-// contenedor que lo monte. Repetirlo no hace nada.
+// solo si lleva el marcador SIN CONFIRMAR de esta migración, ningún otro servidor del nodo lo usa
+// y ya no hay contenedor que lo monte. El marcador se lee antes de tocar la spec: si el servidor
+// está en este nodo y su directorio no es una copia sin confirmar de esta migración (confirmada con
+// MigrateConfirm, de otra migración o sin marcador), invalid_request sin tocar nada. Así un abort
+// tardío (p. ej. de un panel restaurado desde una foto anterior al commit) nunca borra el servidor
+// vivo. Repetirlo no hace nada.
 func (b *backupService) abortMigration(m *mcsmv1.MigrateAbort) error {
 	if err := checkMigrationMsg(m.GetServerId(), m.GetSlug(), m.GetMigrationId()); err != nil {
 		return err
 	}
 	id := m.GetServerId()
+	unlock, err := b.migLocks.lock(b.a.life, id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	sp, err := b.a.st.GetSpec(id)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(b.a.cfg.DataRoot, m.GetSlug())
+	mark, err := readMigMark(dir)
 	if err != nil {
 		return err
 	}
@@ -320,6 +392,9 @@ func (b *backupService) abortMigration(m *mcsmv1.MigrateAbort) error {
 	case sp != nil && sp.Slug != m.GetSlug():
 		return fmt.Errorf("%w: el servidor tiene otro slug en este nodo (%s)", errBadRequest, sp.Slug)
 	case sp != nil:
+		if !mark.pendingOf(m.GetMigrationId()) {
+			return fmt.Errorf("%w: el servidor de este nodo no es una copia sin confirmar de la migración %s (%s); no se toca", errBadRequest, m.GetMigrationId(), mark)
+		}
 		if err := b.forgetHeld(id, nil); err != nil {
 			return err
 		}
@@ -332,16 +407,14 @@ func (b *backupService) abortMigration(m *mcsmv1.MigrateAbort) error {
 		return err
 	}
 	b.a.hub.Reset(id)
-	dir := filepath.Join(b.a.cfg.DataRoot, m.GetSlug())
-	mark, err := os.ReadFile(filepath.Join(dir, migrationMarker))
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return nil // nada de esta migración en el disco (o ya borrado)
-	case err != nil:
+	if mark, err = readMigMark(dir); err != nil {
 		return err
-	case strings.TrimSpace(string(mark)) != m.GetMigrationId():
-		b.a.log.Warn("deshacer migración: el directorio es de otra migración; no se toca", "dir", dir)
-		return nil
+	}
+	if !mark.pendingOf(m.GetMigrationId()) {
+		if mark.present {
+			b.a.log.Warn("deshacer migración: el directorio no es de esta migración sin confirmar; no se toca", "dir", dir, "marcador", mark.String())
+		}
+		return nil // nada de esta migración en el disco (o ya borrado)
 	}
 	if err := b.dirFree(id, m.GetSlug()); err != nil {
 		return err
@@ -352,25 +425,78 @@ func (b *backupService) abortMigration(m *mcsmv1.MigrateAbort) error {
 	return nil
 }
 
-// retireMigration retira el servidor del origen tras confirmar la migración: con la reserva
-// tomada, para el contenedor si alguien lo arrancó y comprueba que se ha parado, olvida la spec y
-// libera la reserva (lo que borra el contenedor por su lápida). Solo entonces, sin contenedor que
-// lo monte, aparta <DATA_ROOT>/<slug> (datos y copias) a <DATA_ROOT>/<slug>.migrated-<ts> o, con
-// delete_data, lo borra. Repetirlo (tras un corte, un borrado del contenedor pendiente o una
-// respuesta perdida) completa lo que falte y nada más.
-func (b *backupService) retireMigration(m *mcsmv1.MigrateRetire) error {
+// confirmMigration marca como confirmada la migración que trajo el servidor a este nodo:
+// reescribe el marcador como «committed <id>». Sin marcador (o ya confirmado), no hace nada.
+func (b *backupService) confirmMigration(m *mcsmv1.MigrateConfirm) error {
 	if err := checkMigrationMsg(m.GetServerId(), m.GetSlug(), m.GetMigrationId()); err != nil {
 		return err
 	}
-	id := m.GetServerId()
-	sp, err := b.a.st.GetSpec(id)
+	unlock, err := b.migLocks.lock(b.a.life, m.GetServerId())
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	sp, err := b.a.st.GetSpec(m.GetServerId())
 	if err != nil {
 		return err
 	}
 	if sp != nil && sp.Slug != m.GetSlug() {
 		return fmt.Errorf("%w: el servidor tiene otro slug en este nodo (%s)", errBadRequest, sp.Slug)
 	}
+	dir := filepath.Join(b.a.cfg.DataRoot, m.GetSlug())
+	mark, err := readMigMark(dir)
+	switch {
+	case err != nil:
+		return err
+	case !mark.present:
+		return nil
+	case mark.id != m.GetMigrationId():
+		return fmt.Errorf("%w: %s lleva el marcador de otra migración (%s); no se toca", errBadRequest, dir, mark)
+	case mark.committed:
+		return nil
+	}
+	return writeMarker(dir, migrationMarker, committedMark+m.GetMigrationId())
+}
+
+// retireMigration retira el servidor del origen tras confirmar la migración. Con la spec en el
+// nodo comprueba que es la versión que se migró (source_version: un servidor que volvió después a
+// este nodo trae otra) y marca <slug> con .mcsm-retiring; con la reserva tomada, para el
+// contenedor si alguien lo arrancó y comprueba que se ha parado, olvida la spec y libera la reserva
+// (lo que borra el contenedor por su lápida). Solo entonces, sin contenedor que lo monte, aparta
+// <DATA_ROOT>/<slug> (datos y copias) a <DATA_ROOT>/<slug>.migrated-<ts> o, con delete_data, lo
+// borra. Un reintento sin spec (tras un corte, un borrado del contenedor pendiente o una respuesta
+// perdida) solo toca un <slug> con la marca de esta retirada: uno recién creado por una recepción
+// (marcador de migración sin confirmar) o ajeno da invalid_request.
+func (b *backupService) retireMigration(m *mcsmv1.MigrateRetire) error {
+	if err := checkMigrationMsg(m.GetServerId(), m.GetSlug(), m.GetMigrationId()); err != nil {
+		return err
+	}
+	id := m.GetServerId()
+	unlock, err := b.migLocks.lock(b.a.life, id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	sp, err := b.a.st.GetSpec(id)
+	if err != nil {
+		return err
+	}
+	dir := filepath.Join(b.a.cfg.DataRoot, m.GetSlug())
 	if sp != nil {
+		if sp.Slug != m.GetSlug() {
+			return fmt.Errorf("%w: el servidor tiene otro slug en este nodo (%s)", errBadRequest, sp.Slug)
+		}
+		if sp.Version != m.GetSourceVersion() {
+			return fmt.Errorf("%w: el servidor de este nodo tiene la versión %d y la migración se hizo con la %d (¿volvió aquí después?); no se toca",
+				errBadRequest, sp.Version, m.GetSourceVersion())
+		}
+		if _, err := os.Lstat(dir); err == nil {
+			if err := writeMarker(dir, retiringMarker, m.GetMigrationId()); err != nil {
+				return fmt.Errorf("marcar %s para retirarlo: %w", dir, err)
+			}
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 		if err := b.forgetHeld(id, func() error { return b.stopForRetire(id) }); err != nil {
 			return err
 		}
@@ -379,12 +505,12 @@ func (b *backupService) retireMigration(m *mcsmv1.MigrateRetire) error {
 		return err
 	}
 	b.a.hub.Reset(id)
-	// Sin spec (reintento): si <slug> sigue ahí, es el de este servidor (el panel no deja crear
-	// otro en el nodo mientras la retirada esté pendiente, y dirFree lo comprueba).
-	dir := filepath.Join(b.a.cfg.DataRoot, m.GetSlug())
 	if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	} else if err != nil {
+		return err
+	}
+	if err := b.retiringDir(dir, m.GetMigrationId()); err != nil {
 		return err
 	}
 	if err := b.dirFree(id, m.GetSlug()); err != nil {
@@ -409,6 +535,89 @@ func (b *backupService) retireMigration(m *mcsmv1.MigrateRetire) error {
 	}
 	b.a.log.Info("migración confirmada: los datos del origen se conservan", "server", id, "en", to)
 	return nil
+}
+
+// retiringDir comprueba que <slug> lleva la marca .mcsm-retiring de esta migración (la escribe la
+// retirada con la spec y la versión comprobadas). Si no, no es el directorio de esta retirada.
+func (b *backupService) retiringDir(dir, migrationID string) error {
+	got, err := os.ReadFile(filepath.Join(dir, retiringMarker))
+	if err == nil && strings.TrimSpace(string(got)) == migrationID {
+		return nil
+	}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if mark, merr := readMigMark(dir); merr == nil && mark.present && !mark.committed {
+		return fmt.Errorf("%w: %s es una recepción en curso o el resto de otra migración (%s); no se toca", errBadRequest, dir, mark)
+	}
+	return fmt.Errorf("%w: %s no lleva la marca de esta retirada (%s); no se toca", errBadRequest, dir, retiringMarker)
+}
+
+// keyedLocks: un cerrojo por servidor (valor cero utilizable). lock espera su turno o al cierre
+// del agente.
+type keyedLocks struct {
+	mu    sync.Mutex
+	locks map[string]*keyedLock
+	// notify (tests): recibe un aviso, sin bloquear, cada vez que alguien se pone a esperar turno.
+	notify chan struct{}
+}
+
+type keyedLock struct {
+	ch      chan struct{}
+	refs    int // quienes lo tienen o lo esperan (se borra al llegar a 0)
+	waiting int
+}
+
+func (k *keyedLocks) lock(ctx context.Context, id string) (func(), error) {
+	k.mu.Lock()
+	if k.locks == nil {
+		k.locks = map[string]*keyedLock{}
+	}
+	l := k.locks[id]
+	if l == nil {
+		l = &keyedLock{ch: make(chan struct{}, 1)}
+		k.locks[id] = l
+	}
+	l.refs++
+	l.waiting++
+	if k.notify != nil {
+		select {
+		case k.notify <- struct{}{}:
+		default:
+		}
+	}
+	k.mu.Unlock()
+	done := func() {
+		k.mu.Lock()
+		l.refs--
+		if l.refs == 0 {
+			delete(k.locks, id)
+		}
+		k.mu.Unlock()
+	}
+	select {
+	case l.ch <- struct{}{}:
+		k.mu.Lock()
+		l.waiting--
+		k.mu.Unlock()
+		return func() { <-l.ch; done() }, nil
+	case <-ctx.Done():
+		k.mu.Lock()
+		l.waiting--
+		k.mu.Unlock()
+		done()
+		return nil, errClosing
+	}
+}
+
+// waiting: cuántos esperan turno para id (tests).
+func (k *keyedLocks) waiting(id string) int {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if l := k.locks[id]; l != nil {
+		return l.waiting
+	}
+	return 0
 }
 
 // dirFree comprueba, antes de borrar o apartar <DATA_ROOT>/<slug>, que ningún otro servidor del

@@ -122,8 +122,10 @@ type backupService struct {
 	closed  bool                             // wait empezó: no se lanzan tareas nuevas
 	blocked map[string]func(context.Context) // servidores sin datos → su reserva (ver block)
 
-	wg    sync.WaitGroup // copias, restauraciones y liberaciones en curso (los tests esperan con wg.Wait)
-	loops sync.WaitGroup // bucles de start
+	wg sync.WaitGroup // copias, restauraciones y liberaciones en curso (los tests esperan con wg.Wait)
+	// plan-7: MigrateAbort, MigrateRetire y MigrateConfirm de un mismo servidor, de uno en uno.
+	migLocks keyedLocks
+	loops    sync.WaitGroup // bucles de start
 }
 
 func newBackupService(a *App, clock backup.Clock) *backupService {

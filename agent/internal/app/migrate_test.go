@@ -47,6 +47,8 @@ func migrateEnvelope(id uint64, body any) *mcsmv1.Envelope {
 		env.Body = &mcsmv1.Envelope_MigrateAbort{MigrateAbort: b}
 	case *mcsmv1.MigrateRetire:
 		env.Body = &mcsmv1.Envelope_MigrateRetire{MigrateRetire: b}
+	case *mcsmv1.MigrateConfirm:
+		env.Body = &mcsmv1.Envelope_MigrateConfirm{MigrateConfirm: b}
 	default:
 		panic(fmt.Sprintf("cuerpo no previsto %T", body))
 	}
@@ -404,7 +406,7 @@ func TestMigrateRetireStopsAndSetsAsideData(t *testing.T) {
 	if !e.running(t) {
 		t.Fatal("precondición: el servidor está en marcha")
 	}
-	retire := &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1"}
+	retire := &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1}
 	if r := e.call(t, 50, retire); r.GetAck() == nil {
 		t.Fatalf("retire = %+v", r)
 	}
@@ -431,7 +433,7 @@ func TestMigrateRetireStopsAndSetsAsideData(t *testing.T) {
 
 func TestMigrateRetireDeleteData(t *testing.T) {
 	e := newMigrateEnv(t)
-	if r := e.call(t, 50, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", DeleteData: true}); r.GetAck() == nil {
+	if r := e.call(t, 50, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", DeleteData: true, SourceVersion: 1}); r.GetAck() == nil {
 		t.Fatalf("retire = %+v", r)
 	}
 	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha")); !errors.Is(err, os.ErrNotExist) {
@@ -451,7 +453,7 @@ func TestMigrateRetireRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := e.call(t, 61, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1"})
+	r := e.call(t, 61, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1})
 	if errCode(r) != errcode.Busy || !strings.Contains(r.GetError().GetMessage(), holdBackup) {
 		t.Fatalf("reservado = %+v", r)
 	}
@@ -501,7 +503,7 @@ func TestMigrateRetireKeepsDataWhileContainerExists(t *testing.T) {
 			eng := &failRemoveEngine{Fake: fake}
 			e := newBackupEnvEngine(t, eng, fake, specJSON)
 			eng.setFail(true)
-			retire := &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", DeleteData: del}
+			retire := &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", DeleteData: del, SourceVersion: 1}
 			if r := e.call(t, 50, retire); errCode(r) != errcode.Busy {
 				t.Fatalf("retire = %+v", r)
 			}
@@ -563,10 +565,238 @@ func TestMigrateAbortAndRetireWhileClosing(t *testing.T) {
 	if r := e.call(t, 80, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}); errCode(r) != errcode.Busy {
 		t.Fatalf("abort = %+v", r)
 	}
-	if r := e.call(t, 81, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1"}); errCode(r) != errcode.Busy {
+	if r := e.call(t, 81, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1}); errCode(r) != errcode.Busy {
 		t.Fatalf("retire = %+v", r)
 	}
 	if got := readLevel(t, e.dataDir()); got != "LEVEL-1" {
 		t.Fatalf("data = %q", got)
+	}
+}
+
+// stopServer para "a" como el paso 1 de la migración (PowerAction stop: estado deseado parado).
+func stopServer(t *testing.T, e *backupEnv, msgID uint64) {
+	t.Helper()
+	if r := e.handle(msgID, &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP}); r.GetAck() == nil {
+		t.Fatalf("stop = %+v", r)
+	}
+	if e.running(t) {
+		t.Fatal("precondición: a parado")
+	}
+}
+
+// receiveGhost: el destino recibe la copia de "m" (mig-1) y guarda su spec (paso 5), parada.
+func receiveGhost(t *testing.T, e *backupEnv) {
+	t.Helper()
+	arch, sum, data := worldArchive(t, "LEVEL-MIG")
+	servePanel(t, e, arch)
+	e.call(t, 30, receiveMsg("rx-1", arch, sum, data))
+	e.settle(t)
+	ghost := &mcsmv1.ServerSpec{ServerId: "m", Slug: "mig", Version: 4, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_STOPPED, SpecJson: []byte(specJSON)}
+	if r := e.handle(31, &mcsmv1.ApplySpec{Server: ghost}); r.GetAck() == nil {
+		t.Fatalf("ApplySpec = %+v", r)
+	}
+}
+
+func readMarkerFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// I1: tras MigrateConfirm, un MigrateAbort de esa misma migración (p. ej. de un panel restaurado
+// desde una foto anterior al commit) no toca nada: ni spec, ni contenedor, ni datos ni copias.
+func TestMigrateAbortAfterConfirmKeepsLiveServer(t *testing.T) {
+	e := newMigrateEnv(t)
+	receiveGhost(t, e)
+	confirm := &mcsmv1.MigrateConfirm{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}
+	if r := e.call(t, 32, confirm); r.GetAck() == nil {
+		t.Fatalf("confirm = %+v", r)
+	}
+	if got := readMarkerFile(t, e.migDir(), migrationMarker); got != "committed mig-1" {
+		t.Fatalf("marcador = %q", got)
+	}
+	if r := e.call(t, 33, confirm); r.GetAck() == nil {
+		t.Fatalf("repetir confirm = %+v", r)
+	}
+	r := e.call(t, 34, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"})
+	if errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("abort tras confirm = %+v", r)
+	}
+	if sp, _ := e.st.GetSpec("m"); sp == nil {
+		t.Fatal("la spec del servidor vivo se conserva")
+	}
+	if c, _ := e.a.rec.Container(context.Background(), "m"); c == nil {
+		t.Fatal("el contenedor del servidor vivo se conserva")
+	}
+	if got := readLevel(t, filepath.Join(e.migDir(), "data")); got != "LEVEL-MIG" {
+		t.Fatalf("data = %q", got)
+	}
+	if m, _ := filepath.Glob(filepath.Join(e.migDir(), "backups", "*.tar.zst")); len(m) != 1 {
+		t.Fatalf("la copia recibida se conserva: %v", m)
+	}
+}
+
+// I1: con la spec en el nodo, MigrateAbort lee el marcador antes de tocar nada: si es de otra
+// migración (o no hay), invalid_request y la spec sigue.
+func TestMigrateAbortReadsMarkerBeforeForgetting(t *testing.T) {
+	e := newMigrateEnv(t)
+	receiveGhost(t, e)
+	if r := e.call(t, 32, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-2"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("abort de otra migración = %+v", r)
+	}
+	// El servidor "a" no llegó por migración (sin marcador): un abort con su slug no lo olvida.
+	if r := e.call(t, 33, &mcsmv1.MigrateAbort{ServerId: "a", Slug: "alpha", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("abort de un servidor sin marcador = %+v", r)
+	}
+	for _, id := range []string{"m", "a"} {
+		if sp, _ := e.st.GetSpec(id); sp == nil {
+			t.Fatalf("la spec de %s se conserva", id)
+		}
+	}
+	if !e.running(t) || readLevel(t, e.dataDir()) != "LEVEL-1" {
+		t.Fatal("a sigue intacto y en marcha")
+	}
+}
+
+func TestMigrateConfirmRefusals(t *testing.T) {
+	e := newMigrateEnv(t)
+	if r := e.call(t, 40, &mcsmv1.MigrateConfirm{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}); r.GetAck() == nil {
+		t.Fatalf("sin nada que confirmar = %+v", r)
+	}
+	receiveGhost(t, e)
+	if r := e.call(t, 41, &mcsmv1.MigrateConfirm{ServerId: "m", Slug: "mig", MigrationId: "mig-2"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("marcador de otra migración = %+v", r)
+	}
+	if r := e.call(t, 42, &mcsmv1.MigrateConfirm{ServerId: "m", Slug: "otro", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("otro slug = %+v", r)
+	}
+	if got := readMarkerFile(t, e.migDir(), migrationMarker); got != "mig-1" {
+		t.Fatalf("el marcador no cambia: %q", got)
+	}
+}
+
+// I1: el servidor volvió a este nodo con otra migración (otra versión): la retirada de la
+// migración antigua no lo toca.
+func TestMigrateRetireRefusesAnotherVersion(t *testing.T) {
+	e := newMigrateEnv(t)
+	back := &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 3, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(specJSON)}
+	if r := e.handle(2, &mcsmv1.ApplySpec{Server: back}); r.GetAck() == nil {
+		t.Fatalf("ApplySpec = %+v", r)
+	}
+	for i, del := range []bool{false, true} {
+		r := e.call(t, uint64(50+i), &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1, DeleteData: del})
+		if errCode(r) != errcode.InvalidRequest || !strings.Contains(r.GetError().GetMessage(), "versión") {
+			t.Fatalf("retire con otra versión = %+v", r)
+		}
+	}
+	if sp, _ := e.st.GetSpec("a"); sp == nil || !e.running(t) || readLevel(t, e.dataDir()) != "LEVEL-1" {
+		t.Fatal("el servidor vivo sigue intacto y en marcha")
+	}
+	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha", retiringMarker)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("sin marca de retirada")
+	}
+}
+
+// m1: un reintento de la retirada sin spec solo toca un <slug> con la marca .mcsm-retiring de esta
+// migración; un <slug> recién creado por una recepción (marcador sin confirmar) o ajeno no se toca.
+func TestMigrateRetireRetryOnlyTouchesItsMarkedDir(t *testing.T) {
+	fake := docker.NewFake()
+	eng := &failRemoveEngine{Fake: fake}
+	e := newBackupEnvEngine(t, eng, fake, specJSON)
+	eng.setFail(true)
+	retire := &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1, DeleteData: true}
+	if r := e.call(t, 50, retire); errCode(r) != errcode.Busy {
+		t.Fatalf("retire = %+v", r)
+	}
+	dir := filepath.Join(e.a.cfg.DataRoot, "alpha")
+	if got := readMarkerFile(t, dir, retiringMarker); got != "mig-1" {
+		t.Fatalf("marca de retirada = %q", got)
+	}
+	eng.setFail(false)
+	if err := e.a.rec.Remove(context.Background(), "a", false); err != nil {
+		t.Fatal(err)
+	}
+	// Otro <slug> ocupa el sitio: una recepción en curso (marcador sin confirmar) y, después, uno sin marcas.
+	aside := dir + ".kept"
+	if err := os.Rename(dir, aside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, migrationMarker), []byte("mig-9\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.call(t, 51, retire); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("recepción en curso = %+v", r)
+	}
+	if err := os.Remove(filepath.Join(dir, migrationMarker)); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.call(t, 52, retire); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("directorio ajeno = %+v", r)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "data")); err != nil {
+		t.Fatal("el directorio ajeno sigue intacto")
+	}
+	// Con su marca, el reintento completa la retirada.
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(aside, dir); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.call(t, 53, retire); r.GetAck() == nil {
+		t.Fatalf("reintento = %+v", r)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("con delete_data, <slug> se borra")
+	}
+}
+
+// m4: abort, retire y confirm del mismo servidor se ejecutan de uno en uno.
+func TestMigrateOpsSerializedPerServer(t *testing.T) {
+	e := newMigrateEnv(t)
+	unlock, err := e.a.bk.migLocks.lock(context.Background(), "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	notify := make(chan struct{}, 1)
+	e.a.bk.migLocks.mu.Lock()
+	e.a.bk.migLocks.notify = notify
+	e.a.bk.migLocks.mu.Unlock()
+	e.a.Handle(context.Background(), migrateEnvelope(50, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1}), e.col.reply)
+	deadline := time.After(5 * time.Second)
+	for e.a.bk.migLocks.waiting("a") != 1 {
+		select {
+		case <-notify:
+		case <-deadline:
+			t.Fatal("el retire no llegó a esperar su turno")
+		}
+	}
+	for _, env := range e.col.all() {
+		if env.Id == 50 {
+			t.Fatalf("respondió sin su turno: %+v", env)
+		}
+	}
+	if sp, _ := e.st.GetSpec("a"); sp == nil || !e.running(t) {
+		t.Fatal("sin su turno no toca nada")
+	}
+	unlock()
+	var r *mcsmv1.Envelope
+	e.col.waitFor(t, "respuesta a 50", func() bool {
+		for _, env := range e.col.all() {
+			if env.Id == 50 {
+				r = env
+				return true
+			}
+		}
+		return false
+	})
+	if r.GetAck() == nil {
+		t.Fatalf("retire = %+v", r)
 	}
 }

@@ -19,6 +19,9 @@ const migratedInfix = ".migrated-"
 
 var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
+// ValidSHA256 dice si s es un sha256 en hexadecimal en minúsculas (64 caracteres).
+func ValidSHA256(s string) bool { return sha256Re.MatchString(s) }
+
 // MigratedName es el nombre con que se aparta, junto a él, el directorio de un servidor del nodo
 // origen al confirmar una migración: p. ej. survival.migrated-20261012T040000.000Z. Conserva data y
 // sus copias y deja libre <slug> (el servidor puede volver, o crearse otro con ese slug).

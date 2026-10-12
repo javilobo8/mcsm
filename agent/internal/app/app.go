@@ -421,6 +421,8 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		a.bk.handleMigrateAbort(env.Id, b.MigrateAbort, send)
 	case *mcsmv1.Envelope_MigrateRetire:
 		a.bk.handleMigrateRetire(env.Id, b.MigrateRetire, send)
+	case *mcsmv1.Envelope_MigrateConfirm:
+		a.bk.handleMigrateConfirm(env.Id, b.MigrateConfirm, send)
 	// ── plan-8 ──
 	// ── plan-9 ──
 
