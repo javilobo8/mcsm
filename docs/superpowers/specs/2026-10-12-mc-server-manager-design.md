@@ -34,7 +34,7 @@ no se construyen.
 | Stack | Agente en Go. Panel (API + web) en TypeScript sobre Node 26 y pnpm. |
 | Modelo del agente | Reconciliador: el panel envía specs deseadas, el agente reconcilia Docker y reporta estado real. |
 | Instalación del agente | Contenedor Docker con `/var/run/docker.sock` montado. |
-| Base de datos del panel | SQLite (un fichero), con Drizzle ORM y migraciones. |
+| Base de datos del panel | SQLite (un fichero) vía el módulo nativo `node:sqlite` de Node 26, SQL a mano y migraciones SQL numeradas. Sin ORM ni dependencias nativas. |
 | Store local del agente | bbolt (fichero único) en un volumen del contenedor del agente. |
 | Protocolo | Protobuf definido con `buf`, binario sobre un WebSocket por agente. HTTP saliente del agente para transferencias grandes. |
 | Backups | Nativos en el agente (RCON save-off/save-all, tar.zst, save-on). Destino: disco local del nodo. |
@@ -109,7 +109,7 @@ mc-server-manager/
 Todas las tablas usan `id` UUIDv7 como texto, `created_at`/`updated_at` en ISO 8601.
 
 **nodes**
-- `name`, `token_hash` (argon2id del token permanente), `data_root` (ej. `/srv/minecraft`,
+- `name`, `token_hash` (SHA-256 del token permanente), `data_root` (ej. `/srv/minecraft`,
   ruta en el host del nodo), `agent_version`, `docker_version`, `last_seen_at`,
   `status` (`online|offline|degraded`), `host_info` JSON (CPUs, RAM total, disco total
   del `data_root`), `settings` JSON (rango de puertos permitido, intervalo de stats).
@@ -340,7 +340,7 @@ el usuario pida el primer cambio de spec; mientras tanto se gestiona por `import
 
 ## 7. El panel en detalle
 
-- **Fastify** con `@fastify/websocket`, `@fastify/cookie`, sesiones firmadas,
+- **Fastify 5** con `@fastify/websocket`, `@fastify/cookie` (cookie de sesión firmada que apunta a una fila de `sessions`),
   `@fastify/static` para la web compilada. Validación de entrada con **zod**; los tipos de
   spec se comparten con la web desde `packages/proto-ts` y un paquete `packages/shared`
   con los esquemas zod de spec y la función que valida combinaciones (p. ej. `modpack`
@@ -382,8 +382,8 @@ administración, no una landing.
 
 ## 9. Seguridad (ámbito LAN, un usuario)
 
-- Login con contraseña (argon2id), cookie `HttpOnly`, `SameSite=Strict`. Rate-limit en login.
-- Tokens de nodo: 32 bytes aleatorios, hash en BD, comparación en tiempo constante.
+- Login con contraseña (hash `scrypt` de `node:crypto`, sin dependencias nativas), cookie `HttpOnly`, `SameSite=Strict`. Rate-limit en login.
+- Tokens de nodo: 32 bytes aleatorios, hash SHA-256 en BD (entropía alta, no necesita KDF lento), comparación en tiempo constante.
   Rotación desde la UI (el panel envía `RotateToken`, el agente guarda el nuevo y reconecta).
 - Tokens de alta: un solo uso, 15 min.
 - El agente valida que el `server_id` de cualquier operación de archivos/backup pertenece
@@ -467,3 +467,21 @@ La UI genera el bloque exacto con el token al dar de alta un nodo.
 11. Compose de despliegue, imágenes, README.
 
 Cada paso deja el sistema usable y probado antes del siguiente.
+
+## 14. Notas de implementación verificadas (2026-10-12)
+
+- Cliente Docker en Go: módulos `github.com/moby/moby/client` v0.6.x y `github.com/moby/moby/api` v1.56.x
+  (el antiguo `github.com/docker/docker` está obsoleto desde Docker 29). Las llamadas toman
+  structs de opciones: `ContainerCreate(ctx, ContainerCreateOptions{...})`, `ContainerList(ctx, ContainerListOptions{All: true, Filters: ...})`.
+- Los contenedores de servidor se crean con `Tty: true` y `OpenStdin: true` (como en los ejemplos
+  oficiales de itzg). Así `ContainerLogs` devuelve texto plano sin cabeceras de multiplexado.
+- Los contenedores de servidor se conectan a una red Docker de usuario llamada `mcsm` a la que
+  también pertenece el agente; el agente alcanza RCON y el ping de estado por nombre DNS
+  `mcsm-<slug>` en el puerto interno 25565/25575. El puerto de juego interno es siempre 25565;
+  `ports.game` es el puerto del host.
+- Las `properties` de la spec se pasan a la imagen con `CUSTOM_SERVER_PROPERTIES` (pares
+  `clave=valor` separados por salto de línea), que admite cualquier clave de `server.properties`.
+- Ping de estado y RCON: `github.com/mcstatus-io/mcutil/v4` (`status.Modern`, `rcon.Dial`).
+- WebSocket en Go: `github.com/coder/websocket`. Store del agente: `go.etcd.io/bbolt`.
+- Protobuf: `buf` 1.73 con plugins remotos `buf.build/protocolbuffers/go` y `buf.build/bufbuild/es` (v2, `@bufbuild/protobuf` 2.16).
+- Toolchain fijada en `mise.toml`: Go 1.27.2, buf 1.73.0; Node 26 y pnpm 12 ya instalados globalmente.
