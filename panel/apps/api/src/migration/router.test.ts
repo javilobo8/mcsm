@@ -127,4 +127,18 @@ describe("migración y router (Planes 7 y 8)", () => {
     app.migrations.update(m.id, { phase: "failed" });
     expect((await put({ enabled: true, port: 25590, autoscale: true })).statusCode).toBe(200);
   });
+
+  it("el router no se activa en un puerto que reserva una migración hacia el nodo", async () => {
+    const { a, b, s } = await nodes();
+    app.migrations.insert({
+      id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "survival", target_slug: "survival",
+      source_version: 1, target_version: 2, target_port: 25570, target_spec: JSON.stringify(spec(25570)), was_running: 1, delete_source: 0,
+    });
+    const put = (payload: object) => app.inject({ method: "PUT", url: `/api/nodes/${b.id}/router`, headers: { cookie }, payload });
+    const res = await put({ enabled: true, port: 25570 });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("El puerto 25570 lo reserva una migración en curso hacia este nodo: elige otro puerto para el router");
+    expect(app.routerService.get(b.id).spec.enabled).toBe(false);
+    expect((await put({ enabled: true, port: 25571 })).statusCode).toBe(200);
+  });
 });

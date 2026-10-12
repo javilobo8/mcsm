@@ -120,6 +120,10 @@ export class RouterService {
       if (owner) {
         throw new HttpError(409, `El puerto ${spec.port} lo usa el servidor «${owner.name}» de este nodo: elige otro puerto para el router o cambia el del servidor`);
       }
+      // Plan 7: el puerto de un servidor que se está migrando a este nodo (su copia arrancará en él).
+      if (this.app.migrations.reservedPorts(nodeId).has(spec.port)) {
+        throw new HttpError(409, `El puerto ${spec.port} lo reserva una migración en curso hacia este nodo: elige otro puerto para el router`);
+      }
     }
     if (spec.enabled && spec.autoscale) {
       // Plan 7: con el autoscale, mc-router arrancaría aquí el origen parado de una migración con hostname (la migración
