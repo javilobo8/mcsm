@@ -1872,7 +1872,7 @@ func (*Ack) Descriptor() ([]byte, []int) {
 //	invalid_request  petición mal formada                              400
 //	unknown_server   el nodo no conoce ese servidor                    404
 //	not_found        recurso inexistente (fichero, copia…)            404
-//	busy             el servidor está ocupado con otra operación       409
+//	busy             servidor ocupado o reservado (el mensaje da el motivo)  409
 //	exists           ya existe                                         409
 //	unsupported      el agente no entiende el cuerpo: desactualizado   409
 //	too_large        demasiado grande                                  413

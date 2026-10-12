@@ -9,7 +9,7 @@ const (
 	InvalidRequest = "invalid_request" // petición mal formada
 	UnknownServer  = "unknown_server"  // el nodo no conoce ese servidor
 	NotFound       = "not_found"       // recurso inexistente (fichero, copia…)
-	Busy           = "busy"            // el servidor está ocupado con otra operación
+	Busy           = "busy"            // servidor ocupado o reservado (el mensaje da el motivo)
 	Exists         = "exists"          // ya existe
 	Unsupported    = "unsupported"     // el agente no entiende el mensaje: está desactualizado
 	TooLarge       = "too_large"       // demasiado grande

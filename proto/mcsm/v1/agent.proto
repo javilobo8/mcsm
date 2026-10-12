@@ -177,7 +177,7 @@ message Ack {}
 //   invalid_request  petición mal formada                              400
 //   unknown_server   el nodo no conoce ese servidor                    404
 //   not_found        recurso inexistente (fichero, copia…)            404
-//   busy             el servidor está ocupado con otra operación       409
+//   busy             servidor ocupado o reservado (el mensaje da el motivo)  409
 //   exists           ya existe                                         409
 //   unsupported      el agente no entiende el cuerpo: desactualizado   409
 //   too_large        demasiado grande                                  413
@@ -366,7 +366,9 @@ message JobRecord {
 // caracteres de control. Respuestas: los *Result, Ack o Error{code, message} con
 // code ∈ invalid_path|path_outside|unknown_server|not_found|exists|is_dir|not_dir|
 // too_large|root|transfer_failed|io_error|busy|unsupported. busy: el nodo ya tiene 4
-// transferencias en curso o se está cerrando; unsupported: Files* que este agente no conoce.
+// transferencias en curso o se está cerrando o, solo en las que escriben (Write, Mkdir,
+// Rename, Delete, Upload), el servidor está reservado (copia, restauración o bloqueado sin
+// data); el mensaje dice el motivo. unsupported: Files* que este agente no conoce.
 
 message FileEntry {
   string name = 1;
