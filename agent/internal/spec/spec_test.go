@@ -184,3 +184,60 @@ func TestDefaults(t *testing.T) {
 		t.Error("sin memLimit no debe haber límite")
 	}
 }
+
+func TestValidacionEndurecida(t *testing.T) {
+	base := loadFixture(t)
+	cases := []struct {
+		name string
+		mut  func(*Spec)
+		want string // "" = debe aceptarse
+	}{
+		{"env TYPE=X rechazada", func(s *Spec) { s.Env = map[string]string{"TYPE=X": "y"} }, "nombre"},
+		{"env con espacio rechazada", func(s *Spec) { s.Env = map[string]string{"A B": "y"} }, "nombre"},
+		{"env vacía rechazada", func(s *Spec) { s.Env = map[string]string{"": "y"} }, "nombre"},
+		{"env que empieza por dígito rechazada", func(s *Spec) { s.Env = map[string]string{"1A": "y"} }, "nombre"},
+		{"env válida aceptada", func(s *Spec) { s.Env = map[string]string{"USE_AIKAR_FLAGS": "true"} }, ""},
+		{"puerto extra 25575/tcp rechazado", func(s *Spec) {
+			s.Ports.Extra = []PortMapping{{Host: 25575, Container: 25575, Proto: "tcp"}}
+		}, "RCON"},
+		{"puerto extra 25575/udp rechazado", func(s *Spec) {
+			s.Ports.Extra = []PortMapping{{Host: 19999, Container: 25575, Proto: "udp"}}
+		}, "RCON"},
+		{"memoria 4096 rechazada", func(s *Spec) { s.Memory = "4096" }, "memory"},
+		{"memoria 4GB rechazada", func(s *Spec) { s.Memory = "4GB" }, "memory"},
+		{"memoria 0G rechazada", func(s *Spec) { s.Memory = "0G" }, "memory"},
+		{"memoria 512M aceptada", func(s *Spec) { s.Memory = "512M" }, ""},
+		{"memoria 4g aceptada", func(s *Spec) { s.Memory = "4g" }, ""},
+		{"memLimit 4096 rechazado", func(s *Spec) { s.Resources.MemLimit = "4096" }, "memLimit"},
+		{"propiedad con = en la clave rechazada", func(s *Spec) { s.Properties = map[string]string{"a=b": "x"} }, "propiedad"},
+		{"propiedad con salto de línea en el valor rechazada", func(s *Spec) {
+			s.Properties = map[string]string{"motd": "x\nrcon.password=y"}
+		}, "propiedad"},
+		{"propiedad con retorno de carro en el valor rechazada", func(s *Spec) {
+			s.Properties = map[string]string{"motd": "x\ry"}
+		}, "propiedad"},
+		{"propiedad rcon.password reservada", func(s *Spec) { s.Properties = map[string]string{"rcon.password": "y"} }, "reservada"},
+		{"propiedad server-port reservada", func(s *Spec) { s.Properties = map[string]string{"server-port": "1"} }, "reservada"},
+		{"propiedad enable-rcon reservada", func(s *Spec) { s.Properties = map[string]string{"enable-rcon": "true"} }, "reservada"},
+		{"propiedad rcon.port reservada", func(s *Spec) { s.Properties = map[string]string{"rcon.port": "1"} }, "reservada"},
+		{"propiedades válidas aceptadas", func(s *Spec) {
+			s.Properties = map[string]string{"max-players": "10", "motd": "Hola", "level-name": "world"}
+		}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := base
+			tc.mut(&s)
+			err := s.Validate()
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("no debía fallar: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want que contenga %q", err, tc.want)
+			}
+		})
+	}
+}

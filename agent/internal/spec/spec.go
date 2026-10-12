@@ -38,6 +38,21 @@ var ReservedEnv = map[string]bool{
 
 var slugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
 
+// sizeRe acepta tamaños de memoria en MiB o GiB enteros y positivos (512M, 4G).
+var sizeRe = regexp.MustCompile(`^[1-9]\d*[MmGg]$`)
+
+// envNameRe valida los nombres de variable de env (no pueden contener = ni espacios).
+var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// propKeyRe valida las claves de server.properties.
+var propKeyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// ReservedProps son claves de server.properties que gestiona la imagen a partir
+// de las variables reservadas; el usuario no puede fijarlas.
+var ReservedProps = map[string]bool{
+	"server-port": true, "enable-rcon": true, "rcon.port": true, "rcon.password": true,
+}
+
 var restartPolicies = map[string]container.RestartPolicyMode{
 	"":               container.RestartPolicyUnlessStopped,
 	"unless-stopped": container.RestartPolicyUnlessStopped,
@@ -106,11 +121,17 @@ func (s Spec) Validate() error {
 	if s.Version == "" {
 		return fmt.Errorf("spec: version es obligatoria")
 	}
+	if !sizeRe.MatchString(s.Memory) {
+		return fmt.Errorf("spec: memory inválida %q (formato NNM o NNG, sin 0)", s.Memory)
+	}
 	memBytes, err := units.RAMInBytes(s.Memory)
 	if err != nil || memBytes <= 0 {
 		return fmt.Errorf("spec: memory inválida %q", s.Memory)
 	}
 	if s.Resources.MemLimit != "" {
+		if !sizeRe.MatchString(s.Resources.MemLimit) {
+			return fmt.Errorf("spec: memLimit inválido %q (formato NNM o NNG, sin 0)", s.Resources.MemLimit)
+		}
 		lim, err := units.RAMInBytes(s.Resources.MemLimit)
 		if err != nil || lim <= 0 {
 			return fmt.Errorf("spec: memLimit inválido %q", s.Resources.MemLimit)
@@ -132,6 +153,9 @@ func (s Spec) Validate() error {
 		if pm.Proto != "tcp" && pm.Proto != "udp" {
 			return fmt.Errorf("spec: proto inválido %q (tcp|udp)", pm.Proto)
 		}
+		if pm.Container == RconPort {
+			return fmt.Errorf("spec: el puerto extra no puede publicar RCON (%d)", RconPort)
+		}
 	}
 	if len(s.RconPassword) < 8 {
 		return fmt.Errorf("spec: rconPassword debe tener al menos 8 caracteres")
@@ -140,8 +164,22 @@ func (s Spec) Validate() error {
 		return fmt.Errorf("spec: restartPolicy inválida %q", s.RestartPolicy)
 	}
 	for k := range s.Env {
+		if !envNameRe.MatchString(k) {
+			return fmt.Errorf("spec: nombre de variable inválido %q", k)
+		}
 		if ReservedEnv[k] {
 			return fmt.Errorf("spec: la variable %s es reservada y no puede sobreescribirse", k)
+		}
+	}
+	for k, v := range s.Properties {
+		if !propKeyRe.MatchString(k) {
+			return fmt.Errorf("spec: nombre de propiedad inválido %q", k)
+		}
+		if ReservedProps[k] {
+			return fmt.Errorf("spec: la propiedad %s es reservada (la gestiona el agente)", k)
+		}
+		if strings.ContainsAny(v, "\r\n") {
+			return fmt.Errorf("spec: la propiedad %s no puede tener saltos de línea en el valor", k)
 		}
 	}
 	return nil

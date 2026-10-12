@@ -4,8 +4,10 @@ export const RESERVED_ENV = new Set([
   "EULA", "TYPE", "VERSION", "MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "RCON_PORT", "SERVER_PORT", "CUSTOM_SERVER_PROPERTIES",
 ]);
 
-const memory = z.string().regex(/^\d+[MmGg]$/, "Formato de memoria inválido (ej. 4G, 512M)");
+const memory = z.string().regex(/^[1-9]\d*[MmGg]$/, "Formato de memoria inválido (ej. 4G, 512M; sin ceros)");
 const port = z.number().int().min(1).max(65535);
+const RCON_PORT = 25575;
+const RESERVED_PROPS = new Set(["server-port", "enable-rcon", "rcon.port", "rcon.password"]);
 
 export function memoryToBytes(m: string): number {
   const n = Number(m.slice(0, -1));
@@ -17,10 +19,12 @@ export const portMappingSchema = z.object({
   container: port,
   proto: z.enum(["tcp", "udp"]),
   label: z.string().max(40).default(""),
+}).refine((pm) => pm.container !== RCON_PORT, {
+  message: "El puerto extra no puede publicar RCON (25575)",
 });
 
 const envSchema = z
-  .record(z.string().regex(/^[A-Z][A-Z0-9_]*$/, "Nombre de variable inválido"), z.string())
+  .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "Nombre de variable inválido"), z.string())
   .refine((env) => !Object.keys(env).some((k) => RESERVED_ENV.has(k)), {
     message: "Contiene una variable reservada (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES)",
   });
@@ -31,11 +35,18 @@ const resourcesSchema = z.object({
 });
 
 const baseFields = {
-  imageTag: z.string().min(1).default("java21"),
+  imageTag: z.string().min(1).default("latest"),
   type: z.string().min(1).default("PAPER"),
   version: z.string().min(1).default("LATEST"),
   memory: memory.default("2G"),
-  properties: z.record(z.string(), z.string()).default({}),
+  properties: z
+    .record(
+      z.string().regex(/^[a-z0-9][a-z0-9._-]*$/, "Nombre de propiedad inválido").refine((k) => !RESERVED_PROPS.has(k), {
+        message: "La propiedad es reservada (la gestiona el agente)",
+      }),
+      z.string().refine((v) => !/[\r\n]/.test(v), { message: "El valor de la propiedad no puede contener saltos de línea" }),
+    )
+    .default({}),
   env: envSchema.default({}),
   resources: resourcesSchema.prefault({}),
   restartPolicy: z.enum(["no", "always", "unless-stopped", "on-failure"]).default("unless-stopped"),
