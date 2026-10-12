@@ -142,6 +142,11 @@ func (m *Moby) Logs(ctx context.Context, id string, tail int) (io.ReadCloser, er
 	return rc, nil
 }
 
+// Events emite eventos de contenedores con la etiqueta mcsm.managed=true. El canal
+// de eventos se cierra cuando termina la goroutine (ctx cancelado, error del
+// daemon o stream cerrado). El canal de errores no se cierra: recibe como mucho un
+// error, que incluye context.Canceled si ctx se cancela mientras se espera; el
+// consumidor debe ignorarlo en ese caso. Ningún envío bloquea más allá de ctx.
 func (m *Moby) Events(ctx context.Context) (<-chan Event, <-chan error) {
 	res := m.cli.Events(ctx, client.EventsListOptions{
 		Filters: client.Filters{}.Add("type", "container").Add("label", "mcsm.managed=true"),
@@ -156,14 +161,22 @@ func (m *Moby) Events(ctx context.Context) (<-chan Event, <-chan error) {
 				return
 			case err := <-res.Err:
 				if err != nil {
-					errs <- err
+					select {
+					case errs <- err:
+					case <-ctx.Done():
+					}
 				}
 				return
 			case msg, ok := <-res.Messages:
 				if !ok {
 					return
 				}
-				out <- Event{Action: string(msg.Action), ContainerID: msg.Actor.ID, Labels: msg.Actor.Attributes}
+				ev := Event{Action: string(msg.Action), ContainerID: msg.Actor.ID, Labels: msg.Actor.Attributes}
+				select {
+				case out <- ev:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()

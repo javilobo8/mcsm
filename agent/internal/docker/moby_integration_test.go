@@ -76,7 +76,10 @@ func TestMobyLifecycle(t *testing.T) {
 	if err := m.Stop(ctx, id, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	ins, _ = m.Inspect(ctx, id)
+	ins, err = m.Inspect(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if ins.Running {
 		t.Fatal("debería estar parado")
 	}
@@ -85,5 +88,59 @@ func TestMobyLifecycle(t *testing.T) {
 	}
 	if _, err := m.Inspect(ctx, id); err != ErrNotFound {
 		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestMobyEvents(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	m, err := NewMoby()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.EnsureImage(ctx, "alpine:3.22"); err != nil {
+		t.Fatal(err)
+	}
+	evCtx, evCancel := context.WithCancel(ctx)
+	defer evCancel()
+	evs, _ := m.Events(evCtx)
+
+	id, err := m.Create(ctx, "mcsm-test-events",
+		&container.Config{Image: "alpine:3.22", Cmd: []string{"sleep", "300"}, Labels: map[string]string{"mcsm.managed": "true", "mcsm.test": "true", "mcsm.server_id": "ev"}},
+		&container.HostConfig{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Remove(context.Background(), id)
+	if err := m.Start(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	timeout := time.After(30 * time.Second)
+	for got := false; !got; {
+		select {
+		case ev, ok := <-evs:
+			if !ok {
+				t.Fatal("canal de eventos cerrado antes de recibir start")
+			}
+			if ev.Action == "start" && ev.ContainerID == id {
+				got = true
+				if ev.Labels["mcsm.server_id"] != "ev" {
+					t.Fatalf("labels = %v", ev.Labels)
+				}
+			}
+		case <-timeout:
+			t.Fatal("sin evento start")
+		}
+	}
+	evCancel()
+	for {
+		select {
+		case _, ok := <-evs:
+			if !ok {
+				return
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("el canal de eventos no se cerró tras cancelar")
+		}
 	}
 }

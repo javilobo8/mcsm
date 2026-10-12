@@ -3,11 +3,13 @@ package docker
 import (
 	"context"
 	"errors"
-	"io"
+	"strings"
 	"testing"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 )
 
 func TestFakeLifecycle(t *testing.T) {
@@ -55,7 +57,7 @@ func TestFakeLifecycle(t *testing.T) {
 func TestFakeCreateErrorAndNameConflict(t *testing.T) {
 	ctx := context.Background()
 	f := NewFake()
-	f.CreateErr = errors.New("puerto ocupado")
+	f.CreateErr = errors.New("fallo de creación inyectado")
 	if _, err := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil); err == nil {
 		t.Fatal("esperaba error")
 	}
@@ -84,8 +86,8 @@ func TestFakeLogsAndEvents(t *testing.T) {
 		t.Fatalf("log = %q", buf[:n])
 	}
 	rc.Close()
-	if _, err := io.ReadAll(rc); err == nil {
-		// cerrado: el siguiente Read devuelve error o EOF; cualquiera vale
+	if _, err := rc.Read(buf); err == nil {
+		t.Fatal("tras Close, Read debe devolver error o EOF")
 	}
 	evs, _ := f.Events(ctx)
 	go f.EmitEvent(Event{Action: "die", ContainerID: id, Labels: map[string]string{"mcsm.server_id": "a"}})
@@ -96,5 +98,164 @@ func TestFakeLogsAndEvents(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("sin evento")
+	}
+}
+
+func portHost(port string) *container.HostConfig {
+	return &container.HostConfig{PortBindings: network.PortMap{
+		network.MustParsePort("25565/tcp"): {{HostPort: port}},
+	}}
+}
+
+func TestFakeStartPortCollision(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake()
+	a, _ := f.Create(ctx, "mcsm-a", &container.Config{}, portHost("25565"), nil)
+	b, _ := f.Create(ctx, "mcsm-b", &container.Config{}, portHost("25565"), nil)
+	if err := f.Start(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	err := f.Start(ctx, b)
+	if err == nil || !strings.Contains(err.Error(), "port is already allocated") {
+		t.Fatalf("err = %v", err)
+	}
+	if ins, _ := f.Inspect(ctx, b); ins.State != "created" {
+		t.Fatalf("b debe seguir created, es %q", ins.State)
+	}
+	_ = f.Stop(ctx, a, time.Second)
+	if err := f.Start(ctx, b); err != nil {
+		t.Fatalf("con a parado debe arrancar: %v", err)
+	}
+}
+
+func TestFakeStartErr(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake()
+	id, _ := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil)
+	f.StartErr = errors.New("boom")
+	if err := f.Start(ctx, id); err == nil {
+		t.Fatal("esperaba error")
+	}
+}
+
+func TestFakeStateTransitionsLikeDocker(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake()
+	id, _ := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil)
+
+	// Stop sobre created sigue created.
+	if err := f.Stop(ctx, id, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if ins, _ := f.Inspect(ctx, id); ins.State != "created" {
+		t.Fatalf("stop sobre created -> %q", ins.State)
+	}
+	// Kill sobre no-running: conflicto.
+	if err := f.Kill(ctx, id); !cerrdefs.IsConflict(err) {
+		t.Fatalf("kill sobre created err = %v", err)
+	}
+	// Start sobre running es no-op.
+	_ = f.Start(ctx, id)
+	f.SetHealth(id, "healthy")
+	before, _ := f.Inspect(ctx, id)
+	time.Sleep(2 * time.Millisecond)
+	if err := f.Start(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := f.Inspect(ctx, id)
+	if !after.StartedAt.Equal(before.StartedAt) || after.Health != "healthy" {
+		t.Fatalf("start sobre running modificó estado: %+v -> %+v", before, after)
+	}
+	// Kill -> 137; Stop sobre exited conserva ExitCode; Kill sobre exited: conflicto.
+	if err := f.Kill(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Stop(ctx, id, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if ins, _ := f.Inspect(ctx, id); ins.State != "exited" || ins.ExitCode != 137 {
+		t.Fatalf("tras kill+stop = %+v", ins)
+	}
+	if err := f.Kill(ctx, id); !cerrdefs.IsConflict(err) {
+		t.Fatalf("kill sobre exited err = %v", err)
+	}
+}
+
+func TestFakeNotFound(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake()
+	for name, err := range map[string]error{
+		"start": f.Start(ctx, "x"), "stop": f.Stop(ctx, "x", time.Second),
+		"kill": f.Kill(ctx, "x"), "remove": f.Remove(ctx, "x"),
+	} {
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s err = %v", name, err)
+		}
+	}
+	if _, err := f.Logs(ctx, "x", 1); !errors.Is(err, ErrNotFound) {
+		t.Errorf("logs err = %v", err)
+	}
+}
+
+func TestFakeListManagedFiltersAndCopiesLabels(t *testing.T) {
+	ctx := context.Background()
+	f := NewFake()
+	_, _ = f.Create(ctx, "ajeno", &container.Config{Labels: map[string]string{"x": "y"}}, &container.HostConfig{}, nil)
+	id, _ := f.Create(ctx, "mcsm-a", &container.Config{Labels: map[string]string{"mcsm.managed": "true"}}, &container.HostConfig{}, nil)
+	list, _ := f.ListManaged(ctx)
+	if len(list) != 1 || list[0].ID != id {
+		t.Fatalf("list = %+v", list)
+	}
+	list[0].Labels["mcsm.managed"] = "mutado"
+	ins, _ := f.Inspect(ctx, id)
+	ins.Labels["otro"] = "x"
+	ins2, _ := f.Inspect(ctx, id)
+	if ins2.Labels["mcsm.managed"] != "true" || ins2.Labels["otro"] != "" {
+		t.Fatalf("aliasing de labels: %+v", ins2.Labels)
+	}
+}
+
+func TestFakeEventsCloseOnCancelAndInjectedError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	f := NewFake()
+	evs, errs := f.Events(ctx)
+	f.EmitEventErr(errors.New("conexión perdida"))
+	select {
+	case err := <-errs:
+		if err == nil || err.Error() != "conexión perdida" {
+			t.Fatalf("err = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("sin error")
+	}
+	cancel()
+	select {
+	case _, ok := <-evs:
+		if ok {
+			t.Fatal("evento inesperado")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("el canal debe cerrarse al cancelar ctx")
+	}
+}
+
+func TestFakeEmitEventNeverBlocks(t *testing.T) {
+	f := NewFake()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f.EmitEvent(Event{Action: "die"}) // sin suscriptores
+		ctx, cancel := context.WithCancel(context.Background())
+		_, _ = f.Events(ctx)
+		for i := 0; i < 1000; i++ { // buffer lleno: descarta
+			f.EmitEvent(Event{Action: "die"})
+		}
+		cancel()
+		f.EmitEvent(Event{Action: "die"}) // ctx cancelado
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("EmitEvent se bloqueó")
 	}
 }
