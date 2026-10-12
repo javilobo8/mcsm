@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1039,7 +1038,7 @@ func TestRecoverUnrecoverableDataBlocksServer(t *testing.T) {
 func TestBlockedServerRemovedByPanelIsReleased(t *testing.T) {
 	e := newBackupEnv(t, specJSON)
 	e.a.bk.recoverDisk = func(string, string, string) (backup.Recovery, error) {
-		return backup.Recovery{}, errors.New("simulado: " + backup.ErrDataMissing.Error())
+		return backup.Recovery{}, fmt.Errorf("%w: simulado", backup.ErrDataMissing)
 	}
 	if err := os.RemoveAll(e.dataDir()); err != nil {
 		t.Fatal(err)
