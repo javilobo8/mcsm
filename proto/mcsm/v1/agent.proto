@@ -54,6 +54,7 @@ message Envelope {
     MigrateReceive migrate_receive = 102;
     MigrateAbort migrate_abort = 103;
     MigrateRetire migrate_retire = 104;
+    MigrateConfirm migrate_confirm = 105;
     // ── plan-8 ──
     // ── plan-9 ──
   }
@@ -464,8 +465,9 @@ message FilesUpload {
 
 // Panel → agente (origen). Sube una copia .tar.zst de <slug>/backups/ al panel con
 // PUT /agent/transfer/{transfer_id}. Respuesta: BackupPushResult cuando el panel la ha recibido
-// entera, o Error (unknown_server | invalid_request | not_found | busy | transfer_failed |
-// backup_failed: la copia no tiene sha256 en su .json).
+// entera, o Error (unknown_server | invalid_request | busy | transfer_failed | backup_failed: la
+// copia no existe o no tiene sha256 en su .json, que se lee primero | not_found: el .json existe
+// pero el .tar.zst no).
 message BackupPush {
   string server_id = 1;
   string filename = 2;
@@ -501,25 +503,44 @@ message MigrateReceive {
 
 // Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
 // olvida la spec del servidor (si la tiene) y borra su contenedor y, ya sin él, borra
-// <DATA_ROOT>/<slug> solo si lleva el marcador de migration_id y ningún otro servidor del nodo usa
-// ese slug. Idempotente. Respuesta: Ack o Error (busy: hay una recepción en curso o el contenedor
-// aún no se pudo borrar; el panel reintenta. invalid_request: otro slug u otro servidor lo usa).
+// <DATA_ROOT>/<slug> solo si lleva el marcador de migration_id sin confirmar y ningún otro
+// servidor del nodo usa ese slug. El marcador se lee ANTES de tocar la spec: si el servidor está
+// en este nodo y <slug> no lleva el marcador sin confirmar de esta migración (p. ej. ya llegó
+// MigrateConfirm), no toca nada. Idempotente. Respuesta: Ack o Error (busy: hay una recepción en
+// curso o el contenedor aún no se pudo borrar; el panel reintenta. invalid_request: otro slug,
+// otro servidor lo usa, o el servidor de este nodo no es una copia sin confirmar de esta migración).
 message MigrateAbort {
   string server_id = 1;
   string slug = 2;
   string migration_id = 3;
 }
 
-// Panel → agente (origen), tras confirmar la migración. Para el contenedor si sigue en marcha,
-// olvida la spec y borra el contenedor y, solo entonces, aparta <DATA_ROOT>/<slug> (datos y
-// copias) a <DATA_ROOT>/<slug>.migrated-<ts> o, con delete_data, lo borra. Idempotente.
-// Respuesta: Ack o Error (invalid_request: el servidor tiene otro slug aquí u otro servidor del
-// nodo usa ese slug; busy: reintentar, p. ej. el contenedor aún no se pudo borrar).
+// Panel → agente (origen), tras confirmar la migración. Comprueba que la spec guardada es la
+// versión source_version (la que se migró: un servidor que volvió después a este nodo trae otra),
+// marca <slug> con .mcsm-retiring (migration_id), para el contenedor si sigue en marcha, olvida la
+// spec y borra el contenedor y, solo entonces, aparta <DATA_ROOT>/<slug> (datos y copias) a
+// <DATA_ROOT>/<slug>.migrated-<ts> o, con delete_data, lo borra. Un reintento sin spec solo toca un
+// <slug> con el .mcsm-retiring de esta migración. Idempotente. Respuesta: Ack o Error
+// (invalid_request: otro slug, otra versión, otro servidor del nodo usa ese slug o <slug> no es el
+// de esta retirada (p. ej. una recepción en curso: marcador de migración sin confirmar); busy:
+// reintentar, p. ej. el contenedor aún no se pudo borrar).
 message MigrateRetire {
   string server_id = 1;
   string slug = 2;
   string migration_id = 3;
   bool delete_data = 4;
+  uint64 source_version = 5; // versión de la spec en el origen al empezar la migración
+}
+
+// Panel → agente (destino), tras confirmar la migración (y reintentado hasta el Ack). Reescribe
+// el marcador <DATA_ROOT>/<slug>/.mcsm-migration de migration_id como «committed <migration_id>»:
+// desde entonces ningún MigrateAbort (p. ej. de un panel restaurado desde una foto anterior al
+// commit) borra el servidor. Idempotente. Respuesta: Ack (también si ya estaba confirmado o no
+// hay marcador) o Error (invalid_request: otro slug, o el marcador es de otra migración; busy).
+message MigrateConfirm {
+  string server_id = 1;
+  string slug = 2;
+  string migration_id = 3;
 }
 // ── plan-8 ──
 // ── plan-9 ──

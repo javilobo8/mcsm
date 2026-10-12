@@ -6,7 +6,7 @@ import { isResponseCase } from "../agents/hub.js";
 describe("protocolo de la migración", () => {
   it("solo BackupPushResult resuelve una petición; los demás cuerpos son órdenes", () => {
     expect(isResponseCase("backupPushResult")).toBe(true);
-    for (const c of ["backupPush", "migrateReceive", "migrateAbort", "migrateRetire"]) expect(isResponseCase(c)).toBe(false);
+    for (const c of ["backupPush", "migrateReceive", "migrateAbort", "migrateRetire", "migrateConfirm"]) expect(isResponseCase(c)).toBe(false);
   });
 
   it("los mensajes nuevos viajan en Envelope.body con sus campos", () => {
@@ -20,9 +20,15 @@ describe("protocolo de la migración", () => {
     expect(back.body.value).toMatchObject({ slug: "uno", sizeBytes: 10n, dataBytes: 20n, migrationId: "m" });
 
     const retire = fromBinary(EnvelopeSchema, toBinary(EnvelopeSchema, create(EnvelopeSchema, {
-      body: { case: "migrateRetire", value: { serverId: "s", slug: "uno", migrationId: "m", deleteData: true } },
+      body: { case: "migrateRetire", value: { serverId: "s", slug: "uno", migrationId: "m", deleteData: true, sourceVersion: 4n } },
     })));
-    expect(retire.body.case === "migrateRetire" && retire.body.value.deleteData).toBe(true);
+    if (retire.body.case !== "migrateRetire") throw new Error();
+    expect(retire.body.value).toMatchObject({ deleteData: true, sourceVersion: 4n });
+
+    const confirm = fromBinary(EnvelopeSchema, toBinary(EnvelopeSchema, create(EnvelopeSchema, {
+      id: 8n, body: { case: "migrateConfirm", value: { serverId: "s", slug: "uno", migrationId: "m" } },
+    })));
+    expect(confirm.body.case).toBe("migrateConfirm");
 
     const res = fromBinary(EnvelopeSchema, toBinary(EnvelopeSchema, create(EnvelopeSchema, {
       id: 9n, body: { case: "backupPushResult", value: { sizeBytes: 5n, sha256: "cd".repeat(32), dataBytes: 9n } },
