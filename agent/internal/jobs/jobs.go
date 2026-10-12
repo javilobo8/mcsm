@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/proto"
 
@@ -31,6 +32,14 @@ const (
 	// inventoryJobs e inventoryLog acotan el tamaño del inventario que se envía al panel.
 	inventoryJobs = 200
 	inventoryLog  = 4 << 10
+
+	// MaxMessage acota el mensaje de estado de un job.
+	MaxMessage = 1024
+	// LogEvery es el intervalo mínimo entre volcados (guardar + enviar) del log de un job.
+	LogEvery = time.Second
+
+	putAttempts  = 3
+	putRetryWait = 200 * time.Millisecond
 )
 
 // Store es la parte del store del agente que usan los jobs.
@@ -47,12 +56,14 @@ type Tracker struct {
 	send func(*mcsmv1.Envelope) error
 	now  func() time.Time
 	log  *slog.Logger
-	mu   sync.Mutex // serializa Begin: dos duplicados simultáneos no arrancan dos ejecuciones
+	// sleep es la espera entre reintentos de guardado (inyectable en tests).
+	sleep func(time.Duration)
+	mu    sync.Mutex // serializa Begin: dos duplicados simultáneos no arrancan dos ejecuciones
 }
 
 // New crea un Tracker. send debe tolerar estar desconectado (devuelve error y se ignora).
 func New(st Store, send func(*mcsmv1.Envelope) error, now func() time.Time) *Tracker {
-	return &Tracker{st: st, send: send, now: now, log: slog.Default().With("component", "jobs")}
+	return &Tracker{st: st, send: send, now: now, sleep: time.Sleep, log: slog.Default().With("component", "jobs")}
 }
 
 // NewID genera un id (UUID v4) para los jobs que inicia el propio agente (copias programadas).
@@ -67,8 +78,8 @@ func NewID() string {
 // Begin registra un job nuevo en RUNNING y lo anuncia. Si el id ya existe devuelve
 // (nil, registro guardado, nil): el llamante NO debe ejecutarlo otra vez.
 func (t *Tracker) Begin(id, serverID, typ string) (*Job, *mcsmv1.JobRecord, error) {
-	if id == "" {
-		return nil, nil, errors.New("job sin id")
+	if id == "" || serverID == "" || typ == "" {
+		return nil, nil, errors.New("job sin id, servidor o tipo")
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -84,7 +95,10 @@ func (t *Tracker) Begin(id, serverID, typ string) (*Job, *mcsmv1.JobRecord, erro
 		return nil, nil, err
 	}
 	j := &Job{t: t, rec: rec}
-	j.emit("")
+	j.mu.Lock()
+	env := j.snapshot()
+	j.mu.Unlock()
+	_ = t.send(env)
 	return j, nil, nil
 }
 
@@ -93,8 +107,13 @@ func (t *Tracker) Replay(rec *mcsmv1.JobRecord) {
 	_ = t.send(progressEnv(rec, "", t.now()))
 }
 
-// FailInterrupted marca FAILED los jobs que quedaron RUNNING: el agente se reinició a mitad.
+// FailInterrupted marca FAILED los jobs que quedaron RUNNING (el agente se reinició a mitad)
+// y olvida los terminados hace más de KeepFor. Llamar solo al arrancar, antes de aceptar
+// jobs (no toma t.mu).
 func (t *Tracker) FailInterrupted() error {
+	if _, err := t.st.PruneJobs(t.now().Add(-KeepFor)); err != nil {
+		return err
+	}
 	list, err := t.st.ListJobs()
 	if err != nil {
 		return err
@@ -140,13 +159,16 @@ func (t *Tracker) Inventory(serverID string) ([]*mcsmv1.JobRecord, error) {
 	return out, nil
 }
 
-// Job es un job en curso. Sus métodos son seguros para uso concurrente.
+// Job es un job en curso. Sus métodos son seguros para uso concurrente. Nunca se llama a
+// send con el lock tomado: un envío lento no bloquea Record ni los demás métodos.
 type Job struct {
 	t        *Tracker
 	mu       sync.Mutex
 	rec      *mcsmv1.JobRecord
 	lastSent uint32
 	done     bool
+	pending  string    // líneas de log aún sin enviar al panel
+	lastLog  time.Time // último volcado del log (cero = ninguno todavía)
 }
 
 // ID devuelve el id del job (no cambia).
@@ -158,10 +180,10 @@ func (j *Job) Progress(pct uint32, msg string) {
 	if pct > 99 {
 		pct = 99
 	}
-	msg = clean(msg)
+	msg = limit(clean(msg), MaxMessage)
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	if j.done {
+		j.mu.Unlock()
 		return
 	}
 	if pct < j.rec.Progress {
@@ -170,44 +192,74 @@ func (j *Job) Progress(pct uint32, msg string) {
 	changed := msg != j.rec.Message || pct >= j.lastSent+progressStep
 	j.rec.Progress, j.rec.Message = pct, msg
 	if !changed {
+		j.mu.Unlock()
 		return
 	}
 	j.persist()
-	j.emit("")
+	env := j.snapshot()
+	j.mu.Unlock()
+	_ = j.t.send(env)
 }
 
-// Log añade una línea al log del job; se guarda y se emite como log_chunk.
+// Log añade una línea al log del job. Se acumula en memoria y se guarda y envía (como un
+// único log_chunk con las líneas pendientes) la primera vez y luego como mucho cada LogEvery;
+// Done vuelca siempre lo que quede.
 func (j *Job) Log(line string) {
 	chunk := clean(strings.TrimRight(line, "\n")) + "\n"
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	if j.done {
+		j.mu.Unlock()
 		return
 	}
 	j.rec.Log = tail(j.rec.Log+chunk, MaxLog)
+	j.pending = tail(j.pending+chunk, MaxLog)
+	now := j.t.now()
+	if !j.lastLog.IsZero() && now.Sub(j.lastLog) < LogEvery {
+		j.mu.Unlock()
+		return
+	}
+	j.lastLog = now
 	j.persist()
-	j.emit(chunk)
+	env := j.snapshot()
+	j.mu.Unlock()
+	_ = j.t.send(env)
 }
 
 // Done cierra el job: OK con okMsg si err es nil, FAILED con el error si no. Idempotente.
-func (j *Job) Done(err error, okMsg string) {
+// El estado en memoria queda final aunque falle el guardado; si tras reintentar sigue
+// fallando devuelve el error (el llamante debe registrarlo): en disco quedaría RUNNING.
+func (j *Job) Done(err error, okMsg string) error {
 	j.mu.Lock()
-	defer j.mu.Unlock()
 	if j.done {
-		return
+		j.mu.Unlock()
+		return nil
 	}
 	j.done = true
 	if err != nil {
 		j.rec.Status = mcsmv1.JobStatus_JOB_STATUS_FAILED
-		j.rec.Message = clean(err.Error())
+		j.rec.Message = limit(clean(err.Error()), MaxMessage)
 	} else {
 		j.rec.Status = mcsmv1.JobStatus_JOB_STATUS_OK
 		j.rec.Progress = 100
-		j.rec.Message = clean(okMsg)
+		j.rec.Message = limit(clean(okMsg), MaxMessage)
 	}
 	j.rec.FinishedUnixMs = j.t.now().UnixMilli()
-	j.persist()
-	j.emit("")
+	var perr error
+	for i := 0; i < putAttempts; i++ {
+		if perr = j.t.st.PutJob(j.rec); perr == nil {
+			break
+		}
+		if i < putAttempts-1 {
+			j.t.sleep(putRetryWait)
+		}
+	}
+	env := j.snapshot()
+	j.mu.Unlock()
+	_ = j.t.send(env)
+	if perr != nil {
+		return fmt.Errorf("guardar el estado final del job %s: %w", j.rec.JobId, perr)
+	}
+	return nil
 }
 
 // Record devuelve una copia del estado actual.
@@ -223,9 +275,12 @@ func (j *Job) persist() {
 	}
 }
 
-func (j *Job) emit(chunk string) {
+// snapshot (con j.mu tomado) construye el aviso con el log pendiente y lo da por enviado.
+func (j *Job) snapshot() *mcsmv1.Envelope {
 	j.lastSent = j.rec.Progress
-	_ = j.t.send(progressEnv(j.rec, chunk, j.t.now()))
+	chunk := j.pending
+	j.pending = ""
+	return progressEnv(j.rec, chunk, j.t.now())
 }
 
 func progressEnv(r *mcsmv1.JobRecord, chunk string, now time.Time) *mcsmv1.Envelope {
@@ -250,4 +305,15 @@ func tail(s string, max int) string {
 		cut = cut[i+1:]
 	}
 	return mark + strings.ToValidUTF8(cut, "")
+}
+
+// limit recorta s a max bytes sin partir un carácter.
+func limit(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	return s[:max]
 }

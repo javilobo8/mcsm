@@ -44,4 +44,11 @@ func TestJobs(t *testing.T) {
 	if j, _ := s.GetJob("running"); j == nil {
 		t.Fatal("un job en curso nunca se poda")
 	}
+	noEnd := &mcsmv1.JobRecord{JobId: "noend", Type: "backup", Status: mcsmv1.JobStatus_JOB_STATUS_OK, StartedUnixMs: now.Add(-9 * 24 * time.Hour).UnixMilli()}
+	if err := s.PutJob(noEnd); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.PruneJobs(now.Add(-7 * 24 * time.Hour)); err != nil || n != 1 {
+		t.Fatalf("PruneJobs sin hora de fin = %d, %v", n, err)
+	}
 }

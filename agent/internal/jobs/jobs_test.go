@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -145,6 +146,7 @@ func TestLogIsBoundedKeepingTheEnd(t *testing.T) {
 		j.Log(line)
 	}
 	j.Log("ULTIMA")
+	j.Done(nil, "ok") // Done vuelca el log pendiente
 	rec, _ := st.GetJob("j1")
 	if len(rec.Log) > MaxLog || !strings.HasPrefix(rec.Log, "…(recortado)") || !strings.HasSuffix(rec.Log, "ULTIMA\n") || !utf8.ValidString(rec.Log) {
 		t.Fatalf("log de %d bytes, prefijo %q", len(rec.Log), rec.Log[:20])
@@ -180,5 +182,196 @@ func TestNewIDIsUUIDv4(t *testing.T) {
 	id := NewID()
 	if len(id) != 36 || id[14] != '4' || id == NewID() {
 		t.Fatalf("id = %s", id)
+	}
+}
+
+// countingStore envuelve el store real contando (y haciendo fallar) los PutJob.
+type countingStore struct {
+	Store
+	mu     sync.Mutex
+	puts   int
+	failN  int // los primeros failN PutJob fallan
+	failAt func(*mcsmv1.JobRecord) bool
+}
+
+func (c *countingStore) PutJob(r *mcsmv1.JobRecord) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.puts++
+	if c.failN > 0 && c.failAt(r) {
+		c.failN--
+		return errors.New("disco lleno")
+	}
+	return c.Store.PutJob(r)
+}
+
+func newCounting(t *testing.T) (*Tracker, *countingStore, *progressSink, *testClock) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	cs := &countingStore{Store: st}
+	s := &progressSink{}
+	c := &testClock{t: time.Date(2026, 10, 12, 4, 0, 0, 0, time.UTC)}
+	tr := New(cs, s.send, c.now)
+	tr.sleep = func(time.Duration) {}
+	return tr, cs, s, c
+}
+
+func TestLogIsCoalesced(t *testing.T) {
+	tr, cs, s, c := newCounting(t)
+	j, _, _ := tr.Begin("j1", "srv", TypeBackup)
+	base := cs.puts
+	for i := 0; i < 1000; i++ {
+		j.Log(fmt.Sprintf("fichero %d", i))
+	}
+	if got := cs.puts - base; got != 1 {
+		t.Fatalf("guardados %d veces con el reloj parado, quería 1", got)
+	}
+	c.t = c.t.Add(LogEvery)
+	j.Log("otra")
+	if got := cs.puts - base; got != 2 {
+		t.Fatalf("tras LogEvery quería 2 guardados, hay %d", got)
+	}
+	j.Log("final")
+	j.Done(nil, "ok")
+	chunks := 0
+	var all strings.Builder
+	for _, m := range s.all() {
+		if m.LogChunk != "" {
+			chunks++
+			all.WriteString(m.LogChunk)
+		}
+	}
+	if chunks != 3 {
+		t.Fatalf("log_chunk enviados = %d, quería 3", chunks)
+	}
+	if !strings.HasSuffix(all.String(), "otra\nfinal\n") {
+		t.Fatalf("Done debe volcar el log pendiente: %q", all.String()[all.Len()-30:])
+	}
+	rec, _ := cs.GetJob("j1")
+	if !strings.Contains(rec.Log, "fichero 999\notra\nfinal\n") || len(rec.Log) > MaxLog {
+		t.Fatalf("log guardado incompleto (%d bytes)", len(rec.Log))
+	}
+}
+
+func TestDoneRetriesAndReportsPersistFailure(t *testing.T) {
+	tr, cs, _, _ := newCounting(t)
+	final := func(r *mcsmv1.JobRecord) bool { return r.Status != running }
+	cs.failAt = final
+	j, _, _ := tr.Begin("j1", "srv", TypeBackup)
+	cs.failN = 2
+	if err := j.Done(nil, "ok"); err != nil {
+		t.Fatalf("con 2 fallos y 3 intentos debe guardarse: %v", err)
+	}
+	if rec, _ := cs.GetJob("j1"); rec.Status != ok {
+		t.Fatalf("guardado = %+v", rec)
+	}
+	k, _, _ := tr.Begin("j2", "srv", TypeBackup)
+	cs.failN = 100
+	if err := k.Done(nil, "ok"); err == nil {
+		t.Fatal("Done debe devolver el error si el guardado sigue fallando")
+	}
+	if k.Record().Status != ok {
+		t.Fatal("el estado en memoria debe ser el final")
+	}
+}
+
+func TestConcurrentBeginSameIDRunsOnce(t *testing.T) {
+	tr, _, _, _ := setup(t)
+	const n = 32
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	started, dup := 0, 0
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			j, old, err := tr.Begin("same", "srv", TypeBackup)
+			mu.Lock()
+			defer mu.Unlock()
+			switch {
+			case err != nil:
+				t.Error(err)
+			case j != nil && old == nil:
+				started++
+			case j == nil && old != nil:
+				dup++
+			default:
+				t.Error("resultado incoherente")
+			}
+		}()
+	}
+	wg.Wait()
+	if started != 1 || dup != n-1 {
+		t.Fatalf("started=%d dup=%d", started, dup)
+	}
+}
+
+func TestSendErrorsAreIgnored(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "agent.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	c := &testClock{t: time.Date(2026, 10, 12, 4, 0, 0, 0, time.UTC)}
+	calls := 0
+	tr := New(st, func(*mcsmv1.Envelope) error { calls++; return errors.New("not connected") }, c.now)
+	j, _, err := tr.Begin("j1", "srv", TypeBackup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Progress(50, "mitad")
+	j.Log("linea")
+	if err := j.Done(nil, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	tr.Replay(j.Record())
+	rec, _ := st.GetJob("j1")
+	if calls == 0 || rec.Status != ok || rec.Progress != 100 || rec.Log != "linea\n" {
+		t.Fatalf("calls=%d rec=%+v", calls, rec)
+	}
+}
+
+func TestReplayRunningJob(t *testing.T) {
+	tr, _, s, _ := setup(t)
+	j, _, _ := tr.Begin("j1", "srv", TypeRestore)
+	j.Progress(40, "Restaurando")
+	_, old, _ := tr.Begin("j1", "srv", TypeRestore)
+	n := len(s.all())
+	tr.Replay(old)
+	got := s.all()
+	if len(got) != n+1 || got[n].Status != running || got[n].Progress != 40 || got[n].Message != "Restaurando" || got[n].Type != TypeRestore {
+		t.Fatalf("Replay = %+v", got[n:])
+	}
+}
+
+func TestBeginValidatesAndMessageIsBounded(t *testing.T) {
+	tr, st, _, _ := setup(t)
+	for _, a := range [][3]string{{"", "s", TypeBackup}, {"j", "", TypeBackup}, {"j", "s", ""}} {
+		if j, _, err := tr.Begin(a[0], a[1], a[2]); err == nil || j != nil {
+			t.Fatalf("Begin%v debe fallar", a)
+		}
+	}
+	j, _, _ := tr.Begin("j1", "s", TypeBackup)
+	j.Done(errors.New(strings.Repeat("ñ", 2000)), "")
+	rec, _ := st.GetJob("j1")
+	if len(rec.Message) > MaxMessage || !utf8.ValidString(rec.Message) {
+		t.Fatalf("mensaje de %d bytes", len(rec.Message))
+	}
+}
+
+func TestFailInterruptedPrunesOld(t *testing.T) {
+	tr, st, _, c := setup(t)
+	a, _, _ := tr.Begin("viejo", "s", TypeBackup)
+	a.Done(nil, "ok")
+	c.t = c.t.Add(KeepFor + time.Hour)
+	if err := tr.FailInterrupted(); err != nil {
+		t.Fatal(err)
+	}
+	if rec, _ := st.GetJob("viejo"); rec != nil {
+		t.Fatal("FailInterrupted debe podar los terminados antiguos")
 	}
 }

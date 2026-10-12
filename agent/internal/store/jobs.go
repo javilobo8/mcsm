@@ -89,7 +89,11 @@ func (s *Store) PruneJobs(before time.Time) (int, error) {
 			if err := proto.Unmarshal(raw, j); err != nil {
 				return err
 			}
-			if j.Status != mcsmv1.JobStatus_JOB_STATUS_RUNNING && j.FinishedUnixMs > 0 && j.FinishedUnixMs < before.UnixMilli() {
+			end := j.FinishedUnixMs
+			if end == 0 {
+				end = j.StartedUnixMs // terminado sin hora de fin: se poda por la de inicio
+			}
+			if j.Status != mcsmv1.JobStatus_JOB_STATUS_RUNNING && end > 0 && end < before.UnixMilli() {
 				del = append(del, append([]byte(nil), k...)) // k solo vale dentro de la transacción
 			}
 			return nil
