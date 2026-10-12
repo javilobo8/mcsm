@@ -239,3 +239,20 @@ conocer.)
   `dialogSubmit`.
 - Verificación completa: añade `buf breaking --against ".git#ref=feat/plan-1"` (funciona en
   worktrees) mientras `feat/plan-1` sea la base.
+- Docker 29.7.2: tras un `start` fallido por el puerto, el siguiente arranca **sin publicar
+  puertos** (aunque se pare y se vuelva a arrancar). Por eso `startOrDiscard` (arrancar,
+  comprobar `Inspect.PortsMissing` y, si falla, borrar para recrear; nunca un `Adopted`) y el
+  fake lo reproduce. Todo `Start` nuevo de un servidor pasa por `startOrDiscard`.
+- mc-router con autoscale arranca y para contenedores por su cuenta e **ignora `Hold`**: lo que
+  reserve un servidor bajo demanda (restauración, copia en frío, bloqueo) lo aparca con
+  `rec.Park`. mc-router **no despierta contenedores que nunca arrancaron**: un bajo demanda
+  recién creado o recreado se arranca (él lo duerme); por eso no se migra uno bajo demanda
+  (Park + liberar lo arrancaría en el origen).
+- Router: hash propio en `mcsm.router_hash` (no toca `mcsm.spec_hash`) e imagen fijada por
+  digest (`router.ImageRef()`); subir de versión = tag + digest nuevos.
+- Logs de contenedores sin TTY (importados adoptados): Docker los multiplexa; `Moby.Logs` mira
+  `Config.Tty` y los separa con `stdcopy` (`demuxLogs`).
+- E2E con `docker:dind`: monta su tmpfs en `/tmp` y tapa los binds de rutas bajo `/tmp`; usa
+  `deploy/data` para el `DATA_ROOT` de los nodos dind.
+- Tras cada fusión, también `go vet -tags integration ./...` (los tests de integración no
+  compilan en `go vet` normal y ahí aparecen los duplicados).
