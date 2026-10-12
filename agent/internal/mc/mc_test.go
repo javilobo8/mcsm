@@ -270,3 +270,20 @@ func TestLatencyMsRoundsUp(t *testing.T) {
 		}
 	}
 }
+
+func TestRconDeadline(t *testing.T) {
+	now := time.Date(2026, 10, 12, 4, 0, 0, 0, time.UTC)
+	if got := rconDeadline(context.Background(), now); !got.Equal(now.Add(rconTimeout)) {
+		t.Fatalf("sin plazo = %v", got)
+	}
+	long, cancel := context.WithDeadline(context.Background(), now.Add(2*time.Minute))
+	defer cancel()
+	if got := rconDeadline(long, now); !got.Equal(now.Add(2 * time.Minute)) {
+		t.Fatalf("con plazo largo = %v (un save-all flush lento no debe cortarse a los 5 s)", got)
+	}
+	short, cancel2 := context.WithDeadline(context.Background(), now.Add(time.Second))
+	defer cancel2()
+	if got := rconDeadline(short, now); !got.Equal(now.Add(time.Second)) {
+		t.Fatalf("con plazo corto = %v", got)
+	}
+}

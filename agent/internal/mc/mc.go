@@ -77,11 +77,7 @@ func Rcon(ctx context.Context, host string, port uint16, password, command strin
 		return "", fmt.Errorf("rcon: conectar: %w", err)
 	}
 	defer conn.Close()
-	deadline := time.Now().Add(rconTimeout)
-	if dl, ok := ctx.Deadline(); ok && dl.Before(deadline) {
-		deadline = dl
-	}
-	_ = conn.SetDeadline(deadline)
+	_ = conn.SetDeadline(rconDeadline(ctx, time.Now()))
 	// Cancelación explícita: cerrar la conexión desbloquea las lecturas.
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stop()
@@ -120,6 +116,15 @@ func Rcon(ctx context.Context, host string, port uint16, password, command strin
 			return body, nil
 		}
 	}
+}
+
+// rconDeadline es el plazo del contexto si lo tiene (un save-all flush en un mundo grande
+// tarda más de 5 s) o, si no, rconTimeout.
+func rconDeadline(ctx context.Context, now time.Time) time.Time {
+	if dl, ok := ctx.Deadline(); ok {
+		return dl
+	}
+	return now.Add(rconTimeout)
 }
 
 func writePacket(w io.Writer, id, typ int32, body string) error {
