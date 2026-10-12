@@ -17,15 +17,20 @@ Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → A
 ## Desarrollo
 
 ```bash
-mise install && pnpm install
+mise install            # instala Go y buf (Node 26 y pnpm 12 se instalan aparte)
+pnpm install
 pnpm dev:api        # panel en :8080
 pnpm dev:web        # web en :5173 (proxy a :8080)
 docker network create mcsm 2>/dev/null || true
 ENROLL_TOKEN=... DATA_ROOT=$PWD/deploy/data docker compose -f deploy/docker-compose.dev.yml up --build
 ```
-Tests: `cd agent && go test ./...` · `pnpm test` · integración con Docker real: `go test -tags integration ./...`.
+Tests:
+- Agente: `cd agent && go test ./...`
+- Panel: `pnpm test` (desde la raíz)
+- Integración con Docker real: `cd agent && go test -tags integration ./...`
+
 Protocolo: edita `proto/`, luego `pnpm gen` y commitea lo generado.
 
 ## Seguridad
 
-Pensado para una LAN doméstica y un único administrador. El agente monta el socket de Docker: quien controle el panel controla Docker en todos los nodos. No lo expongas a Internet.
+Pensado para una LAN doméstica y un único administrador. El agente monta el socket de Docker: quien controle el panel obtiene root efectivo en el host de cada nodo (Docker equivale a root). No lo expongas a Internet.

@@ -2,7 +2,9 @@
 **/dist
 agent/
 deploy/data
-deploy/.env
+**/.env
 docs/
 .git
-.superpowers/
+.worktrees
+.claude
+.superpowers

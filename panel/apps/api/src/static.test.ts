@@ -33,13 +33,32 @@ describe("web estática", () => {
     expect(res.body).toContain("SPA");
   });
 
-  it("/api, /agent y /ws desconocidos dan 404 JSON, y las rutas protegidas siguen dando 401", async () => {
-    for (const url of ["/api/nada", "/agent/nada", "/api/nada?x=1"]) {
+  it("las rutas reservadas (con variantes de mayusculas, codificacion y barra) dan 404 JSON", async () => {
+    const urls = ["/api", "/api/nada", "/api/nada?x=1", "/agent", "/agent/nada", "/ws/", "/ws/x", "/API/x", "/%61pi/nada", "/%41gent/x", "/%zz/api"];
+    for (const url of urls.slice(0, -1)) {
       const res = await app.inject({ method: "GET", url });
       expect(res.statusCode, url).toBe(404);
-      expect(res.json()).toEqual({ error: "No encontrado" });
+      expect(res.json(), url).toEqual({ error: "No encontrado" });
     }
-    const res = await app.inject({ method: "GET", url: "/api/servers" });
+  });
+
+  it("/assets inexistente da 404 y las rutas SPA siguen dando index.html", async () => {
+    let res = await app.inject({ method: "GET", url: "/assets/inexistente.js" });
+    expect(res.statusCode).toBe(404);
+    expect(res.body).not.toContain("SPA");
+    res = await app.inject({ method: "GET", url: "/app/servers/x" });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("SPA");
+    res = await app.inject({ method: "GET", url: "/apix" });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("/ws sin cookie sigue protegido y /%61pi/servers sin cookie da 401", async () => {
+    let res = await app.inject({ method: "GET", url: "/ws" });
+    expect(res.statusCode).toBe(401);
+    res = await app.inject({ method: "GET", url: "/%61pi/servers" });
+    expect(res.statusCode).toBe(401);
+    res = await app.inject({ method: "GET", url: "/api/servers" });
     expect(res.statusCode).toBe(401);
   });
 

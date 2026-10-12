@@ -45,9 +45,12 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     // El notFoundHandler no pasa por el guard de sesión (no hay ruta enrutada): solo debe servir
     // index.html, nunca datos, y solo para navegaciones GET/HEAD fuera de /api, /agent y /ws.
     app.setNotFoundHandler((req, reply) => {
-      const path = req.url.split("?")[0] ?? "";
-      const reserved = path.startsWith("/api/") || path.startsWith("/agent/") || path === "/ws";
-      if (reserved || (req.method !== "GET" && req.method !== "HEAD")) {
+      let path = req.url.split("?")[0] ?? "";
+      try { path = decodeURIComponent(path); } catch { /* path malformado: se evalua tal cual */ }
+      path = path.toLowerCase();
+      const reserved = ["/api", "/agent", "/ws"].some((p) => path === p || path.startsWith(`${p}/`));
+      const missingAsset = path.startsWith("/assets/");
+      if (reserved || missingAsset || (req.method !== "GET" && req.method !== "HEAD")) {
         return reply.code(404).send({ error: "No encontrado" });
       }
       return reply.sendFile("index.html");

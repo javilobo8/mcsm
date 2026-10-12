@@ -8,6 +8,7 @@ services:
     environment:
       PANEL_URL: ${PANEL_URL:?Define PANEL_URL, p. ej. http://192.168.1.10:8080}
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
+      # Opcional: vacío = el panel usa el nombre del token de alta (igual que el docker run de la UI, que no lo pasa).
       NODE_NAME: ${NODE_NAME:-}
       DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
       HOST_PROC: /host/proc
