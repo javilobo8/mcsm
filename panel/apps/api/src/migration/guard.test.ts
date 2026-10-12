@@ -218,6 +218,10 @@ describe("guarda de acciones", () => {
     const create = await call("POST", "/api/servers", { nodeId: b.nodeId, name: "Nuevo", spec: {} });
     expect(create.statusCode).toBe(409);
     expect(create.json().error).toMatch(/participa en una migración/);
+    // Plan 6: importar un contenedor en el nodo destino también crea allí un servidor (la guarda corre antes que la ruta).
+    const imported = await call("POST", `/api/nodes/${b.nodeId}/import`, { containerId: "c".repeat(64), name: "Importado", spec: {}, applyNow: false });
+    expect(imported.statusCode).toBe(409);
+    expect(imported.json().error).toMatch(/participa en una migración/);
     expect((await call("DELETE", `/api/nodes/${b.nodeId}`)).statusCode).toBe(409);
 
     // Deshaciéndose con el origen aún por arrancar: bloqueado (lo arranca la migración).
