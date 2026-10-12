@@ -1,11 +1,11 @@
-import type { Readable } from "node:stream";
+import { pipeline, type Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import type { FileEntry } from "@mcsm/proto";
 import { INLINE_MAX_BYTES, type FileEntryDto } from "@mcsm/shared";
 import type { Body } from "../agents/hub.js";
 import { HttpError, agentErrorToHttp } from "../lib/http.js";
 import { TransferError, type OutboundTransfer } from "../transfers/service.js";
-import { detachable, drain } from "./stream.js";
+import { IDLE_TIMEOUT_MS, detachable, idleGuard, realTimers, type Timers } from "./stream.js";
 
 /**
  * Traduce un fallo del agente o de una transferencia a HttpError conservando su texto (spec §10).
@@ -22,8 +22,27 @@ export const toEntryDto = (e: FileEntry): FileEntryDto => ({
 });
 
 const REQUEST_TIMEOUT_MS = 30_000;
-/** Tope de una subida o descarga completa a través del panel; la caducidad de 60 s cubre al agente que no arranca. */
-export const TRANSFER_TIMEOUT_MS = 60 * 60_000;
+/**
+ * Plazo de las peticiones FilesDownload/FilesUpload al agente: ninguno en la práctica (el máximo
+ * de setTimeout, ~24,8 días). Una transferencia que avanza puede durar lo que haga falta; las
+ * muertas las cortan la caducidad del reclamo (60 s), el vigilante de inactividad
+ * (IDLE_TIMEOUT_MS), la caída del WebSocket y, en la subida, el plazo del Ack.
+ */
+const NO_DEADLINE_MS = 2 ** 31 - 1;
+/**
+ * Tras recibir el agente el cuerpo entero de una subida, lo que tiene para confirmarla (fsync y
+ * rename de un fichero de varios GiB en un disco lento pueden llevar su tiempo).
+ */
+export const ACK_TIMEOUT_MS = 5 * 60_000;
+
+/**
+ * Centinela interno: el navegador ya no está (canceló, se cayó la red o el panel cortó su
+ * conexión al cerrarse). Nunca llega al cable porque el socket ya está cerrado; 499 es el
+ * "Client Closed Request" de nginx, por si aparece en un log.
+ */
+export class ClientGone extends HttpError {
+  constructor(message: string) { super(499, message); this.name = "ClientGone"; }
+}
 
 /** Rechaza solo si la transferencia caduca sin que el agente la reclame; si no, nunca se resuelve. */
 function failOnExpiry(done: Promise<void>): Promise<never> {
@@ -35,8 +54,24 @@ function failOnExpiry(done: Promise<void>): Promise<never> {
 /** Rechaza cuando el navegador se va (o el panel se cierra con la petición en curso); si no, nunca se resuelve. */
 function failOnAbort(signal: AbortSignal | undefined, message: string): Promise<never> {
   return new Promise((_, reject) => {
-    signal?.addEventListener("abort", () => reject(new HttpError(499, message)), { once: true });
+    signal?.addEventListener("abort", () => reject(new ClientGone(message)), { once: true });
   });
+}
+
+/**
+ * Plazo del Ack de una subida: rechaza con 504 si, entregado ya el cuerpo (`delivered`
+ * resuelta), el agente no confirma en `ms`. Si no, nunca se resuelve; `stop` lo desarma.
+ */
+function ackDeadline(delivered: Promise<void>, ms: number, timers: Timers): { promise: Promise<never>; stop(): void } {
+  let stopped = false;
+  let disarm = () => {};
+  const promise = new Promise<never>((_, reject) => {
+    delivered.then(() => {
+      if (stopped) return;
+      disarm = timers.set(() => reject(new HttpError(504, "El agente recibió el fichero pero no confirmó que lo guardó")), ms);
+    }, () => {});
+  });
+  return { promise, stop: () => { stopped = true; disarm(); } };
 }
 
 export interface Download {
@@ -49,6 +84,9 @@ export interface Download {
 }
 
 export class FilesService {
+  /** Temporizadores de los plazos de inactividad y del Ack (los tests ponen un reloj virtual). */
+  timers: Timers = realTimers;
+
   constructor(protected app: FastifyInstance) {}
 
   /** Servidor y conexión de su nodo: 404/409 antes de molestar al agente. */
@@ -122,13 +160,14 @@ export class FilesService {
    * `signal` se aborta si el navegador se va: la transferencia se cancela y el agente ve su PUT
    * cortado (o un 404 si aún no lo había empezado). Una caída del WebSocket del agente con la
    * subida ya en marcha no la corta: el PUT es independiente y el fichero llega entero o nada.
+   * Lo que la corta es la inactividad: IDLE_TIMEOUT_MS sin un byte (nodo apagado, cable fuera).
    */
   async download(serverId: string, path: string, signal?: AbortSignal): Promise<Download> {
-    if (signal?.aborted) throw new HttpError(499, "Descarga cancelada");
+    if (signal?.aborted) throw new ClientGone("Descarga cancelada");
     const { row, conn } = this.target(serverId);
     const t = this.app.transfers.inbound(row.node_id);
     signal?.addEventListener("abort", () => t.cancel("el navegador canceló la descarga"), { once: true });
-    const req = conn.request({ case: "filesDownload", value: { serverId, path, transferId: t.id } }, TRANSFER_TIMEOUT_MS);
+    const req = conn.request({ case: "filesDownload", value: { serverId, path, transferId: t.id } }, NO_DEADLINE_MS);
     const done = req.then(() => undefined);
     done.catch(() => {});
     try {
@@ -136,7 +175,14 @@ export class FilesService {
         t.incoming,
         req.then((): never => { throw new HttpError(502, "El agente terminó sin enviar el fichero"); }),
       ]);
-      return { stream: incoming.stream, size: incoming.size, done };
+      // Sin bytes durante IDLE_TIMEOUT_MS: se cancela (el PUT del agente se corta) y el navegador
+      // recibe 504 si aún no tenía nada, o la descarga cortada si ya había empezado.
+      const guard = idleGuard(IDLE_TIMEOUT_MS, () => {
+        t.cancel("el nodo dejó de enviar el fichero");
+        return new HttpError(504, "El nodo dejó de enviar el fichero");
+      }, this.timers);
+      pipeline(incoming.stream, guard, () => { /* el resultado lo ve la respuesta */ });
+      return { stream: guard, size: incoming.size, done };
     } catch (e) {
       t.cancel("descarga fallida");
       throw toHttpError(e, "No se pudo descargar el fichero");
@@ -148,27 +194,38 @@ export class FilesService {
    * por disco. `size` es el Content-Length del navegador (null si viene chunked: el agente
    * recibe -1 y aplica su tope). Termina con la respuesta del agente: Ack o su Error.
    *
-   * Si el agente falla, se drena lo que quede del cuerpo para responder al navegador con el error
-   * del agente en vez de con un corte de red. Si el navegador se va (`signal`), la transferencia
-   * se cancela (el agente ve su GET cortado y descarta el temporal) y no se espera al agente.
+   * Sin plazo total: mientras pasen bytes, dura lo que haga falta. Sin bytes del navegador
+   * durante IDLE_TIMEOUT_MS se cancela (el agente ve su GET cortado y descarta el temporal); una
+   * vez entregado el cuerpo, el agente tiene ACK_TIMEOUT_MS para confirmar. Si el navegador se va
+   * (`signal`), se cancela, se destruye el cuerpo y no se espera al agente.
+   *
+   * Al fallar, el cuerpo queda sin leer: quien responde al navegador decide si drenarlo (ver
+   * `settleBody` en las rutas).
    */
   async upload(serverId: string, path: string, body: Readable, size: number | null, signal?: AbortSignal): Promise<void> {
     let t: OutboundTransfer | undefined;
+    let ack: { promise: Promise<never>; stop(): void } | undefined;
     try {
-      if (signal?.aborted) throw new HttpError(499, "Subida cancelada"); // ni se pregunta al agente
+      if (signal?.aborted) throw new ClientGone("Subida cancelada"); // ni se pregunta al agente
       const { row, conn } = this.target(serverId);
-      t = this.app.transfers.outbound(row.node_id, async () => ({ stream: detachable(body), size }));
-      const req = conn.request({ case: "filesUpload", value: { serverId, path, transferId: t.id, size: BigInt(size ?? -1) } }, TRANSFER_TIMEOUT_MS);
-      await Promise.race([req, failOnExpiry(t.done), failOnAbort(signal, "Subida cancelada")]);
+      const transfer = this.app.transfers.outbound(row.node_id, async () => {
+        const guard = idleGuard(IDLE_TIMEOUT_MS, () => {
+          transfer.cancel("el navegador dejó de enviar el fichero");
+          return new Error("El navegador dejó de enviar el fichero");
+        }, this.timers);
+        pipeline(detachable(body), guard, () => { /* el resultado lo ve la GET del agente */ });
+        return { stream: guard, size };
+      });
+      t = transfer;
+      const req = conn.request({ case: "filesUpload", value: { serverId, path, transferId: t.id, size: BigInt(size ?? -1) } }, NO_DEADLINE_MS);
+      ack = ackDeadline(t.done, ACK_TIMEOUT_MS, this.timers);
+      await Promise.race([req, failOnExpiry(t.done), failOnAbort(signal, "Subida cancelada"), ack.promise]);
     } catch (e) {
-      if (signal?.aborted) {
-        t?.cancel("el navegador canceló la subida");
-        body.destroy();
-      } else {
-        t?.cancel("subida fallida");
-        await drain(body);
-      }
+      t?.cancel(signal?.aborted ? "el navegador canceló la subida" : "subida fallida");
+      if (signal?.aborted) body.destroy();
       throw toHttpError(e, "No se pudo subir el fichero");
+    } finally {
+      ack?.stop();
     }
   }
 }

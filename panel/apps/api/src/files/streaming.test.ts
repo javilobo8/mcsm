@@ -1,4 +1,5 @@
 import http from "node:http";
+import net from "node:net";
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
@@ -6,10 +7,15 @@ import { specSchema } from "@mcsm/shared";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
 import { FakeAgent } from "../../test/fake-agent.js";
+import { ManualTimers } from "../../test/manual-timers.js";
+import { ACK_TIMEOUT_MS } from "./service.js";
+import { DRAIN_MAX_BYTES, IDLE_TIMEOUT_MS } from "./stream.js";
 
 let app: FastifyInstance; let url: string; let cookie: string;
 let nodeId: string; let nodeToken: string; let serverId: string; let agent: FakeAgent;
 let closed = false;
+/** Reloj virtual de los plazos de inactividad y del Ack: nada vence si el test no avanza. */
+let clock: ManualTimers;
 
 const spec = specSchema.parse({ type: "FABRIC", version: "1.21.4", memory: "2G", ports: { game: 25565 }, rconPassword: "abcdefgh" });
 
@@ -24,6 +30,8 @@ beforeEach(async () => {
   const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } })).json().token;
   ({ nodeId, nodeToken } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas", agentVersion: "fake" } })).json());
   serverId = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec, desiredState: "stopped" }).id;
+  clock = new ManualTimers();
+  app.filesService.timers = clock;
   agent = new FakeAgent(url, nodeToken);
   await agent.connect();
   await agent.handshake();
@@ -37,7 +45,7 @@ const files = () => `${url}/api/servers/${serverId}/files`;
 const agentAuth = () => ({ authorization: `Bearer ${nodeToken}` });
 const octet = { "content-type": "application/octet-stream" };
 
-type Outcome = { status: number; body: Buffer; complete: boolean } | "cortada";
+type Outcome = { status: number; headers: http.IncomingHttpHeaders; body: Buffer; complete: boolean } | "cortada";
 /** La respuesta no llegó entera: la conexión se cayó antes de las cabeceras o a mitad del cuerpo. */
 const isCut = (o: Outcome) => o === "cortada" || !o.complete;
 
@@ -48,18 +56,30 @@ const isCut = (o: Outcome) => o === "cortada" || !o.complete;
 function raw(method: string, target: string, headers: Record<string, string>) {
   const req = http.request(target, { method, headers: { connection: "close", ...headers }, agent: false });
   const chunks: Buffer[] = [];
+  let received = 0;
   let gotFirst!: () => void;
   const first = new Promise<void>((r) => (gotFirst = r));
   const outcome = new Promise<Outcome>((resolve) => {
     req.on("response", (res) => {
-      res.on("data", (c: Buffer) => { chunks.push(c); gotFirst(); });
+      res.on("data", (c: Buffer) => { chunks.push(c); received += c.length; gotFirst(); });
       res.on("error", () => {});
-      res.once("close", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks), complete: res.complete }));
+      res.once("close", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks), complete: res.complete }));
     });
     req.on("error", () => resolve("cortada"));
   });
-  return { req, first, outcome };
+  return { req, first, outcome, received: () => received };
 }
+
+/** Lee del lector hasta haber recibido `n` bytes en total (cuenta acumulada en `acc`). */
+async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, acc: { n: number }, n: number) {
+  while (acc.n < n) {
+    const r = await reader.read();
+    if (r.done) throw new Error(`fin con ${acc.n} de ${n} bytes`);
+    acc.n += r.value.length;
+  }
+}
+
+const readToEnd = async (reader: ReadableStreamDefaultReader<Uint8Array>) => { while (!(await reader.read()).done); };
 
 /** Escribe y espera a que el socket lo acepte (no a que el otro extremo lo lea). */
 const write = (req: http.ClientRequest, data: Buffer) => new Promise<void>((resolve, reject) => req.write(data, (e) => (e ? reject(e) : resolve())));
@@ -222,6 +242,69 @@ describe("descarga navegador ← panel ← agente", () => {
     put.req.destroy();
     await expect((async () => { while (!(await reader.read()).done); })()).rejects.toThrow();
     await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
+  });
+
+  it("si el nodo se calla a mitad, a los 120 s sin bytes se cancela: PUT del agente cortado y descarga truncada", async () => {
+    const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie } });
+    const req = await downloadRequest("/world.zip");
+    const put = raw("PUT", `${url}/agent/transfer/${req.transferId}`, { ...agentAuth(), ...octet, "content-length": String(1 << 20) });
+    await write(put.req, Buffer.alloc(1024, 1));
+    const res = await browser;
+    const reader = res.body!.getReader();
+    await readUntil(reader, { n: 0 }, 1024); // todo lo enviado ya cruzó la guarda
+    clock.advance(IDLE_TIMEOUT_MS - 1);
+    expect(app.transfers.activeCount).toBe(1);
+    clock.advance(1);
+    expect(isCut(await put.outcome)).toBe(true);
+    await expect(readToEnd(reader)).rejects.toThrow();
+    await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
+  });
+
+  it("si el nodo envía las cabeceras del PUT pero ningún byte, a los 120 s el navegador recibe 504 en JSON (no un fichero)", async () => {
+    const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie } });
+    const req = await downloadRequest("/world.zip");
+    const put = raw("PUT", `${url}/agent/transfer/${req.transferId}`, { ...agentAuth(), ...octet, "content-length": "1000" });
+    put.req.flushHeaders();
+    await vi.waitFor(() => expect(clock.pending).toBe(1)); // el panel ya tiene el PUT y vigila
+    clock.advance(IDLE_TIMEOUT_MS);
+    const res = await browser;
+    expect(res.status).toBe(504);
+    expect(res.headers.get("content-disposition")).toBeNull();
+    expect((await res.json()).error).toMatch(/dejó de enviar/);
+    expect(isCut(await put.outcome)).toBe(true);
+    await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
+  });
+
+  it("un WebSocket que parpadea no mata una descarga que sigue fluyendo; el aviso del Ack perdido va a info", async () => {
+    const info = vi.spyOn(app.log, "info");
+    const warn = vi.spyOn(app.log, "warn");
+    const CH = 64 * 1024, N = 4;
+    const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie } });
+    const req = await downloadRequest("/world.zip");
+    const put = raw("PUT", `${url}/agent/transfer/${req.transferId}`, { ...agentAuth(), ...octet, "content-length": String(CH * N) });
+    await write(put.req, Buffer.alloc(CH, 0));
+    const res = await browser;
+    const reader = res.body!.getReader();
+    const got = { n: 0 };
+    await readUntil(reader, got, CH);
+    // El WS cae y vuelve; el PUT sigue.
+    agent.close();
+    await vi.waitFor(() => expect(app.agents.get(nodeId)).toBeUndefined());
+    agent = new FakeAgent(url, nodeToken);
+    await agent.connect();
+    await agent.handshake();
+    // Más de 120 s en total, pero nunca 120 s seguidos sin bytes.
+    for (let i = 1; i < N; i++) {
+      clock.advance(IDLE_TIMEOUT_MS - 1000);
+      if (i === N - 1) put.req.end(Buffer.alloc(CH, i));
+      else await write(put.req, Buffer.alloc(CH, i));
+      await readUntil(reader, got, CH * (i + 1));
+    }
+    expect((await reader.read()).done).toBe(true);
+    expect(got.n).toBe(CH * N);
+    expect(await put.outcome).toMatchObject({ status: 204 });
+    await vi.waitFor(() => expect(info).toHaveBeenCalledWith(expect.objectContaining({ path: "/world.zip" }), expect.stringMatching(/entera/)));
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 
@@ -437,6 +520,94 @@ describe("subida navegador → panel → agente", () => {
     expect(res.status).toBe(409);
     expect((await res.json()).error).toMatch(/desconectado/);
     expect(app.transfers.pendingCount).toBe(0);
+  });
+});
+
+describe("subida: plazos y límites", () => {
+  it("si el navegador se calla a mitad, a los 120 s se cancela; tras otros 120 s de silencio se cierra su conexión", async () => {
+    const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet, "content-length": String(4 << 20) });
+    await write(up.req, Buffer.alloc(256 * 1024, 1));
+    const req = await uploadRequest();
+    const get = raw("GET", `${url}/agent/transfer/${req.transferId}`, agentAuth());
+    get.req.end();
+    await vi.waitFor(() => expect(get.received()).toBe(256 * 1024)); // todo lo enviado ya cruzó la guarda
+    clock.advance(IDLE_TIMEOUT_MS - 1);
+    expect(app.transfers.activeCount).toBe(1);
+    clock.advance(1);
+    expect(isCut(await get.outcome)).toBe(true); // el agente ve el corte y descarta su temporal
+    agentError(req.id, "transfer_failed", "fallo en la transferencia: unexpected EOF");
+    await vi.waitFor(() => expect(clock.pending).toBe(1)); // drenando, con su propio plazo
+    clock.advance(IDLE_TIMEOUT_MS);
+    expect(await up.outcome).toBe("cortada");
+    expect(app.transfers.activeCount).toBe(0);
+  });
+
+  it("una subida lenta pero continua no tiene plazo absoluto", async () => {
+    const CH = 1024, N = 40; // 40 × 119 s ≈ 79 min de reloj virtual
+    const up = raw("PUT", `${files()}/upload?path=/lento.bin`, { cookie, ...octet, "content-length": String(CH * N) });
+    await write(up.req, Buffer.alloc(CH, 0));
+    const req = await uploadRequest();
+    const get = raw("GET", `${url}/agent/transfer/${req.transferId}`, agentAuth());
+    get.req.end();
+    for (let i = 1; i < N; i++) {
+      // El último trozo de una subida con tamaño se retiene hasta el final (exactly): se espera al anterior.
+      await vi.waitFor(() => expect(get.received()).toBe(CH * i));
+      clock.advance(IDLE_TIMEOUT_MS - 1000);
+      if (i === N - 1) up.req.end(Buffer.alloc(CH, i));
+      else await write(up.req, Buffer.alloc(CH, i));
+    }
+    expect(await get.outcome).toMatchObject({ status: 200, complete: true });
+    agent.ack(req.id);
+    expect(await up.outcome).toMatchObject({ status: 204 });
+  });
+
+  it("si el agente recibe el fichero entero pero no confirma, el navegador recibe 504 al vencer el plazo del Ack", async () => {
+    const browser = fetch(`${files()}/upload?path=/eula.txt`, { method: "PUT", body: Buffer.alloc(1000, 1), headers: { cookie, ...octet } });
+    const req = await uploadRequest();
+    const res = await fetch(`${url}/agent/transfer/${req.transferId}`, { headers: agentAuth() });
+    expect((await res.arrayBuffer()).byteLength).toBe(1000);
+    await vi.waitFor(() => expect(clock.pending).toBe(1)); // solo queda el plazo del Ack
+    clock.advance(ACK_TIMEOUT_MS - 1);
+    clock.advance(1);
+    const out = await browser;
+    expect(out.status).toBe(504);
+    expect((await out.json()).error).toMatch(/no confirmó/);
+  });
+
+  it("si falla con más de 8 MiB aún por llegar, se drenan 8 MiB y se responde con Connection: close sin esperar al resto", async () => {
+    // keep-alive: el Connection: close de la respuesta tiene que ponerlo el panel, no ser eco del cliente.
+    const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet, connection: "keep-alive", "content-length": String(64 << 20) });
+    up.req.write(Buffer.alloc(1024));
+    const req = await uploadRequest();
+    agentError(req.id, "busy", "el nodo ya tiene 4 transferencias de archivos en curso: espera a que termine alguna");
+    up.req.write(Buffer.alloc(DRAIN_MAX_BYTES + 64 * 1024)); // y nunca envía el resto de los 64 MiB
+    const out = await up.outcome;
+    expect(out).toMatchObject({ status: 409, complete: true });
+    if (out === "cortada") throw new Error();
+    expect(out.headers.connection).toBe("close");
+    expect(JSON.parse(out.body.toString()).error).toMatch(/4 transferencias/);
+    expect(app.transfers.pendingCount).toBe(0);
+  });
+
+  it("si el navegador envía más bytes que su Content-Length, al agente solo llegan los anunciados", async () => {
+    const sock = net.connect(Number(new URL(url).port), "127.0.0.1");
+    let text = "";
+    sock.on("data", (c) => (text += c.toString("latin1")));
+    const closedSock = new Promise((r) => sock.once("close", r));
+    // Lo que sobra tras los 10 bytes es, para el servidor, la siguiente petición de la conexión.
+    sock.write(
+      `PUT /api/servers/${serverId}/files/upload?path=/x.txt HTTP/1.1\r\nHost: 127.0.0.1\r\nCookie: ${cookie}\r\n` +
+      `Content-Type: application/octet-stream\r\nContent-Length: 10\r\n\r\n0123456789` +
+      `GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`,
+    );
+    const req = await uploadRequest();
+    expect(req.size).toBe(10n);
+    const res = await fetch(`${url}/agent/transfer/${req.transferId}`, { headers: agentAuth() });
+    expect(Buffer.from(await res.arrayBuffer()).toString()).toBe("0123456789");
+    agent.ack(req.id);
+    await closedSock;
+    expect(text.startsWith("HTTP/1.1 204")).toBe(true);
+    expect(text).toMatch(/HTTP\/1\.1 200[\s\S]*"ok":true/);
   });
 });
 

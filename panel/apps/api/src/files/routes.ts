@@ -1,5 +1,5 @@
 import type { ServerResponse } from "node:http";
-import type { Readable } from "node:stream";
+import { finished, type Readable } from "node:stream";
 import fp from "fastify-plugin";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { HttpError } from "../lib/http.js";
 import { contentLength } from "../transfers/routes.js";
 import { FilesService } from "./service.js";
 import { contentDisposition } from "./disposition.js";
-import { drain as drainBody } from "./stream.js";
+import { drain, type Timers } from "./stream.js";
 
 const pathQuery = z.object({ path: filePathSchema });
 const writeBody = z.object({ path: filePathSchema, content: z.string({ error: "Falta el contenido" }) });
@@ -42,6 +42,31 @@ function browserGone(reply: FastifyReply, live: Set<ServerResponse>): AbortSigna
     if (!res.writableFinished) ctrl.abort();
   });
   return ctrl.signal;
+}
+
+/**
+ * "Lectura breve" tras responder con `Connection: close` a una subida que no se drenó entera: Node
+ * cierra la conexión al enviar la respuesta; si por lo que sea siguiera abierta, el cuerpo se
+ * destruye pasado este tiempo.
+ */
+const LINGER_MS = 2_000;
+
+/** Cabeceras de la descarga que no valen para una respuesta de error en JSON. */
+const DOWNLOAD_ONLY_HEADERS = ["content-type", "content-length", "content-disposition"];
+
+/**
+ * Prepara la respuesta de error de una subida: drena hasta DRAIN_MAX_BYTES para que el navegador
+ * reciba el JSON (si se le corta mientras envía, suele mostrar "error de red" en vez del mensaje).
+ * Si queda más por llegar, la respuesta lleva `Connection: close` y el resto no se espera.
+ */
+async function settleBody(body: Readable, reply: FastifyReply, timers: Timers): Promise<void> {
+  if (await drain(body, { timers })) return;
+  if (body.destroyed) return; // el navegador se fue o se calló: no hay a quién responder
+  reply.header("connection", "close");
+  reply.raw.once("finish", () => {
+    const disarm = timers.set(() => body.destroy(), LINGER_MS);
+    body.once("close", disarm);
+  });
 }
 
 async function fileRoutesInner(app: FastifyInstance) {
@@ -90,13 +115,31 @@ async function fileRoutesInner(app: FastifyInstance) {
   // los parsers con parseAs): ni el tope de 1 MiB por defecto ni el de WRITE_BODY_LIMIT.
   app.addContentTypeParser("application/octet-stream", (_req, payload, done) => done(null, payload));
 
-  // Sin HEAD automático: un HEAD pediría al agente subir el fichero entero.
-  app.get<P>("/api/servers/:id/files/download", { exposeHeadRoute: false }, async (req, reply) => {
+  app.get<P>("/api/servers/:id/files/download", {
+    // Sin HEAD automático: un HEAD pediría al agente subir el fichero entero.
+    exposeHeadRoute: false,
+    // Un fallo del stream antes del primer byte (p. ej. el nodo no envía nada) se responde en
+    // JSON. Fastify ya copió las cabeceras de la descarga en la respuesta cruda: con su
+    // Content-Type no serializaría el JSON (FST_ERR_REP_INVALID_PAYLOAD_TYPE → 500) y con su
+    // Content-Disposition el navegador guardaría el error como si fuera el fichero.
+    onError: async (_req, reply) => {
+      for (const h of DOWNLOAD_ONLY_HEADERS) {
+        reply.removeHeader(h);
+        if (!reply.raw.headersSent) reply.raw.removeHeader(h);
+      }
+    },
+  }, async (req, reply) => {
     const { path } = pathQuery.parse(req.query);
     const gone = browserGone(reply, live);
     const dl = await svc.download(req.params.id, path, gone);
-    // Si el navegador canceló, el Error del agente (su PUT cortado) es lo esperado.
-    dl.done.catch((e) => { if (!gone.aborted) req.log.warn({ err: e, path }, "el agente no confirmó la descarga"); });
+    // El agente confirma (Ack) al terminar su PUT. Si la confirmación no llega (p. ej. cae el WS)
+    // pero el navegador recibió el fichero entero, es solo informativo; si la descarga se cortó,
+    // ese corte ya lo registra Fastify, o fue el navegador quien canceló.
+    dl.done.catch((e) => {
+      finished(reply.raw, () => {
+        if (reply.raw.writableFinished) req.log.info({ err: e, path }, "la descarga llegó entera al navegador, pero el agente no la confirmó");
+      });
+    });
     reply.header("content-type", "application/octet-stream");
     reply.header("x-content-type-options", "nosniff");
     reply.header("cache-control", "no-store");
@@ -109,14 +152,14 @@ async function fileRoutesInner(app: FastifyInstance) {
     const body = req.body as Readable | undefined;
     if (!body || typeof body.pipe !== "function") throw new HttpError(415, "Envía el fichero como application/octet-stream");
     const gone = browserGone(reply, live);
-    const parsed = pathQuery.safeParse(req.query);
-    if (!parsed.success || parsed.data.path === "/") {
-      // Se responde tras leer el cuerpo: cortarlo a medias sería un error de red para el navegador.
-      await drainBody(body);
-      if (!parsed.success) throw parsed.error;
-      throw new HttpError(400, "Indica la ruta del fichero de destino");
+    try {
+      const { path } = pathQuery.parse(req.query);
+      if (path === "/") throw new HttpError(400, "Indica la ruta del fichero de destino");
+      await svc.upload(req.params.id, path, body, contentLength(req), gone);
+    } catch (e) {
+      await settleBody(body, reply, svc.timers);
+      throw e;
     }
-    await svc.upload(req.params.id, parsed.data.path, body, contentLength(req), gone);
     return reply.code(204).send();
   });
 }
