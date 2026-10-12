@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { MetricRange, MetricSeries } from "@mcsm/shared";
 import { api, apiPath } from "@/lib/api";
-import { REFRESH_MS, latestNodeSample } from "@/lib/metrics";
+import { REFRESH_MS, entryFromSeries } from "@/lib/metrics";
 
 /** Serie histórica de un servidor; se recarga al ritmo del cubo del rango. */
 export function useServerMetrics(serverId: string, range: MetricRange) {
@@ -16,7 +16,7 @@ export function useServerMetrics(serverId: string, range: MetricRange) {
 export function useNodeLive(nodeId: string) {
   return useQuery({
     queryKey: ["node-live", nodeId],
-    queryFn: async () => latestNodeSample(await api.get<MetricSeries>(`${apiPath`/api/nodes/${nodeId}/metrics`}?range=1h`)),
+    queryFn: async () => entryFromSeries(await api.get<MetricSeries>(`${apiPath`/api/nodes/${nodeId}/metrics`}?range=1h`)),
     staleTime: Infinity,
   });
 }

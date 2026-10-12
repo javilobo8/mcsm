@@ -39,10 +39,11 @@ function useTick(ms: number): void {
 export function NodeUsage({ nodeId }: { nodeId: string }) {
   const q = useNodeLive(nodeId);
   useTick(10_000);
-  const s = q.data;
+  const e = q.data;
   if (q.isPending) return <p className="text-xs text-muted-foreground">Cargando uso…</p>;
-  if (q.isError && !s && q.dataUpdatedAt === 0) return <p role="alert" className="text-xs text-red-400">No se pudo cargar el uso del nodo</p>;
-  if (!isFresh(s, Date.now())) return <p className="text-xs text-muted-foreground">Sin datos recientes del nodo</p>;
+  if (q.isError && !e && q.dataUpdatedAt === 0) return <p role="alert" className="text-xs text-red-400">No se pudo cargar el uso del nodo</p>;
+  if (!isFresh(e, Date.now())) return <p className="text-xs text-muted-foreground">Sin datos recientes del nodo</p>;
+  const s = e.sample;
   return (
     <div className="flex flex-col gap-1.5" role="group" aria-label="Uso del nodo">
       <UsageBar label="CPU" pct={clampPct(s.cpuPct)} text={formatCpu(s.cpuPct)} />

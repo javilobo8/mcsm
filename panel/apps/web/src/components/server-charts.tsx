@@ -3,7 +3,7 @@ import type { MetricRange } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
 import { TimeSeriesChart, type ChartLine } from "@/components/time-series-chart";
 import { useServerMetrics } from "@/hooks/use-metrics";
-import { RANGE_OPTIONS, aligned, formatCount, formatCpu, formatMem, formatTps, hasData } from "@/lib/metrics";
+import { RANGE_OPTIONS, aligned, memAligned, formatCount, formatCpu, formatMem, formatTps, hasData } from "@/lib/metrics";
 
 const GUIDE = "#71717a";
 const PLAYERS: ChartLine[] = [{ label: "Conectados", color: "#38bdf8", fill: true }, { label: "Máximo", color: GUIDE, dash: [4, 4] }];
@@ -21,7 +21,7 @@ export function ServerCharts({ serverId }: { serverId: string }) {
   const data = useMemo(() => s && {
     players: aligned(s, ["playersOnline", "playersMax"]),
     cpu: aligned(s, ["cpuPct"]),
-    mem: aligned(s, ["memBytes", "memLimitBytes"]),
+    mem: memAligned(s),
     tps: aligned(s, ["tps"]),
   }, [s]);
 

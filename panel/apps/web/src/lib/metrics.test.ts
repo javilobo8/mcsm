@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
-import type { MetricSeries, NodeLiveSample } from "@mcsm/shared";
+import { MAX_CLOCK_SKEW_SECONDS, type MetricSeries, type NodeLiveSample } from "@mcsm/shared";
 import type { ServerMessage } from "./api";
 import type { LiveSource } from "./live";
 import { topicOf } from "./ws";
 import {
-  aligned, applyNodeMetricsEvent, bindNodeMetrics, formatCpu, formatTps, clampPct, hasData, isFresh, latestNodeSample, percent, totalText, usageTone,
+  aligned, applyNodeMetricsEvent, memAligned, bindNodeMetrics, entryFromSeries, formatCpu, formatTps, clampPct, hasData, isFresh, latestNodeSample, percent, totalText, usageTone, type NodeLiveEntry,
 } from "./metrics";
 
 const series = (over: Partial<MetricSeries> = {}): MetricSeries => {
@@ -18,11 +18,20 @@ const series = (over: Partial<MetricSeries> = {}): MetricSeries => {
   };
 };
 const sample = (ts: number, cpuPct = 10): NodeLiveSample => ({ ts, cpuPct, memBytes: 1, memTotalBytes: 2, diskBytes: 3, diskTotalBytes: 4 });
+const entry = (receivedAtMs: number, ts = 0, cpuPct = 10): NodeLiveEntry => ({ sample: sample(ts, cpuPct), receivedAt: receivedAtMs });
+const cached = (qc: QueryClient, id = "n1") => qc.getQueryData<NodeLiveEntry | null>(["node-live", id]);
 
 describe("series", () => {
   it("aligned pone t delante de las columnas pedidas, en orden", () => {
     const s = series({ cpuPct: [1, null, 3], memBytes: [4, 5, 6] });
     expect(aligned(s, ["memBytes", "cpuPct"])).toEqual([[100, 110, 120], [4, 5, 6], [1, null, 3]]);
+  });
+  it("memAligned trata el límite 0 (desconocido) como null: no hay línea «Límite»", () => {
+    const s = series({ memBytes: [1, 2, 3], memLimitBytes: [0, 0, 0] });
+    const a = memAligned(s);
+    expect(a[2]).toEqual([null, null, null]);
+    expect(hasData(a[2]!)).toBe(false);
+    expect(memAligned(series({ memBytes: [1, 2, 3], memLimitBytes: [0, 8, null] }))[2]).toEqual([null, 8, null]);
   });
   it("hasData distingue una columna vacía", () => {
     expect(hasData([null, null])).toBe(false);
@@ -33,12 +42,21 @@ describe("series", () => {
     expect(latestNodeSample(s)).toEqual({ ts: 110, cpuPct: 7, memBytes: 2, memTotalBytes: 8, diskBytes: 4, diskTotalBytes: 9 });
     expect(latestNodeSample(series())).toBeNull();
   });
-  it("isFresh caduca a los 60 s", () => {
-    expect(isFresh(sample(1000), 1_060_000)).toBe(true);
-    expect(isFresh(sample(1000), 1_061_000)).toBe(false);
+  it("isFresh se mide con la hora de llegada local y caduca a los 60 s", () => {
+    expect(isFresh(entry(1_000_000), 1_060_000)).toBe(true);
+    expect(isFresh(entry(1_000_000), 1_061_000)).toBe(false);
     expect(isFresh(null, 0)).toBe(false);
-    expect(isFresh(sample(1003), 1_000_000)).toBe(true);
-    expect(isFresh(sample(1100), 1_000_000)).toBe(false);
+  });
+  it("isFresh ignora el ts del agente: un agente desfasado no deja la tarjeta caducada", () => {
+    expect(isFresh(entry(1_000_000, 1_025), 1_005_000)).toBe(true); // ts = ahora + 25
+    expect(isFresh(entry(1_000_000, 900), 1_005_000)).toBe(true); // agente atrasado
+  });
+  it("isFresh: navegador con el reloj 20 s atrasado respecto a la muestra REST sigue fresca", () => {
+    // La muestra REST se fecha con su ts (1000 s); el navegador cree estar en 980 s (20 s atrasado).
+    const e = entryFromSeries(series({ t: [980, 990, 1000], cpuPct: [1, 2, 3], memBytes: [1, 1, 1], memLimitBytes: [2, 2, 2], diskBytes: [1, 1, 1], diskTotalBytes: [2, 2, 2] }));
+    expect(isFresh(e, 980_000)).toBe(true);
+    expect(isFresh(e, (1000 - MAX_CLOCK_SKEW_SECONDS - 1) * 1000)).toBe(false); // más allá de la tolerancia compartida
+    expect(entryFromSeries(series())).toBeNull();
   });
 });
 
@@ -64,14 +82,28 @@ describe("node_metrics en vivo", () => {
   it("viaja por el topic nodes", () => {
     expect(topicOf(msg("n1", sample(1)))).toBe("nodes");
   });
-  it("guarda la última muestra y no la pisa con una más antigua", () => {
+  it("guarda la muestra con su hora de llegada local", () => {
     const qc = new QueryClient();
-    qc.setQueryData(["node-live", "n1"], sample(100, 1));
-    applyNodeMetricsEvent(qc, msg("n1", sample(200, 50)));
-    applyNodeMetricsEvent(qc, msg("n1", sample(190, 10)));
-    expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(50);
-    applyNodeMetricsEvent(qc, msg("n1", sample(210, 60)));
-    expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(60);
+    qc.setQueryData(["node-live", "n1"], entry(1, 100, 1));
+    applyNodeMetricsEvent(qc, msg("n1", sample(200, 50)), () => 5_000);
+    expect(cached(qc)).toEqual({ sample: sample(200, 50), receivedAt: 5_000 });
+  });
+  it("tras corregir el reloj del agente hacia atrás, la muestra con ts menor que llegó después sustituye a la anterior", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(["node-live", "n1"], entry(1_000, 1_030, 1));
+    applyNodeMetricsEvent(qc, msg("n1", sample(1_000, 77)), () => 11_000);
+    expect(cached(qc)?.sample.cpuPct).toBe(77);
+    expect(cached(qc)?.receivedAt).toBe(11_000);
+  });
+  it("sin datos en caché porque la carga REST falló, el evento siembra la caché", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const obs = new QueryObserver(qc, { queryKey: ["node-live", "n1"], queryFn: () => Promise.reject(new Error("boom")), retry: false });
+    const unsub = obs.subscribe(() => {});
+    await vi.waitFor(() => expect(qc.getQueryState(["node-live", "n1"])?.status).toBe("error"));
+    applyNodeMetricsEvent(qc, msg("n1", sample(300, 12)), () => 9_000);
+    expect(cached(qc)).toEqual({ sample: sample(300, 12), receivedAt: 9_000 });
+    expect(qc.getQueryState(["node-live", "n1"])?.status).toBe("success");
+    unsub();
   });
   it("no crea entradas de caché para nodos sin datos", () => {
     const qc = new QueryClient();
@@ -80,26 +112,26 @@ describe("node_metrics en vivo", () => {
   });
   it("evento durante la carga inicial: no cancela y manda la respuesta REST", async () => {
     const qc = new QueryClient();
-    let resolve!: (v: NodeLiveSample) => void;
-    const obs = new QueryObserver(qc, { queryKey: ["node-live", "n1"], queryFn: () => new Promise<NodeLiveSample>((r) => { resolve = r; }) });
+    let resolve!: (v: NodeLiveEntry) => void;
+    const obs = new QueryObserver(qc, { queryKey: ["node-live", "n1"], queryFn: () => new Promise<NodeLiveEntry>((r) => { resolve = r; }) });
     const unsub = obs.subscribe(() => {});
     applyNodeMetricsEvent(qc, msg("n1", sample(500, 99)));
-    resolve(sample(490, 5));
-    await vi.waitFor(() => expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(5));
+    resolve(entry(1, 490, 5));
+    await vi.waitFor(() => expect(cached(qc)?.sample.cpuPct).toBe(5));
     unsub();
   });
   it("evento durante un refetch: cancela y la respuesta vieja no lo pisa", async () => {
     const qc = new QueryClient();
-    const resolvers: ((v: NodeLiveSample) => void)[] = [];
-    const obs = new QueryObserver(qc, { queryKey: ["node-live", "n1"], queryFn: () => new Promise<NodeLiveSample>((r) => { resolvers.push(r); }) });
+    const resolvers: ((v: NodeLiveEntry) => void)[] = [];
+    const obs = new QueryObserver(qc, { queryKey: ["node-live", "n1"], queryFn: () => new Promise<NodeLiveEntry>((r) => { resolvers.push(r); }) });
     const unsub = obs.subscribe(() => {});
-    resolvers[0]!(sample(100, 1));
+    resolvers[0]!(entry(1, 100, 1));
     await vi.waitFor(() => expect(qc.getQueryData(["node-live", "n1"])).toBeDefined());
     void obs.refetch();
     await vi.waitFor(() => expect(resolvers).toHaveLength(2));
     applyNodeMetricsEvent(qc, msg("n1", sample(500, 99)));
-    resolvers[1]!(sample(490, 5));
-    await vi.waitFor(() => expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(99));
+    resolvers[1]!(entry(1, 490, 5));
+    await vi.waitFor(() => expect(cached(qc)?.sample.cpuPct).toBe(99));
     unsub();
   });
   it("bindNodeMetrics se suscribe a nodes, ignora otros mensajes e invalida al reconectar", () => {
@@ -116,9 +148,9 @@ describe("node_metrics en vivo", () => {
     const off = bindNodeMetrics(qc, live);
     handlers[0]!({ type: "node", node: { id: "n1" } as never });
     expect(qc.getQueryData(["node-live", "n1"])).toBeUndefined();
-    qc.setQueryData(["node-live", "n1"], sample(1, 0));
+    qc.setQueryData(["node-live", "n1"], entry(1, 1, 0));
     handlers[0]!(msg("n1", sample(5, 42)));
-    expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(42);
+    expect(cached(qc)?.sample.cpuPct).toBe(42);
     reconnects[0]!();
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["node-live"] });
     off();
@@ -128,13 +160,6 @@ describe("node_metrics en vivo", () => {
 });
 
 describe("uso de nodo", () => {
-  it("isFresh: muestra posterior al último tick y anterior al render es fresca; con el reloj del tick no", () => {
-    const tickMs = 1_000_000; // último tick
-    const renderMs = 1_010_000; // render al llegar la muestra WS
-    const s = sample(1008); // ts entre el tick y el render
-    expect(isFresh(s, renderMs)).toBe(true);
-    expect(isFresh(s, tickMs)).toBe(false); // el bug: reloj desfasado > 5 s
-  });
   it("clampPct acota a 0-100 y tolera no finitos", () => {
     expect(clampPct(-3)).toBe(0);
     expect(clampPct(42.5)).toBe(42.5);
