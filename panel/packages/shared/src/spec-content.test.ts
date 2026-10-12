@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { specSchema, specInputSchema } from "./spec.js";
-import { usesCurseForge } from "./spec-content.js";
+import { CURSEFORGE_API_KEY_RE, usesCurseForge } from "./spec-content.js";
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`../../../../proto/fixtures/${name}`, import.meta.url), "utf8"));
 const base = fixture("spec-example.json");
@@ -43,6 +43,10 @@ describe("spec con contenido", () => {
     const r = specInputSchema.safeParse({ type: "MODRINTH" });
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues[0]?.path).toEqual(["modpack"]);
+  });
+  it("CURSEFORGE_API_KEY_RE: los mismos casos que TestCurseForgeAPIKeyValidated (Go)", () => {
+    for (const ok of ["$2a$10$abc/DEF.ghi", "k".repeat(200), "!~"]) expect(CURSEFORGE_API_KEY_RE.test(ok), ok).toBe(true);
+    for (const bad of ["", "con espacio", "nul\u0000", "salto\n", "tab\t", "del\u007f", "clé", "k".repeat(201)]) expect(CURSEFORGE_API_KEY_RE.test(bad), bad).toBe(false);
   });
   it("usesCurseForge", () => {
     expect(usesCurseForge(base)).toBe(false);

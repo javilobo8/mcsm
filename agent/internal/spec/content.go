@@ -31,6 +31,9 @@ var (
 	digitsRe    = regexp.MustCompile(`^[0-9]{1,12}$`)
 	// playerRe: nombre de perfil de Java (1-16 letras, números o _) o UUID con o sin guiones.
 	playerRe = regexp.MustCompile(`^([A-Za-z0-9_]{1,16}|[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12})$`)
+	// cfAPIKeyRe: la API key de CurseForge ($2a$10$… de bcrypt): ASCII imprimible sin espacios.
+	// Misma regex que CURSEFORGE_API_KEY_RE en el panel.
+	cfAPIKeyRe = regexp.MustCompile(`^[!-~]{1,200}$`)
 )
 
 // whitelistProps las gestiona la sección whitelist por env; no pueden ir también en properties.
@@ -73,6 +76,10 @@ func (s Spec) UsesCurseForge() bool {
 }
 
 func (s Spec) validateContent() error {
+	// Sin repetir el valor: el error acaba en observed.error, que ve el navegador.
+	if s.CurseForgeAPIKey != "" && !cfAPIKeyRe.MatchString(s.CurseForgeAPIKey) {
+		return fmt.Errorf("spec: la API key de CurseForge no es válida (1-200 caracteres ASCII imprimibles, sin espacios); cámbiala en el panel")
+	}
 	if err := s.validateModpack(); err != nil {
 		return err
 	}

@@ -17,6 +17,8 @@ export const ENTRY_RE = /^[!-+\--~]{1,300}$/;
 export const URL_RE = /^https?:\/\/[!-+\--~]{1,1000}$/;
 export const DIGITS_RE = /^[0-9]{1,12}$/;
 export const PLAYER_RE = /^([A-Za-z0-9_]{1,16}|[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12})$/;
+/** API key de CurseForge ($2a$10$… de bcrypt): ASCII imprimible sin espacios, 1-200. Misma regex que cfAPIKeyRe (Go). */
+export const CURSEFORGE_API_KEY_RE = /^[\x21-\x7E]{1,200}$/;
 
 const entry = z.string().regex(ENTRY_RE, "Entrada inválida: sin espacios ni comas (máx. 300 caracteres)");
 const url = z.string().regex(URL_RE, "URL inválida: debe empezar por http:// o https:// y no tener espacios ni comas");

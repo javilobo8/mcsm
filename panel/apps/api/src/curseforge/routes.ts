@@ -1,10 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { formatZodError } from "@mcsm/shared";
+import { CURSEFORGE_API_KEY_RE, formatZodError } from "@mcsm/shared";
 import { HttpError } from "../lib/http.js";
 
+/** "" (tras recortar) borra la key; si no, la valida como el agente: un NUL o un salto rompería el env de todos los servidores CurseForge. */
 const bodySchema = z.object({
-  apiKey: z.string().trim().max(200, "La API key es demasiado larga").regex(/^\S*$/, "La API key no puede contener espacios"),
+  apiKey: z.string().trim().max(200, "La API key es demasiado larga (máx. 200 caracteres)")
+    .refine((k) => k === "" || CURSEFORGE_API_KEY_RE.test(k), "La API key solo admite caracteres ASCII imprimibles, sin espacios"),
 });
 
 /** GET/PUT de la API key global de CurseForge. Nunca devuelve la key: solo si está configurada. */

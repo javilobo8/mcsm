@@ -332,3 +332,28 @@ func TestModsAndPluginsShareModrinthProjects(t *testing.T) {
 		t.Errorf("MODRINTH_PROJECTS = %q", got)
 	}
 }
+
+// La API key de CurseForge llega del panel dentro de la spec: ASCII imprimible sin espacios,
+// 1-200 caracteres. Una key con NUL o saltos de línea haría que Docker rechazara el env de
+// todos los servidores CurseForge. El error no repite la key (acaba en observed.error).
+func TestCurseForgeAPIKeyValidated(t *testing.T) {
+	s := loadFixture(t)
+	s.Mods = &ModSources{CurseforgeFiles: []string{"jei"}}
+	for _, ok := range []string{"", "$2a$10$abc/DEF.ghi", strings.Repeat("k", 200), "!~"} {
+		s.CurseForgeAPIKey = ok
+		if err := s.Validate(); err != nil {
+			t.Errorf("key %q debía aceptarse: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"con espacio", "nul\x00", "salto\n", "tab\t", "del\x7f", "clé", strings.Repeat("k", 201)} {
+		s.CurseForgeAPIKey = bad
+		err := s.Validate()
+		if err == nil {
+			t.Errorf("key %q debía rechazarse", bad)
+			continue
+		}
+		if strings.Contains(err.Error(), bad) {
+			t.Errorf("el error no debe repetir la key: %v", err)
+		}
+	}
+}

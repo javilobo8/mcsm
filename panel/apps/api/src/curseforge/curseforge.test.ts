@@ -46,6 +46,19 @@ describe("API key de CurseForge", () => {
     expect((await putKey("")).json()).toEqual({ configured: false });
   });
 
+  it("la key es ASCII imprimible sin espacios (1-200); se recorta y \"\" la borra", async () => {
+    for (const bad of ["nul\u0000", "esc\u001b[0m", "del\u007f", "clé", "a b", "k".repeat(201)]) {
+      const res = await putKey(bad);
+      expect(res.statusCode, JSON.stringify(bad)).toBe(400);
+      expect(res.body).not.toContain(bad);
+    }
+    expect((await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } })).json()).toEqual({ configured: false });
+    expect((await putKey("k".repeat(200))).json()).toEqual({ configured: true });
+    expect((await putKey(`  ${KEY}\n`)).json()).toEqual({ configured: true });
+    expect(app.curseforge.get()).toBe(KEY);
+    expect((await putKey("  ")).json()).toEqual({ configured: false });
+  });
+
   it("solo viaja al agente en specs que usan CurseForge y nunca al navegador", async () => {
     await putKey(KEY);
     const agent = new FakeAgent(url, nodeToken);
