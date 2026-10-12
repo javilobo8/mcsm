@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, jobsFilterFor, JOB_FILTER_OPTIONS, formatFinishTime, retainJobsLive, upsertJob, type JobsLiveSource } from "./jobs";
+import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, jobsFilterFor, JOB_FILTER_OPTIONS, formatFinishTime, jobServerName, retainJobsLive, upsertJob, type JobsLiveSource } from "./jobs";
 import { topicOf } from "./ws";
 import type { JobDetailDto, JobDto, ServerMessage } from "./api";
 
@@ -140,14 +140,38 @@ describe("topicOf", () => {
 });
 
 describe("jobsFilterFor", () => {
-  it("Todos no filtra y el resto filtra por estado", () => {
+  it("Todos no filtra y el resto filtra por estados", () => {
     expect(jobsFilterFor(null)).toEqual({});
-    expect(jobsFilterFor("failed")).toEqual({ status: "failed" });
+    expect(jobsFilterFor(["failed"])).toEqual({ status: ["failed"] });
   });
-  it("ofrece Todos, En curso, Correctos y Fallidos, en ese orden", () => {
-    expect(JOB_FILTER_OPTIONS.map((o) => [o.label, o.value])).toEqual([
-      ["Todos", null], ["En curso", "running"], ["Correctos", "ok"], ["Fallidos", "failed"],
+  it("ofrece Todos, En curso (cola incluida), Correctos y Fallidos, en ese orden", () => {
+    expect(JOB_FILTER_OPTIONS.map((o) => [o.label, o.status])).toEqual([
+      ["Todos", null], ["En curso", ["queued", "running"]], ["Correctos", ["ok"]], ["Fallidos", ["failed"]],
     ]);
+  });
+});
+
+describe("filtro con varios estados", () => {
+  it("la clave es la misma sea cual sea el orden y casa con un estado de la lista", () => {
+    expect(jobsKey({ status: ["running", "queued"] })).toEqual(jobsKey({ status: ["queued", "running"] }));
+    const q = job("q", "2026-10-12T04:00:00.000Z", { status: "queued" });
+    const f = { serverId: null, status: "queued,running" };
+    expect(upsertJob([], q, f).map((j) => j.id)).toEqual(["q"]);
+    expect(upsertJob([], { ...q, status: "ok" }, f)).toEqual([]);
+  });
+});
+
+describe("jobServerName", () => {
+  const servers = [{ id: "s1", name: "Uno" }];
+  it("muestra el nombre si el servidor está en la lista", () => {
+    expect(jobServerName("s1", servers)).toBe("Uno");
+  });
+  it("solo dice borrado con la lista cargada y sin coincidencia", () => {
+    expect(jobServerName("zz", servers)).toBe("(borrado)");
+    expect(jobServerName("zz", [])).toBe("(borrado)");
+  });
+  it("mientras carga o si falló (sin lista) no afirma nada", () => {
+    expect(jobServerName("s1", undefined)).toBe("…");
   });
 });
 

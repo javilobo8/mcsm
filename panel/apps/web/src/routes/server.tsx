@@ -99,12 +99,12 @@ export function ServerPage() {
           <Stat label="Spec" value={applying ? `v${s.specVersion} (aplicando; actual v${s.observedSpecVersion})` : `v${s.specVersion} (aplicada)`} />
         </TabsContent>
         <TabsContent value="console"><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
-        <TabsContent value="history"><JobList filter={{ serverId: s.id }} showServer={false} /></TabsContent>
         <TabsContent value="config"><ServerConfigForm key={s.id} server={s} /></TabsContent>
         {/* ── plan-2 ── */}
         {/* ── plan-3 ── */}
         {/* ── plan-4 ── */}
         <TabsContent value="backups"><BackupsTab server={s} nodeOnline={nodeOnline} /></TabsContent>
+        <TabsContent value="history"><JobList filter={{ serverId: s.id }} showServer={false} /></TabsContent>
         {/* ── plan-5 ── */}
         {/* ── plan-6 ── */}
         {/* ── plan-7 ── */}

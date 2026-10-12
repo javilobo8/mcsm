@@ -2,8 +2,9 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import type { BackupTriggerName, JobDetailDto, JobDto, JobState, ServerMessage } from "./api";
 import { mergeIntoCached } from "./live";
 
-export interface JobsFilter { serverId?: string; status?: JobState }
-type NormalizedFilter = { serverId: string | null; status: JobState | null };
+export interface JobsFilter { serverId?: string; status?: JobState | JobState[] }
+/** `status` normalizado: estados en orden canónico separados por comas (`queued,running`). */
+type NormalizedFilter = { serverId: string | null; status: string | null };
 type JobMsg = Extract<ServerMessage, { type: "job" }>;
 type BackupsMsg = Extract<ServerMessage, { type: "backups" }>;
 
@@ -25,11 +26,18 @@ export function jobTriggerLabel(j: Pick<JobDto, "payload">): string | null {
   return typeof t === "string" && t in TRIGGER_LABEL ? TRIGGER_LABEL[t as BackupTriggerName] : null;
 }
 
-export const jobsKey = (f: JobsFilter = {}): QueryKey => ["jobs", { serverId: f.serverId ?? null, status: f.status ?? null }];
+const STATE_ORDER: JobState[] = ["queued", "running", "ok", "failed", "cancelled"];
+/** Lista de estados en orden canónico y sin repetidos, o null si no hay filtro. */
+export function normalizeStatus(s: JobState | JobState[] | undefined): string | null {
+  const list = s === undefined ? [] : Array.isArray(s) ? s : [s];
+  const sorted = STATE_ORDER.filter((x) => list.includes(x));
+  return sorted.length ? sorted.join(",") : null;
+}
+export const jobsKey = (f: JobsFilter = {}): QueryKey => ["jobs", { serverId: f.serverId ?? null, status: normalizeStatus(f.status) }];
 export const jobKey = (id: string): QueryKey => ["job", id];
 export const backupsKey = (serverId: string): QueryKey => ["backups", serverId];
 
-const matches = (j: JobDto, f: NormalizedFilter) => (!f.serverId || j.serverId === f.serverId) && (!f.status || j.status === f.status);
+const matches = (j: JobDto, f: NormalizedFilter) => (!f.serverId || j.serverId === f.serverId) && (!f.status || f.status.split(",").includes(j.status));
 
 /** Un evento no debe pisar un estado terminal ni uno más reciente que ya tenemos (como hace el panel). */
 const supersedes = (old: Pick<JobDto, "status" | "updatedAt">, next: Pick<JobDto, "updatedAt">) =>
@@ -124,11 +132,17 @@ export function retainJobsLive(qc: QueryClient, live: JobsLiveSource): () => voi
   };
 }
 
-/** Opciones del filtro de la página Jobs (`null` = Todos). */
-export const JOB_FILTER_OPTIONS: { value: JobState | null; label: string }[] = [
-  { value: null, label: "Todos" }, { value: "running", label: "En curso" }, { value: "ok", label: "Correctos" }, { value: "failed", label: "Fallidos" },
+/** Opciones del filtro de la página Jobs (`status: null` = Todos). "En curso" incluye los que esperan en cola. */
+export const JOB_FILTER_OPTIONS: { label: string; status: JobState[] | null }[] = [
+  { label: "Todos", status: null }, { label: "En curso", status: ["queued", "running"] }, { label: "Correctos", status: ["ok"] }, { label: "Fallidos", status: ["failed"] },
 ];
-export const jobsFilterFor = (status: JobState | null): JobsFilter => (status ? { status } : {});
+export const jobsFilterFor = (status: JobState[] | null): JobsFilter => (status ? { status } : {});
+
+/** Nombre del servidor de un job. Sin lista (cargando o con error) no se afirma que esté borrado. */
+export function jobServerName(serverId: string, servers: { id: string; name: string }[] | undefined): string {
+  if (!servers) return "…";
+  return servers.find((s) => s.id === serverId)?.name ?? "(borrado)";
+}
 
 /** Hora de fin de un job, o null si no ha terminado o la fecha no es válida. */
 export function formatFinishTime(iso: string | null): string | null {
