@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { afterEach, vi } from "vitest";
-import { breadcrumbs, canEdit, canStartSave, entryOpenKind, filesApi, isClean, isSaveShortcut, progressPct, sortEntries, uploadClashes, uploadFile, validateNewName } from "./files";
+import { breadcrumbs, canEdit, canStartSave, entryOpenKind, filesApi, isClean, isSaveShortcut, leaveWarning, progressPct, sortEntries, uploadClashes, uploadFile, validateNewName } from "./files";
 
 describe("breadcrumbs", () => {
   it("raíz y rutas anidadas", () => {
@@ -124,5 +124,27 @@ describe("isSaveShortcut", () => {
     expect(isSaveShortcut({ key: "s", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false })).toBe(false);
     expect(isSaveShortcut({ key: "s", ctrlKey: true, metaKey: false, altKey: false, shiftKey: true })).toBe(false);
     expect(isSaveShortcut({ key: "a", ctrlKey: true, metaKey: false, altKey: false, shiftKey: false })).toBe(false);
+  });
+});
+
+describe("leaveWarning", () => {
+  it("sin cambios ni subida no hay nada que proteger", () => {
+    expect(leaveWarning({ dirty: false, uploading: false, file: null })).toBeNull();
+  });
+  it("cambios sin guardar: se perderán", () => {
+    const w = leaveWarning({ dirty: true, uploading: false, file: "/server.properties" });
+    expect(w?.description).toMatch(/cambios sin guardar en \/server\.properties/);
+    expect(w?.description).not.toMatch(/subida/);
+  });
+  it("subida en curso: avisa de que se cancelará", () => {
+    const w = leaveWarning({ dirty: false, uploading: true, file: null });
+    expect(w?.title).toMatch(/Subida en curso/);
+    expect(w?.description).toMatch(/se cancelará la subida|subida en curso.*se cancelará/i);
+    expect(w?.confirmLabel).toMatch(/cancelar la subida/);
+  });
+  it("las dos cosas: menciona ambas", () => {
+    const w = leaveWarning({ dirty: true, uploading: true, file: null });
+    expect(w?.description).toMatch(/cambios sin guardar/);
+    expect(w?.description).toMatch(/se cancelará la subida/);
   });
 });

@@ -1,5 +1,6 @@
 import { INLINE_MAX_BYTES, editorLanguage, fileNameSchema, type FileEntryDto } from "@mcsm/shared";
 import { ApiError, api, apiPath, errorMessage, reportStatus } from "./api";
+import type { GuardText } from "./tab-guard";
 
 export interface FileListDto { path: string; entries: FileEntryDto[]; truncated: boolean }
 export interface FileContentDto { path: string; content: string; size: number }
@@ -46,6 +47,25 @@ export function uploadFile(serverId: string, path: string, file: Blob, onProgres
     signal?.addEventListener("abort", onAbort, { once: true });
     xhr.send(file);
   });
+}
+
+/**
+ * Qué se pierde al salir de la pestaña Archivos (a otra pestaña del servidor, a otra página o
+ * cerrando el navegador): los cambios sin guardar del editor y/o una subida en curso, que se
+ * cancela al salir. null si no hay nada que proteger.
+ */
+export function leaveWarning({ dirty, uploading, file }: { dirty: boolean; uploading: boolean; file: string | null }): GuardText | null {
+  const what = file ?? "el fichero";
+  if (dirty && uploading) {
+    return {
+      title: "Cambios sin guardar y subida en curso",
+      description: `Hay cambios sin guardar en ${what} y una subida en curso. Si sales, se perderán los cambios y se cancelará la subida.`,
+      confirmLabel: "Salir y cancelar",
+    };
+  }
+  if (dirty) return { title: "Cambios sin guardar", description: `Hay cambios sin guardar en ${what}. Si sales, se perderán.`, confirmLabel: "Salir y descartar" };
+  if (uploading) return { title: "Subida en curso", description: "Hay una subida en curso. Si sales, se cancelará la subida.", confirmLabel: "Salir y cancelar la subida" };
+  return null;
 }
 
 /** Migas de pan de una ruta: la raíz se llama "data" como en el contenedor. */

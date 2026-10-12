@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ApiError } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
-import { breadcrumbs, entryOpenKind, filesApi, isSaveShortcut, progressPct, sortEntries, uploadClashes, uploadFile } from "@/lib/files";
+import { breadcrumbs, entryOpenKind, filesApi, isSaveShortcut, leaveWarning, progressPct, sortEntries, uploadClashes, uploadFile } from "@/lib/files";
 import { NameDialog } from "./name-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useTabGuard } from "@/components/guarded-tabs";
@@ -58,10 +58,15 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
   const qc = useQueryClient();
   const offline = nodeOnline === false;
 
-  // Cambios sin guardar: bloquea la navegación del router (diálogo) y avisa al cerrar/recargar la pestaña del navegador.
-  const blocker = useBlocker({ shouldBlockFn: () => true, disabled: !dirty, enableBeforeUnload: () => dirty, withResolver: true });
+  // Cambios sin guardar o una subida en curso (salir la cancela): bloquea la navegación del router
+  // (diálogo), el cambio de pestaña del servidor y avisa al cerrar/recargar la pestaña del navegador.
+  const warning = leaveWarning({ dirty, uploading, file: editing });
+  const guarded = warning !== null;
+  const lastWarning = useRef(warning); // el texto no cambia mientras se cierra el diálogo
+  if (warning) lastWarning.current = warning;
+  const blocker = useBlocker({ shouldBlockFn: () => true, disabled: !guarded, enableBeforeUnload: () => guarded, withResolver: true });
 
-  useTabGuard(dirty); // también protege el cambio de pestaña
+  useTabGuard(guarded, warning ?? undefined);
   // Al desmontar (cambio de pestaña) se cancela lo que siga subiéndose.
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -151,10 +156,10 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
       />
       <ConfirmDialog
         open={blocker.status === "blocked"}
-        title="Cambios sin guardar"
-        description={`Hay cambios sin guardar en ${editing ?? "el fichero"}. Si sales de esta página se perderán.`}
-        confirmLabel="Salir y descartar"
-        cancelLabel="Seguir editando"
+        title={lastWarning.current?.title ?? "Salir"}
+        description={lastWarning.current?.description ?? ""}
+        confirmLabel={lastWarning.current?.confirmLabel ?? "Salir"}
+        cancelLabel="Quedarme"
         onConfirm={() => blocker.proceed?.()}
         onCancel={() => blocker.reset?.()}
       />
