@@ -5,6 +5,8 @@ services:
     image: mcsm-agent:latest
     build: { context: ../agent }
     restart: unless-stopped
+    # Al pararlo, el agente espera hasta 25 s a las copias en curso (save-on) antes de salir.
+    stop_grace_period: 30s
     environment:
       PANEL_URL: ${PANEL_URL:?Define PANEL_URL, p. ej. http://192.168.1.10:8080}
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
