@@ -40,6 +40,19 @@ describe("proposeTarget", () => {
     expect(p.ok).toBe(false);
     if (!p.ok) expect(p.error).toMatch(/19132 \(Geyser\)/);
   });
+  it("plan-8: el puerto del router (mc-router) del destino no se conserva, ni se reparte, ni se puede pedir", () => {
+    expect(proposeTarget({ slug: "s", spec: spec(25565), targetServers: [], range, routerPort: 25565 }))
+      .toEqual({ ok: true, slug: "s", port: 25566, portChanged: true });
+    expect(proposeTarget({ slug: "s", spec: spec(25570), targetServers: [{ slug: "o", spec: spec(25570) }], range, routerPort: 25565 }))
+      .toEqual({ ok: true, slug: "s", port: 25566, portChanged: true });
+    expect(proposeTarget({ slug: "s", spec: spec(25570), targetServers: [], range, routerPort: 25580, requestedPort: 25580 }))
+      .toEqual({ ok: false, error: "El puerto 25580 lo usa el router (mc-router) del nodo destino" });
+    const p = proposeTarget({ slug: "s", spec: spec(25570, [{ host: 25580, container: 8100, proto: "tcp", label: "Mapa" }]), targetServers: [], range, routerPort: 25580 });
+    expect(p).toEqual({ ok: false, error: "El puerto extra 25580 (Mapa) lo usa el router (mc-router) del nodo destino: cámbialo antes de migrar" });
+    // Sin router (null), nada cambia.
+    expect(proposeTarget({ slug: "s", spec: spec(25565), targetServers: [], range, routerPort: null }))
+      .toEqual({ ok: true, slug: "s", port: 25565, portChanged: false });
+  });
   it("sin puertos libres en el rango: error", () => {
     const full = [25565, 25566, 25567, 25568, 25569, 25570].map((g, i) => ({ slug: `o${i}`, spec: spec(g) }));
     expect(proposeTarget({ slug: "s", spec: spec(25565), targetServers: full, range }).ok).toBe(false);

@@ -9,6 +9,8 @@ export interface ProposalInput {
   slug: string; spec: Spec; targetServers: TargetServer[]; range: { from: number; to: number }; requestedPort?: number;
   /** Slugs ocupados en el destino sin servidor (p. ej. un origen con la retirada pendiente: su directorio sigue allí). */
   reservedSlugs?: Iterable<string>;
+  /** plan-8: puerto del host del router (mc-router) activo en el destino; null o ausente sin router. */
+  routerPort?: number | null;
 }
 export type Proposal = { ok: true; slug: string; port: number; portChanged: boolean } | { ok: false; error: string };
 
@@ -25,7 +27,7 @@ export function uniqueSlugAmong(base: string, taken: ReadonlySet<string>): strin
 /**
  * Slug y puerto de juego del servidor en el destino (spec §7: «puerto nuevo si colisiona»). El puerto pedido se
  * respeta si está libre; si no se pide, el actual si está libre y, si no, el primero libre del rango del panel. Los
- * puertos extra no se cambian solos: si chocan, error. Pura.
+ * puertos extra no se cambian solos: si chocan, error. El puerto del router del destino (plan-8) cuenta como usado. Pura.
  */
 export function proposeTarget(i: ProposalInput): Proposal {
   const used = new Set<number>();
@@ -33,13 +35,20 @@ export function proposeTarget(i: ProposalInput): Proposal {
     used.add(s.spec.ports.game);
     for (const e of s.spec.ports.extra) used.add(e.host);
   }
+  const router = i.routerPort ?? null;
+  const onRouter = i.spec.ports.extra.find((e) => e.host === router);
+  if (onRouter) {
+    return { ok: false, error: `El puerto extra ${onRouter.host} (${onRouter.label || onRouter.proto}) lo usa el router (mc-router) del nodo destino: cámbialo antes de migrar` };
+  }
   const clash = i.spec.ports.extra.find((e) => used.has(e.host));
   if (clash) {
     return { ok: false, error: `El puerto extra ${clash.host} (${clash.label || clash.proto}) ya lo usa otro servidor del nodo destino: cámbialo antes de migrar` };
   }
   const extras = new Set(i.spec.ports.extra.map((e) => e.host));
   let port: number | undefined;
+  if (router !== null) used.add(router); // tras comprobar los extra: el choque con el router tiene su mensaje
   if (i.requestedPort !== undefined) {
+    if (i.requestedPort === router) return { ok: false, error: `El puerto ${router} lo usa el router (mc-router) del nodo destino` };
     if (used.has(i.requestedPort) || extras.has(i.requestedPort)) return { ok: false, error: `El puerto ${i.requestedPort} ya está en uso en el nodo destino` };
     port = i.requestedPort;
   } else if (!used.has(i.spec.ports.game)) {
