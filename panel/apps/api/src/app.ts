@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Db } from "./db/db.js";
@@ -39,7 +40,19 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   app.addHook("onReady", async () => app.nodes.markAllOffline());
   await app.register(serverRoutes);
   await app.register(realtimeRoutes);
-  // Task 19: estáticos de la web si cfg.webDist
+  if (cfg.webDist) {
+    await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
+    // El notFoundHandler no pasa por el guard de sesión (no hay ruta enrutada): solo debe servir
+    // index.html, nunca datos, y solo para navegaciones GET/HEAD fuera de /api, /agent y /ws.
+    app.setNotFoundHandler((req, reply) => {
+      const path = req.url.split("?")[0] ?? "";
+      const reserved = path.startsWith("/api/") || path.startsWith("/agent/") || path === "/ws";
+      if (reserved || (req.method !== "GET" && req.method !== "HEAD")) {
+        return reply.code(404).send({ error: "No encontrado" });
+      }
+      return reply.sendFile("index.html");
+    });
+  }
   return app;
 }
 

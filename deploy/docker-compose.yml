@@ -1,0 +1,36 @@
+# Requiere la red compartida: docker network create mcsm
+name: mcsm
+services:
+  panel:
+    build: { context: .., dockerfile: deploy/panel.Dockerfile }
+    image: mcsm-panel:latest
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    environment:
+      PANEL_PUBLIC_URL: ${PANEL_PUBLIC_URL:-http://localhost:8080}
+    volumes:
+      - panel-data:/data
+  agent:
+    build: { context: ../agent }
+    image: mcsm-agent:latest
+    restart: unless-stopped
+    depends_on: [panel]
+    environment:
+      PANEL_URL: http://panel:8080
+      ENROLL_TOKEN: ${ENROLL_TOKEN:-}
+      NODE_NAME: ${NODE_NAME:-principal}
+      DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
+      HOST_PROC: /host/proc
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_ROOT:-/srv/minecraft}:${DATA_ROOT:-/srv/minecraft}
+      - agent-data:/var/lib/mcsm-agent
+      - /proc:/host/proc:ro
+    networks: [default, mcsm]
+networks:
+  mcsm:
+    name: mcsm
+    external: true
+volumes:
+  panel-data: {}
+  agent-data: {}

@@ -1,0 +1,24 @@
+# Desarrollo: el panel corre en el host (pnpm dev:api), el agente en Docker.
+# Requiere la red compartida: docker network create mcsm
+name: mcsm-dev
+services:
+  agent:
+    build: { context: ../agent }
+    image: mcsm-agent:dev
+    environment:
+      PANEL_URL: http://host.docker.internal:8080
+      ENROLL_TOKEN: ${ENROLL_TOKEN:-}
+      NODE_NAME: dev
+      DATA_ROOT: ${DATA_ROOT:?Ruta absoluta en el host, p. ej. /home/lobo/dev/mc-server-manager/deploy/data}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_ROOT}:${DATA_ROOT}
+      - agent-dev-data:/var/lib/mcsm-agent
+    networks: [mcsm]
+networks:
+  mcsm:
+    name: mcsm
+    external: true
+volumes:
+  agent-dev-data: {}
