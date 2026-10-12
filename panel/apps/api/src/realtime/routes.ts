@@ -4,6 +4,7 @@ import { BrowserHub } from "./hub.js";
 export async function realtimeRoutes(app: FastifyInstance) {
   const hub = new BrowserHub(app);
   app.decorate("browserHub", hub);
+  app.addHook("onClose", async () => hub.dispose());
   // El hook de auth (Task 11) ya responde 401 en /ws sin sesión, antes del upgrade.
   app.get("/ws", { websocket: true }, (socket) => hub.add(socket));
 }
