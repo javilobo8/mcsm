@@ -48,6 +48,7 @@ type Reconciler struct {
 	failVer map[string]uint64
 	lastErr map[string]string
 	held    map[string]string // plan-4: servidores reservados por Hold (backup/restore) y su motivo
+	heldErr map[string]string // plan-4: error visible en Observed de un servidor reservado (HoldError)
 	now     func() time.Time
 }
 
@@ -478,6 +479,9 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 	obs.AppliedVersion, _ = r.st.Applied(serverID)
 	r.mu.Lock()
 	obs.Error = r.lastErr[serverID]
+	if msg := r.heldErr[serverID]; msg != "" {
+		obs.Error = msg // plan-4: reservado y sin poder arrancar (HoldError)
+	}
 	r.mu.Unlock()
 	c, err := r.find(ctx, serverID)
 	if err != nil {

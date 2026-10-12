@@ -216,3 +216,48 @@ func TestHoldConcurrentWithTicksAndPower(t *testing.T) {
 		t.Fatalf("ins=%+v err=%v calls=%v", ins, err, fake.Calls)
 	}
 }
+
+// plan-4: un servidor que se queda reservado sin poder arrancar (p. ej. sin directorio de
+// datos tras una restauración fallida) muestra el motivo en Observed mientras dure la
+// reserva: ni un tick ni SyncSpecs (StoreForce limpia los fallos) lo borran, y desaparece al
+// liberarla. Sin reserva, HoldError no hace nada.
+func TestHoldErrorIsObservedUntilRelease(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	r.HoldError("a", "no debe quedar")
+	if obs := r.Observe(ctx, "a"); obs.Error != "" {
+		t.Fatalf("sin reserva HoldError no hace nada: %q", obs.Error)
+	}
+	release, err := r.Hold("a", "sin datos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const msg = "falta el directorio de datos"
+	r.HoldError("a", msg)
+	if obs := r.Observe(ctx, "a"); obs.Error != msg {
+		t.Fatalf("Observed.Error = %q, want %q", obs.Error, msg)
+	}
+	r.ReconcileAll(ctx)
+	if err := r.StoreForce(&mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: runningState, SpecJson: []byte(specJSON3G)}); err != nil {
+		t.Fatal(err)
+	}
+	if obs := r.Observe(ctx, "a"); obs.Error != msg {
+		t.Fatalf("tras un tick y SyncSpecs Observed.Error = %q, want %q", obs.Error, msg)
+	}
+	release(ctx)
+	if obs := r.Observe(ctx, "a"); obs.Error != "" {
+		t.Fatalf("al liberar desaparece: %q", obs.Error)
+	}
+	again, err := r.Hold("a", "copia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again(ctx)
+	if obs := r.Observe(ctx, "a"); obs.Error != "" {
+		t.Fatalf("una reserva nueva no hereda el error: %q", obs.Error)
+	}
+}

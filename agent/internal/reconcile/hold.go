@@ -48,6 +48,7 @@ func (r *Reconciler) Hold(serverID, reason string) (release func(ctx context.Con
 			defer unlock()
 			r.mu.Lock()
 			delete(r.held, serverID)
+			delete(r.heldErr, serverID)
 			r.mu.Unlock()
 			// Un Forget durante la reserva dejó lápida: se completa el borrado ahora.
 			if tomb, err := r.st.HasTombstone(serverID); err == nil && tomb {
@@ -61,6 +62,22 @@ func (r *Reconciler) Hold(serverID, reason string) (release func(ctx context.Con
 			}
 		})
 	}, nil
+}
+
+// HoldError deja msg como error de Observed mientras dure la reserva de serverID. Es para
+// un servidor que se queda reservado, sin arrancar, hasta que alguien intervenga (p. ej. sin
+// directorio de datos tras una restauración fallida): ni los ticks ni SyncSpecs (StoreForce
+// limpia los fallos) lo borran; desaparece al liberar la reserva. Sin reserva no hace nada.
+func (r *Reconciler) HoldError(serverID, msg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.held[serverID]; !ok {
+		return
+	}
+	if r.heldErr == nil {
+		r.heldErr = map[string]string{}
+	}
+	r.heldErr[serverID] = msg
 }
 
 // Held indica si el servidor está reservado por Hold.
