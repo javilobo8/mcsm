@@ -6,6 +6,7 @@ import { StateBadge } from "@/components/state-badge";
 import { PowerButtons } from "@/components/power-buttons";
 import { useServers } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
+import { NodeUsage } from "@/components/node-usage";
 import { formatBytes } from "@/lib/format";
 
 export function DashboardPage() {
@@ -21,12 +22,15 @@ export function DashboardPage() {
         {nodes.isError && <Card><CardContent role="alert" className="p-4 text-sm text-red-400">No se pudieron cargar los nodos: {nodes.error.message}</CardContent></Card>}
         {nodes.data?.map((n) => (
           <Card key={n.id} className={n.status === "online" ? "border-emerald-900" : "border-zinc-800 opacity-70"}>
-            <CardContent className="flex items-center justify-between gap-2 p-4">
-              <div className="min-w-0">
-                <div className="truncate font-medium">{n.name}</div>
-                <div className="text-xs text-zinc-400">{n.status === "online" ? `Agente ${n.agentVersion ?? "?"} · Docker ${n.dockerVersion ?? "?"}` : "Desconectado"}</div>
+            <CardContent className="flex flex-col gap-3 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{n.name}</div>
+                  <div className="text-xs text-zinc-400">{n.status === "online" ? `Agente ${n.agentVersion ?? "?"} · Docker ${n.dockerVersion ?? "?"}` : "Desconectado"}</div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1 text-xs text-zinc-400"><Cpu className="size-3" /> {n.hostInfo?.cpus ?? "?"} CPU · {formatBytes(n.hostInfo?.memTotalBytes ?? 0)}</div>
               </div>
-              <div className="flex shrink-0 items-center gap-1 text-xs text-zinc-400"><Cpu className="size-3" /> {n.hostInfo?.cpus ?? "?"} CPU · {formatBytes(n.hostInfo?.memTotalBytes ?? 0)}</div>
+              {n.status === "online" && <NodeUsage nodeId={n.id} />}
             </CardContent>
           </Card>
         ))}
