@@ -65,7 +65,7 @@ func makeArchive(t *testing.T, entries []tarEntry) []byte {
 		if h.Typeflag == tar.TypeReg {
 			h.Size = int64(len(e.body))
 		}
-		if h.Mode == 0 {
+		if h.Mode == 0 && h.Typeflag != tar.TypeXGlobalHeader { // la global solo admite PAXRecords
 			h.Mode = 0o644
 		}
 		if err := tw.WriteHeader(&h); err != nil {
@@ -302,6 +302,7 @@ func TestExtractNeverFollowsLinks(t *testing.T) {
 func TestExtractSkipsSpecialFiles(t *testing.T) {
 	dst := t.TempDir()
 	data := makeArchive(t, []tarEntry{
+		{hdr: tar.Header{Name: "pax_global_header", Typeflag: tar.TypeXGlobalHeader, PAXRecords: map[string]string{"comment": "git archive"}}}, // metadatos: se ignora sin avisar
 		{hdr: tar.Header{Name: "fifo", Typeflag: tar.TypeFifo}},
 		{hdr: tar.Header{Name: "null", Typeflag: tar.TypeChar, Devmajor: 1, Devminor: 3}},
 		{hdr: tar.Header{Name: "sda", Typeflag: tar.TypeBlock, Devmajor: 8}},
@@ -318,6 +319,53 @@ func TestExtractSkipsSpecialFiles(t *testing.T) {
 	}
 	if mustRead(t, filepath.Join(dst, "ok.txt")) != "ok" || len(warns) != 3 {
 		t.Fatalf("avisos = %v", warns)
+	}
+}
+
+// Un tipo que archive/tar no trata como solo cabecera (GNU sparse, desconocidos…) conserva
+// su Size y Next() descartaría ese contenido descomprimiéndolo entero, sin límite ni ctx.
+func TestExtractRejectsUnsupportedTypeWithContent(t *testing.T) {
+	const unknown = 'Z'
+	cases := map[string]struct {
+		body string
+		lim  ExtractLimits
+		want string
+	}{
+		"bomba de ceros": {strings.Repeat("\x00", 16<<20), ExtractLimits{MaxBytes: 1 << 20}, "límite"}, // 16 MiB que comprimen a nada
+		"tipo con datos": {"x", ExtractLimits{}, "no admitido"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			enc, err := zstd.NewWriter(&buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tw := tar.NewWriter(enc)
+			if err := tw.WriteHeader(&tar.Header{Name: "raro", Typeflag: unknown, Mode: 0o644, Size: int64(len(c.body))}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tw.Write([]byte(c.body)); err != nil {
+				t.Fatal(err)
+			}
+			if err := tw.WriteHeader(&tar.Header{Name: "ok.txt", Typeflag: tar.TypeReg, Mode: 0o644, Size: 2}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tw.Write([]byte("ok")); err != nil {
+				t.Fatal(err)
+			}
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := enc.Close(); err != nil {
+				t.Fatal(err)
+			}
+			dst := t.TempDir()
+			if err := ExtractArchiveLimits(context.Background(), &buf, dst, nil, c.lim); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err = %v; esperaba %q", err, c.want)
+			}
+			assertEmpty(t, dst)
+		})
 	}
 }
 
@@ -750,5 +798,66 @@ func TestWriteEntrySkipsFifoSwappedIn(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("writeEntry se bloqueó abriendo una FIFO")
+	}
+}
+
+// Si un directorio deja de serlo entre el listado de su padre y su apertura (fichero, FIFO,
+// enlace a fuera o a otro directorio de dentro), se omite su contenido con aviso en vez de
+// abortar la copia o listar otra cosa bajo su nombre.
+func TestReadDirInDetectsDirectoryThatChanged(t *testing.T) {
+	for _, swap := range []string{"fichero", "fifo", "enlace fuera", "enlace dentro", "borrado", "igual"} {
+		t.Run(swap, func(t *testing.T) {
+			base := t.TempDir()
+			src := filepath.Join(base, "src")
+			mustWrite(t, filepath.Join(src, "d", "x.txt"), "x", 0o644)
+			mustWrite(t, filepath.Join(src, "otro", "y.txt"), "y", 0o644)
+			mustWrite(t, filepath.Join(base, "fuera", "z.txt"), "z", 0o644)
+			d := filepath.Join(src, "d")
+			want, err := os.Lstat(d)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if swap != "igual" {
+				if err := os.RemoveAll(d); err != nil {
+					t.Fatal(err)
+				}
+			}
+			switch swap {
+			case "fichero":
+				mustWrite(t, d, "ya no es un directorio", 0o644)
+			case "fifo":
+				err = syscall.Mkfifo(d, 0o644)
+			case "enlace fuera":
+				err = os.Symlink("../fuera", d)
+			case "enlace dentro":
+				err = os.Symlink("otro", d)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.OpenRoot(src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			des, changed, err := readDirIn(root, "d", want)
+			if err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			switch swap {
+			case "igual":
+				if changed || len(des) != 1 || des[0].Name() != "x.txt" {
+					t.Fatalf("des = %v, changed = %v", des, changed)
+				}
+			case "borrado":
+				if changed || len(des) != 0 {
+					t.Fatalf("des = %v, changed = %v", des, changed)
+				}
+			default:
+				if !changed || len(des) != 0 {
+					t.Fatalf("des = %v, changed = %v", des, changed)
+				}
+			}
+		})
 	}
 }

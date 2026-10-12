@@ -151,14 +151,15 @@ func WriteArchive(ctx context.Context, src string, w io.Writer, excl *Excluder, 
 func scan(ctx context.Context, root *os.Root, excl *Excluder, st *ArchiveStats) ([]entry, int64, error) {
 	var out []entry
 	var total int64
-	var walk func(dir string) error
-	walk = func(dir string) error {
-		des, err := readDirIn(root, dir)
+	var walk func(dir string, want fs.FileInfo) error
+	walk = func(dir string, want fs.FileInfo) error {
+		des, changed, err := readDirIn(root, dir, want)
 		if err != nil {
-			if dir != "." && errors.Is(err, fs.ErrNotExist) {
-				return nil // desapareció durante el recorrido
-			}
 			return err
+		}
+		if changed {
+			st.Warnings = append(st.Warnings, "omitido el contenido de "+dir+" (dejó de ser el mismo directorio durante la copia)")
+			return nil
 		}
 		for _, d := range des {
 			if err := ctx.Err(); err != nil {
@@ -193,7 +194,7 @@ func scan(ctx context.Context, root *os.Root, excl *Excluder, st *ArchiveStats) 
 				out = append(out, e)
 			case info.IsDir():
 				out = append(out, e)
-				if err := walk(rel); err != nil {
+				if err := walk(rel, info); err != nil {
 					return err
 				}
 			default:
@@ -202,22 +203,43 @@ func scan(ctx context.Context, root *os.Root, excl *Excluder, st *ArchiveStats) 
 		}
 		return nil
 	}
-	err := walk(".")
+	err := walk(".", nil)
 	return out, total, err
 }
 
-// readDirIn lista un directorio dentro de la raíz, ordenado por nombre. O_DIRECTORY hace
-// que abrir algo que ya no es un directorio (p. ej. una FIFO colada) falle en vez de
-// bloquearse.
-func readDirIn(root *os.Root, dir string) ([]fs.DirEntry, error) {
+// readDirIn lista un directorio de la raíz, ordenado por nombre. want es lo que vio el
+// escaneo (nil para la propia raíz). Si entretanto lo cambiaron por un fichero, una FIFO o
+// un enlace (fuera o a otro directorio de dentro), devuelve changed sin listarlo; si
+// desapareció, nada. O_DIRECTORY hace que abrir una FIFO colada falle en vez de bloquearse.
+func readDirIn(root *os.Root, dir string, want fs.FileInfo) (des []fs.DirEntry, changed bool, err error) {
 	f, err := root.OpenFile(dir, os.O_RDONLY|syscall.O_DIRECTORY, 0)
 	if err != nil {
-		return nil, err
+		if want == nil {
+			return nil, false, err
+		}
+		// Se decide por lo que hay ahora, no por el error (os.Root no exporta el de «escapa»).
+		now, lerr := root.Lstat(dir)
+		switch {
+		case errors.Is(lerr, fs.ErrNotExist):
+			return nil, false, nil // desapareció durante el recorrido
+		case lerr == nil && !now.IsDir():
+			return nil, true, nil
+		}
+		return nil, false, err
 	}
 	defer f.Close()
-	des, err := f.ReadDir(-1)
+	if want != nil {
+		now, err := f.Stat()
+		if err != nil {
+			return nil, false, err
+		}
+		if !os.SameFile(want, now) { // p. ej. un enlace a otro directorio de dentro, ya seguido
+			return nil, true, nil
+		}
+	}
+	des, err = f.ReadDir(-1)
 	slices.SortFunc(des, func(a, b fs.DirEntry) int { return strings.Compare(a.Name(), b.Name()) })
-	return des, err
+	return des, false, err
 }
 
 func writeEntry(ctx context.Context, tw *tar.Writer, root *os.Root, e entry, buf []byte) (n int64, skipped bool, warn string, err error) {
@@ -402,7 +424,7 @@ type dirMeta struct {
 }
 
 func (x *extractor) run(dec io.Reader) error {
-	tail := &tailReader{r: dec}
+	tail := &tailReader{r: cancelReader{x.ctx, dec}} // ctx también dentro de Next()
 	tr := tar.NewReader(tail)
 	var dirs []dirMeta
 	for {
@@ -422,9 +444,20 @@ func (x *extractor) run(dec io.Reader) error {
 		if x.entries++; x.entries > x.lim.MaxEntries {
 			return fmt.Errorf("la copia supera el límite de %d entradas: rechazada", x.lim.MaxEntries)
 		}
+		if hdr.Typeflag == tar.TypeXGlobalHeader {
+			continue // metadatos PAX globales (git archive); archive/tar ya los leyó, acotados
+		}
 		name, err := entryName(hdr.Name)
 		if err != nil {
 			return err
+		}
+		// archive/tar solo ignora el Size de los tipos «solo cabecera»; en los demás, lo que no
+		// se lea lo descarta Next() descomprimiéndolo entero. Todo cuenta para el límite.
+		if !headerOnly(hdr.Typeflag) {
+			if hdr.Size > x.lim.MaxBytes-x.bytes {
+				return fmt.Errorf("la copia supera el límite de %d bytes descomprimidos: rechazada", x.lim.MaxBytes)
+			}
+			x.bytes += hdr.Size
 		}
 		mode := fs.FileMode(hdr.Mode).Perm() // sin setuid, setgid ni sticky
 		switch hdr.Typeflag {
@@ -443,10 +476,6 @@ func (x *extractor) run(dec io.Reader) error {
 			if name == "." {
 				return fmt.Errorf("entrada con nombre inválido %q: copia rechazada", hdr.Name)
 			}
-			if hdr.Size > x.lim.MaxBytes-x.bytes {
-				return fmt.Errorf("la copia supera el límite de %d bytes descomprimidos: rechazada", x.lim.MaxBytes)
-			}
-			x.bytes += hdr.Size
 			if dir := path.Dir(name); dir != "." {
 				if err := x.root.MkdirAll(dir, 0o755); err != nil {
 					return err
@@ -456,6 +485,11 @@ func (x *extractor) run(dec io.Reader) error {
 				return err
 			}
 		default:
+			// GNU sparse, contiguos, tipos desconocidos…: no se restauran, y si traen contenido
+			// la copia no es nuestra ni de un tar corriente de un directorio de datos.
+			if hdr.Size > 0 {
+				return fmt.Errorf("entrada %q de tipo no admitido (%q) con contenido: copia rechazada", hdr.Name, hdr.Typeflag)
+			}
 			x.warn(fmt.Sprintf("omitido %s: los enlaces y ficheros especiales no se restauran", hdr.Name))
 		}
 	}
@@ -529,6 +563,15 @@ func (x *extractor) ownerErr(name string, err error) {
 	}
 	x.ownerWarned = true
 	x.warn(fmt.Sprintf("aviso: no se pudo restaurar el propietario de %s (%v); puede haber más casos", name, err))
+}
+
+// headerOnly son los tipos cuyo Size ignora archive/tar (no tienen contenido).
+func headerOnly(flag byte) bool {
+	switch flag {
+	case tar.TypeLink, tar.TypeSymlink, tar.TypeChar, tar.TypeBlock, tar.TypeDir, tar.TypeFifo:
+		return true
+	}
+	return false
 }
 
 // tailReader cuenta la racha de bytes a cero con la que termina lo leído hasta ahora.
