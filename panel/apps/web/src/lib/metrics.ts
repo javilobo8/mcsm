@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { MetricColumn, MetricRange, MetricSeries, NodeLiveSample } from "@mcsm/shared";
 import type { ServerMessage } from "./api";
-import type { LiveSource } from "./live";
+import { mergeIntoCached, type LiveSource } from "./live";
 import { formatBytes } from "./format";
 
 export const RANGE_OPTIONS: { value: MetricRange; label: string }[] = [
@@ -35,12 +35,12 @@ export function latestNodeSample(s: MetricSeries): NodeLiveSample | null {
 
 /** El agente envía cada 10 s: una muestra con más de 60 s está caducada. */
 export const isFresh = (s: NodeLiveSample | null | undefined, nowMs: number): s is NodeLiveSample =>
-  !!s && nowMs / 1000 - s.ts <= 60;
+  !!s && nowMs / 1000 - s.ts <= 60 && nowMs / 1000 - s.ts >= -5; // sin futuro más allá de un pequeño desfase de reloj
 
-/** Porcentaje acotado a 0–100; con total 0 ("sin límite conocido") devuelve 0: quien pinte debe comprobar el total antes. */
-export const percent = (used: number, total: number): number => (total > 0 ? Math.min(100, Math.max(0, (used / total) * 100)) : 0);
+/** Porcentaje acotado a 0–100; `null` con total 0 ("sin límite conocido"): la UI no debe pintar %. */
+export const percent = (used: number, total: number): number | null => (total > 0 ? Math.min(100, Math.max(0, (used / total) * 100)) : null);
 
-export const usageTone = (pct: number): "ok" | "warn" | "bad" => (pct >= 90 ? "bad" : pct >= 70 ? "warn" : "ok");
+export const usageTone = (pct: number | null): "ok" | "warn" | "bad" => (pct === null ? "ok" : pct >= 90 ? "bad" : pct >= 70 ? "warn" : "ok");
 
 export const formatCpu = (v: number): string => `${Math.round(v)} %`;
 export const formatCount = (v: number): string => String(Math.round(v));
@@ -49,9 +49,13 @@ export const formatMem = (v: number): string => formatBytes(v);
 
 type NodeMetricsMsg = Extract<ServerMessage, { type: "node_metrics" }>;
 
-/** Guarda la última muestra en vivo de un nodo; una más antigua que la que hay no la pisa. */
+/**
+ * Guarda la última muestra en vivo de un nodo en caché. Sin datos (carga inicial) no escribe: la
+ * propia carga traerá la muestra; en refetch cancela antes (ver `mergeIntoCached`). Una muestra más
+ * antigua que la cacheada no la pisa.
+ */
 export function applyNodeMetricsEvent(qc: QueryClient, msg: NodeMetricsMsg): void {
-  qc.setQueryData<NodeLiveSample | null>(["node-live", msg.nodeId], (old) => (old && old.ts > msg.sample.ts ? old : msg.sample));
+  mergeIntoCached<NodeLiveSample | null>(qc, ["node-live", msg.nodeId], (old) => (old && old.ts > msg.sample.ts ? old : msg.sample));
 }
 
 /** Conecta `node_metrics` del WS con la caché. Devuelve la función de limpieza. */

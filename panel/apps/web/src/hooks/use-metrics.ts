@@ -1,9 +1,7 @@
-import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { MetricRange, MetricSeries } from "@mcsm/shared";
 import { api, apiPath } from "@/lib/api";
-import { realtime } from "@/lib/ws";
-import { REFRESH_MS, bindNodeMetrics, latestNodeSample } from "@/lib/metrics";
+import { REFRESH_MS, latestNodeSample } from "@/lib/metrics";
 
 /** Serie histórica de un servidor; se recarga al ritmo del cubo del rango. */
 export function useServerMetrics(serverId: string, range: MetricRange) {
@@ -14,10 +12,8 @@ export function useServerMetrics(serverId: string, range: MetricRange) {
   });
 }
 
-/** Última muestra de un nodo: la primera por REST y después en vivo por el WS (`node_metrics`). */
+/** Última muestra de un nodo: la primera por REST y después en vivo por el WS (`node_metrics`, enlazado una vez en `useLive`). */
 export function useNodeLive(nodeId: string) {
-  const qc = useQueryClient();
-  useEffect(() => bindNodeMetrics(qc, realtime), [qc]);
   return useQuery({
     queryKey: ["node-live", nodeId],
     queryFn: async () => latestNodeSample(await api.get<MetricSeries>(`${apiPath`/api/nodes/${nodeId}/metrics`}?range=1h`)),

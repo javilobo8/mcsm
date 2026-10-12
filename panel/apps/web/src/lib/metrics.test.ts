@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import type { MetricSeries, NodeLiveSample } from "@mcsm/shared";
 import type { ServerMessage } from "./api";
 import type { LiveSource } from "./live";
@@ -37,6 +37,8 @@ describe("series", () => {
     expect(isFresh(sample(1000), 1_060_000)).toBe(true);
     expect(isFresh(sample(1000), 1_061_000)).toBe(false);
     expect(isFresh(null, 0)).toBe(false);
+    expect(isFresh(sample(1003), 1_000_000)).toBe(true);
+    expect(isFresh(sample(1100), 1_000_000)).toBe(false);
   });
 });
 
@@ -44,7 +46,8 @@ describe("formato", () => {
   it("percent acota a 0–100 y tolera total 0", () => {
     expect(percent(5, 10)).toBe(50);
     expect(percent(20, 10)).toBe(100);
-    expect(percent(1, 0)).toBe(0);
+    expect(percent(1, 0)).toBeNull();
+    expect(usageTone(percent(1, 0))).toBe("ok");
   });
   it("usageTone cambia a los 70 y 90 %", () => {
     expect([usageTone(69.9), usageTone(70), usageTone(89.9), usageTone(90)]).toEqual(["ok", "warn", "warn", "bad"]);
@@ -63,11 +66,41 @@ describe("node_metrics en vivo", () => {
   });
   it("guarda la última muestra y no la pisa con una más antigua", () => {
     const qc = new QueryClient();
+    qc.setQueryData(["node-live", "n1"], sample(100, 1));
     applyNodeMetricsEvent(qc, msg("n1", sample(200, 50)));
     applyNodeMetricsEvent(qc, msg("n1", sample(190, 10)));
     expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(50);
     applyNodeMetricsEvent(qc, msg("n1", sample(210, 60)));
     expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(60);
+  });
+  it("no crea entradas de caché para nodos sin datos", () => {
+    const qc = new QueryClient();
+    applyNodeMetricsEvent(qc, msg("n9", sample(1)));
+    expect(qc.getQueryData(["node-live", "n9"])).toBeUndefined();
+  });
+  it("evento durante la carga inicial: no cancela y manda la respuesta REST", async () => {
+    const qc = new QueryClient();
+    let resolve!: (v: NodeLiveSample) => void;
+    const obs = new QueryObserver(qc, { queryKey: ["node-live", "n1"], queryFn: () => new Promise<NodeLiveSample>((r) => { resolve = r; }) });
+    const unsub = obs.subscribe(() => {});
+    applyNodeMetricsEvent(qc, msg("n1", sample(500, 99)));
+    resolve(sample(490, 5));
+    await vi.waitFor(() => expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(5));
+    unsub();
+  });
+  it("evento durante un refetch: cancela y la respuesta vieja no lo pisa", async () => {
+    const qc = new QueryClient();
+    const resolvers: ((v: NodeLiveSample) => void)[] = [];
+    const obs = new QueryObserver(qc, { queryKey: ["node-live", "n1"], queryFn: () => new Promise<NodeLiveSample>((r) => { resolvers.push(r); }) });
+    const unsub = obs.subscribe(() => {});
+    resolvers[0]!(sample(100, 1));
+    await vi.waitFor(() => expect(qc.getQueryData(["node-live", "n1"])).toBeDefined());
+    void obs.refetch();
+    await vi.waitFor(() => expect(resolvers).toHaveLength(2));
+    applyNodeMetricsEvent(qc, msg("n1", sample(500, 99)));
+    resolvers[1]!(sample(490, 5));
+    await vi.waitFor(() => expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(99));
+    unsub();
   });
   it("bindNodeMetrics se suscribe a nodes, ignora otros mensajes e invalida al reconectar", () => {
     const qc = new QueryClient();
@@ -83,6 +116,7 @@ describe("node_metrics en vivo", () => {
     const off = bindNodeMetrics(qc, live);
     handlers[0]!({ type: "node", node: { id: "n1" } as never });
     expect(qc.getQueryData(["node-live", "n1"])).toBeUndefined();
+    qc.setQueryData(["node-live", "n1"], sample(1, 0));
     handlers[0]!(msg("n1", sample(5, 42)));
     expect(qc.getQueryData<NodeLiveSample>(["node-live", "n1"])?.cpuPct).toBe(42);
     reconnects[0]!();
