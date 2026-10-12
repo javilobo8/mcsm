@@ -16,6 +16,8 @@ import (
 )
 
 const (
+	// filesShutdownWait es el tope de la espera a los Files* en curso al cerrar el agente.
+	filesShutdownWait = 20 * time.Second
 	// maxTransfers acota las subidas y descargas simultáneas del nodo (descriptores, temporales
 	// y conexiones). La siguiente recibe busy al instante, sin consumir su transferencia.
 	maxTransfers = 4
@@ -27,15 +29,58 @@ const (
 var (
 	errTransfersBusy = fmt.Errorf("el nodo ya tiene %d transferencias de archivos en curso: espera a que termine alguna", maxTransfers)
 	errIdle          = errors.New("transferencia inactiva")
+	errClosing       = errors.New("el agente se está cerrando: inténtalo de nuevo cuando vuelva a conectar")
 )
 
-// transferGate cuenta las transferencias en curso y lleva el reloj del vigilante de
-// inactividad. El valor cero es utilizable.
+// transferGate cuenta las transferencias en curso, lleva el reloj del vigilante de
+// inactividad y registra los Files* en curso para que el cierre los espere. El valor cero es
+// utilizable.
 type transferGate struct {
 	mu     sync.Mutex
 	active int
 	// after es el reloj del vigilante (nil → time.After). Solo lo cambian los tests.
 	after func(time.Duration) <-chan time.Time
+	// ops cuenta los Files* en curso; closed impide que empiecen otros una vez iniciado el cierre
+	// (un Add con el contador a cero no puede competir con un Wait en marcha).
+	ops    sync.WaitGroup
+	closed bool
+}
+
+// enter registra un Files* que empieza; false si el agente ya se está cerrando.
+func (g *transferGate) enter() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.closed {
+		return false
+	}
+	g.ops.Add(1)
+	return true
+}
+
+func (g *transferGate) leave() { g.ops.Done() }
+
+// wait cierra la entrada a Files* nuevos y espera, como mucho d, a que terminen los que están
+// en curso. Al cerrar, el contexto de vida ya está cancelado: las transferencias se cortan y
+// WriteFrom borra su temporal; lo que espera esto es esa limpieza (y una escritura o un borrado
+// que estén a medias), para que el proceso no salga dejando temporales huérfanos. Devuelve
+// false si venció el plazo.
+func (g *transferGate) wait(d time.Duration) bool {
+	g.mu.Lock()
+	g.closed = true
+	g.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		g.ops.Wait()
+		close(done)
+	}()
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-done:
+		return true
+	case <-t.C:
+		return false
+	}
 }
 
 // acquire reserva un hueco sin esperar: si no hay, errTransfersBusy.
@@ -233,6 +278,11 @@ func (a *App) handleFiles(ctx context.Context, env *mcsmv1.Envelope, send func(*
 		_ = send(errMsg(env.Id, errcode.Unsupported, fmt.Errorf("mensaje de archivos no soportado: %T", env.Body)))
 		return
 	}
+	if !a.xfer.enter() {
+		_ = send(errMsg(env.Id, errcode.Busy, errClosing))
+		return
+	}
+	defer a.xfer.leave()
 	resp, err := a.filesOp(ctx, env, req)
 	if err != nil {
 		code := files.Code(err)

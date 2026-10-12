@@ -159,6 +159,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-8 ──
 	// ── plan-9 ──
 	client.Run(ctx)
+	// Cierre: los Files* en curso (ya cortados por ctx) terminan de limpiar sus temporales.
+	if !a.xfer.wait(filesShutdownWait) {
+		log.Warn("cierre sin esperar a las operaciones de archivos en curso: venció el plazo", "plazo", filesShutdownWait)
+	}
 	return nil
 }
 
