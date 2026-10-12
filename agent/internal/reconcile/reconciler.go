@@ -49,6 +49,7 @@ type Reconciler struct {
 	lastErr map[string]string
 	held    map[string]string // plan-4: servidores reservados por Hold (backup/restore) y su motivo
 	heldErr map[string]string // plan-4: error visible en Observed de un servidor reservado (HoldError)
+	adoptMu sync.Mutex        // plan-6: comprobar y registrar adopciones (un contenedor, un servidor); tras el lock por servidor
 	now     func() time.Time
 }
 
@@ -228,20 +229,45 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 	if err != nil {
 		return err
 	}
-	if existing != nil && existing.Labels[spec.LabelHash] != build.Hash {
-		r.log.Info("spec cambiada, recreando contenedor", "server", sp.Slug)
-		// Siempre Stop (Docker no hace nada sobre uno parado): evita decidir con una foto del estado.
-		if err := r.eng.Stop(ctx, existing.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			return fmt.Errorf("parar: %w", err)
+	// plan-6: un importado sin registro de adopción (ImportAdopt perdido, store nuevo) se vuelve a
+	// adoptar; si su contenedor original ya no existe, se crea el gestionado.
+	if existing == nil && parsed.Adopt != nil {
+		if existing, err = r.readopt(ctx, sp, parsed.Adopt, build.DataDir); err != nil {
+			return err
 		}
-		if err := r.eng.Remove(ctx, existing.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			return fmt.Errorf("eliminar: %w", err)
+	}
+	switch {
+	case existing != nil && existing.Adopted:
+		// plan-6: el original sigue mientras la spec no supere la versión de la adopción.
+		ad, aerr := r.st.Adoption(serverID)
+		if aerr != nil {
+			return aerr
+		}
+		if ad != nil && sp.Version > ad.Version {
+			r.log.Info("primer cambio de spec de un importado: se recrea con etiquetas mcsm", "server", sp.Slug, "original", existing.Name)
+			if err := r.replace(ctx, existing); err != nil {
+				return err
+			}
+			existing = nil
+		}
+	case existing != nil && existing.Labels[spec.LabelHash] != build.Hash:
+		r.log.Info("spec cambiada, recreando contenedor", "server", sp.Slug)
+		if err := r.replace(ctx, existing); err != nil {
+			return err
 		}
 		existing = nil
 	}
 	if existing == nil {
-		if err := os.MkdirAll(build.DataDir, 0o755); err != nil {
-			return fmt.Errorf("crear directorio de datos: %w", err)
+		// plan-6: una adopción cuyo contenedor ya no está (o se acaba de sustituir) sobra.
+		if err := r.st.DeleteAdoption(serverID); err != nil {
+			return err
+		}
+		// plan-6: con dataPath la carpeta es del host y el agente no la ve (solo monta DATA_ROOT);
+		// Docker la crea al montar si no existe.
+		if parsed.DataPath == "" {
+			if err := os.MkdirAll(build.DataDir, 0o755); err != nil {
+				return fmt.Errorf("crear directorio de datos: %w", err)
+			}
 		}
 		if err := r.eng.EnsureImage(ctx, build.Config.Image); err != nil {
 			return fmt.Errorf("descargar imagen: %w", err)
@@ -299,6 +325,9 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 		if err := r.st.DeleteTombstone(serverID); err != nil { // nada que borrar
 			return err
 		}
+		if err := r.st.DeleteAdoption(serverID); err != nil { // plan-6: su contenedor ya no existe
+			return err
+		}
 		r.clearFailure(serverID)
 		if deleteData {
 			return fmt.Errorf("servidor %s desconocido: no se pueden borrar sus datos", serverID)
@@ -308,6 +337,12 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 	// Validar antes de tocar nada: un slug inválido no debe dejar el borrado a medias.
 	var target string
 	if deleteData {
+		// plan-6: los datos de un importado con dataPath están fuera de DATA_ROOT: no se borran.
+		if sp != nil {
+			if p, perr := spec.Parse(sp.SpecJson); perr == nil && p.DataPath != "" {
+				return fmt.Errorf("los datos de %s están en %s, fuera de DATA_ROOT: el agente no los borra", slug, p.DataPath)
+			}
+		}
 		target, err = r.dataPath(slug)
 		if err != nil {
 			return err
@@ -327,6 +362,10 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 		if err := r.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			return err
 		}
+	}
+	// plan-6: el contenedor del servidor (adoptado o no) ya no existe.
+	if err := r.st.DeleteAdoption(serverID); err != nil {
+		return err
 	}
 	if deleteData {
 		if err := os.RemoveAll(target); err != nil {
@@ -515,12 +554,23 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 		obs.StartedAtUnix = ins.StartedAt.Unix()
 	}
 	if ins.Running && r.status != nil {
-		obs.Mc = r.status(ctx, spec.ContainerName(ins.Labels[spec.LabelSlug]), uint16(spec.GamePort))
+		// plan-6: el slug del contenedor encontrado (el adoptado no tiene etiquetas en Docker).
+		obs.Mc = r.status(ctx, spec.ContainerName(c.Labels[spec.LabelSlug]), uint16(spec.GamePort))
 	}
 	return obs
 }
 
+// find devuelve el contenedor del servidor: el gestionado (etiqueta mcsm.server_id) o, si no hay,
+// el adoptado (plan-6). nil sin error si no existe.
 func (r *Reconciler) find(ctx context.Context, serverID string) (*docker.Container, error) {
+	c, err := r.findManaged(ctx, serverID)
+	if err != nil || c != nil {
+		return c, err
+	}
+	return r.findAdopted(ctx, serverID)
+}
+
+func (r *Reconciler) findManaged(ctx context.Context, serverID string) (*docker.Container, error) {
 	list, err := r.eng.ListManaged(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listar contenedores: %w", err)
@@ -531,6 +581,18 @@ func (r *Reconciler) find(ctx context.Context, serverID string) (*docker.Contain
 		}
 	}
 	return nil, nil
+}
+
+// replace para y borra un contenedor para recrearlo. Siempre Stop (Docker no hace nada sobre uno
+// parado): evita decidir con una foto del estado. Los datos están en el bind.
+func (r *Reconciler) replace(ctx context.Context, c *docker.Container) error {
+	if err := r.eng.Stop(ctx, c.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
+		return fmt.Errorf("parar: %w", err)
+	}
+	if err := r.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
+		return fmt.Errorf("eliminar: %w", err)
+	}
+	return nil
 }
 
 // markFailure registra un fallo de la versión ver. Si la versión cambió desde el
