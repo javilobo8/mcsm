@@ -17,7 +17,12 @@ export class UpstreamError extends Error {
 }
 
 export interface GetOptions { kind?: "json" | "text"; ttl?: "list" | "builds" }
-export type Get = (url: string, opts?: GetOptions) => Promise<unknown>;
+/**
+ * `get` valida el documento con `schema` ANTES de guardarlo en la caché: una respuesta con otra forma es
+ * un fallo de la fuente (se sirve lo guardado con `stale`). Cada URL tiene exactamente un esquema, porque
+ * la caché guarda el documento ya validado.
+ */
+export type Get = <T>(url: string, schema: z.ZodType<T>, opts?: GetOptions) => Promise<T>;
 
 export interface Source {
   /** Nombre para los mensajes ("No se pudo consultar la lista de versiones de Paper"). */
@@ -48,12 +53,6 @@ export function allowedSource(url: string): boolean {
   }
 }
 
-function parse<T extends z.ZodType>(schema: T, doc: unknown, label: string): z.infer<T> {
-  const r = schema.safeParse(doc);
-  if (!r.success) throw new UpstreamError(null, `respuesta inesperada de ${label}`);
-  return r.data;
-}
-
 const newestFirst = <T extends { id: string }>(xs: T[]): T[] => [...xs].sort((a, b) => compareVersions(b.id, a.id));
 const unique = (xs: string[]): string[] => [...new Set(xs)];
 const enc = encodeURIComponent;
@@ -68,7 +67,7 @@ const versionsDoc = z.object({ versions: z.array(z.string()) });
 const vanilla: Source = {
   label: "Minecraft",
   async versions(get) {
-    const doc = parse(z.object({ versions: z.array(z.object({ id: z.string(), type: z.string() })) }), await get(MOJANG), "Minecraft");
+    const doc = await get(MOJANG, z.object({ versions: z.array(z.object({ id: z.string(), type: z.string() })) }));
     return doc.versions.filter((v) => v.type === "release" || v.type === "snapshot").map((v) => ({ id: v.id, stable: v.type === "release" }));
   },
 };
@@ -77,12 +76,11 @@ function fill(project: "paper" | "folia", label: string): Source {
   return {
     label,
     async versions(get) {
-      const doc = parse(z.object({ versions: z.record(z.string(), z.array(z.string())) }), await get(`${FILL}/${project}`), label);
+      const doc = await get(`${FILL}/${project}`, z.object({ versions: z.record(z.string(), z.array(z.string())) }));
       return asVersions(Object.values(doc.versions).flat());
     },
     async builds(get, version) {
-      const doc = parse(z.array(z.object({ id: z.number().int(), channel: z.string() })),
-        await get(`${FILL}/${project}/versions/${enc(version)}/builds`, { ttl: "builds" }), label);
+      const doc = await get(`${FILL}/${project}/versions/${enc(version)}/builds`, z.array(z.object({ id: z.number().int(), channel: z.string() })), { ttl: "builds" });
       // Solo STABLE: un build experimental exigiría PAPER_CHANNEL/FOLIA_CHANNEL=experimental.
       return doc.filter((b) => b.channel === "STABLE").sort((a, b) => b.id - a.id).map((b) => build(String(b.id)));
     },
@@ -92,10 +90,10 @@ function fill(project: "paper" | "folia", label: string): Source {
 const purpur: Source = {
   label: "Purpur",
   async versions(get) {
-    return asVersions(parse(versionsDoc, await get(PURPUR), "Purpur").versions);
+    return asVersions((await get(PURPUR, versionsDoc)).versions);
   },
   async builds(get, version) {
-    const doc = parse(z.object({ builds: z.object({ all: z.array(z.string()) }) }), await get(`${PURPUR}/${enc(version)}`, { ttl: "builds" }), "Purpur");
+    const doc = await get(`${PURPUR}/${enc(version)}`, z.object({ builds: z.object({ all: z.array(z.string()) }) }), { ttl: "builds" });
     return newestFirst(unique(doc.builds.all).map((id) => build(id)));
   },
 };
@@ -103,8 +101,7 @@ const purpur: Source = {
 const spigot: Source = {
   label: "Spigot",
   async versions(get) {
-    const html = await get(SPIGOT, { kind: "text" });
-    if (typeof html !== "string") throw new UpstreamError(null, "respuesta inesperada de Spigot");
+    const html = await get(SPIGOT, z.string(), { kind: "text" });
     // Índice de BuildTools: <versión>.json; los números sueltos (3000.json) son builds internos.
     return asVersions([...html.matchAll(/href="(\d+\.\d+(?:\.\d+)?)\.json"/g)].map((m) => m[1]!));
   },
@@ -113,11 +110,10 @@ const spigot: Source = {
 const fabric: Source = {
   label: "Fabric",
   async versions(get) {
-    return parse(metaGame, await get(`${FABRIC}/game`), "Fabric").map((g) => ({ id: g.version, stable: g.stable }));
+    return (await get(`${FABRIC}/game`, metaGame)).map((g) => ({ id: g.version, stable: g.stable }));
   },
   async builds(get, version) {
-    const doc = parse(z.array(z.object({ loader: z.object({ version: z.string(), stable: z.boolean() }) })),
-      await get(`${FABRIC}/loader/${enc(version)}`, { ttl: "builds" }), "Fabric");
+    const doc = await get(`${FABRIC}/loader/${enc(version)}`, z.array(z.object({ loader: z.object({ version: z.string(), stable: z.boolean() }) })), { ttl: "builds" });
     return doc.map((l) => build(l.loader.version, l.loader.stable));
   },
 };
@@ -125,10 +121,10 @@ const fabric: Source = {
 const quilt: Source = {
   label: "Quilt",
   async versions(get) {
-    return parse(metaGame, await get(`${QUILT}/game`), "Quilt").map((g) => ({ id: g.version, stable: g.stable }));
+    return (await get(`${QUILT}/game`, metaGame)).map((g) => ({ id: g.version, stable: g.stable }));
   },
   async builds(get, version) {
-    const doc = parse(z.array(z.object({ loader: z.object({ version: z.string() }) })), await get(`${QUILT}/loader/${enc(version)}`, { ttl: "builds" }), "Quilt");
+    const doc = await get(`${QUILT}/loader/${enc(version)}`, z.array(z.object({ loader: z.object({ version: z.string() }) })), { ttl: "builds" });
     return newestFirst(unique(doc.map((l) => l.loader.version)).map((id) => build(id, isStableVersion(id))));
   },
 };
@@ -144,11 +140,11 @@ const forgeMeta = z.record(z.string(), z.array(z.string()));
 const forge: Source = {
   label: "Forge",
   async versions(get) {
-    return asVersions(Object.keys(parse(forgeMeta, await get(FORGE_META), "Forge")));
+    return asVersions(Object.keys(await get(FORGE_META, forgeMeta)));
   },
   async builds(get, version) {
-    const meta = parse(forgeMeta, await get(FORGE_META), "Forge");
-    const promos = parse(z.object({ promos: z.record(z.string(), z.string()) }), await get(FORGE_PROMOS, { ttl: "builds" }), "Forge").promos;
+    const meta = await get(FORGE_META, forgeMeta);
+    const promos = (await get(FORGE_PROMOS, z.object({ promos: z.record(z.string(), z.string()) }), { ttl: "builds" })).promos;
     const recommended = promos[`${version}-recommended`];
     const ids = Object.hasOwn(meta, version) ? (meta[version] ?? []) : [];
     return newestFirst(unique(ids.map((full) => forgeBuildId(full, version))).map((id) => build(id, true, id === recommended)));
@@ -171,11 +167,11 @@ export function neoforgeMcVersion(v: string): string | null {
 const neoforge: Source = {
   label: "NeoForge",
   async versions(get) {
-    const all = parse(versionsDoc, await get(NEOFORGE), "NeoForge").versions;
+    const all = (await get(NEOFORGE, versionsDoc)).versions;
     return asVersions(all.map(neoforgeMcVersion).filter((v): v is string => v !== null));
   },
   async builds(get, version) {
-    const all = parse(versionsDoc, await get(NEOFORGE), "NeoForge").versions;
+    const all = (await get(NEOFORGE, versionsDoc)).versions;
     return newestFirst(all.filter((v) => neoforgeMcVersion(v) === version).map((id) => build(id, !id.includes("-"))));
   },
 };

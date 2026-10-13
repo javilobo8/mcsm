@@ -74,6 +74,35 @@ describe("VersionCatalog", () => {
     await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
   });
 
+  it("un 200 con otra forma no pisa lo guardado: se sirve la lista vieja con stale y se avisa", async () => {
+    const t = setup();
+    t.reply(PURPUR, purpurDoc(["26.2"]));
+    await t.catalog.versions("PURPUR");
+    t.advance(LIST_TTL_MS);
+    t.reply(PURPUR, JSON.stringify({ otra: "forma" }));
+    expect(await t.catalog.versions("PURPUR")).toMatchObject({ stale: true, versions: [{ id: "26.2", stable: true }] });
+    expect(t.errors).toEqual([PURPUR]);
+  });
+
+  it("sin nada guardado, un 200 con otra forma es 502 y no se guarda: la siguiente consulta vuelve a la red", async () => {
+    const t = setup();
+    t.reply(PURPUR, "<html>mantenimiento</html>");
+    await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
+    t.reply(PURPUR, JSON.stringify({ otra: "forma" }));
+    await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
+    expect(t.calls).toHaveLength(2);
+    expect(t.errors).toEqual([PURPUR, PURPUR]);
+    t.reply(PURPUR, purpurDoc(["26.2"]));
+    expect((await t.catalog.versions("PURPUR")).versions).toEqual([{ id: "26.2", stable: true }]);
+  });
+
+  it("una redirección no se sigue: 502 y la petición va con redirect manual", async () => {
+    const t = setup();
+    t.reply(PURPUR, () => Promise.resolve(new Response(null, { status: 302, headers: { location: "http://192.168.1.1/" } })));
+    await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
+    expect(t.calls[0]!.redirect).toBe("manual");
+  });
+
   it("dos consultas a la vez comparten la descarga", async () => {
     const t = setup();
     let release!: (r: Response) => void;

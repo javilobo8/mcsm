@@ -4,10 +4,13 @@ import { SOURCES, UpstreamError, allowedSource, forgeBuildId, neoforgeMcVersion,
 /** `get` falso: devuelve el documento de cada URL y apunta qué se pidió. */
 function fakeGet(docs: Record<string, unknown>) {
   const asked: ({ url: string } & GetOptions)[] = [];
-  const get: Get = async (url, opts = {}) => {
+  const get: Get = async (url, schema, opts = {}) => {
     asked.push({ url, ...opts });
     if (!Object.hasOwn(docs, url)) throw new Error(`URL inesperada: ${url}`);
-    return docs[url];
+    // Como el catálogo: valida con el esquema del adaptador y una forma ajena es UpstreamError.
+    const r = schema.safeParse(docs[url]);
+    if (!r.success) throw new UpstreamError(null, `respuesta inesperada de ${url}`);
+    return r.data;
   };
   return { get, asked };
 }
