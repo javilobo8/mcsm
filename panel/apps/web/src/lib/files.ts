@@ -9,6 +9,15 @@ const base = (serverId: string) => apiPath`/api/servers/${serverId}/files`;
 const UPLOAD_CANCELLED = "Subida cancelada";
 const q = (path: string) => `path=${encodeURIComponent(path)}`;
 
+/** Por encima de esto el panel no drena el cuerpo de una subida rechazada y el navegador ve un corte de red. */
+const BIG_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+/** Mensaje de una subida cortada: con un fichero grande, las causas probables (N2/m-n del Plan 5). */
+export function uploadCutMessage(size: number): string {
+  if (size <= BIG_UPLOAD_BYTES) return "Error de red: la subida se cortó";
+  return "La subida se cortó. Puede que el servidor esté ocupado (copia, restauración o migración) o que el fichero supere el máximo del nodo (UPLOAD_MAX_BYTES, 4 GiB por defecto). Revisa Historial y vuelve a intentarlo.";
+}
+
 export const filesApi = {
   list: (serverId: string, path: string) => api.get<FileListDto>(`${base(serverId)}?${q(path)}`),
   stat: (serverId: string, path: string) => api.get<FileEntryDto>(`${base(serverId)}/stat?${q(path)}`),
@@ -17,6 +26,7 @@ export const filesApi = {
   mkdir: (serverId: string, path: string) => api.post<void>(`${base(serverId)}/mkdir`, { path }),
   rename: (serverId: string, from: string, to: string) => api.post<void>(`${base(serverId)}/rename`, { from, to }),
   remove: (serverId: string, path: string) => api.del<void>(`${base(serverId)}?${q(path)}`),
+  uploadCheck: (serverId: string) => api.get<void>(apiPath`/api/servers/${serverId}/files/upload-check`),
   downloadUrl: (serverId: string, path: string) => `${base(serverId)}/download?${q(path)}`,
 };
 
@@ -43,7 +53,7 @@ export function uploadFile(serverId: string, path: string, file: Blob, onProgres
       reject(new ApiError(xhr.status, errorMessage(xhr.status, xhr.statusText, data)));
     };
     // Sin xhr.timeout a propósito: una subida de varios GiB puede tardar mucho y solo se corta con la señal.
-    xhr.onerror = () => { done(); reject(new ApiError(0, "Error de red: la subida se cortó")); };
+    xhr.onerror = () => { done(); reject(new ApiError(0, uploadCutMessage(file.size))); };
     xhr.onabort = () => { done(); reject(new ApiError(0, UPLOAD_CANCELLED)); };
     signal?.addEventListener("abort", onAbort, { once: true });
     xhr.send(file);

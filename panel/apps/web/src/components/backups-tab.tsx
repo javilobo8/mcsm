@@ -10,7 +10,8 @@ import { JobProgress } from "@/components/job-progress";
 import { createBackup, newIdempotencyKey, useBackups } from "@/hooks/use-backups";
 import { useJobs, useJobsLive } from "@/hooks/use-jobs";
 import { api, apiPath, type BackupDto, type JobDto, type ServerDto } from "@/lib/api";
-import { backupActions, keepIdempotencyKey, deleteDialogText, formatBackupDate, restoreDialogText, toggleBusyReason } from "@/lib/backups";
+import { startDownload } from "@/lib/files";
+import { backupActions, backupDownloadUrl, keepIdempotencyKey, deleteDialogText, formatBackupDate, restoreDialogText, toggleBusyReason } from "@/lib/backups";
 import { formatBytes } from "@/lib/format";
 import { backupsKey, isActive, TRIGGER_LABEL } from "@/lib/jobs";
 
@@ -84,7 +85,10 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
                         <Button size="sm" variant="outline" disabled={!act.restore} onClick={() => { restore.reset(); setRestoring(b); }}><History className="size-4" /> Restaurar</Button>
                       )}
                       {act.showDownload && (
-                        <Button size="sm" variant="ghost" disabled title="La descarga estará disponible con el gestor de archivos"><Download className="size-4" /><span className="sr-only">Descargar</span></Button>
+                        <Button size="sm" variant="ghost" disabled={!act.download} title={act.download ? "Descargar" : "La copia no se puede descargar ahora"}
+                          onClick={() => startDownload(backupDownloadUrl(server.id, b.id), b.filename)}>
+                          <Download className="size-4" /><span className="sr-only">Descargar {b.filename}</span>
+                        </Button>
                       )}
                       <Button size="sm" variant="ghost" disabled={!act.remove || remove.isPending} onClick={() => { remove.reset(); setDeleting(b); }}><Trash2 className="size-4" /><span className="sr-only">Borrar {b.filename}</span></Button>
                     </div>

@@ -114,6 +114,14 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
     abort.current = ctl;
     setUploading(true);
     setUploads(files.map((f) => ({ name: f.name, sent: 0, total: f.size })));
+    try {
+      await filesApi.uploadCheck(serverId); // plan-9: el motivo de un 409 antes de empezar, no un corte a mitad
+    } catch (e) {
+      setUploads(files.map((f) => ({ name: f.name, sent: 0, total: f.size, error: errText(e) })));
+      abort.current = null;
+      setUploading(false);
+      return;
+    }
     for (const [i, f] of files.entries()) {
       const update = (patch: Partial<UploadItem>) => setUploads((u) => u.map((x, j) => (j === i ? { ...x, ...patch } : x)));
       if (ctl.signal.aborted) { update({ error: "Subida cancelada" }); continue; }
