@@ -511,3 +511,37 @@ func TestProxyRejectsBodiesAndTrimsStartStopQuery(t *testing.T) {
 		t.Fatalf("stop llegó con query %q", q)
 	}
 }
+
+// Si Serve termina (el socket deja de atender por un error, o el agente se cierra), Ready deja de decir que está
+// listo: el router lo muestra en su estado en vez de montar un socket muerto.
+func TestReadyFalseAfterServeEnds(t *testing.T) {
+	for _, viaCtx := range []bool{false, true} {
+		dir := t.TempDir()
+		p := New(Options{Listen: filepath.Join(dir, "p.sock"), Upstream: filepath.Join(dir, "nada.sock"), UID: -1, GID: -1,
+			Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		if err := p.Listen(); err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			p.Serve(ctx)
+			close(done)
+		}()
+		if viaCtx {
+			cancel()
+		} else {
+			p.mu.Lock()
+			_ = p.ln.Close() // el socket deja de aceptar: Serve sale con error
+			p.mu.Unlock()
+		}
+		<-done
+		cancel()
+		if err := p.Ready(); err == nil {
+			t.Fatalf("viaCtx=%v: tras terminar Serve no está listo", viaCtx)
+		}
+		if !p.Since().IsZero() {
+			t.Fatalf("viaCtx=%v: since = %v", viaCtx, p.Since())
+		}
+	}
+}

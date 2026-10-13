@@ -376,7 +376,8 @@ func secure(path string, uid, gid int) error {
 	return os.Chmod(path, 0o600)
 }
 
-// Serve atiende el socket hasta que ctx termina; después lo borra. Sin Listen previo no hace nada.
+// Serve atiende el socket hasta que ctx termina o falla; después lo borra y Ready deja de dar nil. Sin Listen previo
+// no hace nada.
 func (p *Proxy) Serve(ctx context.Context) {
 	p.mu.Lock()
 	ln := p.ln
@@ -389,9 +390,19 @@ func (p *Proxy) Serve(ctx context.Context) {
 		<-ctx.Done()
 		_ = srv.Close() // también corta los streams de eventos abiertos
 	}()
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	err := srv.Serve(ln)
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
 		p.opts.Log.Error("proxy del router: el socket dejó de atender", "err", err)
+		err = fmt.Errorf("el proxy del socket de Docker dejó de atender: %w", err)
+	} else {
+		err = errors.New("el proxy del socket de Docker se ha cerrado")
 	}
+	// plan-9: ya no escucha: Ready lo dice (el router lo muestra en su estado) hasta un Listen nuevo.
+	p.mu.Lock()
+	if p.ln == ln {
+		p.ln, p.since, p.err = nil, time.Time{}, err
+	}
+	p.mu.Unlock()
 	_ = os.Remove(p.opts.Listen)
 }
 
