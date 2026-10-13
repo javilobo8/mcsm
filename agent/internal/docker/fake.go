@@ -386,3 +386,12 @@ func (f *Fake) SetHealth(id, health string) {
 		c.Health = health
 	}
 }
+
+// Crash simula que el proceso del contenedor termina con exitCode (sin emitir eventos: el test emite el die).
+func (f *Fake) Crash(id string, exitCode int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.Containers[id]; ok {
+		c.State, c.Health, c.ExitCode = "exited", "", exitCode
+	}
+}
