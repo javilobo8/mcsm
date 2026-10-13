@@ -9,6 +9,8 @@ export interface ServerRow {
   id: string; node_id: string; name: string; slug: string; spec: string; spec_version: number;
   desired_state: "running" | "stopped"; observed: string | null; observed_spec_version: number;
   observed_at: string | null; created_at: string; updated_at: string;
+  /** plan-9: cuándo cambió por última vez desired_state (null si nunca). */
+  desired_changed_at?: string | null;
   /** plan-6: JSON de ImportedFrom (servidores importados). Opcional en el tipo: filas de tests anteriores a la columna. */
   imported_from?: string | null;
 }
@@ -114,7 +116,8 @@ export class ServersRepo {
     return this.get(id)!;
   }
   setDesiredState(id: string, state: "running" | "stopped"): void {
-    this.db.prepare("UPDATE servers SET desired_state = ?, updated_at = ? WHERE id = ?").run(state, nowIso(), id);
+    const now = nowIso();
+    this.db.prepare("UPDATE servers SET desired_state = ?, desired_changed_at = ?, updated_at = ? WHERE id = ?").run(state, now, now, id);
   }
   updateObserved(id: string, observed: ObservedDto): void {
     this.db.prepare("UPDATE servers SET observed = ?, observed_spec_version = ?, observed_at = ? WHERE id = ?")

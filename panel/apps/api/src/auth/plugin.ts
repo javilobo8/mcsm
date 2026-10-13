@@ -3,8 +3,10 @@ import cookie from "@fastify/cookie";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AuthRepo } from "./repo.js";
 import { randomToken } from "../lib/tokens.js";
+import { originAllowed } from "../realtime/routes.js";
 
 export const SESSION_COOKIE = "mcsm_session";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const PUBLIC = new Set(["/api/health", "/api/auth/status", "/api/auth/setup", "/api/auth/login"]);
 
 async function plugin(app: FastifyInstance) {
@@ -30,6 +32,11 @@ async function plugin(app: FastifyInstance) {
       }
     }
     if (route === undefined) return;
+    // SameSite=Strict no frena a páginas del mismo host en otro puerto: una escritura con un Origin que no es el del
+    // panel se rechaza (como en el WS). Sin Origin (curl, agente) pasa; /agent/* queda fuera.
+    if (route.startsWith("/api/") && !SAFE_METHODS.has(req.method) && !originAllowed(req.headers.origin, req.host, app.settings.publicUrl())) {
+      return reply.code(403).send({ error: "Origen no permitido" });
+    }
     const protectedRoute = (route.startsWith("/api/") && !PUBLIC.has(route)) || route === "/ws";
     if (protectedRoute && !req.sessionId) {
       return reply.code(401).send({ error: "No autenticado" });

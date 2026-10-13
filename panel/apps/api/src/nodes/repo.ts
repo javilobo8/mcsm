@@ -7,16 +7,19 @@ export interface NodeRow {
   id: string; name: string; token_hash: string; data_root: string; status: string;
   agent_version: string | null; docker_version: string | null; host_info: string | null;
   last_seen_at: string | null; created_at: string;
+  pending_token_hash: string | null; pending_token_at: string | null;
 }
 
 export interface NodeDto {
   id: string; name: string; dataRoot: string; status: string; agentVersion: string | null; dockerVersion: string | null;
   hostInfo: Record<string, unknown> | null; lastSeenAt: string | null; createdAt: string;
+  tokenRotationPending: boolean;
 }
 
 export const toNodeDto = (r: NodeRow): NodeDto => ({
   id: r.id, name: r.name, dataRoot: r.data_root, status: r.status, agentVersion: r.agent_version, dockerVersion: r.docker_version,
   hostInfo: r.host_info ? JSON.parse(r.host_info) : null, lastSeenAt: r.last_seen_at, createdAt: r.created_at,
+  tokenRotationPending: !!r.pending_token_hash,
 });
 
 /** Error de clave foránea de SQLite (p. ej. borrar un nodo con servidores). */
@@ -32,8 +35,19 @@ export class NodesRepo {
   get(id: string): NodeRow | null {
     return (this.db.prepare("SELECT * FROM nodes WHERE id = ?").get(id) as NodeRow | undefined) ?? null;
   }
+  /** Nodo por el hash de su token vigente o del pendiente de una rotación (spec §9). */
   findByTokenHash(hash: string): NodeRow | null {
-    return (this.db.prepare("SELECT * FROM nodes WHERE token_hash = ?").get(hash) as NodeRow | undefined) ?? null;
+    return (this.db.prepare("SELECT * FROM nodes WHERE token_hash = ? OR pending_token_hash = ?").get(hash, hash) as NodeRow | undefined) ?? null;
+  }
+  /** Guarda (o borra, con null) el hash del token nuevo de una rotación en curso. */
+  setPendingToken(id: string, hash: string | null): void {
+    this.db.prepare("UPDATE nodes SET pending_token_hash = ?, pending_token_at = ? WHERE id = ?").run(hash, hash ? nowIso() : null, id);
+  }
+  /** El agente se conectó con el token pendiente: pasa a ser el del nodo y el anterior deja de valer. */
+  promotePendingToken(id: string): boolean {
+    return Number(this.db.prepare(
+      "UPDATE nodes SET token_hash = pending_token_hash, pending_token_hash = NULL, pending_token_at = NULL WHERE id = ? AND pending_token_hash IS NOT NULL",
+    ).run(id).changes) === 1;
   }
   nameExists(name: string): boolean {
     return !!this.db.prepare("SELECT 1 FROM nodes WHERE name = ?").get(name);

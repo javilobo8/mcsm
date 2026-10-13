@@ -38,6 +38,62 @@ function browser(withCookie = true, origin?: string): Promise<{ ws: WebSocket; n
 }
 
 describe("realtime", () => {
+  const openWs = (ck: string) => new Promise<WebSocket>((resolve, reject) => {
+    const ws = new WebSocket(url.replace("http", "ws") + "/ws", { headers: { cookie: ck } });
+    ws.on("open", () => resolve(ws));
+    ws.on("error", reject);
+  });
+  const closedWith = (ws: WebSocket) => new Promise<number>((resolve) => ws.on("close", (code) => resolve(code)));
+
+  it("cambiar la contraseña cierra con 4401 los WS de todas las sesiones", async () => {
+    const other = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
+    const oc = other.cookies.find((c) => c.name === "mcsm_session")!;
+    const ws = await openWs(`${oc.name}=${oc.value}`);
+    const mine = await openWs(cookie);
+    const closes = Promise.all([closedWith(ws), closedWith(mine)]);
+    const res = await app.inject({ method: "POST", url: "/api/auth/password", headers: { cookie }, payload: { currentPassword: "correct horse", newPassword: "nueva-larga" } });
+    expect(res.statusCode).toBe(200);
+    expect(await closes).toEqual([4401, 4401]);
+  });
+
+  it("el logout cierra con 4401 solo los WS de esa sesión", async () => {
+    const other = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
+    const oc = other.cookies.find((c) => c.name === "mcsm_session")!;
+    const otherCookie = `${oc.name}=${oc.value}`;
+    const gone = await openWs(otherCookie);
+    const kept = await openWs(cookie);
+    const closing = closedWith(gone);
+    await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie: otherCookie } });
+    expect(await closing).toBe(4401);
+    expect(kept.readyState).toBe(WebSocket.OPEN);
+    kept.close();
+  });
+
+  it("topic events: reenvía los eventos que se guardan", async () => {
+    const b = await browser();
+    b.ws.send(JSON.stringify({ type: "subscribe", topic: "events" }));
+    b.ws.send("{"); // los mensajes se procesan en orden: cuando llega este error, la suscripción ya está
+    expect(await b.next()).toEqual({ type: "error", message: "JSON inválido" });
+    app.eventsService.record({ nodeId, serverId: null, level: "warn", kind: "drift", message: "recreado" });
+    expect(await b.next()).toMatchObject({ type: "event", event: { nodeId, kind: "drift", level: "warn", message: "recreado" } });
+    b.ws.close();
+  });
+
+  it("StreamDropped del agente llega a los navegadores como log_dropped", async () => {
+    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect({ specVersions: { [s.id]: 1n } });
+    await agent.handshake();
+    const b = await browser();
+    b.ws.send(JSON.stringify({ type: "subscribe", topic: `server:${s.id}:logs` }));
+    const sub = await agent.waitFor("subscribeLogs");
+    agent.ack(sub.id, sub.id);
+    expect(await b.next()).toEqual({ type: "log_reset", serverId: s.id });
+    agent.send({ streamId: sub.id, body: { case: "streamDropped", value: { count: 3n } } });
+    expect(await b.next()).toEqual({ type: "log_dropped", serverId: s.id, count: 3 });
+    b.ws.close();
+    agent.close();
+  });
   it("exige sesión", async () => {
     await expect(browser(false)).rejects.toThrow(/401/);
   });

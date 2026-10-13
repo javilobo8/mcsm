@@ -1,8 +1,13 @@
+import { pipeline, type Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { BackupTrigger, JobStatus, type BackupCreated, type BackupDeleted, type BackupInfo, type BackupInventory, type Envelope, type JobProgress } from "@mcsm/proto";
+import { MAX_CLOCK_SKEW_SECONDS } from "@mcsm/shared";
 import { AgentError, type AgentConn, type Body } from "../agents/hub.js";
 import { AgentErrorCode } from "../agents/error-codes.js";
 import type { JobDto, JobState } from "../jobs/repo.js";
+import { AGENT_JOB_TYPES, FINAL_STATES } from "../jobs/service.js";
+import { toHttpError } from "../files/service.js";
+import { IDLE_TIMEOUT_MS, idleGuard } from "../files/stream.js";
 import { agentErrorToHttp } from "../lib/http.js";
 import { nowIso } from "../lib/time.js";
 import type { ServerRow } from "../servers/repo.js";
@@ -40,6 +45,19 @@ export function infoToInput(b: BackupInfo): BackupInput {
 }
 
 /** Copias de seguridad (spec §7 BackupService): tabla `backups`, órdenes al agente e inventario. */
+/** Sin plazo total: dura lo que haga falta mientras pasen bytes (la cortan el vigilante, la caducidad y el WS). */
+const DOWNLOAD_DEADLINE_MS = 2 ** 31 - 1;
+
+/** Cada cuánto el panel pide el inventario a los nodos conectados (m-f: el periódico del agente no va correlacionado). */
+export const INVENTORY_EVERY_MS = 10 * 60_000;
+
+/** Hora del agente (ms) si es razonable: ni más de MAX_CLOCK_SKEW_SECONDS en el futuro ni de hace más de 30 días (m12). */
+export function agentIso(ms: bigint, now = Date.now()): string | null {
+  const n = Number(ms);
+  if (!(n > 0) || n > now + MAX_CLOCK_SKEW_SECONDS * 1000 || n < now - 30 * 86_400_000) return null;
+  return new Date(n).toISOString();
+}
+
 export class BackupService {
   /** Idempotency-Key de POST /backups → job (en memoria, acotado). */
   private keys = new Map<string, string>();
@@ -56,6 +74,16 @@ export class BackupService {
     this.app.agents.on("message", (nodeId: string, env: Envelope) => {
       if (env.body.case === "hello") void this.sync(nodeId);
     });
+    // plan-9 (m-f): además, cada 10 min, un inventario correlacionado de cada nodo conectado: aplica la vía negativa
+    // (copias borradas cuyo BackupDeleted se perdió) sin esperar a la siguiente reconexión.
+    const timer = setInterval(() => this.syncAll(), INVENTORY_EVERY_MS);
+    timer.unref();
+    this.app.addHook("onClose", async () => clearInterval(timer));
+  }
+
+  /** Pide el inventario a todos los nodos conectados. */
+  syncAll(): void {
+    for (const nodeId of this.app.agents.onlineIds()) void this.sync(nodeId);
   }
 
   list(serverId: string): BackupDto[] {
@@ -174,6 +202,38 @@ export class BackupService {
     }
   }
 
+  /**
+   * Descarga de una copia al navegador (spec §6.5 «descargar»): el agente la sube con BackupPush (Plan 7) a una
+   * transferencia entrante, que se reenvía al navegador sin pasar por disco. Los datos pre-restore son una carpeta:
+   * no se descargan.
+   */
+  async download(serverId: string, backupId: string, signal?: AbortSignal): Promise<{ stream: Readable; size: number | null; filename: string; done: Promise<void> }> {
+    const row = this.requireServer(serverId);
+    const b = this.requireBackup(serverId, backupId);
+    if (b.trigger === "pre_restore") throw new HttpError(400, "Son los datos de antes de una restauración (una carpeta en el nodo): no se descargan desde aquí");
+    const conn = this.onlineConn(row.node_id);
+    const t = this.app.transfers.inbound(row.node_id);
+    signal?.addEventListener("abort", () => t.cancel("el navegador canceló la descarga"), { once: true });
+    const req = conn.request({ case: "backupPush", value: { serverId, filename: b.filename, transferId: t.id } }, DOWNLOAD_DEADLINE_MS);
+    const done = req.then(() => undefined);
+    done.catch(() => {});
+    try {
+      const incoming = await Promise.race([
+        t.incoming,
+        req.then((): never => { throw new HttpError(502, "El agente terminó sin enviar la copia"); }),
+      ]);
+      const guard = idleGuard(IDLE_TIMEOUT_MS, () => {
+        t.cancel("el nodo dejó de enviar la copia");
+        return new HttpError(504, "El nodo dejó de enviar la copia");
+      });
+      pipeline(incoming.stream, guard, () => { /* el resultado lo ve la respuesta */ });
+      return { stream: guard, size: incoming.size, filename: b.filename, done };
+    } catch (e) {
+      t.cancel("descarga fallida");
+      throw toHttpError(e, "No se pudo descargar la copia");
+    }
+  }
+
   private requireBackup(serverId: string, backupId: string) {
     const b = this.repo.get(backupId);
     if (!b || b.server_id !== serverId || b.status === "deleted") throw new HttpError(404, "Copia no encontrada");
@@ -187,8 +247,10 @@ export class BackupService {
   }
 
   private onJobProgress(nodeId: string, p: JobProgress) {
-    if (!this.ensureJob(nodeId, p.jobId, p.serverId, p.type)) return;
-    this.app.jobs.update(p.jobId, { status: STATUSES[p.status] ?? "running", progress: p.progress, message: p.message, logChunk: p.logChunk });
+    if (!this.ensureJob(nodeId, p.jobId, p.serverId, p.type, agentIso(p.tsUnixMs))) return;
+    const status = STATUSES[p.status] ?? "running";
+    const finishedAt = FINAL_STATES.has(status) ? agentIso(p.tsUnixMs) ?? undefined : undefined;
+    this.app.jobs.update(p.jobId, { status, progress: p.progress, message: p.message, logChunk: p.logChunk, finishedAt });
   }
 
   private onBackupCreated(nodeId: string, m: BackupCreated) {
@@ -226,11 +288,15 @@ export class BackupService {
     const known = new Set<string>();
     for (const r of inv.jobs) {
       known.add(r.jobId);
-      if (!this.ensureJob(nodeId, r.jobId, r.serverId, r.type)) continue;
+      if (!this.ensureJob(nodeId, r.jobId, r.serverId, r.type, agentIso(r.startedUnixMs))) continue;
       // El log del agente es solo la cola (4 KiB): sustituye al del panel únicamente si este aún no tiene nada
       // (job que el panel no seguía); si no, el inventario periódico se comería la cabecera cada 10 min.
       const hasLog = (this.app.jobs.getRow(r.jobId)?.log ?? "") !== "";
-      this.app.jobs.update(r.jobId, { status: STATUSES[r.status] ?? "running", progress: r.progress, message: r.message, ...(hasLog ? {} : { log: r.log }) });
+      const status = STATUSES[r.status] ?? "running";
+      this.app.jobs.update(r.jobId, {
+        status, progress: r.progress, message: r.message, ...(hasLog ? {} : { log: r.log }),
+        finishedAt: FINAL_STATES.has(status) ? agentIso(r.finishedUnixMs) ?? undefined : undefined,
+      });
     }
     if (!since) return;
     // Jobs de copia/restauración de este nodo que el agente no conoce: se perdieron.
@@ -244,13 +310,14 @@ export class BackupService {
    * UNIQUE. Devuelve false si el job es de otro nodo o es nuevo y su servidor no es de este nodo.
    * Un job ya terminal se deja como está (`JobService.update` lo ignora).
    */
-  private ensureJob(nodeId: string, jobId: string, serverId: string, type: string): boolean {
+  private ensureJob(nodeId: string, jobId: string, serverId: string, type: string, startedAt: string | null): boolean {
     if (!jobId) return false;
     const existing = this.app.jobs.getRow(jobId);
-    if (existing) return existing.node_id === nodeId;
+    // plan-9: solo jobs que ejecuta el agente; el de migración (nodo de origen) lo lleva el panel.
+    if (existing) return existing.node_id === nodeId && (AGENT_JOB_TYPES as readonly string[]).includes(existing.type);
     if (!this.ownServer(nodeId, serverId)) return false;
-    // Job que inicia el propio agente (copia programada): se crea al primer aviso.
-    this.app.jobs.create({ id: jobId, type: type || "backup", serverId, nodeId, status: "running", payload: { trigger: "scheduled" } });
+    // Job que inicia el propio agente (copia programada): se crea al primer aviso, con su hora de inicio (m12).
+    this.app.jobs.create({ id: jobId, type: type || "backup", serverId, nodeId, status: "running", payload: { trigger: "scheduled" }, startedAt: startedAt ?? undefined });
     return true;
   }
 

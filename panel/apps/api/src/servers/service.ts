@@ -40,7 +40,7 @@ export class ServersService {
   allocatePort(nodeId: string, exclude = new Set<number>()): number {
     const used = this.app.servers.usedGamePorts(nodeId);
     for (const p of this.app.migrations.reservedPorts(nodeId)) used.add(p); // plan-7: migraciones hacia el nodo
-    const { from, to } = this.app.config.gamePortRange;
+    const { from, to } = this.app.settings.gamePortRange();
     const routerPort = this.app.routerService.reservedPort(nodeId); // plan-8: el puerto del router no se reparte
     if (routerPort !== null) used.add(routerPort);
     for (let p = from; p <= to; p++) if (!used.has(p) && !exclude.has(p)) return p;

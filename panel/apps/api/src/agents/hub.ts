@@ -239,6 +239,8 @@ export class AgentConn {
   }
 
   terminate() { this.socket.terminate(); }
+  /** El socket está abierto y la conexión no se ha descartado: una petición saldrá de verdad. */
+  get isOpen(): boolean { return !this.disposed && this.socket.readyState === this.socket.OPEN; }
 }
 
 export class AgentHub extends EventEmitter {
@@ -278,6 +280,9 @@ export class AgentHub extends EventEmitter {
     this.conns.delete(nodeId);
     this.emit("detached", nodeId);
   }
+
+  /** Nodos con sesión abierta. */
+  onlineIds(): string[] { return [...this.conns.keys()]; }
 
   get(nodeId: string): AgentConn | undefined { return this.conns.get(nodeId); }
   isOnline(nodeId: string): boolean { return this.conns.has(nodeId); }

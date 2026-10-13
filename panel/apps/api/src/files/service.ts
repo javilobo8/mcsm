@@ -95,6 +95,19 @@ export class FilesService {
 
   constructor(protected app: FastifyInstance) {}
 
+  /**
+   * Comprobación previa de una subida desde el navegador (N2/m-n del Plan 5): lo que el panel sabe sin preguntar al
+   * agente. Una subida grande que el agente rechaza antes de leerla (servidor reservado) acaba en el navegador como
+   * «error de red» en vez de con el motivo; así la web lo sabe antes de empezar.
+   */
+  uploadCheck(serverId: string): void {
+    this.target(serverId); // 404 / 409 desconectado
+    const busy = this.app.jobs.activeForServer(serverId).find((j) => j.type === "backup" || j.type === "restore" || j.type === "migrate");
+    if (busy?.type === "backup") throw new HttpError(409, "Hay una copia de seguridad en curso: espera a que termine para subir ficheros");
+    if (busy?.type === "restore") throw new HttpError(409, "Hay una restauración en curso: espera a que termine para subir ficheros");
+    if (busy || this.app.migrations.blockingServer(serverId)) throw new HttpError(409, "El servidor se está migrando: espera a que termine (pestaña Migrar)");
+  }
+
   /** Servidor y conexión de su nodo: 404/409 antes de molestar al agente. */
   protected target(serverId: string) {
     const row = this.app.servers.get(serverId);

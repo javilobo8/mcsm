@@ -25,6 +25,9 @@ import { errorHandler } from "./lib/http.js";
 import { routerRoutes } from "./router/routes.js";
 import { backupRoutes } from "./backups/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
+import { eventsRoutes } from "./events/routes.js";
+import { securityHeaders } from "./lib/security.js";
+import { settingsRoutes } from "./settings/routes.js";
 import { importRoutes } from "./import/routes.js";
 import { migrationGuard } from "./migration/guard.js";
 import { migrationRoutes } from "./migration/routes.js";
@@ -37,6 +40,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false });
   // Antes de registrar nada: los plugins heredan el manejador (formato { error }, 5xx genéricos).
   app.setErrorHandler(errorHandler(app));
+  securityHeaders(app); // plan-9 (L10): antes de registrar nada, para que lo hereden todas las rutas
   app.decorate("db", opts.db);
   app.decorate("config", cfg);
   app.decorate("nodes", new NodesRepo(opts.db));
@@ -78,6 +82,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // ── plan-8 ──
   await app.register(routerRoutes);
   // ── plan-9 ──
+  await app.register(eventsRoutes);
+  await app.register(settingsRoutes);
   if (cfg.webDist) {
     await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
     // El notFoundHandler no pasa por el guard de sesión (no hay ruta enrutada): solo debe servir

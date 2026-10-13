@@ -34,16 +34,16 @@ const specOf = (env: Envelope) => {
 
 describe("API key de CurseForge", () => {
   it("GET/PUT nunca devuelven la key; valida el formato", async () => {
-    expect((await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } })).json()).toEqual({ configured: false });
+    expect((await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } })).json()).toEqual({ configured: false, valid: true });
     let res = await putKey(KEY);
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ configured: true });
+    expect(res.json()).toEqual({ configured: true, valid: true });
     res = await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } });
-    expect(res.json()).toEqual({ configured: true });
+    expect(res.json()).toEqual({ configured: true, valid: true });
     expect(res.body).not.toContain(KEY);
     expect((await putKey("con espacio")).statusCode).toBe(400);
     expect((await app.inject({ method: "GET", url: "/api/settings/curseforge" })).statusCode).toBe(401);
-    expect((await putKey("")).json()).toEqual({ configured: false });
+    expect((await putKey("")).json()).toEqual({ configured: false, valid: true });
   });
 
   it("la key es ASCII imprimible sin espacios (1-200); se recorta y \"\" la borra", async () => {
@@ -52,11 +52,11 @@ describe("API key de CurseForge", () => {
       expect(res.statusCode, JSON.stringify(bad)).toBe(400);
       expect(res.body).not.toContain(bad);
     }
-    expect((await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } })).json()).toEqual({ configured: false });
-    expect((await putKey("k".repeat(200))).json()).toEqual({ configured: true });
-    expect((await putKey(`  ${KEY}\n`)).json()).toEqual({ configured: true });
+    expect((await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } })).json()).toEqual({ configured: false, valid: true });
+    expect((await putKey("k".repeat(200))).json()).toEqual({ configured: true, valid: true });
+    expect((await putKey(`  ${KEY}\n`)).json()).toEqual({ configured: true, valid: true });
     expect(app.curseforge.get()).toBe(KEY);
-    expect((await putKey("  ")).json()).toEqual({ configured: false });
+    expect((await putKey("  ")).json()).toEqual({ configured: false, valid: true });
   });
 
   it("solo viaja al agente en specs que usan CurseForge y nunca al navegador", async () => {

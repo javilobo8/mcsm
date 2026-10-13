@@ -34,7 +34,7 @@ export type MetricColumn = (typeof METRIC_COLUMNS)[number];
  * `memLimitBytes = 0` en un servidor significa "sin límite de memoria conocido" (no un límite de 0 bytes).
  * Nodos: cpuPct 0–100 del host, memLimitBytes = RAM total, diskBytes/diskTotalBytes de DATA_ROOT.
  */
-export type MetricSeries = { range: MetricRange; step: number; t: number[] } & Record<MetricColumn, (number | null)[]>;
+export type MetricSeries = { range: MetricRange; step: number; t: number[]; /** Hora del panel (epoch s) al calcularla. */ now?: number } & Record<MetricColumn, (number | null)[]>;
 
 /**
  * Desfase de reloj tolerado, en segundos: el panel acepta el `ts` de un agente que difiere hasta esto

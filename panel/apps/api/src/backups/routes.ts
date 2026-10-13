@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
 import type { FastifyInstance } from "fastify";
+import { contentDisposition } from "../files/disposition.js";
 import { HttpError } from "../servers/service.js";
 import { BackupsRepo } from "./repo.js";
 import { BackupService } from "./service.js";
@@ -27,6 +28,27 @@ async function backupRoutesInner(app: FastifyInstance) {
   app.delete<{ Params: { id: string; backupId: string } }>("/api/servers/:id/backups/:backupId", async (req, reply) => {
     await svc.remove(req.params.id, req.params.backupId);
     return reply.code(204).send();
+  });
+
+  app.get<{ Params: { id: string; backupId: string } }>("/api/servers/:id/backups/:backupId/download", {
+    exposeHeadRoute: false, // un HEAD pediría al agente subir la copia entera
+    // Un fallo antes del primer byte se responde en JSON, sin las cabeceras de la descarga.
+    onError: async (_req, reply) => {
+      for (const h of ["content-type", "content-length", "content-disposition"]) {
+        reply.removeHeader(h);
+        if (!reply.raw.headersSent) reply.raw.removeHeader(h);
+      }
+    },
+  }, async (req, reply) => {
+    const ctrl = new AbortController();
+    reply.raw.once("close", () => { if (!reply.raw.writableFinished) ctrl.abort(); });
+    const dl = await svc.download(req.params.id, req.params.backupId, ctrl.signal);
+    dl.done.catch((e) => req.log.info({ err: e }, "el agente no confirmó la subida de la copia"));
+    reply.header("content-type", "application/octet-stream");
+    reply.header("cache-control", "no-store");
+    reply.header("content-disposition", contentDisposition(dl.filename));
+    if (dl.size !== null) reply.header("content-length", String(dl.size));
+    return reply.send(dl.stream);
   });
 
   app.patch<{ Params: { id: string } }>("/api/servers/:id/backups/schedule", async (req) => {

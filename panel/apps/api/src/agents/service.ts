@@ -93,6 +93,9 @@ export class AgentService {
         this.app.routerService.onObserved(nodeId, env.body.value);
         return;
       // ── plan-9 ──
+      case "event": // no solicitado (id=0): crashes, OOM, bucles de crash, drift, save-on (spec §5.3, §10)
+        this.app.eventsService.ingest(nodeId, env.body.value);
+        return;
       default:
         this.app.log.warn({ nodeId, type: env.body.case }, "mensaje de agente no esperado");
     }
