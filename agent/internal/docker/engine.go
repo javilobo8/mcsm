@@ -93,6 +93,9 @@ type Engine interface {
 	// Stats devuelve una lectura puntual de uso de recursos (one-shot: no espera a una
 	// segunda muestra). ErrNotFound si el contenedor no existe.
 	Stats(ctx context.Context, id string) (Stats, error)
+	// HostName es el nombre del host del daemon (docker info → Name): el de la máquina, no el del contenedor del
+	// agente (os.Hostname dentro de un contenedor es su id). plan-9.
+	HostName(ctx context.Context) (string, error)
 
 	// ── plan-6: importación (spec §6.7) ──
 	// ListAll lista todos los contenedores del host (como `docker ps -a`), gestionados o no.

@@ -332,3 +332,29 @@ func TestBusyMessageNamesTheReason(t *testing.T) {
 		t.Fatalf("Hold = %v; quiero %q", err, want)
 	}
 }
+
+// TryHold no espera al lock del servidor (una reconciliación larga, una descarga de imagen): si está tomado, busy.
+func TestTryHoldDoesNotWaitForTheServerLock(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	put(t, st, "a", "alpha", 1, runningState, specJSON)
+	unlock := r.lock("a")
+	_, err := r.TryHold("a", "save-on")
+	unlock()
+	if !errors.Is(err, ErrBusy) {
+		t.Fatalf("con el lock tomado = %v", err)
+	}
+	release, err := r.TryHold("a", "save-on")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.HeldReason("a") != "save-on" {
+		t.Fatalf("motivo = %q", r.HeldReason("a"))
+	}
+	if _, err := r.TryHold("a", "otra"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("ya reservado = %v", err)
+	}
+	release(context.Background())
+	if r.Held("a") {
+		t.Fatal("liberado")
+	}
+}

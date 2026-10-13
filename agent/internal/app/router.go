@@ -2,11 +2,15 @@ package app
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
+	"mcsm/agent/internal/dockerproxy"
 	"mcsm/agent/internal/errcode"
+	"mcsm/agent/internal/reconcile"
 	"mcsm/agent/internal/router"
 	"mcsm/agent/internal/spec"
 )
@@ -20,6 +24,43 @@ import (
 // autoscale). Va dentro de DATA_ROOT porque es lo único del host que el agente ve en la misma ruta
 // (montaje espejo, §6.1); empieza por punto, así que nunca coincide con el slug de un servidor.
 func routerFilesDir(dataRoot string) string { return filepath.Join(dataRoot, ".mcsm-router") }
+
+// proxySocketPath es el socket del proxy de Docker para el router: en el directorio del router, dentro de
+// DATA_ROOT (ruta del host gracias al montaje espejo).
+func proxySocketPath(dataRoot string) string {
+	return filepath.Join(routerFilesDir(dataRoot), "docker.sock")
+}
+
+// routerPolicy decide qué arranques y paradas de mc-router (autoscale) deja pasar el proxy: solo servidores de este
+// agente con hostname de router; nunca uno reservado (copia, restauración, migración) y, para arrancar, tampoco uno
+// retenido por bucle de crash. Una parada permitida queda anotada: su die no cuenta como crash.
+func (a *App) routerPolicy(ctx context.Context, op dockerproxy.Op, container string) error {
+	ins, err := a.eng.Inspect(ctx, container)
+	if err != nil {
+		return fmt.Errorf("contenedor %s: %w", container, err)
+	}
+	id := ins.Labels[spec.LabelServerID]
+	if ins.Labels[spec.LabelManaged] != "true" || id == "" || ins.Labels[spec.LabelRouterHost] == "" {
+		return errors.New("no es un servidor con hostname de router de este nodo")
+	}
+	switch op {
+	case dockerproxy.OpStart:
+		if msg := a.rec.StartBlocked(id); msg != "" {
+			return errors.New(msg)
+		}
+	case dockerproxy.OpStop:
+		if reason := a.rec.HeldReason(id); reason != "" {
+			return reconcile.Busy(reason)
+		}
+		// plan-9 (además del brief): como al arrancar, solo servidores que este agente conoce; las etiquetas
+		// mcsm las puede poner cualquiera que cree contenedores en el mismo Docker.
+		if sp, err := a.st.GetSpec(id); err != nil || sp == nil {
+			return errors.New("servidor desconocido en este nodo")
+		}
+		a.intents.Note(ins.ID)
+	}
+	return nil
+}
 
 // onDemand indica si un servidor lo arranca y para mc-router (autoscale del router y hostname).
 // La invoca el reconciliador con el lock del servidor tomado: solo lee un atómico del router.

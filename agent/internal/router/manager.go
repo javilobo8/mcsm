@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
@@ -32,17 +31,20 @@ type Store interface {
 	DeleteRouterSpec() error
 }
 
-// Options configura un Manager. Name y SocketGID tienen valores por defecto.
+// Options configura un Manager. Name tiene valor por defecto.
 type Options struct {
 	// Name del contenedor: ContainerName si está vacío (los tests con Docker real usan mcsm-test-…).
 	Name    string
 	Network string
-	// SocketGID devuelve el grupo propietario del socket de Docker del host; por defecto, el de
-	// HostSocket (montado con la misma ruta en el agente).
-	SocketGID func() (uint32, error)
-	Now       func() time.Time
-	// FilesDir es un directorio del HOST (el agente lo ve en la misma ruta: montaje espejo de
-	// DATA_ROOT) donde se escribe la lista de jugadores del autoscale que se monta en el router.
+	// ProxySocket es la ruta del HOST del socket del proxy de Docker del agente (dockerproxy), que se monta en el
+	// router en RouterSocket. ProxyReady (opcional) dice si escucha; ProxySince (opcional), desde cuándo: un router
+	// arrancado antes que el proxy actual (el agente se reinició) se reinicia una vez.
+	ProxySocket string
+	ProxyReady  func() error
+	ProxySince  func() time.Time
+	Now         func() time.Time
+	// FilesDir es un directorio del HOST (el agente lo ve en la misma ruta: montaje espejo de DATA_ROOT) donde se
+	// escribe la lista de jugadores del autoscale que se monta en el router.
 	FilesDir string
 }
 
@@ -68,9 +70,6 @@ func New(eng docker.Engine, st Store, opts Options) *Manager {
 	if opts.Name == "" {
 		opts.Name = ContainerName
 	}
-	if opts.SocketGID == nil {
-		opts.SocketGID = hostSocketGID
-	}
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
@@ -79,34 +78,6 @@ func New(eng docker.Engine, st Store, opts Options) *Manager {
 		m.autoscale.Store(sp.Autoscale)
 	}
 	return m
-}
-
-// hostSocketGID lee el grupo propietario del socket de Docker y comprueba que ese grupo puede usarlo
-// (mc-router entra como 65532 con solo ese grupo).
-func hostSocketGID() (uint32, error) {
-	fi, err := os.Stat(HostSocket)
-	if err != nil {
-		return 0, err
-	}
-	if err := socketAccess(fi.Mode()); err != nil {
-		return 0, err
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, errors.New("no se puede leer el propietario del socket")
-	}
-	return st.Gid, nil
-}
-
-// socketAccess: el router usa el socket con el grupo propietario, así que ese grupo necesita lectura
-// y escritura (srw-rw----, lo normal con el grupo docker). Un socket solo de root no le serviría: el
-// contenedor arrancaría «en marcha» sin ver ningún servidor. Docker rootless (uid/gid remapeados) no
-// se detecta aquí: está documentado.
-func socketAccess(mode fs.FileMode) error {
-	if mode.Perm()&0o060 != 0o060 {
-		return fmt.Errorf("el socket no da lectura y escritura a su grupo (permisos %v): mc-router no podría usarlo", mode.Perm())
-	}
-	return nil
 }
 
 // Apply valida y guarda la spec sin tocar Docker (el contenedor lo ajusta Reconcile).
@@ -176,11 +147,23 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 		}
 		return m.remove(ctx, existing)
 	}
-	gid, err := m.opts.SocketGID()
-	if err != nil {
-		return fmt.Errorf("leer el grupo del socket de Docker %s (el router lo necesita): %w", HostSocket, err)
+	if m.opts.ProxyReady != nil {
+		if err := m.opts.ProxyReady(); err != nil {
+			err = fmt.Errorf("el proxy del socket de Docker para el router no está listo: %w", err)
+			// plan-9 (S2): un router de otra versión (el del Plan 8 monta el socket real de Docker) no puede seguir
+			// en marcha mientras tanto: se borra. Uno de esta versión monta el socket del proxy y se deja.
+			if existing != nil {
+				b, berr := BuildContainer(sp, m.opts.Name, m.opts.Network, m.opts.ProxySocket, m.opts.FilesDir)
+				if berr != nil || existing.Labels[LabelHash] != b.Hash {
+					if rerr := m.remove(ctx, existing); rerr != nil {
+						return fmt.Errorf("%w (y no se pudo retirar el router anterior: %v)", err, rerr)
+					}
+				}
+			}
+			return err
+		}
 	}
-	b, err := BuildContainer(sp, m.opts.Name, m.opts.Network, gid, m.opts.FilesDir)
+	b, err := BuildContainer(sp, m.opts.Name, m.opts.Network, m.opts.ProxySocket, m.opts.FilesDir)
 	if err != nil {
 		return err
 	}
@@ -205,16 +188,24 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 			if err != nil && !errors.Is(err, docker.ErrNotFound) {
 				return fmt.Errorf("inspeccionar el router: %w", err)
 			}
-			if err == nil && !ins.PortsMissing {
+			switch {
+			case err == nil && !ins.PortsMissing && !m.staleProxy(ins.StartedAt):
 				return nil
-			}
-			if err == nil && recreated {
+			case err == nil && !ins.PortsMissing:
+				// plan-9: arrancó antes que el proxy del socket que usa ahora (el agente se reinició y lo creó de
+				// nuevo): su cliente de Docker seguía en el anterior. Se reinicia una vez; abajo se vuelve a arrancar.
+				if err := m.eng.Stop(ctx, existing.ID, stopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
+					return fmt.Errorf("reiniciar el router: %w", err)
+				}
+				existing.State = "exited"
+			case err == nil && recreated:
 				return fmt.Errorf("el router arrancó sin publicar el puerto %d del host (fallo de Docker)", sp.HostPort)
+			default:
+				if err := m.remove(ctx, existing); err != nil {
+					return err
+				}
+				existing, recreated = nil, true
 			}
-			if err := m.remove(ctx, existing); err != nil {
-				return err
-			}
-			existing, recreated = nil, true
 		}
 		fresh := false
 		if existing == nil {
@@ -352,4 +343,13 @@ func (m *Manager) find(ctx context.Context) (*docker.Container, error) {
 		}
 	}
 	return nil, nil
+}
+
+// staleProxy indica si el router arrancó antes que el proxy del socket actual.
+func (m *Manager) staleProxy(started time.Time) bool {
+	if m.opts.ProxySince == nil {
+		return false
+	}
+	since := m.opts.ProxySince()
+	return !since.IsZero() && started.Before(since)
 }

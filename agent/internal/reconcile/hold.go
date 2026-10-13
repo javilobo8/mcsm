@@ -34,6 +34,23 @@ func Busy(reason string) error { return fmt.Errorf("%w (%s)", ErrBusy, reason) }
 func (r *Reconciler) Hold(serverID, reason string) (release func(ctx context.Context), err error) {
 	unlock := r.lock(serverID)
 	defer unlock()
+	return r.holdLocked(serverID, reason)
+}
+
+// TryHold es Hold sin esperar: si hay una operación en curso sobre el servidor (su lock está tomado: una
+// reconciliación, una descarga de imagen, un Power) devuelve ErrBusy al momento. plan-9: para reservas cortas y
+// opcionales que no deben quedarse esperando (el reintento de save-on).
+func (r *Reconciler) TryHold(serverID, reason string) (release func(ctx context.Context), err error) {
+	unlock, ok := r.tryLock(serverID)
+	if !ok {
+		return nil, Busy("operación en curso")
+	}
+	defer unlock()
+	return r.holdLocked(serverID, reason)
+}
+
+// holdLocked es Hold con el lock del servidor tomado.
+func (r *Reconciler) holdLocked(serverID, reason string) (release func(ctx context.Context), err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if cur, ok := r.held[serverID]; ok {

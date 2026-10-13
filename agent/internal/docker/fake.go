@@ -84,6 +84,8 @@ func (f *Fake) record(format string, args ...any) {
 
 func (f *Fake) Version(context.Context) (string, error) { return "fake-29.0", nil }
 
+func (f *Fake) HostName(context.Context) (string, error) { return "fake-host", nil }
+
 func (f *Fake) EnsureNetwork(_ context.Context, name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -384,5 +386,14 @@ func (f *Fake) SetHealth(id, health string) {
 	defer f.mu.Unlock()
 	if c, ok := f.Containers[id]; ok {
 		c.Health = health
+	}
+}
+
+// Crash simula que el proceso del contenedor termina con exitCode (sin emitir eventos: el test emite el die).
+func (f *Fake) Crash(id string, exitCode int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.Containers[id]; ok {
+		c.State, c.Health, c.ExitCode = "exited", "", exitCode
 	}
 }

@@ -13,6 +13,8 @@ import (
 	"mcsm/agent/internal/docker"
 )
 
+const hangGuard = 10 * time.Second // solo evita colgar la suite: holgado para máquinas cargadas
+
 func newFakeWithContainer(t *testing.T) (*docker.Fake, string) {
 	f := docker.NewFake()
 	id, err := f.Create(context.Background(), "mcsm-a", &container.Config{Labels: map[string]string{"mcsm.managed": "true"}}, &container.HostConfig{}, nil)
@@ -30,7 +32,7 @@ func recv(t *testing.T, ch <-chan Line) Line {
 			t.Fatal("canal cerrado")
 		}
 		return l
-	case <-time.After(2 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("timeout esperando línea")
 	}
 	return Line{}
@@ -80,20 +82,20 @@ func TestGraceClosesFollower(t *testing.T) {
 	f, id := newFakeWithContainer(t)
 	h := NewHub(f)
 	h.SetGrace(20 * time.Millisecond)
+	fired := make(chan struct{})
+	h.graceDone = func() { close(fired) }
 	_, unsub, _ := h.Subscribe("a", id, 10)
 	unsub()
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		h.mu.Lock()
-		_, alive := h.followers["a"]
-		h.mu.Unlock()
-		if !alive {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("el follower debe cerrarse pasado el periodo de gracia")
-		}
-		time.Sleep(time.Millisecond)
+	select {
+	case <-fired:
+	case <-time.After(hangGuard):
+		t.Fatal("el temporizador de gracia no disparó")
+	}
+	h.mu.Lock()
+	_, alive := h.followers["a"]
+	h.mu.Unlock()
+	if alive {
+		t.Fatal("el follower debe cerrarse pasado el periodo de gracia")
 	}
 }
 
@@ -108,7 +110,7 @@ func TestResetClosesSubscribers(t *testing.T) {
 		if ok {
 			t.Fatal("esperaba canal cerrado")
 		}
-	case <-time.After(time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("el canal debería cerrarse tras Reset")
 	}
 }
@@ -151,14 +153,20 @@ func TestGraceRaceSubscribeBeforeDrop(t *testing.T) {
 		}
 		subCh <- s
 	}
+	dropped := make(chan struct{})
+	h.graceDone = func() { close(dropped) }
 	unsub()
 	var sub *Subscription
 	select {
 	case sub = <-subCh:
-	case <-time.After(2 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("el hook no se ejecutó")
 	}
-	time.Sleep(20 * time.Millisecond) // deja correr dropIfIdle
+	select { // dropIfIdle ya decidió (con la suscripción nueva, no cierra nada)
+	case <-dropped:
+	case <-time.After(hangGuard):
+		t.Fatal("dropIfIdle no terminó")
+	}
 	f.WriteLog(id, "2026-10-12T10:00:00Z vivo\n")
 	if got := recv(t, sub.Lines).Text; got != "vivo" {
 		t.Fatalf("la suscripción debe seguir viva y recibir; got %q", got)
@@ -276,9 +284,60 @@ func TestEOFClosesChannelsAndDoubleUnsub(t *testing.T) {
 		if ok {
 			t.Fatal("esperaba cierre")
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(hangGuard):
 		t.Fatal("EOF debe cerrar el canal")
 	}
 	unsub()
 	unsub()
+}
+
+func TestSecretsAreRedactedBeforeTheRing(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	h.SetSecrets(func(serverID string) []string {
+		if serverID != "a" {
+			return nil
+		}
+		return []string{"abcdefgh", "corto", "", "CF$2a$10$clave"}
+	})
+	ch, unsub, err := h.Subscribe("a", id, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unsub()
+	f.WriteLog(id, "2026-10-12T10:00:00Z rcon=abcdefgh key=CF$2a$10$clave corto abcdefgh\n")
+	want := "rcon=[oculto] key=[oculto] corto [oculto]"
+	if got := recv(t, ch).Text; got != want {
+		t.Fatalf("got %q", got)
+	}
+	ch2, unsub2, _ := h.Subscribe("a", id, 10) // el replay sale del anillo, ya limpio
+	defer unsub2()
+	if got := recv(t, ch2).Text; got != want {
+		t.Fatalf("replay %q", got)
+	}
+}
+
+// Un secreto que contiene a otro se oculta entero (los largos primero), y uno cortado al truncar una línea larga no
+// deja su principio a la vista.
+func TestSecretsOverlappingAndTruncated(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	h.SetSecrets(func(string) []string { return []string{"abcdefgh", "abcdefghXYZ12345"} })
+	ch, unsub, err := h.Subscribe("a", id, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unsub()
+	f.WriteLog(id, "2026-10-12T10:00:00Z pw=abcdefghXYZ12345 y abcdefgh\n")
+	if got := recv(t, ch).Text; got != "pw=[oculto] y [oculto]" {
+		t.Fatalf("solapados: %q", got)
+	}
+	// La línea se trunca en maxLineBytes justo a mitad del secreto largo.
+	ts := "2026-10-12T10:00:01Z "
+	pad := strings.Repeat("x", maxLineBytes-len(ts)-5)
+	f.WriteLog(id, ts+pad+"abcdefghXYZ12345 resto\n")
+	got := recv(t, ch).Text
+	if !strings.HasSuffix(got, redacted+truncMarker) || strings.Contains(got, "abcde") {
+		t.Fatalf("truncada: …%q", got[len(got)-40:])
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,8 @@ const (
 	maxLineBytes = 64 * 1024 // el ring (500 líneas) queda acotado a ~32 MiB por servidor
 	truncMarker  = " …[truncada]"
 	defaultGrace = 30 * time.Second
+	redacted     = "[oculto]"
+	minSecretLen = 8 // más cortos ocultarían texto normal
 )
 
 type Line struct {
@@ -52,9 +55,12 @@ type Hub struct {
 	mu        sync.Mutex
 	followers map[string]*follower
 	grace     time.Duration
+	secrets   func(serverID string) []string // plan-9: lo que no debe salir en la consola
 
 	// graceHook (solo tests) se invoca al inicio del callback del temporizador de gracia.
 	graceHook func()
+	// graceDone (solo tests) se invoca al final del callback del temporizador de gracia, tras dropIfIdle.
+	graceDone func()
 }
 
 type subscriber struct {
@@ -66,6 +72,7 @@ type follower struct {
 	hub         *Hub
 	serverID    string
 	containerID string
+	secrets     []string
 	cancel      context.CancelFunc
 	mu          sync.Mutex
 	ring        []Line
@@ -84,6 +91,60 @@ func (h *Hub) SetGrace(d time.Duration) {
 	h.mu.Lock()
 	h.grace = d
 	h.mu.Unlock()
+}
+
+// SetSecrets fija de dónde sale, por servidor, lo que hay que ocultar en sus logs (contraseña RCON, API key de
+// CurseForge; L2 del Plan 3: los modos debug de itzg pueden imprimirlas). Se consulta al abrir cada follower: un
+// cambio de spec recrea el contenedor y abre otro.
+func (h *Hub) SetSecrets(fn func(serverID string) []string) {
+	h.mu.Lock()
+	h.secrets = fn
+	h.mu.Unlock()
+}
+
+func (h *Hub) secretsOf(serverID string) []string {
+	h.mu.Lock()
+	fn := h.secrets
+	h.mu.Unlock()
+	if fn == nil {
+		return nil
+	}
+	var out []string
+	for _, s := range fn(serverID) {
+		if len(s) >= minSecretLen {
+			out = append(out, s)
+		}
+	}
+	// Los largos primero: si uno contiene a otro, ocultar antes el corto dejaría a la vista el resto del largo.
+	slices.SortStableFunc(out, func(a, b string) int { return len(b) - len(a) })
+	return out
+}
+
+// redact sustituye cada aparición de un secreto por [oculto] (secrets, de más largo a más corto). En una línea
+// truncada (acaba en truncMarker), el principio de un secreto cortado por el truncado también se oculta.
+func redact(text string, secrets []string) string {
+	for _, s := range secrets {
+		if strings.Contains(text, s) {
+			text = strings.ReplaceAll(text, s, redacted)
+		}
+	}
+	body, truncated := strings.CutSuffix(text, truncMarker)
+	if !truncated {
+		return text
+	}
+	cut := 0 // el prefijo de secreto más largo con el que acaba la línea
+	for _, s := range secrets {
+		for k := len(s) - 1; k > cut; k-- {
+			if strings.HasSuffix(body, s[:k]) {
+				cut = k
+				break
+			}
+		}
+	}
+	if cut == 0 {
+		return text
+	}
+	return body[:len(body)-cut] + redacted + truncMarker
 }
 
 // Subscribe es SubscribeSub sin contador de descartes.
@@ -110,6 +171,7 @@ func (h *Hub) SubscribeSub(serverID, containerID string, tail int) (*Subscriptio
 		}
 		if f == nil {
 			h.mu.Unlock()
+			secrets := h.secretsOf(serverID)
 			// Docker se consulta sin h.mu: un daemon lento no bloquea a otros servidores.
 			ctx, cancel := context.WithCancel(context.Background())
 			rc, err := h.eng.Logs(ctx, containerID, tail)
@@ -125,7 +187,7 @@ func (h *Hub) SubscribeSub(serverID, containerID string, tail int) (*Subscriptio
 				_ = rc.Close()
 				continue
 			}
-			f = &follower{hub: h, serverID: serverID, containerID: containerID, cancel: cancel, subs: map[int]*subscriber{}}
+			f = &follower{hub: h, serverID: serverID, containerID: containerID, secrets: secrets, cancel: cancel, subs: map[int]*subscriber{}}
 			h.followers[serverID] = f
 			go f.run(ctx, rc)
 		}
@@ -214,6 +276,9 @@ func (f *follower) subscribe(tail int) *Subscription {
 						hook()
 					}
 					f.hub.dropIfIdle(f)
+					if done := f.hub.graceDone; done != nil {
+						done()
+					}
 				})
 			}
 		})
@@ -228,7 +293,9 @@ func (f *follower) run(ctx context.Context, rc io.ReadCloser) {
 	for {
 		line, err := readLine(br)
 		if line != nil {
-			f.publish(parseLine(string(line)))
+			l := parseLine(string(line))
+			l.Text = redact(l.Text, f.secrets)
+			f.publish(l)
 		}
 		if err != nil {
 			break

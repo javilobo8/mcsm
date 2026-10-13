@@ -14,7 +14,7 @@ import (
 
 func build(t *testing.T, sp *mcsmv1.RouterSpec) *Build {
 	t.Helper()
-	b, err := BuildContainer(sp, ContainerName, "mcsm", 967, "/srv/minecraft/.mcsm-router")
+	b, err := BuildContainer(sp, ContainerName, "mcsm", "/srv/minecraft/.mcsm-router/docker.sock", "/srv/minecraft/.mcsm-router")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +48,8 @@ func TestBuildContainer(t *testing.T) {
 
 func TestBuildContainerHardening(t *testing.T) {
 	h := build(t, &mcsmv1.RouterSpec{HostPort: 25565}).HostConfig
-	if !slices.Equal(h.Binds, []string{"/var/run/docker.sock:/var/run/docker.sock:ro"}) {
-		t.Fatalf("binds = %v: solo el socket", h.Binds)
+	if !slices.Equal(h.Binds, []string{"/srv/minecraft/.mcsm-router/docker.sock:/var/run/docker.sock"}) {
+		t.Fatalf("binds = %v: solo el socket del proxy del agente, nunca el de Docker", h.Binds)
 	}
 	if !slices.Equal(h.CapDrop, []string{"ALL"}) || len(h.CapAdd) != 0 {
 		t.Fatalf("caps = %v %v", h.CapDrop, h.CapAdd)
@@ -57,8 +57,8 @@ func TestBuildContainerHardening(t *testing.T) {
 	if !slices.Equal(h.SecurityOpt, []string{"no-new-privileges:true"}) || !h.ReadonlyRootfs || h.Privileged {
 		t.Fatalf("seguridad = %v ro=%v priv=%v", h.SecurityOpt, h.ReadonlyRootfs, h.Privileged)
 	}
-	if !slices.Equal(h.GroupAdd, []string{"967"}) {
-		t.Fatalf("groupAdd = %v: el grupo del socket", h.GroupAdd)
+	if len(h.GroupAdd) != 0 {
+		t.Fatalf("groupAdd = %v: el socket del proxy es del usuario del router", h.GroupAdd)
 	}
 	if h.Resources.Memory != 256<<20 || h.Resources.PidsLimit == nil || *h.Resources.PidsLimit != 256 {
 		t.Fatal("límites de memoria y procesos")
@@ -108,11 +108,11 @@ func TestBuildContainerHash(t *testing.T) {
 			t.Errorf("%s debe cambiar el hash", name)
 		}
 	}
-	gid, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "mcsm", 999, "/srv/minecraft/.mcsm-router")
-	if err != nil || gid.Hash == base.Hash {
-		t.Error("el grupo del socket debe cambiar el hash")
+	sock, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "mcsm", "/otro/docker.sock", "/srv/minecraft/.mcsm-router")
+	if err != nil || sock.Hash == base.Hash {
+		t.Error("la ruta del socket debe cambiar el hash")
 	}
-	net, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "otra", 967, "/srv/minecraft/.mcsm-router")
+	net, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "otra", "/srv/minecraft/.mcsm-router/docker.sock", "/srv/minecraft/.mcsm-router")
 	if err != nil || net.Hash == base.Hash {
 		t.Error("la red debe cambiar el hash")
 	}
@@ -130,7 +130,7 @@ func TestValidate(t *testing.T) {
 		if err := Validate(bad); err == nil {
 			t.Errorf("%v debería ser inválida", bad)
 		}
-		if _, err := BuildContainer(bad, ContainerName, "mcsm", 0, ""); err == nil {
+		if _, err := BuildContainer(bad, ContainerName, "mcsm", "/x/docker.sock", ""); err == nil {
 			t.Errorf("BuildContainer(%v) debería fallar", bad)
 		}
 	}
@@ -168,7 +168,13 @@ func TestBuildContainerAllowDeny(t *testing.T) {
 	if open := build(t, &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true}); open.AllowDeny != nil || len(open.HostConfig.Binds) != 1 {
 		t.Fatalf("sin lista: %+v", open.HostConfig.Binds)
 	}
-	if _, err := BuildContainer(sp, ContainerName, "mcsm", 967, ""); err == nil {
+	if _, err := BuildContainer(sp, ContainerName, "mcsm", "/x/docker.sock", ""); err == nil {
 		t.Fatal("con lista hace falta el directorio del host")
+	}
+}
+
+func TestBuildContainerNeedsProxySocket(t *testing.T) {
+	if _, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "mcsm", "", "/x"); err == nil {
+		t.Fatal("sin socket del proxy no hay router")
 	}
 }

@@ -18,7 +18,9 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/backup"
 	"mcsm/agent/internal/conn"
+	"mcsm/agent/internal/crashloop"
 	"mcsm/agent/internal/docker"
+	"mcsm/agent/internal/dockerproxy"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/logs"
 	"mcsm/agent/internal/mc"
@@ -82,21 +84,43 @@ type App struct {
 	bk         *backupService // plan-4: copias, restauraciones, jobs y programación
 	// plan-8: mc-router del nodo (router.go).
 	router *router.Manager
+	proxy  *dockerproxy.Proxy // plan-9: socket filtrado de Docker para el router
+	// plan-9: incidencias para el panel (Event), en su propia cola FIFO; bucles de crash.
+	events  *outbox
+	crashes *crashloop.Tracker
+	intents *crashloop.Intents
+	// plan-9: RotateToken. Run los conecta al cliente WS; en tests son no-ops o fakes.
+	setToken  func(string)
+	reconnect func()
+	rotateMu  sync.Mutex // serializa RotateToken: guardar, setToken, Ack y reconectar van juntos
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
 func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App {
+	// plan-9 (fuera de ancla): todas las piezas usan el motor envuelto, que anota las paradas que pide el agente
+	// para no contarlas como crashes.
+	intents := crashloop.NewIntents(time.Now)
+	eng = crashloop.Engine{Engine: eng, Intents: intents}
 	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{},
-		flights: map[string]*flight{}, forced: map[string]bool{}, sem: make(chan struct{}, maxConcurrent), life: context.Background()}
+		flights: map[string]*flight{}, forced: map[string]bool{}, sem: make(chan struct{}, maxConcurrent), life: context.Background(),
+		intents: intents, crashes: crashloop.NewTracker(time.Now), setToken: func(string) {}, reconnect: func() {}}
 	a.send = func(*mcsmv1.Envelope) error { return conn.ErrNotConnected }
 	a.rec = reconcile.New(st, eng, cfg.DataRoot, cfg.Network, func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		return a.status(ctx, host, port)
 	}, a.onObserved)
 	a.hub = logs.NewHub(eng)
+	a.hub.SetSecrets(a.logSecrets)               // plan-9
 	a.bk = newBackupService(a, backup.RealClock) // plan-4
 	// plan-8: mc-router del nodo; con su autoscale, los servidores con hostname van bajo demanda.
-	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot)})
+	// plan-9 (fuera de ancla): el router monta el socket del proxy, no el de Docker.
+	a.proxy = dockerproxy.New(dockerproxy.Options{Listen: proxySocketPath(cfg.DataRoot), Upstream: router.HostSocket,
+		Policy: a.routerPolicy, UID: 65532, GID: 65532, Log: log})
+	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot),
+		ProxySocket: proxySocketPath(cfg.DataRoot), ProxyReady: a.proxy.Ready, ProxySince: a.proxy.Since})
 	a.rec.SetOnDemand(a.onDemand)
+	// plan-9: cola de Event (a.send se lee al entregar) y el drift del reconciliador, sin bloquear su lock.
+	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log, "eventos para el panel (Event)")
+	a.rec.SetEventSink(func(id, kind, msg string) { a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_WARN, kind, msg) })
 	return a
 }
 
@@ -156,6 +180,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		},
 	})
 	a.send = func(e *mcsmv1.Envelope) error { return client.Send(ctx, e) }
+	a.setToken, a.reconnect = client.SetToken, client.Reconnect // plan-9 (fuera de ancla): RotateToken
 	a.life = ctx
 	// plan-4 (fuera de ancla: tiene que ir antes de la primera reconciliación y de aceptar
 	// jobs): save-on y jobs que un cierre o crash dejó a medias, y el disco de cada servidor.
@@ -163,6 +188,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// arrancaría con un mundo nuevo.
 	a.bk.recoverAtStart(ctx)
 
+	if err := a.proxy.Listen(); err != nil { // plan-9: sin proxy el router no se despliega (error en su estado)
+		log.Error("proxy del socket de Docker para el router", "err", err)
+	}
+	go a.proxy.Serve(ctx)
 	go a.eventLoop(ctx)
 	go a.tickers(ctx)
 	// §6.1: primero el WS; la primera pasada de reconciliación va en segundo plano.
@@ -179,6 +208,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-8 ──
 	go a.routerLoop(ctx)
 	// ── plan-9 ──
+	go a.events.run(ctx)
 	client.Run(ctx)
 	// Cierre (ctx ya cancelado), las dos esperas EN PARALELO para que el total no pase de
 	// shutdownWait (25 s < stop_grace_period de 30 s):
@@ -210,8 +240,11 @@ func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 	}
 	vctx, cancel := context.WithTimeout(ctx, helloDockerTTL)
 	dv, _ := a.eng.Version(vctx)
+	host, herr := a.eng.HostName(vctx) // plan-9: el host del daemon, no el id del contenedor del agente
 	cancel()
-	host, _ := os.Hostname()
+	if herr != nil || host == "" {
+		host, _ = os.Hostname()
+	}
 	info := &mcsmv1.HostInfo{Hostname: host, Cpus: uint32(runtime.NumCPU()), Os: runtime.GOOS, Arch: runtime.GOARCH}
 	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
 		info.MemTotalBytes = vm.Total
@@ -361,6 +394,10 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 			_ = send(errMsg(env.Id, busyOr(err, errcode.PowerFailed), err))
 			return
 		}
+		// plan-9: arrancar a mano empieza la cuenta de crashes de cero (el reconciliador ya borró la retención).
+		if act := b.PowerAction.Action; act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
+			a.crashes.Reset(b.PowerAction.ServerId)
+		}
 		_ = send(ack(env.Id))
 
 	case *mcsmv1.Envelope_SendCommand:
@@ -443,6 +480,8 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	case *mcsmv1.Envelope_RouterRemove:
 		a.handleRouterRemove(env.Id, send)
 	// ── plan-9 ──
+	case *mcsmv1.Envelope_RotateToken:
+		a.handleRotateToken(env.Id, b.RotateToken, send)
 
 	default:
 		// Body nil: un panel más nuevo envió un cuerpo que este agente no conoce (protobuf lo
@@ -497,22 +536,28 @@ func (a *App) startLogStream(parent context.Context, streamID uint64, req *mcsmv
 	}()
 }
 
-// pumpLogs reenvía las líneas de sub hasta que ctx termina o el follower se cierra.
+// pumpLogs reenvía las líneas de sub hasta que ctx termina o el follower se cierra, y cada droppedEvery avisa al
+// panel de las líneas descartadas por ir lento (StreamDropped, spec §5.2).
 func (a *App) pumpLogs(ctx context.Context, streamID uint64, serverID string, sub *logs.Subscription, send func(*mcsmv1.Envelope) error) {
 	tick := time.NewTicker(droppedEvery)
 	defer tick.Stop()
+	a.pump(ctx, streamID, serverID, sub.Lines, sub.Dropped, tick.C, send)
+}
+
+// pump es pumpLogs con sus fuentes inyectables (tests): las líneas, el contador acumulado de descartes y el tick.
+func (a *App) pump(ctx context.Context, streamID uint64, serverID string, lines <-chan logs.Line, dropped func() uint64, tick <-chan time.Time, send func(*mcsmv1.Envelope) error) {
 	var reported uint64
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-tick.C:
-			// El proto aún no tiene StreamDropped: solo se deja constancia en el log.
-			if d := sub.Dropped(); d > reported {
+		case <-tick:
+			if d := dropped(); d > reported {
+				_ = send(&mcsmv1.Envelope{StreamId: streamID, Body: &mcsmv1.Envelope_StreamDropped{StreamDropped: &mcsmv1.StreamDropped{Count: d - reported}}})
 				a.log.Warn("líneas de log descartadas por suscriptor lento", "server", serverID, "stream", streamID, "nuevas", d-reported, "total", d)
 				reported = d
 			}
-		case line, ok := <-sub.Lines:
+		case line, ok := <-lines:
 			if !ok {
 				return
 			}
@@ -559,6 +604,14 @@ func (a *App) eventLoop(ctx context.Context) {
 				}
 				if ev.Action == "destroy" {
 					a.hub.Reset(id)
+				}
+				// plan-9: crashes y OOM (spec §10).
+				switch ev.Action {
+				case "die":
+					a.onDie(id, ev)
+				case "oom":
+					a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_WARN, KindOOM,
+						"Docker ha matado el servidor por falta de memoria: sube la memoria o el límite del contenedor en Configuración → Recursos")
 				}
 				switch ev.Action {
 				case "start", "die", "stop", "kill", "destroy", "oom", "health_status: healthy", "health_status: unhealthy", "restart":

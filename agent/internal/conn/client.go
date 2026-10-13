@@ -60,18 +60,43 @@ type Client struct {
 	mu        sync.Mutex // protege solo el puntero ws; coder/websocket serializa las escrituras
 	ws        *websocket.Conn
 	connected atomic.Bool
+	tokMu     sync.Mutex // protege tok (plan-9: RotateToken lo cambia)
+	tok       string
 }
 
 func NewClient(o Options) *Client {
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
-	return &Client{opts: o, log: o.Log.With("component", "conn"),
+	return &Client{opts: o, log: o.Log.With("component", "conn"), tok: o.Token,
 		backoffMin: time.Second, backoffMax: 30 * time.Second, pingEvery: pingEvery, stableAfter: 30 * time.Second,
 		after: time.After, ping: func(ctx context.Context, ws *websocket.Conn) error { return ws.Ping(ctx) }}
 }
 
 func (c *Client) Connected() bool { return c.connected.Load() }
+
+// SetToken cambia el token del nodo para las sesiones siguientes (plan-9: RotateToken). No toca la actual.
+func (c *Client) SetToken(tok string) {
+	c.tokMu.Lock()
+	c.tok = tok
+	c.tokMu.Unlock()
+}
+
+func (c *Client) token() string {
+	c.tokMu.Lock()
+	defer c.tokMu.Unlock()
+	return c.tok
+}
+
+// Reconnect cierra la sesión actual, si hay: Run vuelve a conectar (con el token vigente) tras la espera mínima.
+func (c *Client) Reconnect() {
+	c.mu.Lock()
+	ws := c.ws
+	c.mu.Unlock()
+	if ws != nil {
+		_ = ws.Close(websocket.StatusNormalClosure, "token rotado")
+	}
+}
 
 // Send escribe un mensaje binario por la sesión actual. Es seguro para uso
 // concurrente (coder/websocket permite múltiples escritores).
@@ -158,7 +183,7 @@ type sessionResult struct {
 func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 	dctx, cancel := context.WithTimeout(ctx, dialTimeout)
 	ws, resp, err := websocket.Dial(dctx, wsURL(c.opts.PanelURL), &websocket.DialOptions{
-		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + c.opts.Token}},
+		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + c.token()}},
 	})
 	cancel()
 	if err != nil {
