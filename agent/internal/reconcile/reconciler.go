@@ -42,6 +42,8 @@ type Reconciler struct {
 	log      *slog.Logger
 	onDemand func(spec.Spec) bool // plan-8: servidores que arranca y para mc-router (SetOnDemand)
 	events   EventSink            // plan-9: incidencias (drift); nil = ninguna (SetEventSink)
+	// plan-9: Power aceptó un arranque o reinicio a mano (SetOnManualStart); nil = nada.
+	onManualStart func(serverID string)
 
 	mu      sync.Mutex
 	locks   map[string]*sync.Mutex
@@ -522,6 +524,9 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	// bucle decididas antes.
 	if action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
 		r.bumpStartGen(serverID)
+		if r.onManualStart != nil {
+			r.onManualStart(serverID)
+		}
 		if err := r.st.DeleteCrashLatch(serverID); err != nil {
 			return err
 		}

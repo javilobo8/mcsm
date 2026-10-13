@@ -19,6 +19,11 @@ const KindDrift = "drift"
 // SetEventSink fija el receptor de incidencias. Se llama antes de lanzar goroutines (App.New).
 func (r *Reconciler) SetEventSink(fn EventSink) { r.events = fn }
 
+// SetOnManualStart fija lo que se hace cuando Power acepta un arranque o reinicio a mano (plan-9: la cuenta de
+// crashes empieza de cero). Se invoca con el lock del servidor tomado, antes de la acción en Docker: no puede
+// bloquear ni llamar al reconciliador. Se llama antes de lanzar goroutines (App.New).
+func (r *Reconciler) SetOnManualStart(fn func(serverID string)) { r.onManualStart = fn }
+
 // CrashLoopMessage es el error visible (Observed.error) de un servidor retenido por bucle de crash.
 func CrashLoopMessage(crashes int) string {
 	return fmt.Sprintf("Parado por bucle de crash: se cerró con error %d veces en menos de una hora. Revisa la consola y pulsa Arrancar para volver a intentarlo", crashes)

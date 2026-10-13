@@ -125,6 +125,9 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	// plan-9: cola de Event (a.send se lee al entregar) y el drift del reconciliador, sin bloquear su lock.
 	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log, "eventos para el panel (Event)")
 	a.rec.SetEventSink(func(id, kind, msg string) { a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_WARN, kind, msg) })
+	// plan-9: arrancar a mano empieza la cuenta de crashes de cero, solo si Power acepta la acción (no si responde
+	// busy) y antes de la acción en Docker: un cierre con error mientras arranca no se suma a los de antes.
+	a.rec.SetOnManualStart(a.crashes.Reset)
 	return a
 }
 
@@ -394,11 +397,6 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		_ = send(ack(env.Id))
 
 	case *mcsmv1.Envelope_PowerAction:
-		// plan-9: arrancar a mano empieza la cuenta de crashes de cero (el reconciliador borra la retención). Antes del
-		// Power: un cierre con error que llegue mientras arranca no debe sumarse a los de antes.
-		if act := b.PowerAction.Action; act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
-			a.crashes.Reset(b.PowerAction.ServerId)
-		}
 		if err := a.rec.Power(life, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
 			_ = send(errMsg(env.Id, busyOr(err, errcode.PowerFailed), err))
 			return

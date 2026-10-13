@@ -9,6 +9,7 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/crashloop"
 	"mcsm/agent/internal/docker"
+	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/spec"
 )
 
@@ -284,6 +285,26 @@ func TestManualStartResetsTheCountBeforeStarting(t *testing.T) {
 	}
 	if n, _ := a.crashes.Record("a"); n != 2 {
 		t.Fatalf("la cuenta tras Arrancar = %d (el cierre durante el arranque y este)", n)
+	}
+}
+
+// m10(b): un Arrancar que no se acepta (servidor reservado: busy) no reinicia la cuenta de crashes.
+func TestRejectedManualStartKeepsTheCrashCount(t *testing.T) {
+	a, _, s, cid := crashApp(t)
+	for i := 0; i < crashloop.MaxCrashes; i++ {
+		a.onDie("a", die(cid, "1"))
+	}
+	release, err := a.rec.Hold("a", "copia")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_START}}}, s.send)
+	release(context.Background())
+	if r := s.waitID(t, 9); r.GetError().GetCode() != errcode.Busy {
+		t.Fatalf("respuesta = %+v", r)
+	}
+	if n, tripped := a.crashes.Record("a"); n != crashloop.MaxCrashes+1 || !tripped {
+		t.Fatalf("la cuenta tras un Arrancar rechazado = %d (tripped=%v)", n, tripped)
 	}
 }
 
