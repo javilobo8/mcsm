@@ -281,6 +281,9 @@ export class AgentHub extends EventEmitter {
     this.emit("detached", nodeId);
   }
 
+  /** Nodos con sesión abierta. */
+  onlineIds(): string[] { return [...this.conns.keys()]; }
+
   get(nodeId: string): AgentConn | undefined { return this.conns.get(nodeId); }
   isOnline(nodeId: string): boolean { return this.conns.has(nodeId); }
 }

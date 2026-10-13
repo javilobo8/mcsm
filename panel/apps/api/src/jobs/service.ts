@@ -13,10 +13,14 @@ export const INTERRUPTED = "interrumpido: el panel se reinició durante el job";
 export interface CreateJobInput {
   id?: string; type: string; serverId?: string | null; nodeId?: string | null;
   status?: "queued" | "running"; message?: string; payload?: Record<string, unknown>;
+  /** Hora real de inicio (la del agente): fija created_at y started_at. */
+  startedAt?: string;
 }
 
 export interface JobUpdate {
   status?: JobState; progress?: number; message?: string;
+  /** Hora real de fin (la del agente), con un estado final. */
+  finishedAt?: string;
   /** Líneas nuevas que se añaden al log. */
   logChunk?: string;
   /** Log completo que sustituye al guardado (inventario del agente). */
@@ -36,10 +40,11 @@ export class JobService {
   create(input: CreateJobInput): JobDto {
     const now = nowIso();
     const status = input.status ?? "queued";
+    const started = input.startedAt ?? now;
     const row: JobRow = {
       id: input.id ?? newId(), type: input.type, server_id: input.serverId ?? null, node_id: input.nodeId ?? null,
       status, progress: 0, message: input.message ?? "", log: "", payload: JSON.stringify(input.payload ?? {}),
-      created_at: now, updated_at: now, started_at: status === "running" ? now : null, finished_at: null,
+      created_at: started, updated_at: now, started_at: status === "running" ? started : null, finished_at: null,
     };
     this.repo.insert(row);
     return this.emit(row, "");
@@ -55,7 +60,7 @@ export class JobService {
     if (u.status) {
       next.status = u.status;
       if (u.status === "running" && !next.started_at) next.started_at = now;
-      if (FINAL_STATES.has(u.status)) next.finished_at = now;
+      if (FINAL_STATES.has(u.status)) next.finished_at = u.finishedAt ?? now;
     }
     if (u.progress !== undefined) next.progress = Math.max(0, Math.min(100, Math.round(u.progress)));
     if (u.message !== undefined) next.message = u.message;
