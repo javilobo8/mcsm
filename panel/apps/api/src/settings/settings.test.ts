@@ -24,6 +24,7 @@ describe("settings", () => {
     expect((await get()).json()).toEqual({
       publicUrl: "", publicUrlSource: "request", envPublicUrl: "",
       gamePortRange: { from: 25565, to: 25600 }, defaultGamePortRange: { from: 25565, to: 25600 },
+      connectAddress: { host: "", port: null },
       curseforge: { configured: false, valid: true },
     });
     expect((await app.inject({ method: "GET", url: "/api/settings" })).statusCode).toBe(401);
@@ -41,7 +42,26 @@ describe("settings", () => {
     expect(enroll.dockerRun).toContain("PANEL_URL=http://192.168.1.10:8080");
     expect((await put({ publicUrl: "" })).json()).toMatchObject({ publicUrl: "http://env:8080", publicUrlSource: "env" });
     for (const bad of ["http://x/path", "ftp://x"]) expect((await put({ publicUrl: bad })).statusCode).toBe(400);
-    expect((await put({ desconocida: true })).statusCode).toBe(400);
+    expect((await put({ unknown: true })).statusCode).toBe(400);
+  });
+
+  it("connection address: stored normalized, replaced as a whole, validated", async () => {
+    await start();
+    const res = await put({ connectAddress: { host: " MC.Example.com ", port: 55567 } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().connectAddress).toEqual({ host: "mc.example.com", port: 55567 });
+    expect((await get()).json().connectAddress).toEqual({ host: "mc.example.com", port: 55567 });
+    expect((await put({ connectAddress: { host: "mc.example.com", port: null } })).json().connectAddress).toEqual({ host: "mc.example.com", port: null });
+    for (const bad of [{ host: "mc.example.com:55567", port: null }, { host: "x", port: 70000 }, { host: "x" }]) {
+      expect((await put({ connectAddress: bad })).statusCode).toBe(400);
+    }
+    expect((await get()).json().connectAddress).toEqual({ host: "mc.example.com", port: null });
+  });
+
+  it("an unreadable stored connection address falls back to the default", async () => {
+    await start();
+    app.db.prepare("INSERT INTO settings (key, value) VALUES ('connect_address', '{broken')").run();
+    expect((await get()).json().connectAddress).toEqual({ host: "", port: null });
   });
 
   it("the WS accepts the origin of the stored public URL", async () => {
@@ -54,9 +74,9 @@ describe("settings", () => {
       ws.on("unexpected-response", (_r, res) => resolve(res.statusCode ?? 0));
       ws.on("error", () => resolve(0));
     });
-    expect(await open("http://lan.casa:8080")).toBe(403);
-    await put({ publicUrl: "http://lan.casa:8080" });
-    expect(await open("http://lan.casa:8080")).toBe(101);
+    expect(await open("http://lan.home:8080")).toBe(403);
+    await put({ publicUrl: "http://lan.home:8080" });
+    expect(await open("http://lan.home:8080")).toBe(101);
   });
 
   it("port range: ports are allocated from the stored range and it is validated", async () => {

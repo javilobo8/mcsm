@@ -1,4 +1,4 @@
-import { portRangeSchema, publicUrlSchema, type PortRange, type SettingsDto } from "@mcsm/shared";
+import { connectAddressSchema, portRangeSchema, publicUrlSchema, type ConnectAddress, type PortRange, type SettingsDto } from "@mcsm/shared";
 import type { GuardText } from "./tab-guard";
 
 export function passwordFormError(f: { current: string; next: string; repeat: string }): string | null {
@@ -15,6 +15,16 @@ export function parsePortRange(f: { from: string; to: string }): { ok: true; val
   if (!/^\d+$/.test(from) || !/^\d+$/.test(to)) return { ok: false, error: "Enter two port numbers" };
   const r = portRangeSchema.safeParse({ from: Number(from), to: Number(to) });
   return r.success ? { ok: true, value: r.data } : { ok: false, error: r.error.issues[0]?.message ?? "Invalid range" };
+}
+
+export const connectForm = (a: ConnectAddress) => ({ host: a.host, port: a.port === null ? "" : String(a.port) });
+
+/** Connection address form: an empty port means each server's own port. */
+export function parseConnectAddress(f: { host: string; port: string }): { ok: true; value: ConnectAddress } | { ok: false; error: string } {
+  const port = f.port.trim();
+  if (port !== "" && !/^\d+$/.test(port)) return { ok: false, error: "The port must be a number (or empty)" };
+  const r = connectAddressSchema.safeParse({ host: f.host, port: port === "" ? null : Number(port) });
+  return r.success ? { ok: true, value: r.data } : { ok: false, error: r.error.issues[0]?.message ?? "Invalid address" };
 }
 
 export function parsePublicUrl(v: string): { ok: true; value: string } | { ok: false; error: string } {

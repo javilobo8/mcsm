@@ -8,6 +8,6 @@ setup("sign in with the administrator password", async ({ page }) => {
   await page.getByLabel("Password", { exact: true }).fill(process.env.E2E_PASSWORD!);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("link", { name: "New server" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "New server" }).first()).toBeVisible();
   await page.context().storageState({ path: ".auth/admin.json" });
 });

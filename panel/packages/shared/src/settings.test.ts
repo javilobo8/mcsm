@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPanelOrigin, passwordChangeSchema, portRangeSchema, publicUrlSchema, settingsPutSchema } from "./settings.js";
+import { connectAddressSchema, isPanelOrigin, passwordChangeSchema, portRangeSchema, publicUrlSchema, settingsPutSchema } from "./settings.js";
 
 describe("settings", () => {
   it("public URL: an http(s) origin without a path, normalized", () => {
@@ -19,11 +19,22 @@ describe("settings", () => {
     }
   });
 
+  it("connection address: domain or IPv4 (normalized), external port or null", () => {
+    expect(connectAddressSchema.parse({ host: "  MC.Example.com ", port: 55567 })).toEqual({ host: "mc.example.com", port: 55567 });
+    expect(connectAddressSchema.parse({ host: "203.0.113.7", port: null })).toEqual({ host: "203.0.113.7", port: null });
+    expect(connectAddressSchema.parse({ host: "", port: null })).toEqual({ host: "", port: null });
+    for (const bad of [{ host: "mc.example.com:55567", port: null }, { host: "http://mc.example.com", port: null }, { host: "a b", port: null },
+      { host: "x", port: 0 }, { host: "x", port: 65536 }, { host: "x", port: 1.5 }, { host: "x" }]) {
+      expect(connectAddressSchema.safeParse(bad).success).toBe(false);
+    }
+    expect(settingsPutSchema.parse({ connectAddress: { host: "mc.example.com", port: 55567 } })).toEqual({ connectAddress: { host: "mc.example.com", port: 55567 } });
+  });
+
   it("strict PUT and password change", () => {
-    expect(settingsPutSchema.safeParse({ otra: 1 }).success).toBe(false);
+    expect(settingsPutSchema.safeParse({ other: 1 }).success).toBe(false);
     expect(settingsPutSchema.parse({ publicUrl: "" })).toEqual({ publicUrl: "" });
-    expect(passwordChangeSchema.safeParse({ currentPassword: "x", newPassword: "corta" }).success).toBe(false);
-    expect(passwordChangeSchema.safeParse({ currentPassword: "", newPassword: "larga-suficiente" }).success).toBe(false);
-    expect(passwordChangeSchema.safeParse({ currentPassword: "x", newPassword: "larga-suficiente" }).success).toBe(true);
+    expect(passwordChangeSchema.safeParse({ currentPassword: "x", newPassword: "short" }).success).toBe(false);
+    expect(passwordChangeSchema.safeParse({ currentPassword: "", newPassword: "long-enough-pw" }).success).toBe(false);
+    expect(passwordChangeSchema.safeParse({ currentPassword: "x", newPassword: "long-enough-pw" }).success).toBe(true);
   });
 });

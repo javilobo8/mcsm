@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { Users, Cpu } from "lucide-react";
+import { Users, Cpu, Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StateBadge } from "@/components/state-badge";
@@ -7,11 +8,14 @@ import { PowerButtons } from "@/components/power-buttons";
 import { useServers } from "@/hooks/use-servers";
 import { useNodes } from "@/hooks/use-nodes";
 import { NodeUsage } from "@/components/node-usage";
+import { ServerAddress } from "@/components/server-address";
+import { useSettings } from "@/hooks/use-settings";
 import { formatBytes } from "@/lib/format";
 
 export function DashboardPage() {
   const servers = useServers();
   const nodes = useNodes();
+  const settings = useSettings();
   const nodeName = (id: string) => nodes.data?.find((n) => n.id === id)?.name ?? "—";
   const nodeOnline = (id: string): boolean | undefined => { const n = nodes.data?.find((x) => x.id === id); return n ? n.status === "online" : undefined; };
 
@@ -38,10 +42,13 @@ export function DashboardPage() {
       </section>
 
       <section aria-label="Servers">
-        <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-zinc-400">Servers</h2>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Servers</h2>
+          <Button size="sm" asChild><Link to="/servers/new"><Plus className="size-4" /> New server</Link></Button>
+        </div>
         {servers.isError && <p role="alert" className="mb-2 text-sm text-red-400">Could not load the servers: {servers.error.message}</p>}
         <Table>
-          <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Players</TableHead><TableHead>Version</TableHead><TableHead>Node</TableHead><TableHead>Port</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Players</TableHead><TableHead>Version</TableHead><TableHead>Node</TableHead><TableHead>Address</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
           <TableBody>
             {servers.isPending && <TableRow><TableCell colSpan={7} className="text-center text-zinc-400">Loading servers…</TableCell></TableRow>}
             {servers.data?.map((s) => (
@@ -54,7 +61,7 @@ export function DashboardPage() {
                 <TableCell>{s.observed?.mc.online ? <span className="flex items-center gap-1"><Users className="size-3" /> {s.observed.mc.playersOnline}/{s.observed.mc.playersMax}</span> : <span className="text-zinc-500">—</span>}</TableCell>
                 <TableCell>{s.observed?.mc.version || `${s.spec.type} ${s.spec.version}`}</TableCell>
                 <TableCell>{nodeName(s.nodeId)}</TableCell>
-                <TableCell className="font-mono text-sm">{s.spec.ports.game}</TableCell>
+                <TableCell><ServerAddress server={s} connect={settings.data?.connectAddress} /></TableCell>
                 <TableCell><PowerButtons server={s} nodeOnline={nodeOnline(s.nodeId)} /></TableCell>
               </TableRow>
             ))}

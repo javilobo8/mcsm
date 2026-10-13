@@ -1,9 +1,10 @@
-import { CURSEFORGE_API_KEY_RE, portRangeSchema, type PortRange, type SettingsDto, type SettingsPut } from "@mcsm/shared";
+import { connectAddressSchema, CURSEFORGE_API_KEY_RE, DEFAULT_CONNECT_ADDRESS, portRangeSchema, type ConnectAddress, type PortRange, type SettingsDto, type SettingsPut } from "@mcsm/shared";
 import type { Config } from "../config.js";
 import type { Db } from "../db/db.js";
 
 export const PUBLIC_URL_SETTING = "public_url";
 export const PORT_RANGE_SETTING = "game_port_range";
+export const CONNECT_ADDRESS_SETTING = "connect_address";
 
 /** State of the CurseForge API key: migration 020 copied the env value without validating it. */
 export function curseforgeStatus(key: string | null): { configured: boolean; valid: boolean } {
@@ -41,9 +42,22 @@ export class SettingsService {
     return { ...this.cfg.gamePortRange };
   }
 
+  /** Address players use to join (shown next to each server); an unreadable stored one falls back to the default. */
+  connectAddress(): ConnectAddress {
+    const raw = this.get(CONNECT_ADDRESS_SETTING);
+    if (raw) {
+      try {
+        const r = connectAddressSchema.safeParse(JSON.parse(raw));
+        if (r.success) return r.data;
+      } catch { /* broken JSON: the default */ }
+    }
+    return { ...DEFAULT_CONNECT_ADDRESS };
+  }
+
   update(input: SettingsPut): void {
     if (input.publicUrl !== undefined) this.set(PUBLIC_URL_SETTING, input.publicUrl === "" ? null : input.publicUrl);
     if (input.gamePortRange !== undefined) this.set(PORT_RANGE_SETTING, JSON.stringify(input.gamePortRange));
+    if (input.connectAddress !== undefined) this.set(CONNECT_ADDRESS_SETTING, JSON.stringify(input.connectAddress));
   }
 
   dto(curseforgeKey: string | null): SettingsDto {
@@ -54,6 +68,7 @@ export class SettingsService {
       envPublicUrl: this.cfg.publicUrl,
       gamePortRange: this.gamePortRange(),
       defaultGamePortRange: { ...this.cfg.gamePortRange },
+      connectAddress: this.connectAddress(),
       curseforge: curseforgeStatus(curseforgeKey),
     };
   }
