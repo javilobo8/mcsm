@@ -28,7 +28,7 @@ describe("programación de copias", () => {
     expect(r).toEqual({ ok: true, value: { enabled: true, cron: "* * * * *", keepDays: 0, keepCount: 3, excludes: ["logs", "*.jar"], onlyIfPlayersSince: false } });
   });
   it("devuelve el error en castellano", () => {
-    expect(formToSchedule({ ...scheduleToForm(undefined), enabled: true, cron: "0 4 * * MON" })).toEqual({ ok: false, error: 'Campo "Día de la semana" no válido: MON' });
+    expect(formToSchedule({ ...scheduleToForm(undefined), enabled: true, cron: "0 4 * * MON" })).toEqual({ ok: false, error: 'Field "Day of week" is not valid: MON' });
     expect(formToSchedule({ ...scheduleToForm(undefined), keepDays: "siete" })).toMatchObject({ ok: false, error: expect.stringMatching(/enteros/) });
     expect(formToSchedule({ ...scheduleToForm(undefined), excludes: "../world" })).toMatchObject({ ok: false });
   });

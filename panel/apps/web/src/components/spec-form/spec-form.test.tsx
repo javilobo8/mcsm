@@ -59,7 +59,7 @@ describe("SpecForm (render en servidor, sin DOM)", () => {
 
   it("Jugadores avisa (en su sección) de las variables del env que la pisarían", () => {
     const html = render({ ...modded, env: { OPS: "Lobo,Pepe" } }, "server");
-    expect(html).toContain("Quita la variable OPS de las variables de entorno");
+    expect(html).toContain("Remove the OPS variable from the environment variables");
   });
 
   it("cada campo se asigna a su pestaña", () => {

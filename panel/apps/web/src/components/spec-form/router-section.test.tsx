@@ -29,7 +29,7 @@ describe("sección Router de la pestaña Red", () => {
     expect(routerSectionError(undefined)).toBeNull();
     expect(routerSectionError({ enabled: true, hostname: "survival.lan" })).toBeNull();
     expect(routerSectionError({ enabled: true, hostname: "" })).toBe("Indica el hostname para entrar por el router");
-    expect(routerSectionError({ enabled: false, hostname: "a_b.lan" })).toMatch(/Hostname inválido/);
+    expect(routerSectionError({ enabled: false, hostname: "a_b.lan" })).toMatch(/Invalid hostname/);
   });
 
   it("desactivado y sin hostname vuelve a «sin sección»: no hay cambios que enviar", () => {

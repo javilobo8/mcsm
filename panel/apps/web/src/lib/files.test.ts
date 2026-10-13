@@ -23,9 +23,9 @@ describe("canEdit", () => {
 
 describe("validateNewName", () => {
   it("rechaza vacíos, barras, .. y duplicados; permite conservar el nombre actual", () => {
-    expect(validateNewName("", [])).toMatch(/vacío/);
-    expect(validateNewName("a/b", [])).toMatch(/inválido/);
-    expect(validateNewName("..", [])).toMatch(/inválido/);
+    expect(validateNewName("", [])).toMatch(/cannot be empty/);
+    expect(validateNewName("a/b", [])).toMatch(/Invalid name/);
+    expect(validateNewName("..", [])).toMatch(/Invalid name/);
     expect(validateNewName("mods", ["mods"])).toMatch(/Ya existe/);
     expect(validateNewName("mods", ["mods"], "mods")).toBeNull();
     expect(validateNewName("plugins", ["mods"])).toBeNull();

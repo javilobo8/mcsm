@@ -104,8 +104,8 @@ describe("migración en la web", () => {
     expect(canCloseMigration(null, undefined)).toBe(false);
     const t = closeMigrationText(mig({ phase: "rolling_back", targetPending: true, sourcePending: true }), names);
     expect(t).toMatch(/dejará de reintentar/);
-    expect(t).toMatch(/«Garaje»/);
-    expect(t).toMatch(/no se vuelve a arrancar en «Casa»/);
+    expect(t).toMatch(/“Garaje”/);
+    expect(t).toMatch(/is not started again on “Casa”/);
   });
 
   it("la propuesta lleva el puerto escrito (m8)", () => {

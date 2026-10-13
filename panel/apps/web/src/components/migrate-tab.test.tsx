@@ -32,8 +32,8 @@ function render(jobs: JobDto[], migration: MigrationDto | null = null, s: Server
 describe("MigrateTab", () => {
   it("MigrationSteps marca el paso en curso por el progreso", () => {
     const html = renderToString(<MigrationSteps job={{ progress: 40, status: "running" }} />);
-    expect(html).toContain("3. Subir la copia al panel");
-    expect(html).toMatch(/aria-current="step"[^>]*>[\s\S]*?3\. Subir la copia al panel/);
+    expect(html).toContain("3. Upload the backup to the panel");
+    expect(html).toMatch(/aria-current="step"[^>]*>[\s\S]*?3\. Upload the backup to the panel/);
   });
 
   it("con una migración en curso enseña el progreso y no el formulario", () => {
