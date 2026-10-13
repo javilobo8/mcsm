@@ -39,7 +39,7 @@ describe("copias y jobs (Plan 9)", () => {
     expect(agentIso(BigInt(now - 40 * 86_400_000), now)).toBeNull();
   });
 
-  it("un job programado que llega por el inventario conserva las horas del agente", async () => {
+  it("un job programado que llega por el inventario conserva las horas del agente en started/finished (created_at es del panel)", async () => {
     const s = await createServer();
     const agent = await connectAgent();
     const started = Date.now() - 2 * 3_600_000;
@@ -50,7 +50,7 @@ describe("copias y jobs (Plan 9)", () => {
     } } });
     await vi.waitFor(async () => expect((await job("job-sched")).status).toBe("ok"));
     expect(await job("job-sched")).toMatchObject({
-      createdAt: new Date(started).toISOString(), startedAt: new Date(started).toISOString(), finishedAt: new Date(started + 5_000).toISOString(),
+      startedAt: new Date(started).toISOString(), finishedAt: new Date(started + 5_000).toISOString(),
     });
     agent.close();
   });
