@@ -515,22 +515,28 @@ func (a *App) startLogStream(parent context.Context, streamID uint64, req *mcsmv
 	}()
 }
 
-// pumpLogs reenvía las líneas de sub hasta que ctx termina o el follower se cierra.
+// pumpLogs reenvía las líneas de sub hasta que ctx termina o el follower se cierra, y cada droppedEvery avisa al
+// panel de las líneas descartadas por ir lento (StreamDropped, spec §5.2).
 func (a *App) pumpLogs(ctx context.Context, streamID uint64, serverID string, sub *logs.Subscription, send func(*mcsmv1.Envelope) error) {
 	tick := time.NewTicker(droppedEvery)
 	defer tick.Stop()
+	a.pump(ctx, streamID, serverID, sub.Lines, sub.Dropped, tick.C, send)
+}
+
+// pump es pumpLogs con sus fuentes inyectables (tests): las líneas, el contador acumulado de descartes y el tick.
+func (a *App) pump(ctx context.Context, streamID uint64, serverID string, lines <-chan logs.Line, dropped func() uint64, tick <-chan time.Time, send func(*mcsmv1.Envelope) error) {
 	var reported uint64
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-tick.C:
-			// El proto aún no tiene StreamDropped: solo se deja constancia en el log.
-			if d := sub.Dropped(); d > reported {
+		case <-tick:
+			if d := dropped(); d > reported {
+				_ = send(&mcsmv1.Envelope{StreamId: streamID, Body: &mcsmv1.Envelope_StreamDropped{StreamDropped: &mcsmv1.StreamDropped{Count: d - reported}}})
 				a.log.Warn("líneas de log descartadas por suscriptor lento", "server", serverID, "stream", streamID, "nuevas", d-reported, "total", d)
 				reported = d
 			}
-		case line, ok := <-sub.Lines:
+		case line, ok := <-lines:
 			if !ok {
 				return
 			}
