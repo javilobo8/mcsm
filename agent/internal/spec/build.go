@@ -6,19 +6,19 @@ import (
 	"strings"
 )
 
-// Campo build (plan 10): build del servidor o versión del loader. Vacío = el último (lo elige
-// itzg): no se emite nada y el hash no cambia. Espejo de panel/packages/shared/src/versions.ts;
-// casos compartidos en proto/fixtures/build-cases.json.
+// Build field (plan 10): the server build or loader version. Empty = the latest (chosen by
+// itzg): nothing is emitted and the hash does not change. Mirror of panel/packages/shared/src/versions.ts;
+// shared cases in proto/fixtures/build-cases.json.
 
-// buildEnvKeys es la variable de itzg que genera build según el tipo. Folia usa FOLIABUILD (sin
-// guion bajo; scripts/start-deployFolia de itzg).
+// buildEnvKeys is the itzg variable that build generates depending on the type. Folia uses FOLIABUILD (no
+// underscore; itzg's scripts/start-deployFolia).
 var buildEnvKeys = map[string]string{
 	"PAPER": "PAPER_BUILD", "FOLIA": "FOLIABUILD", "PURPUR": "PURPUR_BUILD",
 	"FABRIC": "FABRIC_LOADER_VERSION", "QUILT": "QUILT_LOADER_VERSION",
 	"FORGE": "FORGE_VERSION", "NEOFORGE": "NEOFORGE_VERSION",
 }
 
-// Misma regex que BUILD_RE en el panel.
+// Same regex as BUILD_RE in the panel.
 var buildRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
 
 func isFloatingVersion(v string) bool {
@@ -30,23 +30,23 @@ func (s Spec) validateBuild() error {
 		return nil
 	}
 	if !buildRe.MatchString(s.Build) {
-		return fmt.Errorf("spec: build inválido (letras, números y . _ + -; máx. 64; empieza por letra o número)")
+		return fmt.Errorf("spec: invalid build (letters, digits and . _ + -; max. 64; starts with a letter or digit)")
 	}
 	key, ok := buildEnvKeys[s.Type]
 	if !ok {
-		return fmt.Errorf("spec: el tipo %s no admite fijar el build (solo Paper, Folia, Purpur, Fabric, Quilt, Forge y NeoForge)", s.Type)
+		return fmt.Errorf("spec: type %s does not support setting the build (only Paper, Folia, Purpur, Fabric, Quilt, Forge and NeoForge)", s.Type)
 	}
 	if isFloatingVersion(s.Version) {
-		return fmt.Errorf("spec: para fijar el build elige una versión concreta de Minecraft (no LATEST ni SNAPSHOT)")
+		return fmt.Errorf("spec: to set the build choose a specific Minecraft version (not LATEST or SNAPSHOT)")
 	}
-	// El env libre gana sobre lo generado: anularía el build en silencio.
+	// Free-form env wins over what is generated: it would silently override the build.
 	if _, ok := s.Env[key]; ok {
-		return fmt.Errorf("spec: Quita la variable %s de las variables de entorno (Avanzado): la fija el campo Build", key)
+		return fmt.Errorf("spec: Remove the variable %s from the environment variables (Advanced): the Build field sets it", key)
 	}
 	return nil
 }
 
-// buildEnvVars añade al entorno generado la variable del build, si lo hay.
+// buildEnvVars adds the build variable to the generated environment, if there is one.
 func (s Spec) buildEnvVars(m map[string]string) {
 	if s.Build == "" {
 		return

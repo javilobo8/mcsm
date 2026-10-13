@@ -38,7 +38,7 @@ func TestBuildContainerBasics(t *testing.T) {
 		t.Errorf("image = %q", b.Config.Image)
 	}
 	if !b.Config.Tty || !b.Config.OpenStdin {
-		t.Error("tty/openstdin deben ser true")
+		t.Error("tty/openstdin must be true")
 	}
 	if got := b.HostConfig.Binds; len(got) != 1 || got[0] != "/srv/minecraft/survival/data:/data" {
 		t.Errorf("binds = %v", got)
@@ -48,7 +48,7 @@ func TestBuildContainerBasics(t *testing.T) {
 		t.Errorf("labels = %v", b.Config.Labels)
 	}
 	if _, ok := b.Networking.EndpointsConfig["mcsm"]; !ok {
-		t.Error("falta la red mcsm")
+		t.Error("the mcsm network is missing")
 	}
 	if b.HostConfig.RestartPolicy.Name != "unless-stopped" {
 		t.Errorf("restart = %q", b.HostConfig.RestartPolicy.Name)
@@ -84,7 +84,7 @@ func TestBuildContainerEnv(t *testing.T) {
 	}
 	for i := 1; i < len(b.Config.Env); i++ {
 		if b.Config.Env[i-1] > b.Config.Env[i] {
-			t.Fatalf("env no está ordenado: %v", b.Config.Env)
+			t.Fatalf("env is not sorted: %v", b.Config.Env)
 		}
 	}
 }
@@ -105,7 +105,7 @@ func TestBuildContainerPorts(t *testing.T) {
 		t.Errorf("bindings = %v", seen)
 	}
 	if _, ok := b.HostConfig.PortBindings[mustPort("25575/tcp")]; ok {
-		t.Error("RCON no debe publicarse")
+		t.Error("RCON must not be published")
 	}
 }
 
@@ -114,19 +114,19 @@ func TestHashStability(t *testing.T) {
 	a, _ := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	b, _ := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	if a.Hash != b.Hash {
-		t.Error("el hash debe ser determinista")
+		t.Error("the hash must be deterministic")
 	}
 	m2 := meta
 	m2.Version = 99
 	c, _ := BuildContainer(m2, s, "/srv/minecraft", "mcsm")
 	if c.Hash != a.Hash {
-		t.Error("cambiar solo la versión no debe cambiar el hash")
+		t.Error("changing only the version must not change the hash")
 	}
 	s.Memory = "6G"
 	s.Resources.MemLimit = "7G"
 	d, _ := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	if d.Hash == a.Hash {
-		t.Error("cambiar la memoria debe cambiar el hash")
+		t.Error("changing the memory must change the hash")
 	}
 }
 
@@ -137,15 +137,15 @@ func TestValidation(t *testing.T) {
 		mut  func(*Spec, *Meta)
 		want string
 	}{
-		{"slug inválido", func(_ *Spec, m *Meta) { m.Slug = "Mi Server" }, "slug"},
-		{"env reservada", func(s *Spec, _ *Meta) { s.Env["RCON_PASSWORD"] = "x" }, "reservada"},
-		{"env TYPE reservada", func(s *Spec, _ *Meta) { s.Env["TYPE"] = "FORGE" }, "reservada"},
-		{"memoria inválida", func(s *Spec, _ *Meta) { s.Memory = "muchos" }, "memory"},
-		{"memLimit menor que memory", func(s *Spec, _ *Meta) { s.Resources.MemLimit = "2G" }, "memLimit"},
-		{"puerto fuera de rango", func(s *Spec, _ *Meta) { s.Ports.Game = 70000 }, "puerto"},
-		{"proto inválido", func(s *Spec, _ *Meta) { s.Ports.Extra[0].Proto = "icmp" }, "proto"},
-		{"rcon vacío", func(s *Spec, _ *Meta) { s.RconPassword = "" }, "rconPassword"},
-		{"restart inválido", func(s *Spec, _ *Meta) { s.RestartPolicy = "siempre" }, "restartPolicy"},
+		{"invalid slug", func(_ *Spec, m *Meta) { m.Slug = "Mi Server" }, "slug"},
+		{"reserved env", func(s *Spec, _ *Meta) { s.Env["RCON_PASSWORD"] = "x" }, "reserved"},
+		{"reserved TYPE env", func(s *Spec, _ *Meta) { s.Env["TYPE"] = "FORGE" }, "reserved"},
+		{"invalid memory", func(s *Spec, _ *Meta) { s.Memory = "lots" }, "memory"},
+		{"memLimit less than memory", func(s *Spec, _ *Meta) { s.Resources.MemLimit = "2G" }, "memLimit"},
+		{"port out of range", func(s *Spec, _ *Meta) { s.Ports.Game = 70000 }, "port"},
+		{"invalid proto", func(s *Spec, _ *Meta) { s.Ports.Extra[0].Proto = "icmp" }, "proto"},
+		{"empty rcon", func(s *Spec, _ *Meta) { s.RconPassword = "" }, "rconPassword"},
+		{"invalid restart", func(s *Spec, _ *Meta) { s.RestartPolicy = "always" }, "restartPolicy"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -159,7 +159,7 @@ func TestValidation(t *testing.T) {
 			tc.mut(&s, &m)
 			_, err := BuildContainer(m, s, "/srv/minecraft", "mcsm")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err = %v, want que contenga %q", err, tc.want)
+				t.Fatalf("err = %v, want it to contain %q", err, tc.want)
 			}
 		})
 	}
@@ -178,15 +178,15 @@ func TestDefaults(t *testing.T) {
 		t.Errorf("image = %q", b.Config.Image)
 	}
 	if b.HostConfig.RestartPolicy.Name != "unless-stopped" {
-		t.Errorf("restart por defecto = %q", b.HostConfig.RestartPolicy.Name)
+		t.Errorf("default restart = %q", b.HostConfig.RestartPolicy.Name)
 	}
 	if b.HostConfig.Resources.Memory != 3*1024*1024*1024 {
-		t.Errorf("sin memLimit el límite es memory + 1G (spec §4.1), memory=%d", b.HostConfig.Resources.Memory)
+		t.Errorf("without memLimit the limit is memory + 1G (spec §4.1), memory=%d", b.HostConfig.Resources.Memory)
 	}
 }
 
-// Tabla del HostConfig: aislamiento por defecto (M1/L4 de la auditoría). Cambiar esta
-// salida recrea todos los contenedores al actualizar el agente.
+// HostConfig table: default isolation (M1/L4 of the audit). Changing this
+// output recreates all containers when the agent is updated.
 func TestHostConfigHardening(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -194,9 +194,9 @@ func TestHostConfigHardening(t *testing.T) {
 		memLimit string
 		want     int64
 	}{
-		{"sin memLimit: memory + 1G", "2G", "", 3 << 30},
-		{"sin memLimit en MiB", "512M", "", (512 << 20) + (1 << 30)},
-		{"memLimit explícito", "4G", "5G", 5 << 30},
+		{"without memLimit: memory + 1G", "2G", "", 3 << 30},
+		{"without memLimit in MiB", "512M", "", (512 << 20) + (1 << 30)},
+		{"explicit memLimit", "4G", "5G", 5 << 30},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -219,21 +219,21 @@ func TestHostConfigHardening(t *testing.T) {
 			if strings.Join(h.CapDrop, ",") != "ALL" {
 				t.Errorf("capDrop = %v", h.CapDrop)
 			}
-			// Mínimo con el que el entrypoint de itzg (chown de /data y paso a uid 1000)
-			// arranca y llega a healthy (probado contra la imagen real).
+			// Minimum with which itzg's entrypoint (chown of /data and switch to uid 1000)
+			// starts and reaches healthy (tested against the real image).
 			if strings.Join(h.CapAdd, ",") != "CHOWN,DAC_OVERRIDE,FOWNER,SETGID,SETUID" {
 				t.Errorf("capAdd = %v", h.CapAdd)
 			}
 			if h.Privileged || h.NetworkMode != "" || len(h.Devices) != 0 {
-				t.Errorf("nada de privilegios extra: %+v", h)
+				t.Errorf("no extra privileges: %+v", h)
 			}
 		})
 	}
 }
 
-// El hash se calcula sobre una forma canónica propia, no sobre el JSON de los tipos de
-// moby: fijarlo detecta cualquier cambio involuntario (que recrearía todos los
-// contenedores de la LAN al actualizar el agente). Si cambia a propósito, sube hashSchema.
+// The hash is computed over a canonical form of its own, not over the JSON of moby's
+// types: pinning it detects any unintended change (which would recreate all the
+// LAN's containers when the agent is updated). If it changes on purpose, bump hashSchema.
 func TestHashGolden(t *testing.T) {
 	b, err := BuildContainer(meta, loadFixture(t), "/srv/minecraft", "mcsm")
 	if err != nil {
@@ -241,7 +241,7 @@ func TestHashGolden(t *testing.T) {
 	}
 	const golden = "09ff6e5490b40677"
 	if b.Hash != golden {
-		t.Fatalf("hash = %s, want %s: ¿cambió la salida de BuildContainer o hashInput?", b.Hash, golden)
+		t.Fatalf("hash = %s, want %s: did BuildContainer's or hashInput's output change?", b.Hash, golden)
 	}
 }
 
@@ -265,16 +265,16 @@ func TestHashCoversWhatDefinesTheContainer(t *testing.T) {
 	}
 	ref := h(nil, "/srv/minecraft", "mcsm")
 	for name, got := range map[string]string{
-		"red":       h(nil, "/srv/minecraft", "otra"),
-		"DATA_ROOT": h(nil, "/srv/otro", "mcsm"),
+		"network":   h(nil, "/srv/minecraft", "other"),
+		"DATA_ROOT": h(nil, "/srv/other", "mcsm"),
 		"imagen":    h(func(s *Spec) { s.ImageTag = "java17" }, "/srv/minecraft", "mcsm"),
 		"env":       h(func(s *Spec) { s.Env["X"] = "1" }, "/srv/minecraft", "mcsm"),
 		"cpus":      h(func(s *Spec) { s.Resources.Cpus = 3 }, "/srv/minecraft", "mcsm"),
 		"restart":   h(func(s *Spec) { s.RestartPolicy = "always" }, "/srv/minecraft", "mcsm"),
-		"puertos":   h(func(s *Spec) { s.Ports.Game = 25570 }, "/srv/minecraft", "mcsm"),
+		"ports":     h(func(s *Spec) { s.Ports.Game = 25570 }, "/srv/minecraft", "mcsm"),
 	} {
 		if got == ref {
-			t.Errorf("cambiar %s debe cambiar el hash", name)
+			t.Errorf("changing %s must change the hash", name)
 		}
 	}
 }
@@ -284,48 +284,48 @@ func TestValidacionEndurecida(t *testing.T) {
 	cases := []struct {
 		name string
 		mut  func(*Spec)
-		want string // "" = debe aceptarse
+		want string // "" = must be accepted
 	}{
-		{"env TYPE=X rechazada", func(s *Spec) { s.Env = map[string]string{"TYPE=X": "y"} }, "nombre"},
-		{"env con espacio rechazada", func(s *Spec) { s.Env = map[string]string{"A B": "y"} }, "nombre"},
-		{"env vacía rechazada", func(s *Spec) { s.Env = map[string]string{"": "y"} }, "nombre"},
-		{"env que empieza por dígito rechazada", func(s *Spec) { s.Env = map[string]string{"1A": "y"} }, "nombre"},
-		{"env válida aceptada", func(s *Spec) { s.Env = map[string]string{"USE_AIKAR_FLAGS": "true"} }, ""},
-		{"puerto extra 25575/tcp rechazado", func(s *Spec) {
+		{"env TYPE=X rejected", func(s *Spec) { s.Env = map[string]string{"TYPE=X": "y"} }, "name"},
+		{"env with space rejected", func(s *Spec) { s.Env = map[string]string{"A B": "y"} }, "name"},
+		{"empty env rejected", func(s *Spec) { s.Env = map[string]string{"": "y"} }, "name"},
+		{"env starting with a digit rejected", func(s *Spec) { s.Env = map[string]string{"1A": "y"} }, "name"},
+		{"valid env accepted", func(s *Spec) { s.Env = map[string]string{"USE_AIKAR_FLAGS": "true"} }, ""},
+		{"extra port 25575/tcp rejected", func(s *Spec) {
 			s.Ports.Extra = []PortMapping{{Host: 25575, Container: 25575, Proto: "tcp"}}
 		}, "RCON"},
-		{"puerto extra 25575/udp rechazado", func(s *Spec) {
+		{"extra port 25575/udp rejected", func(s *Spec) {
 			s.Ports.Extra = []PortMapping{{Host: 19999, Container: 25575, Proto: "udp"}}
 		}, "RCON"},
-		{"memoria 4096 rechazada", func(s *Spec) { s.Memory = "4096" }, "memory"},
-		{"memoria 4GB rechazada", func(s *Spec) { s.Memory = "4GB" }, "memory"},
-		{"memoria 0G rechazada", func(s *Spec) { s.Memory = "0G" }, "memory"},
-		{"memoria 512M aceptada", func(s *Spec) { s.Memory = "512M" }, ""},
-		{"memoria 4g aceptada", func(s *Spec) { s.Memory = "4g" }, ""},
-		{"memLimit 4096 rechazado", func(s *Spec) { s.Resources.MemLimit = "4096" }, "memLimit"},
-		{"propiedad con = en la clave rechazada", func(s *Spec) { s.Properties = map[string]string{"a=b": "x"} }, "propiedad"},
-		{"propiedad con salto de línea en el valor rechazada", func(s *Spec) {
+		{"memory 4096 rejected", func(s *Spec) { s.Memory = "4096" }, "memory"},
+		{"memory 4GB rejected", func(s *Spec) { s.Memory = "4GB" }, "memory"},
+		{"memory 0G rejected", func(s *Spec) { s.Memory = "0G" }, "memory"},
+		{"memory 512M accepted", func(s *Spec) { s.Memory = "512M" }, ""},
+		{"memory 4g accepted", func(s *Spec) { s.Memory = "4g" }, ""},
+		{"memLimit 4096 rejected", func(s *Spec) { s.Resources.MemLimit = "4096" }, "memLimit"},
+		{"property with = in the key rejected", func(s *Spec) { s.Properties = map[string]string{"a=b": "x"} }, "property"},
+		{"property with a line break in the value rejected", func(s *Spec) {
 			s.Properties = map[string]string{"motd": "x\nrcon.password=y"}
-		}, "propiedad"},
-		{"propiedad con retorno de carro en el valor rechazada", func(s *Spec) {
+		}, "property"},
+		{"property with a carriage return in the value rejected", func(s *Spec) {
 			s.Properties = map[string]string{"motd": "x\ry"}
-		}, "propiedad"},
-		{"propiedad rcon.password reservada", func(s *Spec) { s.Properties = map[string]string{"rcon.password": "y"} }, "reservada"},
-		{"propiedad server-port reservada", func(s *Spec) { s.Properties = map[string]string{"server-port": "1"} }, "reservada"},
-		{"propiedad enable-rcon reservada", func(s *Spec) { s.Properties = map[string]string{"enable-rcon": "true"} }, "reservada"},
-		{"propiedad rcon.port reservada", func(s *Spec) { s.Properties = map[string]string{"rcon.port": "1"} }, "reservada"},
-		{"imageTag java21 aceptado", func(s *Spec) { s.ImageTag = "java21" }, ""},
-		{"imageTag con punto y guion aceptado", func(s *Spec) { s.ImageTag = "2024.10.0-java21-graalvm" }, ""},
-		{"imageTag vacío aceptado (latest)", func(s *Spec) { s.ImageTag = "" }, ""},
-		{"imageTag con ruta rechazado", func(s *Spec) { s.ImageTag = "x/../../containers/abc" }, "imageTag"},
-		{"imageTag con dos puntos rechazado", func(s *Spec) { s.ImageTag = "a:b" }, "imageTag"},
-		{"imageTag con espacio rechazado", func(s *Spec) { s.ImageTag = "a b" }, "imageTag"},
-		{"imageTag que empieza por guion rechazado", func(s *Spec) { s.ImageTag = "-x" }, "imageTag"},
-		{"imageTag que empieza por punto rechazado", func(s *Spec) { s.ImageTag = ".x" }, "imageTag"},
-		{"imageTag que empieza por guion bajo rechazado", func(s *Spec) { s.ImageTag = "_x" }, "imageTag"},
-		{"imageTag de 128 aceptado", func(s *Spec) { s.ImageTag = strings.Repeat("a", 128) }, ""},
-		{"imageTag de 129 rechazado", func(s *Spec) { s.ImageTag = strings.Repeat("a", 129) }, "imageTag"},
-		{"propiedades válidas aceptadas", func(s *Spec) {
+		}, "property"},
+		{"reserved rcon.password property", func(s *Spec) { s.Properties = map[string]string{"rcon.password": "y"} }, "reserved"},
+		{"reserved server-port property", func(s *Spec) { s.Properties = map[string]string{"server-port": "1"} }, "reserved"},
+		{"reserved enable-rcon property", func(s *Spec) { s.Properties = map[string]string{"enable-rcon": "true"} }, "reserved"},
+		{"reserved rcon.port property", func(s *Spec) { s.Properties = map[string]string{"rcon.port": "1"} }, "reserved"},
+		{"imageTag java21 accepted", func(s *Spec) { s.ImageTag = "java21" }, ""},
+		{"imageTag with dot and dash accepted", func(s *Spec) { s.ImageTag = "2024.10.0-java21-graalvm" }, ""},
+		{"empty imageTag accepted (latest)", func(s *Spec) { s.ImageTag = "" }, ""},
+		{"imageTag with path rejected", func(s *Spec) { s.ImageTag = "x/../../containers/abc" }, "imageTag"},
+		{"imageTag with colon rejected", func(s *Spec) { s.ImageTag = "a:b" }, "imageTag"},
+		{"imageTag with space rejected", func(s *Spec) { s.ImageTag = "a b" }, "imageTag"},
+		{"imageTag starting with a dash rejected", func(s *Spec) { s.ImageTag = "-x" }, "imageTag"},
+		{"imageTag starting with a dot rejected", func(s *Spec) { s.ImageTag = ".x" }, "imageTag"},
+		{"imageTag starting with an underscore rejected", func(s *Spec) { s.ImageTag = "_x" }, "imageTag"},
+		{"imageTag of 128 accepted", func(s *Spec) { s.ImageTag = strings.Repeat("a", 128) }, ""},
+		{"imageTag of 129 rejected", func(s *Spec) { s.ImageTag = strings.Repeat("a", 129) }, "imageTag"},
+		{"valid properties accepted", func(s *Spec) {
 			s.Properties = map[string]string{"max-players": "10", "motd": "Hola", "level-name": "world"}
 		}, ""},
 	}
@@ -336,12 +336,12 @@ func TestValidacionEndurecida(t *testing.T) {
 			err := s.Validate()
 			if tc.want == "" {
 				if err != nil {
-					t.Fatalf("no debía fallar: %v", err)
+					t.Fatalf("should not have failed: %v", err)
 				}
 				return
 			}
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err = %v, want que contenga %q", err, tc.want)
+				t.Fatalf("err = %v, want it to contain %q", err, tc.want)
 			}
 		})
 	}

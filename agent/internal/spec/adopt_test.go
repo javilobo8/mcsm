@@ -23,11 +23,11 @@ func TestDataPathCasesSharedWithZod(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cases) < 30 {
-		t.Fatalf("solo %d casos: ¿fixture truncada?", len(cases))
+		t.Fatalf("only %d cases: truncated fixture?", len(cases))
 	}
 	for _, c := range cases {
 		if err := ValidateDataPath(c.Path); (err == nil) != c.OK {
-			t.Errorf("ValidateDataPath(%q) = %v; ok esperado %v", c.Path, err, c.OK)
+			t.Errorf("ValidateDataPath(%q) = %v; expected ok %v", c.Path, err, c.OK)
 		}
 	}
 }
@@ -35,10 +35,10 @@ func TestDataPathCasesSharedWithZod(t *testing.T) {
 func TestDataPathLength(t *testing.T) {
 	ok := "/srv/" + strings.Repeat("a", MaxDataPath-len("/srv/"))
 	if err := ValidateDataPath(ok); err != nil {
-		t.Fatalf("%d bytes debería valer: %v", len(ok), err)
+		t.Fatalf("%d bytes should be valid: %v", len(ok), err)
 	}
 	if err := ValidateDataPath(ok + "a"); err == nil {
-		t.Fatal("más de MaxDataPath bytes debe fallar")
+		t.Fatal("more than MaxDataPath bytes must fail")
 	}
 }
 
@@ -53,46 +53,46 @@ func TestBuildContainerUsesDataPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// M3: Mounts de tipo bind, no Binds: Docker falla si la carpeta no existe (disco sin montar) en vez
-	// de crearla vacía y que itzg genere un mundo nuevo.
+	// M3: bind-type Mounts, not Binds: Docker fails if the folder does not exist (unmounted disk) instead
+	// of creating it empty and letting itzg generate a new world.
 	want := []mount.Mount{{Type: mount.TypeBind, Source: s.DataPath, Target: "/data"}}
 	if b.DataDir != s.DataPath || len(b.HostConfig.Binds) != 0 || !reflect.DeepEqual(b.HostConfig.Mounts, want) {
 		t.Fatalf("dataDir = %q, binds = %v, mounts = %+v", b.DataDir, b.HostConfig.Binds, b.HostConfig.Mounts)
 	}
 	if len(base.HostConfig.Mounts) != 0 || len(base.HostConfig.Binds) != 1 {
-		t.Fatalf("sin dataPath sigue el bind de siempre: %v %v", base.HostConfig.Binds, base.HostConfig.Mounts)
+		t.Fatalf("without dataPath the usual bind remains: %v %v", base.HostConfig.Binds, base.HostConfig.Mounts)
 	}
 	if b.Name != "mcsm-survival" {
 		t.Fatalf("name = %q", b.Name)
 	}
 	if b.Hash == base.Hash {
-		t.Fatal("otra carpeta de datos es otro contenedor: el hash debe cambiar")
+		t.Fatal("another data folder is another container: the hash must change")
 	}
-	s.DataPath = "/home/lobo/minecraft/otro/data"
+	s.DataPath = "/home/lobo/minecraft/other/data"
 	other, err := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if other.Hash == b.Hash {
-		t.Fatal("el montaje entra en el hash: dos dataPath distintos son dos contenedores distintos")
+		t.Fatal("the mount goes into the hash: two different dataPaths are two different containers")
 	}
 }
 
 func TestDataPathCannotOverlapDataRoot(t *testing.T) {
 	for _, tc := range []struct{ dataPath, root string }{
 		{"/srv/minecraft/survival/data", "/srv/minecraft"},
-		{"/srv/minecraft/otro", "/srv/minecraft"},
+		{"/srv/minecraft/other", "/srv/minecraft"},
 		{"/srv/minecraft", "/srv/minecraft"},
 		{"/srv/data", "/srv/data/minecraft"},
 	} {
 		s := loadFixture(t)
 		s.DataPath = tc.dataPath
 		if _, err := BuildContainer(meta, s, tc.root, "mcsm"); err == nil || !strings.Contains(err.Error(), "DATA_ROOT") {
-			t.Errorf("dataPath %q con DATA_ROOT %q: err = %v", tc.dataPath, tc.root, err)
+			t.Errorf("dataPath %q with DATA_ROOT %q: err = %v", tc.dataPath, tc.root, err)
 		}
 	}
 	s := loadFixture(t)
-	s.DataPath = "/srv/minecraft-viejo/survival" // comparte texto con DATA_ROOT, no ruta
+	s.DataPath = "/srv/minecraft-old/survival" // shares text with DATA_ROOT, not path
 	if _, err := BuildContainer(meta, s, "/srv/minecraft", "mcsm"); err != nil {
 		t.Fatal(err)
 	}
@@ -119,11 +119,11 @@ func TestEmptyDataPathAndAdoptKeepGoldenHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	if build.Hash != "09ff6e5490b40677" {
-		t.Fatalf("hash = %s: dataPath vacío y adopt no pueden cambiar el contenedor", build.Hash)
+		t.Fatalf("hash = %s: an empty dataPath and adopt cannot change the container", build.Hash)
 	}
 	for _, e := range build.Config.Env {
 		if strings.Contains(strings.ToLower(e), "adopt") {
-			t.Errorf("adopt no va al env: %q", e)
+			t.Errorf("adopt does not go into env: %q", e)
 		}
 	}
 }
@@ -133,11 +133,11 @@ func TestDataPathWithScheduledBackupsIsInvalid(t *testing.T) {
 	s.DataPath = "/home/lobo/minecraft/survival"
 	s.Backups = &Backups{Enabled: true, Cron: "0 4 * * *", KeepDays: 7, KeepCount: 10}
 	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "dataPath") {
-		t.Fatalf("copias programadas con dataPath: err = %v", err)
+		t.Fatalf("scheduled backups with dataPath: err = %v", err)
 	}
 	s.Backups.Enabled = false
 	if err := s.Validate(); err != nil {
-		t.Fatalf("sin programar sí vale: %v", err)
+		t.Fatalf("without a schedule it is fine: %v", err)
 	}
 }
 
@@ -147,9 +147,9 @@ func TestAdoptValidation(t *testing.T) {
 		ok    bool
 	}{
 		{Adopt{ContainerID: strings.Repeat("0f", 32), Version: 1}, true},
-		// Solo ids completos: Docker resolvería un nombre o un prefijo a otro contenedor.
+		// Full ids only: Docker would resolve a name or a prefix to another container.
 		{Adopt{ContainerID: "fake0001", Version: 3}, false},
-		{Adopt{ContainerID: "mc-viejo", Version: 1}, false},
+		{Adopt{ContainerID: "mc-old", Version: 1}, false},
 		{Adopt{ContainerID: strings.Repeat("0f", 6), Version: 1}, false},
 		{Adopt{ContainerID: strings.Repeat("0F", 32), Version: 1}, false},
 		{Adopt{ContainerID: "", Version: 1}, false},
