@@ -162,3 +162,32 @@ func TestEventLoopTurnsOOMAndDieIntoEvents(t *testing.T) {
 		}
 	}
 }
+
+// Un CrashLoopStop decidido antes de que el usuario pulse Arrancar no retiene ni para el servidor recién arrancado.
+// La parada queda en cola (el semáforo de tareas de fondo lleno) mientras llega el Power start.
+func TestQueuedCrashLoopStopYieldsToAManualStart(t *testing.T) {
+	a, fake, s, cid := crashApp(t)
+	for i := 0; i < cap(a.sem); i++ { // nada de fondo puede ejecutarse aún
+		a.sem <- struct{}{}
+	}
+	for i := 0; i < crashloop.MaxCrashes+1; i++ {
+		a.onDie("a", die(cid, "1"))
+	}
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART}}}, s.send)
+	for i := 0; i < cap(a.sem); i++ {
+		<-a.sem
+	}
+	waitBackground(t, a)
+	if l, _ := a.st.CrashLatch("a"); l != nil {
+		t.Fatalf("retención tras arrancar a mano = %+v", l)
+	}
+	ins, err := fake.Inspect(context.Background(), a.rec.ContainerID(context.Background(), "a"))
+	if err != nil || !ins.Running {
+		t.Fatalf("el servidor arrancado a mano sigue en marcha: %+v %v", ins, err)
+	}
+	for _, e := range eventsOf(t, a, s) {
+		if e.Kind == KindCrashLoop || e.Kind == KindCrashLoopFailed {
+			t.Fatalf("evento %s de una parada que ya no toca", e.Kind)
+		}
+	}
+}

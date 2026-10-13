@@ -43,6 +43,30 @@ func (r *Reconciler) crashLatched(serverID string, version uint64) (*store.Crash
 func (r *Reconciler) CrashLoopStop(ctx context.Context, serverID string, crashes int) error {
 	unlock := r.lock(serverID)
 	defer unlock()
+	return r.crashLoopStopLocked(ctx, serverID, crashes)
+}
+
+// StartGen es el número de Power start/restart de serverID hasta ahora (ver CrashLoopStopUnlessStarted).
+func (r *Reconciler) StartGen(serverID string) uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.startGen[serverID]
+}
+
+// CrashLoopStopUnlessStarted es CrashLoopStop salvo si, desde que se decidió (gen = StartGen en ese momento), alguien
+// arrancó o reinició el servidor a mano: entonces no hace nada y devuelve false. La comprobación va bajo el lock del
+// servidor, el mismo que toma Power.
+func (r *Reconciler) CrashLoopStopUnlessStarted(ctx context.Context, serverID string, crashes int, gen uint64) (bool, error) {
+	unlock := r.lock(serverID)
+	defer unlock()
+	if r.StartGen(serverID) != gen {
+		return false, nil
+	}
+	return true, r.crashLoopStopLocked(ctx, serverID, crashes)
+}
+
+// crashLoopStopLocked es CrashLoopStop con el lock del servidor tomado.
+func (r *Reconciler) crashLoopStopLocked(ctx context.Context, serverID string, crashes int) error {
 	if reason := r.heldReason(serverID); reason != "" {
 		return Busy(reason)
 	}

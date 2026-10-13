@@ -48,8 +48,14 @@ func (a *App) onDie(serverID string, ev docker.Event) {
 		return
 	}
 	life := a.life
+	gen := a.rec.StartGen(serverID) // un arranque manual posterior deja sin efecto esta parada
 	a.dispatch(life, "crashloop:"+serverID, func() {
-		if err := a.rec.CrashLoopStop(life, serverID, n); err != nil {
+		stopped, err := a.rec.CrashLoopStopUnlessStarted(life, serverID, n, gen)
+		if err == nil && !stopped {
+			a.log.Info("bucle de crash descartado: el servidor se arrancó a mano después", "server", serverID)
+			return
+		}
+		if err != nil {
 			a.log.Warn("parar un servidor en bucle de crash", "server", serverID, "err", err)
 			a.emitEvent(serverID, mcsmv1.EventLevel_EVENT_LEVEL_ERROR, KindCrashLoopFailed,
 				fmt.Sprintf("Bucle de crash (%d cierres con error en una hora), pero no se pudo parar: %v", n, err))

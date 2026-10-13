@@ -197,3 +197,28 @@ func TestOnDemandLatchedServerIsStoppedByTheTick(t *testing.T) {
 		t.Fatalf("un bajo demanda retenido en marcha se para; estado = %s", got)
 	}
 }
+
+func TestCrashLoopStopUnlessStartedYieldsToPower(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, running, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	gen := r.StartGen("a")
+	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART); err != nil {
+		t.Fatal(err)
+	}
+	if stopped, err := r.CrashLoopStopUnlessStarted(ctx, "a", 4, gen); err != nil || stopped {
+		t.Fatalf("decidida antes del reinicio: stopped=%v err=%v", stopped, err)
+	}
+	if l, _ := st.CrashLatch("a"); l != nil || state(t, r, "a") != "running" {
+		t.Fatal("no retiene ni para")
+	}
+	if stopped, err := r.CrashLoopStopUnlessStarted(ctx, "a", 4, r.StartGen("a")); err != nil || !stopped {
+		t.Fatalf("decidida después: stopped=%v err=%v", stopped, err)
+	}
+	if l, _ := st.CrashLatch("a"); l == nil || state(t, r, "a") != "exited" {
+		t.Fatal("retiene y para")
+	}
+}

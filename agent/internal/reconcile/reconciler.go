@@ -51,8 +51,11 @@ type Reconciler struct {
 	lastErr map[string]string
 	held    map[string]string // plan-4: servidores reservados por Hold (backup/restore) y su motivo
 	heldErr map[string]string // plan-4: error visible en Observed de un servidor reservado (HoldError)
-	adoptMu sync.Mutex        // plan-6: comprobar y registrar adopciones (un contenedor, un servidor); tras el lock por servidor
-	now     func() time.Time
+	// startGen cuenta los Power start/restart de cada servidor (plan-9): un CrashLoopStop decidido antes de uno no
+	// retiene el servidor que el usuario acaba de arrancar (CrashLoopStopUnlessStarted).
+	startGen map[string]uint64
+	adoptMu  sync.Mutex // plan-6: comprobar y registrar adopciones (un contenedor, un servidor); tras el lock por servidor
+	now      func() time.Time
 }
 
 func New(st *store.Store, eng docker.Engine, dataRoot, network string, status mc.StatusFunc, obs Observer) *Reconciler {
@@ -494,8 +497,15 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	if sp == nil {
 		return fmt.Errorf("servidor %s desconocido", serverID)
 	}
-	// plan-9: arrancar o reiniciar a mano levanta la retención por bucle de crash.
+	// plan-9: arrancar o reiniciar a mano levanta la retención por bucle de crash y deja sin efecto las paradas por
+	// bucle decididas antes.
 	if action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
+		r.mu.Lock()
+		if r.startGen == nil {
+			r.startGen = map[string]uint64{}
+		}
+		r.startGen[serverID]++
+		r.mu.Unlock()
 		if err := r.st.DeleteCrashLatch(serverID); err != nil {
 			return err
 		}
