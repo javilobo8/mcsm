@@ -5,12 +5,12 @@
 // Riesgo del socket de Docker: mc-router lo necesita para descubrir los servidores (y, con autoscale,
 // para arrancarlos y pararlos). Quien controla ese socket controla el host, igual que el agente. Se
 // reduce lo que el contenedor puede hacer por sí mismo: imagen fijada (Tag), usuario no root
-// (65532) con solo el grupo del socket, CapDrop ALL, no-new-privileges, raíz de solo lectura,
-// límites de memoria y procesos, sin API HTTP de mc-router y sin más montajes. El «:ro» del
-// montaje NO limita la API de Docker (connect() sobre un socket no comprueba el montaje): solo
-// documenta la intención. Desde el Plan 9 el router no recibe el socket de Docker: monta el del proxy del
-// agente (paquete dockerproxy), que solo deja listar, inspeccionar sin entorno, seguir eventos y arrancar o
-// parar servidores con hostname no reservados.
+// (65532), CapDrop ALL, no-new-privileges, raíz de solo lectura, límites de memoria y procesos, sin
+// API HTTP de mc-router y sin más montajes. Desde el Plan 9 el router no recibe el socket de Docker:
+// monta (solo lectura) el directorio del socket del proxy del agente (paquete dockerproxy), que solo
+// deja listar, inspeccionar sin entorno, seguir eventos y arrancar o parar servidores con hostname no
+// reservados. El «:ro» del montaje no impide connect() sobre el socket; impide crear o cambiar
+// ficheros en ese directorio.
 package router
 
 import (
@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -49,8 +50,11 @@ const (
 	ListenPort = 25565
 	// HostSocket es el socket real de Docker del host: el upstream del proxy del agente.
 	HostSocket = "/var/run/docker.sock"
-	// RouterSocket es donde ve el router el socket del proxy: el cliente de Docker de mc-router lo usa por defecto.
-	RouterSocket = "/var/run/docker.sock"
+	// RouterSocketDir es donde ve el router el DIRECTORIO del socket del proxy (m5): montar el fichero dejaría al
+	// router en el socket anterior cada vez que el agente se reinicia (otro inodo), y si faltara al arrancar el
+	// host, Docker crearía un directorio en su ruta. mc-router vuelve a conectarse solo (con backoff de hasta 30 s)
+	// cuando el socket desaparece y aparece de nuevo. Su cliente de Docker va ahí con -docker-socket.
+	RouterSocketDir = "/run/mcsm"
 	// User es el usuario no root de la imagen (chainguard static).
 	User = "65532:65532"
 
@@ -65,7 +69,7 @@ const (
 
 	memoryLimit = 256 << 20
 	pidsLimit   = 256
-	hashSchema  = 2 // plan-9: el socket del proxy en vez del de Docker (el router se recrea una vez al actualizar)
+	hashSchema  = 2 // plan-9: el socket del proxy (su directorio) en vez del de Docker (el router se recrea una vez al actualizar)
 	// connectionRateLimit: conexiones nuevas por segundo (global). El 1 por defecto de mc-router hace
 	// esperar a varios jugadores que refrescan la lista de servidores a la vez.
 	connectionRateLimit = 10
@@ -149,8 +153,10 @@ func allowDeny(sp *mcsmv1.RouterSpec) []byte {
 
 // args son los argumentos de mc-router. Sin autoscale, mc-router solo enruta a contenedores en
 // marcha; con autoscale arranca el servidor al entrar un jugador y lo para tras N minutos sin nadie.
-func args(sp *mcsmv1.RouterSpec) []string {
-	a := []string{"-in-docker", "-port", strconv.Itoa(ListenPort), "-connection-rate-limit", strconv.Itoa(connectionRateLimit)}
+// dockerSocket es la ruta del socket del proxy dentro del contenedor.
+func args(sp *mcsmv1.RouterSpec, dockerSocket string) []string {
+	a := []string{"-in-docker", "-docker-socket", "unix://" + dockerSocket, "-port", strconv.Itoa(ListenPort),
+		"-connection-rate-limit", strconv.Itoa(connectionRateLimit)}
 	if sp.Autoscale {
 		mins := sp.AutoscaleDownAfterMinutes
 		if mins == 0 {
@@ -163,8 +169,9 @@ func args(sp *mcsmv1.RouterSpec) []string {
 }
 
 // BuildContainer traduce la spec a la configuración del contenedor. Pura: misma entrada, mismo Hash.
-// proxySocket es la ruta del host del socket del proxy de Docker del agente (dockerproxy) y filesDir el
-// directorio del host donde el agente deja los ficheros del router (la lista del autoscale).
+// proxySocket es la ruta del host del socket del proxy de Docker del agente (dockerproxy), cuyo directorio se monta
+// (solo lectura) en RouterSocketDir, y filesDir el directorio del host donde el agente deja los ficheros del router
+// (la lista del autoscale).
 func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName, proxySocket, filesDir string) (*Build, error) {
 	if err := Validate(sp); err != nil {
 		return nil, err
@@ -179,13 +186,13 @@ func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName, proxySocket, files
 	port := network.MustParsePort(fmt.Sprintf("%d/tcp", ListenPort))
 	cfg := &container.Config{
 		Image:        ImageRef(),
-		Cmd:          args(sp),
+		Cmd:          args(sp, path.Join(RouterSocketDir, filepath.Base(proxySocket))),
 		User:         User,
 		ExposedPorts: network.PortSet{port: {}},
 		Labels:       map[string]string{spec.LabelManaged: "true", LabelRouter: "true"},
 	}
 	host := &container.HostConfig{
-		Binds:          []string{proxySocket + ":" + RouterSocket},
+		Binds:          []string{filepath.Dir(proxySocket) + ":" + RouterSocketDir + ":ro"},
 		PortBindings:   network.PortMap{port: {{HostPort: strconv.FormatUint(uint64(sp.HostPort), 10)}}},
 		RestartPolicy:  container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
 		SecurityOpt:    []string{"no-new-privileges:true"},

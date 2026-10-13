@@ -36,12 +36,11 @@ type Options struct {
 	// Name del contenedor: ContainerName si está vacío (los tests con Docker real usan mcsm-test-…).
 	Name    string
 	Network string
-	// ProxySocket es la ruta del HOST del socket del proxy de Docker del agente (dockerproxy), que se monta en el
-	// router en RouterSocket. ProxyReady (opcional) dice si escucha; ProxySince (opcional), desde cuándo: un router
-	// arrancado antes que el proxy actual (el agente se reinició) se reinicia una vez.
+	// ProxySocket es la ruta del HOST del socket del proxy de Docker del agente (dockerproxy); su directorio se
+	// monta en el router en RouterSocketDir. ProxyReady (opcional) dice si escucha. Un proxy nuevo (el agente se
+	// reinició) no reinicia el router: mc-router vuelve a conectarse solo al socket nuevo del mismo directorio.
 	ProxySocket string
 	ProxyReady  func() error
-	ProxySince  func() time.Time
 	Now         func() time.Time
 	// FilesDir es un directorio del HOST (el agente lo ve en la misma ruta: montaje espejo de DATA_ROOT) donde se
 	// escribe la lista de jugadores del autoscale que se monta en el router.
@@ -126,6 +125,9 @@ func (m *Manager) Reconcile(ctx context.Context) *mcsmv1.RouterObserved {
 		return m.observeLocked(ctx)
 	}
 	key := specKey(sp)
+	if m.opts.ProxyReady != nil && m.opts.ProxyReady() == nil {
+		key += "/proxy" // plan-9 (m5): un proxy que ya escucha no espera a RetryAfter tras fallar por no estar listo
+	}
 	if m.lastErr != "" && key == m.failedFor && m.opts.Now().Before(m.failedAt.Add(RetryAfter)) {
 		return m.observeLocked(ctx)
 	}
@@ -189,15 +191,8 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 				return fmt.Errorf("inspeccionar el router: %w", err)
 			}
 			switch {
-			case err == nil && !ins.PortsMissing && !m.staleProxy(ins.StartedAt):
-				return nil
 			case err == nil && !ins.PortsMissing:
-				// plan-9: arrancó antes que el proxy del socket que usa ahora (el agente se reinició y lo creó de
-				// nuevo): su cliente de Docker seguía en el anterior. Se reinicia una vez; abajo se vuelve a arrancar.
-				if err := m.eng.Stop(ctx, existing.ID, stopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-					return fmt.Errorf("reiniciar el router: %w", err)
-				}
-				existing.State = "exited"
+				return nil
 			case err == nil && recreated:
 				return fmt.Errorf("el router arrancó sin publicar el puerto %d del host (fallo de Docker)", sp.HostPort)
 			default:
@@ -343,13 +338,4 @@ func (m *Manager) find(ctx context.Context) (*docker.Container, error) {
 		}
 	}
 	return nil, nil
-}
-
-// staleProxy indica si el router arrancó antes que el proxy del socket actual.
-func (m *Manager) staleProxy(started time.Time) bool {
-	if m.opts.ProxySince == nil {
-		return false
-	}
-	since := m.opts.ProxySince()
-	return !since.IsZero() && started.Before(since)
 }

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestClassifyAllowList(t *testing.T) {
@@ -198,8 +199,8 @@ func TestProxyEndToEnd(t *testing.T) {
 	if err := p.Listen(); err != nil {
 		t.Fatal(err)
 	}
-	if err := p.Ready(); err != nil || p.Since().IsZero() {
-		t.Fatalf("ready = %v since = %v", err, p.Since())
+	if err := p.Ready(); err != nil {
+		t.Fatalf("ready = %v", err)
 	}
 	if fi, err := os.Stat(listen); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("permisos del socket = %v %v", fi.Mode(), err)
@@ -540,8 +541,111 @@ func TestReadyFalseAfterServeEnds(t *testing.T) {
 		if err := p.Ready(); err == nil {
 			t.Fatalf("viaCtx=%v: tras terminar Serve no está listo", viaCtx)
 		}
-		if !p.Since().IsZero() {
-			t.Fatalf("viaCtx=%v: since = %v", viaCtx, p.Since())
+	}
+}
+
+// m5: si Listen falla (p. ej. el directorio aún no se puede crear), Run lo reintenta con backoff y, mientras, Ready
+// da el error; tras escuchar avisa (el agente despliega el router). Si Serve deja de atender, vuelve a escuchar.
+func TestRunRetriesListenWithBackoff(t *testing.T) {
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, "bloqueo")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var sleeps []time.Duration
+	var readyDuringSleep []error
+	p := New(Options{Listen: filepath.Join(blocker, "p.sock"), Upstream: filepath.Join(dir, "nada.sock"), UID: -1, GID: -1,
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	p.opts.Sleep = func(ctx context.Context, d time.Duration) error {
+		mu.Lock()
+		defer mu.Unlock()
+		sleeps = append(sleeps, d)
+		readyDuringSleep = append(readyDuringSleep, p.Ready())
+		if len(sleeps) == 2 {
+			_ = os.Remove(blocker) // el directorio ya se puede crear
 		}
+		return ctx.Err()
+	}
+	listened := make(chan struct{}, 4)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		p.Run(ctx, func() { listened <- struct{}{} })
+		close(done)
+	}()
+	waitSignal := func(what string) {
+		t.Helper()
+		select {
+		case <-listened:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("sin aviso: %s", what)
+		}
+	}
+	waitSignal("primer Listen correcto")
+	if err := p.Ready(); err != nil {
+		t.Fatalf("ready = %v", err)
+	}
+	mu.Lock()
+	if !slices.Equal(sleeps, []time.Duration{RetryMin, 2 * RetryMin}) || readyDuringSleep[0] == nil || readyDuringSleep[1] == nil {
+		t.Fatalf("esperas = %v, ready mientras = %v", sleeps, readyDuringSleep)
+	}
+	mu.Unlock()
+
+	p.mu.Lock()
+	_ = p.ln.Close() // el socket deja de atender: Run vuelve a escuchar (backoff desde el mínimo)
+	p.mu.Unlock()
+	waitSignal("Listen tras el fallo de Serve")
+	mu.Lock()
+	if got := sleeps[len(sleeps)-1]; len(sleeps) != 3 || got != RetryMin {
+		t.Fatalf("esperas = %v", sleeps)
+	}
+	mu.Unlock()
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run no termina al cancelar")
+	}
+}
+
+func TestRunServesAnAlreadyListeningSocket(t *testing.T) {
+	dir := t.TempDir()
+	_, upPath := startUpstream(t, dir)
+	listen := filepath.Join(dir, "p.sock")
+	p := New(Options{Listen: listen, Upstream: upPath, UID: -1, GID: -1, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err := p.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(listen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		p.Run(ctx, func() { t.Error("no vuelve a escuchar un socket que ya escucha") })
+		close(done)
+	}()
+	res, err := unixClient(listen).Get("http://docker/_ping")
+	if err != nil || res.StatusCode >= 300 {
+		t.Fatalf("ping = %v %v", res, err)
+	}
+	res.Body.Close()
+	if after, err := os.Stat(listen); err != nil || !os.SameFile(before, after) {
+		t.Fatal("el mismo socket")
+	}
+	cancel()
+	<-done
+}
+
+func TestRetryBackoffCaps(t *testing.T) {
+	d := RetryMin
+	for i := 0; i < 20; i++ {
+		d = nextRetry(d)
+	}
+	if d != RetryMax {
+		t.Fatalf("tope = %v", d)
 	}
 }

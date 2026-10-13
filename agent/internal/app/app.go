@@ -120,7 +120,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	a.proxy = dockerproxy.New(dockerproxy.Options{Listen: proxySocketPath(cfg.DataRoot), Upstream: router.HostSocket,
 		Policy: a.routerPolicy, UID: 65532, GID: 65532, Log: log})
 	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot),
-		ProxySocket: proxySocketPath(cfg.DataRoot), ProxyReady: a.proxy.Ready, ProxySince: a.proxy.Since})
+		ProxySocket: proxySocketPath(cfg.DataRoot), ProxyReady: a.proxy.Ready})
 	a.rec.SetOnDemand(a.onDemand)
 	// plan-9: cola de Event (a.send se lee al entregar) y el drift del reconciliador, sin bloquear su lock.
 	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log, "eventos para el panel (Event)")
@@ -195,10 +195,12 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// arrancaría con un mundo nuevo.
 	a.bk.recoverAtStart(ctx)
 
-	if err := a.proxy.Listen(); err != nil { // plan-9: sin proxy el router no se despliega (error en su estado)
-		log.Error("proxy del socket de Docker para el router", "err", err)
+	// plan-9: sin proxy el router no se despliega (error en su estado). El primer Listen va antes de la primera pasada
+	// del router; si falla, Run lo reintenta con backoff y despliega el router en cuanto escucha.
+	if err := a.proxy.Listen(); err != nil {
+		log.Error("proxy del socket de Docker para el router; se reintenta", "err", err)
 	}
-	go a.proxy.Serve(ctx)
+	go a.proxy.Run(ctx, func() { a.routerAsync(ctx) })
 	go a.eventLoop(ctx)
 	go a.tickers(ctx)
 	// §6.1: primero el WS; la primera pasada de reconciliación va en segundo plano.

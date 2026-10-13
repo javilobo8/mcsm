@@ -387,25 +387,25 @@ func TestReconcileWaitsForTheProxy(t *testing.T) {
 	}
 }
 
-func TestRouterRestartsOnceAfterANewProxy(t *testing.T) {
-	m, fake, _ := newManager(t)
-	var since time.Time
-	m.opts.ProxySince = func() time.Time { return since }
-	ctx := context.Background()
+// m5: el proxy que empieza a escuchar (Run lo reintenta) despliega el router al momento: la espera de RetryAfter
+// es para no repetir un fallo de Docker con lo mismo, no para un proxy que ya está listo.
+func TestReconcileDeploysAsSoonAsTheProxyListens(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "a.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	fake := docker.NewFake()
+	ready := errors.New("no escucha")
+	m := New(fake, st, Options{Network: "mcsm", ProxySocket: "/x/docker.sock", ProxyReady: func() error { return ready },
+		Now: func() time.Time { return time.UnixMilli(1000) }})
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
-	if obs := m.Reconcile(ctx); obs.State != "running" {
+	if obs := m.Reconcile(context.Background()); !strings.Contains(obs.Error, "proxy") {
 		t.Fatalf("observed = %+v", obs)
 	}
-	stops := calls(fake, "Stop ")
-	since = time.Now() // el agente se reinició: proxy nuevo, router de antes
-	if obs := m.Reconcile(ctx); obs.State != "running" || obs.Error != "" {
+	ready = nil // sin que pase el tiempo
+	if obs := m.Reconcile(context.Background()); obs.State != "running" || obs.Error != "" {
 		t.Fatalf("observed = %+v", obs)
-	}
-	if calls(fake, "Stop ") != stops+1 {
-		t.Fatal("el router de antes del proxy se reinicia")
-	}
-	if m.Reconcile(ctx); calls(fake, "Stop ") != stops+1 {
-		t.Fatal("solo una vez")
 	}
 }
 

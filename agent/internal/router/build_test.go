@@ -28,7 +28,8 @@ func TestBuildContainer(t *testing.T) {
 		t.Fatalf("nombre/imagen = %s %s", b.Name, b.Config.Image)
 	}
 	// S4: el límite por defecto de mc-router (1 conexión/s, global) hace esperar a varios jugadores.
-	if !slices.Equal(b.Config.Cmd, []string{"-in-docker", "-port", "25565", "-connection-rate-limit", "10"}) {
+	// m5: el cliente de Docker de mc-router va al socket del proxy dentro del directorio montado.
+	if !slices.Equal(b.Config.Cmd, []string{"-in-docker", "-docker-socket", "unix:///run/mcsm/docker.sock", "-port", "25565", "-connection-rate-limit", "10"}) {
 		t.Fatalf("cmd = %v", b.Config.Cmd)
 	}
 	if b.Config.Labels[spec.LabelManaged] != "true" || b.Config.Labels[LabelRouter] != "true" || b.Config.Labels[LabelHash] != b.Hash {
@@ -48,8 +49,11 @@ func TestBuildContainer(t *testing.T) {
 
 func TestBuildContainerHardening(t *testing.T) {
 	h := build(t, &mcsmv1.RouterSpec{HostPort: 25565}).HostConfig
-	if !slices.Equal(h.Binds, []string{"/srv/minecraft/.mcsm-router/docker.sock:/var/run/docker.sock"}) {
-		t.Fatalf("binds = %v: solo el socket del proxy del agente, nunca el de Docker", h.Binds)
+	// m5: el DIRECTORIO del socket, no el fichero: un socket nuevo (el agente se reinicia) es otro inodo, y con el
+	// fichero montado el router seguiría en el anterior; si faltara al arrancar, Docker crearía un directorio en su
+	// ruta.
+	if !slices.Equal(h.Binds, []string{"/srv/minecraft/.mcsm-router:/run/mcsm:ro"}) {
+		t.Fatalf("binds = %v: solo el directorio del socket del proxy del agente, nunca el socket de Docker", h.Binds)
 	}
 	if !slices.Equal(h.CapDrop, []string{"ALL"}) || len(h.CapAdd) != 0 {
 		t.Fatalf("caps = %v %v", h.CapDrop, h.CapAdd)

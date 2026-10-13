@@ -195,6 +195,33 @@ type Options struct {
 	Policy   Policy
 	UID, GID int // propietario del socket (el usuario de mc-router); UID < 0 = no se cambia
 	Log      *slog.Logger
+	// Sleep espera d o hasta que ctx termine (error si terminó) entre reintentos de Run; nil = un temporizador.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
+
+// RetryMin y RetryMax acotan la espera de Run entre reintentos de Listen (se duplica tras cada fallo).
+const (
+	RetryMin = time.Second
+	RetryMax = 30 * time.Second
+)
+
+// nextRetry duplica la espera hasta RetryMax.
+func nextRetry(d time.Duration) time.Duration {
+	if d *= 2; d > RetryMax {
+		return RetryMax
+	}
+	return d
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // Proxy es el servidor HTTP del socket filtrado.
@@ -202,10 +229,9 @@ type Proxy struct {
 	opts Options
 	rp   *httputil.ReverseProxy
 
-	mu    sync.Mutex
-	ln    net.Listener
-	since time.Time
-	err   error
+	mu  sync.Mutex
+	ln  net.Listener
+	err error
 }
 
 // New prepara el proxy (no escucha hasta Listen).
@@ -335,7 +361,7 @@ func (p *Proxy) Listen() error {
 	defer p.mu.Unlock()
 	p.err = err
 	if err == nil {
-		p.ln, p.since = ln, time.Now()
+		p.ln = ln
 	}
 	return err
 }
@@ -400,10 +426,42 @@ func (p *Proxy) Serve(ctx context.Context) {
 	// plan-9: ya no escucha: Ready lo dice (el router lo muestra en su estado) hasta un Listen nuevo.
 	p.mu.Lock()
 	if p.ln == ln {
-		p.ln, p.since, p.err = nil, time.Time{}, err
+		p.ln, p.err = nil, err
 	}
 	p.mu.Unlock()
 	_ = os.Remove(p.opts.Listen)
+}
+
+// Run escucha (si no escucha ya) y atiende el socket hasta que ctx termina. Si Listen falla, o Serve deja de atender, vuelve a escuchar
+// tras una espera que empieza en RetryMin y se duplica en cada fallo seguido hasta RetryMax; mientras tanto, Ready da
+// el error (el router lo muestra en su estado). Tras cada Listen correcto llama a onListen (puede ser nil): el agente
+// despliega el router sin esperar a su siguiente pasada.
+func (p *Proxy) Run(ctx context.Context, onListen func()) {
+	sleep := p.opts.Sleep
+	if sleep == nil {
+		sleep = sleepCtx
+	}
+	wait := RetryMin
+	for ctx.Err() == nil {
+		if p.Ready() != nil { // el agente hace el primer Listen antes de lanzar Run
+			if err := p.Listen(); err != nil {
+				p.opts.Log.Error("proxy del socket de Docker para el router: no se pudo escuchar; se reintenta", "err", err, "espera", wait)
+				if sleep(ctx, wait) != nil {
+					return
+				}
+				wait = nextRetry(wait)
+				continue
+			}
+			wait = RetryMin
+			if onListen != nil {
+				onListen()
+			}
+		}
+		p.Serve(ctx)
+		if ctx.Err() != nil || sleep(ctx, wait) != nil {
+			return
+		}
+	}
 }
 
 // Ready es nil si el socket está escuchando; si no, por qué.
@@ -417,13 +475,6 @@ func (p *Proxy) Ready() error {
 		return p.err
 	}
 	return errors.New("el proxy del socket de Docker aún no escucha")
-}
-
-// Since es cuándo empezó a escuchar el socket actual (cero si no escucha).
-func (p *Proxy) Since() time.Time {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.since
 }
 
 // inspectConfig es lo que el proxy lee del Config de un inspect.

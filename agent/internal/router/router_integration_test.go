@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -178,27 +179,56 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	defer st.Close()
 	name := "mcsm-test-router-" + tag
 	// plan-9: mc-router habla con Docker a través del proxy de lista blanca del agente.
-	sock := filepath.Join(t.TempDir(), "docker.sock")
-	var proxyLog syncBuffer
-	px := dockerproxy.New(dockerproxy.Options{Listen: sock, Upstream: HostSocket, UID: 65532, GID: 65532,
-		Log: slog.New(slog.NewTextHandler(&proxyLog, nil)),
-		Policy: func(ctx context.Context, op dockerproxy.Op, c string) error {
-			ins, err := eng.Inspect(ctx, c)
-			if err != nil {
-				return err
-			}
-			if ins.Labels[spec.LabelRouterHost] == "" {
-				return errors.New("sin hostname de router")
-			}
-			return nil
-		}})
-	if err := px.Listen(); err != nil {
+	// El router (usuario 65532) monta el directorio del socket: tiene que poder atravesarlo, como el .mcsm-router
+	// (0755) del agente; t.TempDir lo crea 0700.
+	sockDir := t.TempDir()
+	if err := os.Chmod(sockDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	pctx, pcancel := context.WithCancel(ctx)
-	defer pcancel()
-	go px.Serve(pctx)
-	m := New(eng, st, Options{Name: name, Network: netName, FilesDir: t.TempDir(), ProxySocket: sock, ProxyReady: px.Ready, ProxySince: px.Since})
+	sock := filepath.Join(sockDir, "docker.sock")
+	var proxyLog syncBuffer
+	// startProxy arranca un proxy en sock (como el agente al arrancar) y devuelve cómo pararlo (como al cerrarse:
+	// el socket se borra). El del agente siguiente es otro inodo en el mismo directorio.
+	var pxMu sync.Mutex
+	var px *dockerproxy.Proxy
+	startProxy := func() (stop func()) {
+		p := dockerproxy.New(dockerproxy.Options{Listen: sock, Upstream: HostSocket, UID: 65532, GID: 65532,
+			Log: slog.New(slog.NewTextHandler(&proxyLog, nil)),
+			Policy: func(ctx context.Context, op dockerproxy.Op, c string) error {
+				ins, err := eng.Inspect(ctx, c)
+				if err != nil {
+					return err
+				}
+				if ins.Labels[spec.LabelRouterHost] == "" {
+					return errors.New("sin hostname de router")
+				}
+				return nil
+			}})
+		if err := p.Listen(); err != nil {
+			t.Fatal(err)
+		}
+		pctx, pcancel := context.WithCancel(ctx)
+		done := make(chan struct{})
+		go func() {
+			p.Serve(pctx)
+			close(done)
+		}()
+		pxMu.Lock()
+		px = p
+		pxMu.Unlock()
+		return func() {
+			pcancel()
+			<-done
+		}
+	}
+	stopProxy := startProxy()
+	defer func() { stopProxy() }()
+	proxyReady := func() error {
+		pxMu.Lock()
+		defer pxMu.Unlock()
+		return px.Ready()
+	}
+	m := New(eng, st, Options{Name: name, Network: netName, FilesDir: t.TempDir(), ProxySocket: sock, ProxyReady: proxyReady})
 	port := freePort(t)
 	if err := m.Apply(&mcsmv1.RouterSpec{HostPort: uint32(port)}); err != nil {
 		t.Fatal(err)
@@ -234,6 +264,44 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	<-time.After(time.Second) // límite de conexiones de mc-router
 	if got := dialRouter(t, port, "desconocido.lan"); strings.Contains(got, "backend") {
 		t.Fatalf("un hostname sin servidor no debe llegar a ninguno: %q", got)
+	}
+
+	// m5: el agente se reinicia (proxy nuevo, otro inodo en el mismo directorio): el router NO se reinicia y mc-router
+	// se vuelve a conectar solo; ve un servidor creado después (eventos y lista por el proxy nuevo).
+	routerID := obs.ContainerId
+	insBefore, err := eng.Inspect(ctx, routerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stopProxy()
+	stopProxy = startProxy()
+	if obs := m.Reconcile(ctx); obs.State != "running" || obs.Error != "" || obs.ContainerId != routerID {
+		t.Fatalf("tras un proxy nuevo: %+v", obs)
+	}
+	labelsD := map[string]string{"mcsm.test": "true", spec.LabelRouterHost: "tras-proxy.lan", spec.LabelRouterNetwork: netName}
+	backendD, err := eng.Create(ctx, "mcsm-test-rbackend-d-"+tag,
+		&container.Config{Image: "alpine:3.22", Cmd: []string{"nc", "-lk", "-p", "25565", "-e", "echo", "backend-d"}, Labels: labelsD},
+		&container.HostConfig{}, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{netName: {}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created = append(created, backendD)
+	if err := eng.Start(ctx, backendD); err != nil {
+		t.Fatal(err)
+	}
+	got := ""
+	for deadline := time.Now().Add(90 * time.Second); time.Now().Before(deadline) && !strings.Contains(got, "backend-d"); {
+		<-time.After(time.Second)
+		got = dialRouter(t, port, "tras-proxy.lan")
+	}
+	if !strings.Contains(got, "backend-d") {
+		t.Fatalf("tras un proxy nuevo, mc-router no ve un servidor nuevo: %q", got)
+	}
+	if insAfter, err := eng.Inspect(ctx, routerID); err != nil || !insAfter.StartedAt.Equal(insBefore.StartedAt) {
+		t.Fatalf("el router no se reinicia con un proxy nuevo: %v → %+v %v", insBefore.StartedAt, insAfter, err)
+	}
+	if err := eng.Stop(ctx, backendD, time.Second); err != nil { // fuera de las comprobaciones de autoscale
+		t.Fatal(err)
 	}
 
 	// Autoscale con lista de jugadores (S3): un intruso no despierta un servidor dormido; un jugador
