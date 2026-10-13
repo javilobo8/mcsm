@@ -1,19 +1,19 @@
-# Desarrollo: el panel corre en el host (pnpm dev:api), el agente en Docker.
-# Requiere la red compartida: docker network create mcsm
+# Development: the panel runs on the host (pnpm dev:api), the agent in Docker.
+# Requires the shared network: docker network create mcsm
 name: mcsm-dev
 services:
   agent:
     build: { context: ../agent }
     image: mcsm-agent:dev
-    # docker stop mata a los 10 s; al pararlo, el agente espera a la vez, hasta 25 s, a sus
-    # operaciones de archivos y a las copias en curso (save-on) antes de salir.
+    # docker stop kills after 10 s; on stop, the agent waits in parallel, up to 25 s, for its
+    # file operations and in-progress backups (save-on) before exiting.
     stop_grace_period: 30s
     environment:
       PANEL_URL: http://host.docker.internal:8080
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
       NODE_NAME: dev
-      DATA_ROOT: ${DATA_ROOT:?Ruta absoluta en el host, p. ej. /home/lobo/dev/mc-server-manager/deploy/data}
-      # Opcional: tamaño máximo de una subida de archivo, en bytes (vacío = 4 GiB).
+      DATA_ROOT: ${DATA_ROOT:?Absolute path on the host, e.g. /home/lobo/dev/mc-server-manager/deploy/data}
+      # Optional: maximum size of a file upload, in bytes (empty = 4 GiB).
       UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:

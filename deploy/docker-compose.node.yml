@@ -1,21 +1,21 @@
-# Requiere la red compartida: docker network create mcsm
-# Imagen publicada en GHCR; MCSM_VERSION (en .env) fija la versión, vacío = latest. Con un agente construido desde el
-# código (docker build -t mcsm-agent:latest agent/), pon MCSM_AGENT_IMAGE=mcsm-agent:latest.
+# Requires the shared network: docker network create mcsm
+# Image published on GHCR; MCSM_VERSION (in .env) pins the version, empty = latest. With an agent built from
+# source (docker build -t mcsm-agent:latest agent/), set MCSM_AGENT_IMAGE=mcsm-agent:latest.
 name: mcsm-node
 services:
   agent:
     image: ${MCSM_AGENT_IMAGE:-ghcr.io/javilobo8/mcsm-agent:${MCSM_VERSION:-latest}}
-    # docker stop mata a los 10 s; al pararlo, el agente espera a la vez, hasta 25 s, a sus
-    # operaciones de archivos y a las copias en curso (save-on) antes de salir.
+    # docker stop kills after 10 s; on stop, the agent waits in parallel, up to 25 s, for its
+    # file operations and in-progress backups (save-on) before exiting.
     stop_grace_period: 30s
     restart: unless-stopped
     environment:
-      PANEL_URL: ${PANEL_URL:?Define PANEL_URL, p. ej. http://192.168.1.10:8080}
+      PANEL_URL: ${PANEL_URL:?Set PANEL_URL, e.g. http://192.168.1.10:8080}
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
-      # Opcional: vacío = el panel usa el nombre del token de alta (igual que el docker run de la UI, que no lo pasa).
+      # Optional: empty = the panel uses the enrollment token's name (same as the UI's docker run, which doesn't pass it).
       NODE_NAME: ${NODE_NAME:-}
       DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
-      # Opcional: tamaño máximo de una subida de archivo, en bytes (vacío = 4 GiB).
+      # Optional: maximum size of a file upload, in bytes (empty = 4 GiB).
       UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
       HOST_PROC: /host/proc
     volumes:

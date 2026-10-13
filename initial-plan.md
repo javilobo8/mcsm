@@ -1,27 +1,27 @@
-Tengo en casa un servidor con un docker compose con varios servidores de minecraft, estos los he ido jugando poco a poco con mi pareja, en diferentes epocas.
+I have a server at home running a docker compose with several Minecraft servers; my partner and I have been playing on them little by little, in different eras.
 
-Quiero hacer una aplicación profesional, selfhosted, que solo use yo para poder gestionar los servidores de minecraft.
+I want to build a professional, self-hosted application, for my use only, to manage the Minecraft servers.
 
-Actualmente estoy usando la imagen https://github.com/itzg/docker-minecraft-server para crear los servidores.
+I am currently using the image https://github.com/itzg/docker-minecraft-server to create the servers.
 
-Todos van sobre docker, me gustaría poder gestionarlos todos desde la web, ver su estado, cuantos jugadores hay conectados, etc.
+They all run on Docker, and I would like to manage them all from the web, see their status, how many players are connected, etc.
 
-yo soy administrador de todos los servidores, de momento, solo yo.
+I am the administrator of all the servers; for now, only me.
 
-La web será interna, accedo yo solamente desde la red de mi casa.
+The web UI will be internal, accessed only by me from my home network.
 
-Se deben poder ver los logs de las instancias de minecraft directamente.
+It must be possible to see the Minecraft instances' logs directly.
 
-Se pueden poner mods, modpacks, lo mismo que permite la imagen. 
+It must be possible to add mods and modpacks, everything the image allows.
 
-Absolutamente toda la gestión debe ser configurable desde la web, incluyendo puertos y demás.
+Absolutely all management must be configurable from the web, including ports and so on.
 
-Esta gestión estará desde un solo sitio, pero habrá diferentes máquinas, cada maquina debería tener su docker y su agente que orquesta lo que hay en esa maquina, quiero que hagas esta parte muy bien, eficiente. 
+Management will be from a single place, but there will be different machines; each machine should have its own Docker and its own agent that orchestrates what is on that machine. I want you to do this part very well, efficiently.
 
-Debo poder monitorizar todo desde la misma web. Necesito que sea muy fácil gestionar todo. Me gustaria que tuviera backups, plantillas, poder copiar plantillas, etc.
+I must be able to monitor everything from the same web UI. I need it to be very easy to manage everything. I would like it to have backups, templates, the ability to copy templates, etc.
 
-Importante es la gestión sobre docker, ya que cada maquina tendrá el agent, quiero que una maquina se conecte a otra de forma facil, usando un token o similar, asi puedo tener varios nodos. Se deben poder migrar los nodos de un sitio a otro.
+Docker management is important, since each machine will have the agent. I want one machine to connect to another easily, using a token or similar, so I can have several nodes. It must be possible to migrate the nodes from one place to another.
 
-Toda la config debe quedarse persistida, ya sea en una base de datos o lo que veas.
+All the configuration must be persisted, whether in a database or whatever you see fit.
 
-Haz una investigación de todo esto y preguntame lo que sea.
+Do research on all of this and ask me whatever you need.

@@ -1,6 +1,6 @@
-# Construir el panel y el agente desde el código en vez de descargar las imágenes publicadas:
+# Build the panel and the agent from source instead of pulling the published images:
 #   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env up -d --build
-# Con imágenes locales, el docker run de «Añadir nodo» usa mcsm-agent:latest (constrúyela en cada nodo).
+# With local images, the docker run from “Add node” uses mcsm-agent:latest (build it on each node).
 services:
   panel:
     build: { context: .., dockerfile: deploy/panel.Dockerfile }

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Server List Ping de Minecraft con el hostname que se quiera en el handshake (lo que lee mc-router),
-// sin depender del DNS. Imprime {"motd","version","players"} en una línea.
-//   node deploy/e2e/mc-status.mjs <ip> <puerto> <hostname>                  estado (siguiente estado 1)
-//   node deploy/e2e/mc-status.mjs <ip> <puerto> <hostname> --login[=nombre]  intento de entrada (siguiente
-//     estado 2 + Login Start con ese jugador, «e2e» por defecto): con el autoscale de mc-router, despierta
-//     un servidor dormido si el jugador está en la lista del autoscale (o no hay lista).
+// Minecraft Server List Ping with any hostname in the handshake (what mc-router reads),
+// without relying on DNS. Prints {"motd","version","players"} on one line.
+//   node deploy/e2e/mc-status.mjs <ip> <port> <hostname>                  status (next state 1)
+//   node deploy/e2e/mc-status.mjs <ip> <port> <hostname> --login[=name]   login attempt (next
+//     state 2 + Login Start with that player, “e2e” by default): with mc-router's autoscale, it wakes
+//     a sleeping server if the player is on the autoscale list (or there is no list).
 import net from "node:net";
 
 const [ip = "127.0.0.1", portArg = "25565", host = ip, flag = ""] = process.argv.slice(2);
@@ -33,7 +33,7 @@ const packet = (...parts) => {
 const u16 = Buffer.alloc(2);
 u16.writeUInt16BE(port);
 const handshake = packet(varint(0x00), varint(769), str(host), u16, varint(login ? 2 : 1));
-// Login Start (1.21.4): nombre + UUID (16 bytes).
+// Login Start (1.21.4): name + UUID (16 bytes).
 const second = login ? packet(varint(0x00), str(player), Buffer.alloc(16)) : packet(varint(0x00));
 
 function readVarint(buf, off) {
@@ -44,21 +44,21 @@ function readVarint(buf, off) {
     n |= (b & 0x7f) << shift;
     if (!(b & 0x80)) return [n, off];
   }
-  throw new Error("varint demasiado largo");
+  throw new Error("varint too long");
 }
 
 const sock = net.connect({ host: ip, port });
 sock.setTimeout(10_000, () => {
-  // Al despertar un servidor, mc-router retiene la conexión hasta que arranca: el intento ya cuenta.
+  // When waking a server, mc-router holds the connection until it starts: the attempt already counts.
   if (login) { console.log(JSON.stringify({ login: true, player, bytes: acc.length })); process.exit(0); }
-  console.error("sin respuesta en 10 s");
+  console.error("no response in 10 s");
   process.exit(2);
 });
 let acc = Buffer.alloc(0);
 sock.on("connect", () => sock.write(Buffer.concat([handshake, second])));
 sock.on("data", (d) => {
   acc = Buffer.concat([acc, d]);
-  if (login) return; // cualquier respuesta vale: se imprime al cerrar
+  if (login) return; // any response will do: printed on close
   const head = readVarint(acc, 0);
   if (!head || acc.length < head[1] + head[0]) return;
   const body = acc.subarray(head[1], head[1] + head[0]);
@@ -74,6 +74,6 @@ sock.on("data", (d) => {
 sock.on("error", (e) => { console.error(e.message); process.exit(1); });
 sock.on("close", () => {
   if (login) { console.log(JSON.stringify({ login: true, player, bytes: acc.length })); process.exit(0); }
-  console.error("conexión cerrada sin respuesta de estado");
+  console.error("connection closed without a status response");
   process.exit(1);
 });

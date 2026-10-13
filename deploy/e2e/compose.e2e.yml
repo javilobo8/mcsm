@@ -1,13 +1,13 @@
-# Override de deploy/docker-compose.yml para la E2E de la interfaz (deploy/e2e/run.sh, proyecto mcsm-test-e2e).
-# Todo con prefijo mcsm-test-e2e: imágenes, red de los servidores, router y puertos que no chocan con producción
-# (8080 y 25565–25600). DATA_ROOT y ENROLL_TOKEN los pone run.sh.
+# Override of deploy/docker-compose.yml for the UI E2E (deploy/e2e/run.sh, project mcsm-test-e2e).
+# Everything is prefixed mcsm-test-e2e: images, server network, router, and ports that don't clash with production
+# (8080 and 25565–25600). run.sh sets DATA_ROOT and ENROLL_TOKEN.
 services:
   panel:
     image: mcsm-test-e2e-panel:latest
     ports: !override ["127.0.0.1:${E2E_PANEL_PORT:-18080}:8080"]
     environment:
       PANEL_PUBLIC_URL: ""
-      PANEL_SETUP_TOKEN: ${E2E_SETUP_TOKEN:?run.sh define E2E_SETUP_TOKEN}
+      PANEL_SETUP_TOKEN: ${E2E_SETUP_TOKEN:?run.sh sets E2E_SETUP_TOKEN}
   agent:
     image: mcsm-test-e2e-agent:latest
     environment:
