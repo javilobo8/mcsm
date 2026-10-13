@@ -15,13 +15,13 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// Moby implementa Engine sobre github.com/moby/moby/client.
+// Moby implements Engine over github.com/moby/moby/client.
 type Moby struct{ cli *client.Client }
 
 func NewMoby() (*Moby, error) {
 	cli, err := client.New(client.FromEnv)
 	if err != nil {
-		return nil, fmt.Errorf("docker: crear cliente: %w", err)
+		return nil, fmt.Errorf("docker: create client: %w", err)
 	}
 	return &Moby{cli: cli}, nil
 }
@@ -162,29 +162,29 @@ func (m *Moby) Logs(ctx context.Context, id string, tail int) (io.ReadCloser, er
 	if c := ins.Container.Config; c != nil && c.Tty {
 		return rc, nil
 	}
-	// Sin TTY (los contenedores de Compose, p. ej. un importado aún adoptado) Docker multiplexa
-	// stdout y stderr con una cabecera de 8 bytes por trama: se separan aquí, en el mismo flujo.
+	// Without a TTY (Compose containers, e.g. an imported one still adopted) Docker multiplexes
+	// stdout and stderr with an 8-byte header per frame: they are separated here, into the same stream.
 	return demuxLogs(rc), nil
 }
 
-// demuxLogs junta en un flujo de texto el stdout y el stderr de unos logs multiplexados por Docker,
-// en streaming (io.Pipe, sin buffer propio: cada trama llega al lector según la manda Docker). La
-// goroutine de StdCopy termina cuando su lectura del stream de Docker acaba o falla (EOF, contexto
-// cancelado, Close) o falla su escritura (Close del lector); su error llega al lector (nil → EOF).
+// demuxLogs joins into a text stream the stdout and stderr of logs multiplexed by Docker,
+// in streaming (io.Pipe, with no buffer of its own: each frame reaches the reader as Docker sends it). The
+// StdCopy goroutine ends when its read of Docker's stream finishes or fails (EOF, cancelled
+// context, Close) or its write fails (reader's Close); its error reaches the reader (nil → EOF).
 func demuxLogs(rc io.ReadCloser) *demuxedLogs {
 	pr, pw := io.Pipe()
 	d := &demuxedLogs{PipeReader: pr, src: rc, done: make(chan struct{})}
 	go func() {
 		defer close(d.done)
 		_, err := stdcopy.StdCopy(pw, pw, rc)
-		_ = pw.CloseWithError(err) // nil → EOF para el lector
+		_ = pw.CloseWithError(err) // nil → EOF for the reader
 	}()
 	return d
 }
 
-// demuxedLogs es el texto de unos logs multiplexados; Close cierra también el stream de Docker
-// (la goroutine de StdCopy termina al fallar su lectura o su escritura). Idempotente y seguro desde
-// varias goroutines. done se cierra al terminar la goroutine.
+// demuxedLogs is the text of logs multiplexed by Docker; Close also closes Docker's stream
+// (the StdCopy goroutine ends when its read or its write fails). Idempotent and safe from
+// several goroutines. done is closed when the goroutine ends.
 type demuxedLogs struct {
 	*io.PipeReader
 	src  io.Closer
@@ -197,11 +197,11 @@ func (d *demuxedLogs) Close() error {
 	return err
 }
 
-// Events emite eventos de contenedores con la etiqueta mcsm.managed=true. El canal
-// de eventos se cierra cuando termina la goroutine (ctx cancelado, error del
-// daemon o stream cerrado). El canal de errores no se cierra: recibe como mucho un
-// error, que incluye context.Canceled si ctx se cancela mientras se espera; el
-// consumidor debe ignorarlo en ese caso. Ningún envío bloquea más allá de ctx.
+// Events emits events of containers with the mcsm.managed=true label. The events
+// channel is closed when the goroutine ends (ctx cancelled, daemon error
+// or stream closed). The errors channel is not closed: it receives at most one
+// error, which includes context.Canceled if ctx is cancelled while waiting; the
+// consumer must ignore it in that case. No send blocks beyond ctx.
 func (m *Moby) Events(ctx context.Context) (<-chan Event, <-chan error) {
 	res := m.cli.Events(ctx, client.EventsListOptions{
 		Filters: client.Filters{}.Add("type", "container").Add("label", "mcsm.managed=true"),

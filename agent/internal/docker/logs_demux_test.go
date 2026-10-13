@@ -13,11 +13,11 @@ import (
 	"github.com/moby/moby/api/pkg/stdcopy"
 )
 
-// Logs sin TTY (9f2d104): Docker multiplexa stdout y stderr con una cabecera de 8 bytes por trama y
-// demuxLogs los junta en un flujo de texto. Sin Docker: el stream de Docker es un io.Pipe.
+// Logs without TTY (9f2d104): Docker multiplexes stdout and stderr with an 8-byte header per frame and
+// demuxLogs joins them into a text stream. Without Docker: the Docker stream is an io.Pipe.
 
-// frame escribe s como una trama de Docker del flujo std (cabecera: flujo, 3 ceros y el tamaño en
-// big endian), de una vez; vuelve cuando la goroutine de StdCopy la ha leído (io.Pipe no tiene buffer).
+// frame writes s as a Docker frame of the std stream (header: stream, 3 zeros and the size in
+// big endian), in one go; it returns when the StdCopy goroutine has read it (io.Pipe has no buffer).
 func frame(t *testing.T, w io.Writer, std stdcopy.StdType, s string) {
 	t.Helper()
 	b := make([]byte, 8, 8+len(s))
@@ -33,12 +33,12 @@ func waitDone(t *testing.T, d *demuxedLogs) {
 	select {
 	case <-d.done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("la goroutine de StdCopy no terminó")
+		t.Fatal("the StdCopy goroutine did not finish")
 	}
 }
 
-// En streaming: cada línea llega al lector antes de que Docker mande la siguiente, sin cabeceras y
-// con stdout y stderr en el mismo flujo; el EOF del stream de Docker es el EOF del lector.
+// Streaming: each line reaches the reader before Docker sends the next one, without headers and
+// with stdout and stderr in the same stream; the EOF of Docker's stream is the reader's EOF.
 func TestDemuxLogsStreamsStdoutAndStderr(t *testing.T) {
 	src, docker := io.Pipe()
 	d := demuxLogs(src)
@@ -46,16 +46,16 @@ func TestDemuxLogsStreamsStdoutAndStderr(t *testing.T) {
 	for _, l := range []struct {
 		std  stdcopy.StdType
 		text string
-	}{{stdcopy.Stdout, "2026-10-12T10:00:00.000000001Z uno\n"}, {stdcopy.Stderr, "2026-10-12T10:00:00.000000002Z dos\n"}, {stdcopy.Stdout, "2026-10-12T10:00:00.000000003Z tres\n"}} {
+	}{{stdcopy.Stdout, "2026-10-12T10:00:00.000000001Z one\n"}, {stdcopy.Stderr, "2026-10-12T10:00:00.000000002Z two\n"}, {stdcopy.Stdout, "2026-10-12T10:00:00.000000003Z three\n"}} {
 		frame(t, docker, l.std, l.text)
 		got, err := br.ReadString('\n')
 		if err != nil || got != l.text {
-			t.Fatalf("línea = %q, %v; quiero %q", got, err, l.text)
+			t.Fatalf("line = %q, %v; want %q", got, err, l.text)
 		}
 	}
 	_ = docker.Close()
 	if rest, err := io.ReadAll(br); err != nil || len(rest) != 0 {
-		t.Fatalf("tras el EOF de Docker: %q, %v", rest, err)
+		t.Fatalf("after Docker's EOF: %q, %v", rest, err)
 	}
 	waitDone(t, d)
 	if err := d.Close(); err != nil {
@@ -63,12 +63,12 @@ func TestDemuxLogsStreamsStdoutAndStderr(t *testing.T) {
 	}
 }
 
-// Un error del stream de Docker (conexión caída, contexto cancelado) o del daemon (trama Systemerr)
-// llega al lector como error, no como un EOF limpio.
+// An error from Docker's stream (dropped connection, cancelled context) or from the daemon (Systemerr frame)
+// reaches the reader as an error, not as a clean EOF.
 func TestDemuxLogsPropagatesErrors(t *testing.T) {
 	src, docker := io.Pipe()
 	d := demuxLogs(src)
-	lost := errors.New("conexión perdida")
+	lost := errors.New("connection lost")
 	_ = docker.CloseWithError(lost)
 	if _, err := io.ReadAll(d); !errors.Is(err, lost) {
 		t.Fatalf("err = %v", err)
@@ -77,29 +77,29 @@ func TestDemuxLogsPropagatesErrors(t *testing.T) {
 
 	src, docker = io.Pipe()
 	d = demuxLogs(src)
-	frame(t, docker, stdcopy.Systemerr, "fallo del daemon")
-	if _, err := io.ReadAll(d); err == nil || !strings.Contains(err.Error(), "fallo del daemon") {
+	frame(t, docker, stdcopy.Systemerr, "daemon failure")
+	if _, err := io.ReadAll(d); err == nil || !strings.Contains(err.Error(), "daemon failure") {
 		t.Fatalf("err = %v", err)
 	}
 	waitDone(t, d)
 	_ = d.Close()
 }
 
-// Close termina la goroutine tanto si espera a que el lector lea (nadie lee la trama ya separada)
-// como si espera a Docker (sin logs nuevos), y cierra el stream de Docker. Es idempotente y se puede
-// llamar a la vez desde dos goroutines (el follower de logs lo hace: defer y cancelación).
+// Close ends the goroutine whether it is waiting for the reader to read (nobody reads the already separated frame)
+// or waiting for Docker (no new logs), and closes Docker's stream. It is idempotent and can be
+// called at the same time from two goroutines (the log follower does: defer and cancellation).
 func TestDemuxLogsCloseEndsGoroutine(t *testing.T) {
-	t.Run("esperando al lector", func(t *testing.T) {
+	t.Run("waiting for the reader", func(t *testing.T) {
 		src, docker := io.Pipe()
 		d := demuxLogs(src)
-		frame(t, docker, stdcopy.Stdout, "nadie la lee\n") // StdCopy la leyó y espera para escribirla
+		frame(t, docker, stdcopy.Stdout, "nobody reads it\n") // StdCopy read it and waits to write it
 		_ = d.Close()
 		waitDone(t, d)
 		if _, err := docker.Write([]byte("x")); !errors.Is(err, io.ErrClosedPipe) {
-			t.Fatalf("el stream de Docker debe quedar cerrado: %v", err)
+			t.Fatalf("Docker's stream must be left closed: %v", err)
 		}
 	})
-	t.Run("esperando a Docker", func(t *testing.T) {
+	t.Run("waiting for Docker", func(t *testing.T) {
 		src, docker := io.Pipe()
 		d := demuxLogs(src)
 		var wg sync.WaitGroup
@@ -110,10 +110,10 @@ func TestDemuxLogsCloseEndsGoroutine(t *testing.T) {
 		wg.Wait()
 		waitDone(t, d)
 		if _, err := docker.Write([]byte("x")); !errors.Is(err, io.ErrClosedPipe) {
-			t.Fatalf("el stream de Docker debe quedar cerrado: %v", err)
+			t.Fatalf("Docker's stream must be left closed: %v", err)
 		}
 		if _, err := d.Read(make([]byte, 1)); err == nil {
-			t.Fatal("leer tras Close debe fallar")
+			t.Fatal("reading after Close must fail")
 		}
 	})
 }

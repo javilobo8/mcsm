@@ -62,29 +62,29 @@ func TestJobLifecycle(t *testing.T) {
 	if err != nil || old != nil || j == nil {
 		t.Fatalf("Begin = %v, %v, %v", j, old, err)
 	}
-	j.Progress(3, "Copiando datos") // cambia el mensaje: se emite
-	j.Progress(4, "Copiando datos") // +1: no se emite
-	j.Progress(9, "Copiando datos") // ≥ 3+5: se emite
-	j.Progress(2, "Copiando datos") // no retrocede ni se emite
+	j.Progress(3, "Copying data") // the message changes: emitted
+	j.Progress(4, "Copying data") // +1: not emitted
+	j.Progress(9, "Copying data") // ≥ 3+5: emitted
+	j.Progress(2, "Copying data") // does not go backwards nor is emitted
 	j.Log("save-off")
-	j.Done(nil, "Copia creada")
-	j.Done(errors.New("tarde"), "") // ignorado
+	j.Done(nil, "Backup created")
+	j.Done(errors.New("late"), "") // ignored
 	msgs := s.all()
 	if len(msgs) != 5 {
-		t.Fatalf("emitidos %d: %+v", len(msgs), msgs)
+		t.Fatalf("emitted %d: %+v", len(msgs), msgs)
 	}
 	if msgs[0].Status != running || msgs[0].Type != TypeBackup || msgs[0].ServerId != "srv" {
-		t.Fatalf("primer aviso = %+v", msgs[0])
+		t.Fatalf("first notification = %+v", msgs[0])
 	}
 	if msgs[2].Progress != 9 || msgs[3].LogChunk != "save-off\n" {
-		t.Fatalf("avisos = %+v", msgs)
+		t.Fatalf("notifications = %+v", msgs)
 	}
-	if last := msgs[4]; last.Status != ok || last.Progress != 100 || last.Message != "Copia creada" {
+	if last := msgs[4]; last.Status != ok || last.Progress != 100 || last.Message != "Backup created" {
 		t.Fatalf("final = %+v", last)
 	}
 	rec, _ := st.GetJob("j1")
 	if rec.Status != ok || rec.Log != "save-off\n" || rec.FinishedUnixMs == 0 {
-		t.Fatalf("guardado = %+v", rec)
+		t.Fatalf("saved = %+v", rec)
 	}
 }
 
@@ -94,7 +94,7 @@ func TestDuplicateJobIsNotRunTwice(t *testing.T) {
 	j.Done(nil, "ok")
 	j2, old, err := tr.Begin("j1", "srv", TypeBackup)
 	if err != nil || j2 != nil || old == nil || old.Status != ok {
-		t.Fatalf("Begin duplicado = %v, %+v, %v", j2, old, err)
+		t.Fatalf("duplicate Begin = %v, %+v, %v", j2, old, err)
 	}
 	n := len(s.all())
 	tr.Replay(old)
@@ -107,74 +107,74 @@ func TestDuplicateJobIsNotRunTwice(t *testing.T) {
 func TestDoneWithErrorAndInvalidUTF8(t *testing.T) {
 	tr, st, _, _ := setup(t)
 	j, _, _ := tr.Begin("j1", "srv", TypeRestore)
-	j.Log("fichero raro: \xff\xfe")
-	j.Done(errors.New("la copia está dañada \xff"), "")
+	j.Log("odd file: \xff\xfe")
+	j.Done(errors.New("the backup is corrupted \xff"), "")
 	rec, err := st.GetJob("j1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Status != failed || !strings.HasPrefix(rec.Message, "la copia está dañada") {
+	if rec.Status != failed || !strings.HasPrefix(rec.Message, "the backup is corrupted") {
 		t.Fatalf("rec = %+v", rec)
 	}
 	if !utf8.ValidString(rec.Log) || !utf8.ValidString(rec.Message) {
-		t.Fatal("log y mensaje deben ser UTF-8 válido")
+		t.Fatal("log and message must be valid UTF-8")
 	}
 }
 
 func TestFailInterrupted(t *testing.T) {
 	tr, st, _, _ := setup(t)
-	tr.Begin("colgado", "srv", TypeBackup) // nunca termina: el agente "se reinicia"
-	j, _, _ := tr.Begin("hecho", "srv", TypeBackup)
+	tr.Begin("stuck", "srv", TypeBackup) // never finishes: the agent "restarts"
+	j, _, _ := tr.Begin("finished", "srv", TypeBackup)
 	j.Done(nil, "ok")
 	tr2 := New(st, func(*mcsmv1.Envelope) error { return nil }, time.Now)
 	if err := tr2.FailInterrupted(); err != nil {
 		t.Fatal(err)
 	}
-	if rec, _ := st.GetJob("colgado"); rec.Status != failed || !strings.Contains(rec.Message, "interrumpido") || rec.FinishedUnixMs == 0 {
-		t.Fatalf("colgado = %+v", rec)
+	if rec, _ := st.GetJob("stuck"); rec.Status != failed || !strings.Contains(rec.Message, "interrupted") || rec.FinishedUnixMs == 0 {
+		t.Fatalf("stuck = %+v", rec)
 	}
-	if rec, _ := st.GetJob("hecho"); rec.Status != ok {
-		t.Fatalf("hecho = %+v", rec)
+	if rec, _ := st.GetJob("finished"); rec.Status != ok {
+		t.Fatalf("finished = %+v", rec)
 	}
 }
 
 func TestLogIsBoundedKeepingTheEnd(t *testing.T) {
 	tr, st, _, _ := setup(t)
 	j, _, _ := tr.Begin("j1", "srv", TypeBackup)
-	line := strings.Repeat("ñ", 511) // 1022 bytes: el recorte puede caer a mitad de carácter
+	line := strings.Repeat("ñ", 511) // 1022 bytes: the cut can fall in the middle of a character
 	for i := 0; i < 80; i++ {
 		j.Log(line)
 	}
-	j.Log("ULTIMA")
-	j.Done(nil, "ok") // Done vuelca el log pendiente
+	j.Log("LAST")
+	j.Done(nil, "ok") // Done flushes the pending log
 	rec, _ := st.GetJob("j1")
-	if len(rec.Log) > MaxLog || !strings.HasPrefix(rec.Log, "…(recortado)") || !strings.HasSuffix(rec.Log, "ULTIMA\n") || !utf8.ValidString(rec.Log) {
-		t.Fatalf("log de %d bytes, prefijo %q", len(rec.Log), rec.Log[:20])
+	if len(rec.Log) > MaxLog || !strings.HasPrefix(rec.Log, "…(trimmed)") || !strings.HasSuffix(rec.Log, "LAST\n") || !utf8.ValidString(rec.Log) {
+		t.Fatalf("log of %d bytes, prefix %q", len(rec.Log), rec.Log[:20])
 	}
 }
 
 func TestInventoryPrunesFiltersAndOrders(t *testing.T) {
 	tr, _, _, c := setup(t)
-	a, _, _ := tr.Begin("viejo", "s1", TypeBackup)
+	a, _, _ := tr.Begin("old", "s1", TypeBackup)
 	a.Done(nil, "ok")
 	c.t = c.t.Add(8 * 24 * time.Hour)
-	b, _, _ := tr.Begin("s1-nuevo", "s1", TypeBackup)
+	b, _, _ := tr.Begin("s1-new", "s1", TypeBackup)
 	b.Log(strings.Repeat("x", 10_000))
 	c.t = c.t.Add(time.Minute)
-	tr.Begin("s2-nuevo", "s2", TypeRestore)
+	tr.Begin("s2-new", "s2", TypeRestore)
 	all, err := tr.Inventory("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 2 || all[0].JobId != "s2-nuevo" || all[1].JobId != "s1-nuevo" {
-		t.Fatalf("inventario = %+v", all)
+	if len(all) != 2 || all[0].JobId != "s2-new" || all[1].JobId != "s1-new" {
+		t.Fatalf("inventory = %+v", all)
 	}
 	if len(all[1].Log) > inventoryLog {
-		t.Fatalf("log del inventario sin recortar: %d", len(all[1].Log))
+		t.Fatalf("inventory log not trimmed: %d", len(all[1].Log))
 	}
 	only, _ := tr.Inventory("s1")
-	if len(only) != 1 || only[0].JobId != "s1-nuevo" {
-		t.Fatalf("filtrado = %+v", only)
+	if len(only) != 1 || only[0].JobId != "s1-new" {
+		t.Fatalf("filtered = %+v", only)
 	}
 }
 
@@ -185,12 +185,12 @@ func TestNewIDIsUUIDv4(t *testing.T) {
 	}
 }
 
-// countingStore envuelve el store real contando (y haciendo fallar) los PutJob.
+// countingStore wraps the real store counting (and failing) the PutJobs.
 type countingStore struct {
 	Store
 	mu     sync.Mutex
 	puts   int
-	failN  int // los primeros failN PutJob fallan
+	failN  int // the first failN PutJobs fail
 	failAt func(*mcsmv1.JobRecord) bool
 }
 
@@ -200,7 +200,7 @@ func (c *countingStore) PutJob(r *mcsmv1.JobRecord) error {
 	c.puts++
 	if c.failN > 0 && c.failAt(r) {
 		c.failN--
-		return errors.New("disco lleno")
+		return errors.New("disk full")
 	}
 	return c.Store.PutJob(r)
 }
@@ -225,15 +225,15 @@ func TestLogIsCoalesced(t *testing.T) {
 	j, _, _ := tr.Begin("j1", "srv", TypeBackup)
 	base := cs.puts
 	for i := 0; i < 1000; i++ {
-		j.Log(fmt.Sprintf("fichero %d", i))
+		j.Log(fmt.Sprintf("file %d", i))
 	}
 	if got := cs.puts - base; got != 1 {
-		t.Fatalf("guardados %d veces con el reloj parado, quería 1", got)
+		t.Fatalf("saved %d times with the clock stopped, wanted 1", got)
 	}
 	c.t = c.t.Add(LogEvery)
-	j.Log("otra")
+	j.Log("another")
 	if got := cs.puts - base; got != 2 {
-		t.Fatalf("tras LogEvery quería 2 guardados, hay %d", got)
+		t.Fatalf("after LogEvery wanted 2 saves, got %d", got)
 	}
 	j.Log("final")
 	j.Done(nil, "ok")
@@ -246,14 +246,14 @@ func TestLogIsCoalesced(t *testing.T) {
 		}
 	}
 	if chunks != 3 {
-		t.Fatalf("log_chunk enviados = %d, quería 3", chunks)
+		t.Fatalf("log_chunks sent = %d, wanted 3", chunks)
 	}
-	if !strings.HasSuffix(all.String(), "otra\nfinal\n") {
-		t.Fatalf("Done debe volcar el log pendiente: %q", all.String()[all.Len()-30:])
+	if !strings.HasSuffix(all.String(), "another\nfinal\n") {
+		t.Fatalf("Done must flush the pending log: %q", all.String()[all.Len()-30:])
 	}
 	rec, _ := cs.GetJob("j1")
-	if !strings.Contains(rec.Log, "fichero 999\notra\nfinal\n") || len(rec.Log) > MaxLog {
-		t.Fatalf("log guardado incompleto (%d bytes)", len(rec.Log))
+	if !strings.Contains(rec.Log, "file 999\nanother\nfinal\n") || len(rec.Log) > MaxLog {
+		t.Fatalf("saved log incomplete (%d bytes)", len(rec.Log))
 	}
 }
 
@@ -264,18 +264,18 @@ func TestDoneRetriesAndReportsPersistFailure(t *testing.T) {
 	j, _, _ := tr.Begin("j1", "srv", TypeBackup)
 	cs.failN = 2
 	if err := j.Done(nil, "ok"); err != nil {
-		t.Fatalf("con 2 fallos y 3 intentos debe guardarse: %v", err)
+		t.Fatalf("with 2 failures and 3 attempts it must be saved: %v", err)
 	}
 	if rec, _ := cs.GetJob("j1"); rec.Status != ok {
-		t.Fatalf("guardado = %+v", rec)
+		t.Fatalf("saved = %+v", rec)
 	}
 	k, _, _ := tr.Begin("j2", "srv", TypeBackup)
 	cs.failN = 100
 	if err := k.Done(nil, "ok"); err == nil {
-		t.Fatal("Done debe devolver el error si el guardado sigue fallando")
+		t.Fatal("Done must return the error if saving keeps failing")
 	}
 	if k.Record().Status != ok {
-		t.Fatal("el estado en memoria debe ser el final")
+		t.Fatal("the in-memory state must be the final one")
 	}
 }
 
@@ -300,7 +300,7 @@ func TestConcurrentBeginSameIDRunsOnce(t *testing.T) {
 			case j == nil && old != nil:
 				dup++
 			default:
-				t.Error("resultado incoherente")
+				t.Error("inconsistent result")
 			}
 		}()
 	}
@@ -323,7 +323,7 @@ func TestSendErrorsAreIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	j.Progress(50, "mitad")
+	j.Progress(50, "half")
 	j.Log("linea")
 	if err := j.Done(nil, "ok"); err != nil {
 		t.Fatal(err)
@@ -352,27 +352,27 @@ func TestBeginValidatesAndMessageIsBounded(t *testing.T) {
 	tr, st, _, _ := setup(t)
 	for _, a := range [][3]string{{"", "s", TypeBackup}, {"j", "", TypeBackup}, {"j", "s", ""}} {
 		if j, _, err := tr.Begin(a[0], a[1], a[2]); err == nil || j != nil {
-			t.Fatalf("Begin%v debe fallar", a)
+			t.Fatalf("Begin%v must fail", a)
 		}
 	}
 	j, _, _ := tr.Begin("j1", "s", TypeBackup)
 	j.Done(errors.New(strings.Repeat("ñ", 2000)), "")
 	rec, _ := st.GetJob("j1")
 	if len(rec.Message) > MaxMessage || !utf8.ValidString(rec.Message) {
-		t.Fatalf("mensaje de %d bytes", len(rec.Message))
+		t.Fatalf("message of %d bytes", len(rec.Message))
 	}
 }
 
 func TestFailInterruptedPrunesOld(t *testing.T) {
 	tr, st, _, c := setup(t)
-	a, _, _ := tr.Begin("viejo", "s", TypeBackup)
+	a, _, _ := tr.Begin("old", "s", TypeBackup)
 	a.Done(nil, "ok")
 	c.t = c.t.Add(KeepFor + time.Hour)
 	if err := tr.FailInterrupted(); err != nil {
 		t.Fatal(err)
 	}
-	if rec, _ := st.GetJob("viejo"); rec != nil {
-		t.Fatal("FailInterrupted debe podar los terminados antiguos")
+	if rec, _ := st.GetJob("old"); rec != nil {
+		t.Fatal("FailInterrupted must prune the old finished ones")
 	}
 }
 
@@ -397,18 +397,18 @@ func TestNothingIsSentAfterTheTerminalMessage(t *testing.T) {
 		msgs := s.all()
 		last := msgs[len(msgs)-1]
 		if last.Status != ok {
-			t.Fatalf("ronda %d: el último aviso no es el terminal: %+v", round, last)
+			t.Fatalf("round %d: the last notification is not the terminal one: %+v", round, last)
 		}
 		for _, m := range msgs[:len(msgs)-1] {
 			if m.Status != running {
-				t.Fatalf("ronda %d: terminal antes del final: %+v", round, m)
+				t.Fatalf("round %d: terminal before the end: %+v", round, m)
 			}
 		}
 	}
 }
 
-// Determinista: un aviso RUNNING queda retenido en send mientras otra goroutine cierra el job.
-// Sin la serialización por job, el terminal se enviaría antes que el RUNNING retenido.
+// Deterministic: a RUNNING notification is held in send while another goroutine closes the job.
+// Without per-job serialization, the terminal one would be sent before the held RUNNING one.
 func TestSlowSendCannotBeOvertakenByTerminal(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "agent.db"))
 	if err != nil {
@@ -422,11 +422,11 @@ func TestSlowSendCannotBeOvertakenByTerminal(t *testing.T) {
 	var once sync.Once
 	send := func(e *mcsmv1.Envelope) error {
 		p := e.GetJobProgress()
-		if p.Message == "lento" {
+		if p.Message == "slow" {
 			close(inSend)
 			select {
 			case <-release:
-			case <-time.After(100 * time.Millisecond): // serializado: el terminal espera, así que nadie libera
+			case <-time.After(100 * time.Millisecond): // serialized: the terminal waits, so nobody releases
 			}
 		}
 		if p.Status != running {
@@ -442,26 +442,26 @@ func TestSlowSendCannotBeOvertakenByTerminal(t *testing.T) {
 	j, _, _ := tr.Begin("j1", "srv", TypeBackup)
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); j.Progress(10, "lento") }()
+	go func() { defer wg.Done(); j.Progress(10, "slow") }()
 	go func() { defer wg.Done(); <-inSend; j.Done(nil, "fin") }()
 	wg.Wait()
 	mu.Lock()
 	defer mu.Unlock()
 	if n := len(order); n != 3 || order[1] != running || order[2] != ok {
-		t.Fatalf("orden de avisos = %v", order)
+		t.Fatalf("notification order = %v", order)
 	}
 }
 
-// m3: el recorte a inventoryJobs nunca deja fuera un job en curso: el panel lo daría por
-// perdido mientras sigue en marcha.
+// m3: trimming to inventoryJobs never leaves out a running job: the panel would consider it
+// lost while it is still running.
 func TestInventoryAlwaysIncludesRunning(t *testing.T) {
 	tr, st, _, c := setup(t)
-	if _, _, err := tr.Begin("en-curso", "s1", TypeBackup); err != nil { // el más antiguo
+	if _, _, err := tr.Begin("in-progress", "s1", TypeBackup); err != nil { // the oldest
 		t.Fatal(err)
 	}
 	for i := 0; i < inventoryJobs+5; i++ {
 		c.t = c.t.Add(time.Second)
-		if err := st.PutJob(&mcsmv1.JobRecord{JobId: fmt.Sprintf("hecho-%03d", i), ServerId: "s1", Type: TypeBackup,
+		if err := st.PutJob(&mcsmv1.JobRecord{JobId: fmt.Sprintf("finished-%03d", i), ServerId: "s1", Type: TypeBackup,
 			Status: mcsmv1.JobStatus_JOB_STATUS_OK, StartedUnixMs: c.t.UnixMilli(), FinishedUnixMs: c.t.UnixMilli()}); err != nil {
 			t.Fatal(err)
 		}
@@ -475,12 +475,12 @@ func TestInventoryAlwaysIncludesRunning(t *testing.T) {
 	}
 	found := false
 	for _, r := range inv {
-		found = found || r.JobId == "en-curso"
+		found = found || r.JobId == "in-progress"
 	}
 	if !found {
-		t.Fatal("el job en curso debe estar en el inventario")
+		t.Fatal("the running job must be in the inventory")
 	}
-	if inv[0].JobId != "hecho-204" {
-		t.Fatalf("el resto, los más recientes primero: %s", inv[0].JobId)
+	if inv[0].JobId != "finished-204" {
+		t.Fatalf("the rest, most recent first: %s", inv[0].JobId)
 	}
 }

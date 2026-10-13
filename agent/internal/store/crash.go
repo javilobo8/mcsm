@@ -10,25 +10,25 @@ import (
 	"go.etcd.io/bbolt"
 )
 
-// plan-9: retención por bucle de crash (spec §10) y servidores con save-on pendiente (m6/m7 del Plan 4).
-// Los buckets se crean al primer uso, como router y tombstones, para no tocar la lista de Open.
+// plan-9: crash loop latch (spec §10) and servers with a pending save-on (m6/m7 of Plan 4).
+// The buckets are created on first use, like router and tombstones, so as not to touch Open's list.
 var (
 	bCrashLatch = []byte("crash_latch")
 	bSaveOn     = []byte("saveon_pending")
 )
 
-// CrashLatch marca un servidor parado por bucle de crash. Mientras su spec siga en Version, la reconciliación
-// no lo arranca; lo levantan una acción de encendido (Power start/restart) o una versión nueva de la spec.
+// CrashLatch marks a server stopped by a crash loop. While its spec stays at Version, the reconciliation
+// does not start it; a power action (Power start/restart) or a new spec version lifts it.
 type CrashLatch struct {
 	Version uint64    `json:"version"`
 	Crashes int       `json:"crashes"`
 	At      time.Time `json:"at"`
 }
 
-// PutCrashLatch guarda (o sustituye) la retención de id.
+// PutCrashLatch stores (or replaces) id's latch.
 func (s *Store) PutCrashLatch(id string, l CrashLatch) error {
 	if id == "" {
-		return errors.New("store: retención sin server_id")
+		return errors.New("store: latch without server_id")
 	}
 	raw, err := json.Marshal(l)
 	if err != nil {
@@ -43,7 +43,7 @@ func (s *Store) PutCrashLatch(id string, l CrashLatch) error {
 	})
 }
 
-// CrashLatch devuelve la retención de id, o nil si no tiene.
+// CrashLatch returns id's latch, or nil if it has none.
 func (s *Store) CrashLatch(id string) (*CrashLatch, error) {
 	var out *CrashLatch
 	err := s.db.View(func(tx *bbolt.Tx) error {
@@ -65,7 +65,7 @@ func (s *Store) CrashLatch(id string) (*CrashLatch, error) {
 	return out, err
 }
 
-// DeleteCrashLatch borra la retención de id (idempotente).
+// DeleteCrashLatch deletes id's latch (idempotent).
 func (s *Store) DeleteCrashLatch(id string) error {
 	return s.db.Update(func(tx *bbolt.Tx) error { return deleteCrashLatch(tx, id) })
 }
@@ -77,10 +77,10 @@ func deleteCrashLatch(tx *bbolt.Tx, id string) error {
 	return nil
 }
 
-// MarkSaveOnPending anota que el guardado automático de id pudo quedar desactivado (save-on falló).
+// MarkSaveOnPending records that id's autosave may have been left disabled (save-on failed).
 func (s *Store) MarkSaveOnPending(id string, at time.Time) error {
 	if id == "" {
-		return errors.New("store: save-on pendiente sin server_id")
+		return errors.New("store: pending save-on without server_id")
 	}
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(at.UnixMilli()))
@@ -93,7 +93,7 @@ func (s *Store) MarkSaveOnPending(id string, at time.Time) error {
 	})
 }
 
-// SaveOnPending lista, ordenados, los servidores con save-on pendiente.
+// SaveOnPending lists, sorted, the servers with a pending save-on.
 func (s *Store) SaveOnPending() ([]string, error) {
 	var ids []string
 	err := s.db.View(func(tx *bbolt.Tx) error {
@@ -110,7 +110,7 @@ func (s *Store) SaveOnPending() ([]string, error) {
 	return ids, err
 }
 
-// ClearSaveOnPending quita a id de los pendientes (idempotente).
+// ClearSaveOnPending removes id from the pending ones (idempotent).
 func (s *Store) ClearSaveOnPending(id string) error {
 	return s.db.Update(func(tx *bbolt.Tx) error { return deleteSaveOn(tx, id) })
 }

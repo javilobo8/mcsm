@@ -1,4 +1,4 @@
-// Package mc habla con el servidor de Minecraft: ping de estado y RCON.
+// Package mc talks to the Minecraft server: status ping and RCON.
 package mc
 
 import (
@@ -21,15 +21,15 @@ const (
 
 type StatusFunc = func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus
 
-// Status hace un Server List Ping. Nunca devuelve error: un servidor que no
-// responde se reporta como Online=false.
+// Status does a Server List Ping. It never returns an error: a server that does not
+// respond is reported as Online=false.
 func Status(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
 	st, err := status.Modern(ctx, host, port, options.StatusModern{
-		// Las opciones pasadas sustituyen a los valores por defecto de la
-		// librería: con ReceiveLimitBytes=0 la lectura devuelve EOF y con
-		// ProtocolVersion=0 el handshake es incorrecto, así que van explícitos.
+		// The options passed replace the library's default values:
+		// with ReceiveLimitBytes=0 the read returns EOF and with
+		// ProtocolVersion=0 the handshake is wrong, so they are explicit.
 		Timeout:           statusTimeout,
 		ProtocolVersion:   -1,
 		ReceiveLimitBytes: 1 << 20,
@@ -52,9 +52,9 @@ func Status(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 	return out
 }
 
-// latencyMs redondea hacia arriba a milisegundos enteros. En la red Docker
-// local el RTT del ping SLP es de decenas de µs: truncar (Duration.Milliseconds)
-// lo dejaría siempre en 0, indistinguible de "sin medir".
+// latencyMs rounds up to whole milliseconds. On the local Docker
+// network the SLP ping RTT is tens of µs: truncating (Duration.Milliseconds)
+// would always leave it at 0, indistinguishable from "not measured".
 func latencyMs(d time.Duration) uint32 {
 	if d <= 0 {
 		return 0
@@ -62,11 +62,11 @@ func latencyMs(d time.Duration) uint32 {
 	return uint32((d + time.Millisecond - 1) / time.Millisecond)
 }
 
-// Rcon ejecuta un comando y devuelve la salida.
+// Rcon runs a command and returns the output.
 //
-// Implementa el protocolo Source RCON directamente en lugar de usar
-// mcutil/rcon: ese cliente (v4.3.1) tiene una data race entre Login y Close,
-// imprime errores por stdout, deja NULs en la salida y no admite cancelación.
+// It implements the Source RCON protocol directly instead of using
+// mcutil/rcon: that client (v4.3.1) has a data race between Login and Close,
+// prints errors to stdout, leaves NULs in the output and does not support cancellation.
 func Rcon(ctx context.Context, host string, port uint16, password, command string) (string, error) {
 	c, err := DialRcon(ctx, host, port, password)
 	if err != nil {
@@ -93,7 +93,7 @@ func readPacket(r io.Reader) (id, typ int32, body string, err error) {
 		return
 	}
 	if size < 10 || size > 8192 {
-		err = fmt.Errorf("paquete con tamaño inválido: %d", size)
+		err = fmt.Errorf("packet with invalid size: %d", size)
 		return
 	}
 	buf := make([]byte, size)

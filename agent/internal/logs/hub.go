@@ -1,4 +1,4 @@
-// Package logs sigue los logs de los contenedores y los reparte a suscriptores.
+// Package logs follows the containers' logs and distributes them to subscribers.
 package logs
 
 import (
@@ -17,11 +17,11 @@ import (
 const (
 	ringSize     = 500
 	subBuffer    = 1024
-	maxLineBytes = 64 * 1024 // el ring (500 líneas) queda acotado a ~32 MiB por servidor
-	truncMarker  = " …[truncada]"
+	maxLineBytes = 64 * 1024 // the ring (500 lines) is bounded to ~32 MiB per server
+	truncMarker  = " …[truncated]"
 	defaultGrace = 30 * time.Second
-	redacted     = "[oculto]"
-	minSecretLen = 8 // más cortos ocultarían texto normal
+	redacted     = "[hidden]"
+	minSecretLen = 8 // shorter ones would hide normal text
 )
 
 type Line struct {
@@ -29,25 +29,25 @@ type Line struct {
 	Text string
 }
 
-// Subscription es una suscripción a los logs de un servidor.
+// Subscription is a subscription to a server's logs.
 //
-// Lines entrega primero el replay del buffer circular (las últimas `tail` líneas,
-// máx. 500) y luego las nuevas. Se cierra cuando muere el follower (EOF del
-// stream, Reset, contenedor borrado o cambio de contenedor). Si el suscriptor no
-// lee y su buffer se llena, las líneas nuevas se descartan sin bloquear a nadie y
-// se cuentan: Dropped() devuelve el total acumulado, para que la capa WS emita
-// StreamDropped{count} (spec §5.2) con la diferencia desde el último aviso.
-// Close es idempotente y seguro tras el cierre del follower.
+// Lines first delivers the replay of the circular buffer (the last `tail` lines,
+// max. 500) and then the new ones. It closes when the follower dies (stream
+// EOF, Reset, container deleted or container change). If the subscriber does not
+// read and its buffer fills up, new lines are dropped without blocking anyone
+// and counted: Dropped() returns the accumulated total, so that the WS layer emits
+// StreamDropped{count} (spec §5.2) with the difference since the last notice.
+// Close is idempotent and safe after the follower closes.
 type Subscription struct {
 	Lines   <-chan Line
 	dropped atomic.Uint64
 	unsub   func()
 }
 
-// Dropped devuelve el número acumulado de líneas descartadas por este suscriptor.
+// Dropped returns the accumulated number of lines dropped for this subscriber.
 func (s *Subscription) Dropped() uint64 { return s.dropped.Load() }
 
-// Close da de baja la suscripción (inicia el periodo de gracia si era la última).
+// Close unsubscribes (it starts the grace period if it was the last one).
 func (s *Subscription) Close() { s.unsub() }
 
 type Hub struct {
@@ -55,11 +55,11 @@ type Hub struct {
 	mu        sync.Mutex
 	followers map[string]*follower
 	grace     time.Duration
-	secrets   func(serverID string) []string // plan-9: lo que no debe salir en la consola
+	secrets   func(serverID string) []string // plan-9: what must not appear in the console
 
-	// graceHook (solo tests) se invoca al inicio del callback del temporizador de gracia.
+	// graceHook (tests only) is invoked at the start of the grace timer's callback.
 	graceHook func()
-	// graceDone (solo tests) se invoca al final del callback del temporizador de gracia, tras dropIfIdle.
+	// graceDone (tests only) is invoked at the end of the grace timer's callback, after dropIfIdle.
 	graceDone func()
 }
 
@@ -86,16 +86,16 @@ func NewHub(eng docker.Engine) *Hub {
 	return &Hub{eng: eng, followers: map[string]*follower{}, grace: defaultGrace}
 }
 
-// SetGrace cambia el periodo de gracia (por defecto 30 s) para las próximas bajas.
+// SetGrace changes the grace period (30 s by default) for upcoming unsubscribes.
 func (h *Hub) SetGrace(d time.Duration) {
 	h.mu.Lock()
 	h.grace = d
 	h.mu.Unlock()
 }
 
-// SetSecrets fija de dónde sale, por servidor, lo que hay que ocultar en sus logs (contraseña RCON, API key de
-// CurseForge; L2 del Plan 3: los modos debug de itzg pueden imprimirlas). Se consulta al abrir cada follower: un
-// cambio de spec recrea el contenedor y abre otro.
+// SetSecrets sets where, per server, what must be hidden in its logs comes from (RCON password, CurseForge API
+// key; L2 of Plan 3: itzg's debug modes may print them). It is queried when each follower opens: a spec
+// change recreates the container and opens another.
 func (h *Hub) SetSecrets(fn func(serverID string) []string) {
 	h.mu.Lock()
 	h.secrets = fn
@@ -115,13 +115,13 @@ func (h *Hub) secretsOf(serverID string) []string {
 			out = append(out, s)
 		}
 	}
-	// Los largos primero: si uno contiene a otro, ocultar antes el corto dejaría a la vista el resto del largo.
+	// Longest first: if one contains another, hiding the short one first would leave the rest of the long one visible.
 	slices.SortStableFunc(out, func(a, b string) int { return len(b) - len(a) })
 	return out
 }
 
-// redact sustituye cada aparición de un secreto por [oculto] (secrets, de más largo a más corto). En una línea
-// truncada (acaba en truncMarker), el principio de un secreto cortado por el truncado también se oculta.
+// redact replaces each occurrence of a secret with [hidden] (secrets, longest to shortest). In a truncated
+// line (ending in truncMarker), the beginning of a secret cut off by the truncation is also hidden.
 func redact(text string, secrets []string) string {
 	for _, s := range secrets {
 		if strings.Contains(text, s) {
@@ -132,7 +132,7 @@ func redact(text string, secrets []string) string {
 	if !truncated {
 		return text
 	}
-	cut := 0 // el prefijo de secreto más largo con el que acaba la línea
+	cut := 0 // the longest secret prefix the line ends with
 	for _, s := range secrets {
 		for k := len(s) - 1; k > cut; k-- {
 			if strings.HasSuffix(body, s[:k]) {
@@ -147,7 +147,7 @@ func redact(text string, secrets []string) string {
 	return body[:len(body)-cut] + redacted + truncMarker
 }
 
-// Subscribe es SubscribeSub sin contador de descartes.
+// Subscribe is SubscribeSub without a drop counter.
 func (h *Hub) Subscribe(serverID, containerID string, tail int) (<-chan Line, func(), error) {
 	s, err := h.SubscribeSub(serverID, containerID, tail)
 	if err != nil {
@@ -156,10 +156,10 @@ func (h *Hub) Subscribe(serverID, containerID string, tail int) (<-chan Line, fu
 	return s.Lines, s.Close, nil
 }
 
-// SubscribeSub suscribe a los logs de serverID. El primer suscriptor abre
-// `docker logs --follow` con `tail` líneas; los siguientes comparten el follower.
-// Si containerID cambia respecto al follower vigente, este se cierra y se abre otro.
-// Nunca devuelve una suscripción a un follower ya cerrado: en ese caso abre uno nuevo.
+// SubscribeSub subscribes to serverID's logs. The first subscriber opens
+// `docker logs --follow` with `tail` lines; later ones share the follower.
+// If containerID differs from the current follower's, that one is closed and another is opened.
+// It never returns a subscription to an already closed follower: in that case it opens a new one.
 func (h *Hub) SubscribeSub(serverID, containerID string, tail int) (*Subscription, error) {
 	for {
 		h.mu.Lock()
@@ -172,7 +172,7 @@ func (h *Hub) SubscribeSub(serverID, containerID string, tail int) (*Subscriptio
 		if f == nil {
 			h.mu.Unlock()
 			secrets := h.secretsOf(serverID)
-			// Docker se consulta sin h.mu: un daemon lento no bloquea a otros servidores.
+			// Docker is queried without h.mu: a slow daemon does not block other servers.
 			ctx, cancel := context.WithCancel(context.Background())
 			rc, err := h.eng.Logs(ctx, containerID, tail)
 			if err != nil {
@@ -181,7 +181,7 @@ func (h *Hub) SubscribeSub(serverID, containerID string, tail int) (*Subscriptio
 			}
 			h.mu.Lock()
 			if cur := h.followers[serverID]; cur != nil {
-				// Otro Subscribe se nos adelantó: descartamos nuestro stream y lo reintentamos.
+				// Another Subscribe got ahead of us: we discard our stream and retry.
 				h.mu.Unlock()
 				cancel()
 				_ = rc.Close()
@@ -195,7 +195,7 @@ func (h *Hub) SubscribeSub(serverID, containerID string, tail int) (*Subscriptio
 		if s := f.subscribe(tail); s != nil {
 			return s, nil
 		}
-		// El follower se cerró entre medias (gracia, EOF, Reset): se reintenta.
+		// The follower closed in between (grace, EOF, Reset): retry.
 	}
 }
 
@@ -208,7 +208,7 @@ func (h *Hub) Reset(serverID string) {
 	}
 }
 
-// drop cierra f y lo quita del mapa solo si sigue siendo el follower vigente.
+// drop closes f and removes it from the map only if it is still the current follower.
 func (h *Hub) drop(f *follower) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -218,8 +218,8 @@ func (h *Hub) drop(f *follower) {
 	f.close()
 }
 
-// dropIfIdle comprueba que f sigue sin suscriptores y lo cierra, de forma atómica
-// respecto a Subscribe (h.mu y luego f.mu, el mismo orden que drop).
+// dropIfIdle checks that f still has no subscribers and closes it, atomically
+// with respect to Subscribe (h.mu and then f.mu, the same order as drop).
 func (h *Hub) dropIfIdle(f *follower) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -235,7 +235,7 @@ func (h *Hub) dropIfIdle(f *follower) {
 	f.close()
 }
 
-// subscribe devuelve nil si el follower ya está cerrado.
+// subscribe returns nil if the follower is already closed.
 func (f *follower) subscribe(tail int) *Subscription {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -263,7 +263,7 @@ func (f *follower) subscribe(tail int) *Subscription {
 	var once sync.Once
 	s.unsub = func() {
 		once.Do(func() {
-			// h.mu antes que f.mu (mismo orden que drop), así que la gracia se lee antes.
+			// h.mu before f.mu (same order as drop), so the grace is read first.
 			f.hub.mu.Lock()
 			grace := f.hub.grace
 			f.hub.mu.Unlock()
@@ -288,7 +288,7 @@ func (f *follower) subscribe(tail int) *Subscription {
 
 func (f *follower) run(ctx context.Context, rc io.ReadCloser) {
 	defer rc.Close()
-	go func() { <-ctx.Done(); rc.Close() }() // Close es idempotente en Fake y Moby
+	go func() { <-ctx.Done(); rc.Close() }() // Close is idempotent in Fake and Moby
 	br := bufio.NewReaderSize(rc, 64*1024)
 	for {
 		line, err := readLine(br)
@@ -304,8 +304,8 @@ func (f *follower) run(ctx context.Context, rc io.ReadCloser) {
 	f.hub.drop(f)
 }
 
-// readLine lee una línea; si supera maxLineBytes la trunca (con marcador) y descarta
-// el resto en vez de abortar. Devuelve la última línea parcial junto con el error.
+// readLine reads a line; if it exceeds maxLineBytes it truncates it (with a marker) and discards
+// the rest instead of aborting. It returns the last partial line together with the error.
 func readLine(br *bufio.Reader) ([]byte, error) {
 	var buf []byte
 	truncated := false
@@ -354,7 +354,7 @@ func (f *follower) publish(l Line) {
 	for _, s := range f.subs {
 		select {
 		case s.ch <- l:
-		default: // suscriptor lento: se descarta y se cuenta para no bloquear al resto
+		default: // slow subscriber: dropped and counted so as not to block the rest
 			s.sub.dropped.Add(1)
 		}
 	}
@@ -378,8 +378,8 @@ func (f *follower) close() {
 	}
 }
 
-// parseLine separa el timestamp RFC3339Nano que añade Docker ("2026-...Z texto").
-// Las líneas de TTY pueden traer \r al final; se elimina.
+// parseLine splits off the RFC3339Nano timestamp Docker adds ("2026-...Z text").
+// TTY lines may carry a trailing \r; it is removed.
 func parseLine(raw string) Line {
 	raw = strings.TrimRight(raw, "\r")
 	ts, rest, ok := strings.Cut(raw, " ")

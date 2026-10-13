@@ -9,7 +9,7 @@ import (
 	"github.com/moby/moby/api/types/container"
 )
 
-// Respuesta real (recortada) de GET /containers/{id}/stats?stream=false&one-shot=true en cgroup v2.
+// Real (trimmed) response from GET /containers/{id}/stats?stream=false&one-shot=true on cgroup v2.
 const statsV2 = `{
   "read": "2026-10-12T10:00:05.123456789Z",
   "cpu_stats": {"cpu_usage": {"total_usage": 52000000000, "usage_in_kernelmode": 1, "usage_in_usermode": 2}, "system_cpu_usage": 9000000000000, "online_cpus": 8},
@@ -34,7 +34,7 @@ func TestStatsFromCgroupV2(t *testing.T) {
 		t.Fatalf("net = %d / %d", s.NetRxBytes, s.NetTxBytes)
 	}
 	if s.Read.IsZero() {
-		t.Fatal("read vacío")
+		t.Fatal("empty read")
 	}
 }
 
@@ -49,7 +49,7 @@ func TestStatsFromCgroupV1AndFallbacks(t *testing.T) {
 	if s.MemBytes != 700 {
 		t.Fatalf("v1: mem = %d, want 700", s.MemBytes)
 	}
-	// caché mayor que el uso (lectura incoherente): se devuelve el uso tal cual
+	// cache greater than usage (inconsistent reading): the usage is returned as is
 	r.MemoryStats = container.MemoryStats{Usage: 100, Stats: map[string]uint64{"inactive_file": 500}}
 	if got := statsFrom(&r).MemBytes; got != 100 {
 		t.Fatalf("mem = %d, want 100", got)
@@ -67,19 +67,19 @@ func TestFakeStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	if s, err := f.Stats(ctx, id); err != nil || s != (Stats{}) {
-		t.Fatalf("sin SetStats: %+v %v", s, err)
+		t.Fatalf("without SetStats: %+v %v", s, err)
 	}
 	f.SetStats(id, Stats{CPUTotalNs: 5, MemBytes: 7})
 	if s, _ := f.Stats(ctx, id); s.CPUTotalNs != 5 || s.MemBytes != 7 {
 		t.Fatalf("stats = %+v", s)
 	}
-	f.StatsErr = errors.New("daemon ocupado")
+	f.StatsErr = errors.New("daemon busy")
 	if _, err := f.Stats(ctx, id); err == nil {
-		t.Fatal("StatsErr debe devolverse")
+		t.Fatal("StatsErr must be returned")
 	}
 	f.StatsErr = nil
 	_ = f.Remove(ctx, id)
 	if _, err := f.Stats(ctx, id); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("tras Remove: %v", err)
+		t.Fatalf("after Remove: %v", err)
 	}
 }

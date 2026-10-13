@@ -9,14 +9,14 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 )
 
-// bRouter guarda la spec del mc-router del nodo (plan-8) bajo la clave "spec". Sin clave = el nodo
-// no tiene router. El bucket se crea al primer uso para no tocar la lista de buckets de Open.
+// bRouter stores the node's mc-router spec (plan-8) under the "spec" key. No key = the node
+// has no router. The bucket is created on first use so as not to touch Open's bucket list.
 var (
 	bRouter     = []byte("router")
 	kRouterSpec = []byte("spec")
 )
 
-// RouterSpec devuelve la spec del router guardada, o nil si no hay.
+// RouterSpec returns the stored router spec, or nil if there is none.
 func (s *Store) RouterSpec() (*mcsmv1.RouterSpec, error) {
 	var out *mcsmv1.RouterSpec
 	err := s.db.View(func(tx *bbolt.Tx) error {
@@ -38,10 +38,10 @@ func (s *Store) RouterSpec() (*mcsmv1.RouterSpec, error) {
 	return out, err
 }
 
-// PutRouterSpec guarda (o sustituye) la spec del router.
+// PutRouterSpec stores (or replaces) the router spec.
 func (s *Store) PutRouterSpec(sp *mcsmv1.RouterSpec) error {
 	if sp == nil {
-		return errors.New("store: spec de router vacía")
+		return errors.New("store: empty router spec")
 	}
 	raw, err := proto.Marshal(sp)
 	if err != nil {
@@ -56,7 +56,7 @@ func (s *Store) PutRouterSpec(sp *mcsmv1.RouterSpec) error {
 	})
 }
 
-// DeleteRouterSpec borra la spec del router (idempotente).
+// DeleteRouterSpec deletes the router spec (idempotent).
 func (s *Store) DeleteRouterSpec() error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bRouter)

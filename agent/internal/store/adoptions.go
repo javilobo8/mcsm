@@ -10,15 +10,15 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 )
 
-// bAdoptions guarda las adopciones (plan-6, spec §6.7): servidor importado → contenedor original que
-// el agente sigue sin recrear hasta el primer cambio de spec. Sobrevive a DeleteSpec y a
-// ForgetWithTombstone a propósito: el borrado pendiente de un importado necesita saber qué contenedor
-// parar. La quita quien borra o sustituye ese contenedor (DeleteAdoption). El bucket se crea al
-// primer uso (no toca la lista de buckets de Open).
+// bAdoptions stores the adoptions (plan-6, spec §6.7): imported server → original container that
+// the agent keeps without recreating until the first spec change. It survives DeleteSpec and
+// ForgetWithTombstone on purpose: the pending deletion of an imported server needs to know which container
+// to stop. Whoever deletes or replaces that container removes it (DeleteAdoption). The bucket is created on
+// first use (it does not touch Open's bucket list).
 var bAdoptions = []byte("adoptions")
 
-// Adoption es un contenedor adoptado: su id, el slug del servidor (alias de red y etiquetas
-// sintetizadas) y la versión de la spec con la que se adoptó (una mayor lo recrea).
+// Adoption is an adopted container: its id, the server's slug (network alias and synthesized
+// labels) and the spec version it was adopted with (a higher one recreates it).
 type Adoption struct {
 	ContainerID string `json:"containerId"`
 	Slug        string `json:"slug"`
@@ -37,11 +37,11 @@ func putAdoption(tx *bbolt.Tx, serverID string, a Adoption) error {
 	return b.Put([]byte(serverID), raw)
 }
 
-// PutAdoption guarda (o sustituye) la adopción de serverID y, si externalPath no es "", la carpeta
-// externa verificada (ver PutExternalPath), en una transacción.
+// PutAdoption stores (or replaces) serverID's adoption and, if externalPath is not "", the verified
+// external folder (see PutExternalPath), in one transaction.
 func (s *Store) PutAdoption(serverID string, a Adoption, externalPath string) error {
 	if serverID == "" || a.ContainerID == "" {
-		return errors.New("store: adopción sin servidor o sin contenedor")
+		return errors.New("store: adoption without server or container")
 	}
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		if err := putAdoption(tx, serverID, a); err != nil {
@@ -51,13 +51,13 @@ func (s *Store) PutAdoption(serverID string, a Adoption, externalPath string) er
 	})
 }
 
-// AdoptWithSpec guarda la adopción, la carpeta externa verificada (si externalPath no es "") y la spec
-// (anulando su lápida, como PutSpec) en una transacción: nunca queda una adopción sin la spec que la
-// pidió. Si ya hay guardada una spec más nueva (un SyncSpecs con la v2 de «Adoptar y aplicar» se
-// adelantó a un ImportAdopt v1 tardío), se conserva esa: la adopción v1 hará que se recree.
+// AdoptWithSpec stores the adoption, the verified external folder (if externalPath is not "") and the spec
+// (clearing its tombstone, like PutSpec) in one transaction: an adoption never exists without the spec that
+// requested it. If a newer spec is already stored (a SyncSpecs with v2 from "Adopt and apply" got
+// ahead of a late ImportAdopt v1), that one is kept: the v1 adoption will cause it to be recreated.
 func (s *Store) AdoptWithSpec(sp *mcsmv1.ServerSpec, a Adoption, externalPath string) error {
 	if sp.GetServerId() == "" || a.ContainerID == "" {
-		return errors.New("store: adopción sin servidor o sin contenedor")
+		return errors.New("store: adoption without server or container")
 	}
 	raw, err := proto.Marshal(sp)
 	if err != nil {
@@ -87,7 +87,7 @@ func (s *Store) AdoptWithSpec(sp *mcsmv1.ServerSpec, a Adoption, externalPath st
 	})
 }
 
-// Adoption devuelve la adopción de serverID, o nil si no hay.
+// Adoption returns serverID's adoption, or nil if there is none.
 func (s *Store) Adoption(serverID string) (*Adoption, error) {
 	var out *Adoption
 	err := s.db.View(func(tx *bbolt.Tx) error {
@@ -109,7 +109,7 @@ func (s *Store) Adoption(serverID string) (*Adoption, error) {
 	return out, err
 }
 
-// Adoptions devuelve todas las adopciones por server_id.
+// Adoptions returns all the adoptions by server_id.
 func (s *Store) Adoptions() (map[string]Adoption, error) {
 	out := map[string]Adoption{}
 	err := s.db.View(func(tx *bbolt.Tx) error {
@@ -129,7 +129,7 @@ func (s *Store) Adoptions() (map[string]Adoption, error) {
 	return out, err
 }
 
-// AdoptedBy devuelve el servidor que adoptó containerID, o "" si ninguno.
+// AdoptedBy returns the server that adopted containerID, or "" if none.
 func (s *Store) AdoptedBy(containerID string) (string, error) {
 	all, err := s.Adoptions()
 	if err != nil {
@@ -143,7 +143,7 @@ func (s *Store) AdoptedBy(containerID string) (string, error) {
 	return "", nil
 }
 
-// DeleteAdoption quita la adopción de serverID (idempotente).
+// DeleteAdoption removes serverID's adoption (idempotent).
 func (s *Store) DeleteAdoption(serverID string) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		if b := tx.Bucket(bAdoptions); b != nil {

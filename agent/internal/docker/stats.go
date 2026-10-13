@@ -9,8 +9,8 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// Stats pide una sola muestra (`stream=false&one-shot=true`): responde al instante,
-// sin el segundo de espera que necesita Docker para rellenar precpu_stats.
+// Stats requests a single sample (`stream=false&one-shot=true`): it answers instantly,
+// without the second of waiting Docker needs to fill precpu_stats.
 func (m *Moby) Stats(ctx context.Context, id string) (Stats, error) {
 	res, err := m.cli.ContainerStats(ctx, id, client.ContainerStatsOptions{Stream: false, IncludePreviousSample: false})
 	if err != nil {
@@ -24,7 +24,7 @@ func (m *Moby) Stats(ctx context.Context, id string) (Stats, error) {
 	return statsFrom(&s), nil
 }
 
-// statsFrom reduce la respuesta de Docker a lo que usa el muestreador.
+// statsFrom reduces Docker's response to what the sampler uses.
 func statsFrom(s *container.StatsResponse) Stats {
 	out := Stats{
 		Read:        s.Read,
@@ -44,8 +44,8 @@ func statsFrom(s *container.StatsResponse) Stats {
 	return out
 }
 
-// memWithoutCache replica el cálculo de la CLI de Docker: uso menos la caché de
-// páginas inactiva (cgroup v1: total_inactive_file; cgroup v2: inactive_file).
+// memWithoutCache replicates the Docker CLI's calculation: usage minus the inactive
+// page cache (cgroup v1: total_inactive_file; cgroup v2: inactive_file).
 func memWithoutCache(m container.MemoryStats) uint64 {
 	if v, ok := m.Stats["total_inactive_file"]; ok && v < m.Usage {
 		return m.Usage - v
