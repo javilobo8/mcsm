@@ -1,7 +1,7 @@
 import type { z } from "zod";
 
 /**
- * Version selector (plan 10, spec docs/superpowers/specs/2026-10-13-selector-versiones-design.md):
+ * Version selector (plan 10, spec docs/superpowers/specs/2026-10-13-version-selector-design.md):
  * types with a version list, the spec's `build` field and its itzg variable, version
  * comparison and minimum Java. The `build` rules mirror agent/internal/spec/build.go; the cases
  * in proto/fixtures/build-cases.json are tested on both sides.

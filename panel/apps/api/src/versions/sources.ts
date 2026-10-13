@@ -2,7 +2,7 @@ import { z } from "zod";
 import { compareVersions, isStableVersion, type BuildEntry, type VersionEntry, type VersionListType } from "@mcsm/shared";
 
 /**
- * Official version sources (spec 2026-10-13-selector-versiones-design.md §2). Each adapter requests
+ * Official version sources (spec 2026-10-13-version-selector-design.md §2). Each adapter requests
  * its documents with `get` (the VersionCatalog adds cache, deadline and caps) and normalizes them into lists from
  * newest to oldest. A response with an unexpected shape throws UpstreamError (→ 502 or stored
  * list), never a 500.

@@ -8,16 +8,16 @@ fixed so that nothing has to be redesigned.
 
 | # | Plan | Spec | Status |
 |---|------|------|--------|
-| 1 | [Foundations](2026-10-12-01-fundamentos.md): protocol, reconciling agent, panel with nodes/servers, logs and console, basic UI, deployment | §3, §4, §5, §6.1–6.3, §7, §8, §9, §10, §12 | done (branch `feat/plan-1`) |
-| 2 | [Metrics](2026-10-12-02-metricas.md) | §4 `metric_samples`, §6.4, §8 (charts) | done (branch `feat/wave-b`) |
-| 3 | [Full configuration and templates](2026-10-12-03-configuracion-plantillas.md) | §4.1 complete, §4 `templates`, §8 (sectioned form, wizard) | done (branch `feat/wave-b`) |
+| 1 | [Foundations](2026-10-12-01-foundations.md): protocol, reconciling agent, panel with nodes/servers, logs and console, basic UI, deployment | §3, §4, §5, §6.1–6.3, §7, §8, §9, §10, §12 | done (branch `feat/plan-1`) |
+| 2 | [Metrics](2026-10-12-02-metrics.md) | §4 `metric_samples`, §6.4, §8 (charts) | done (branch `feat/wave-b`) |
+| 3 | [Full configuration and templates](2026-10-12-03-configuration-templates.md) | §4.1 complete, §4 `templates`, §8 (sectioned form, wizard) | done (branch `feat/wave-b`) |
 | 4 | [Backups](2026-10-12-04-backups.md) | §4 `backups`/`jobs`, §6.5, §7 `JobService`/`BackupService`, §8 (Backups and History tabs) | done (branch `feat/wave-b`) |
-| 5 | [Files](2026-10-12-05-archivos.md) | §6.6, HTTP transfers §5.1, §8 (Files tab) | done (branch `feat/wave-b`) |
-| 6 | [Importing existing servers](2026-10-12-06-importacion.md) | §6.7, §7 `ImportService`, §8 (Nodes → Import) | done (branch `feat/wave-b`) |
-| 7 | [Migration between nodes](2026-10-12-07-migracion.md) | §7 `MigrationService` | done (branch `feat/wave-b`) |
+| 5 | [Files](2026-10-12-05-files.md) | §6.6, HTTP transfers §5.1, §8 (Files tab) | done (branch `feat/wave-b`) |
+| 6 | [Importing existing servers](2026-10-12-06-import.md) | §6.7, §7 `ImportService`, §8 (Nodes → Import) | done (branch `feat/wave-b`) |
+| 7 | [Migration between nodes](2026-10-12-07-migration.md) | §7 `MigrationService` | done (branch `feat/wave-b`) |
 | 8 | [mc-router](2026-10-12-08-mc-router.md) | §4 `router_deployments`, §7 `RouterService` | done (branch `feat/wave-b`) |
-| 9 | [UI tests and polish](2026-10-12-09-pulido.md) | §11 (Playwright), §8 (Settings), §5.2–5.3, §9, §10 | done (branch `feat/plan-9-int`) |
-| 10 | [Version picker](2026-10-13-10-selector-versiones.md) | [own spec](../specs/2026-10-13-selector-versiones-design.md) | done (branch `feat/plan-10`) |
+| 9 | [UI tests and polish](2026-10-12-09-polish.md) | §11 (Playwright), §8 (Settings), §5.2–5.3, §9, §10 | done (branch `feat/plan-9-int`) |
+| 10 | [Version picker](2026-10-13-10-version-selector.md) | [own spec](../specs/2026-10-13-version-selector-design.md) | done (branch `feat/plan-10`) |
 
 Execution in parallel waves: see [COORDINATION.md](COORDINATION.md).
 

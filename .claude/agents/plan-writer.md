@@ -20,7 +20,7 @@ must be self-sufficient.
 - Roadmap: `docs/superpowers/plans/README.md` (scope, order and acceptance
   criteria of each plan — don't redesign them).
 - Plan 1 as the model for format and granularity:
-  `docs/superpowers/plans/2026-10-12-01-fundamentos.md` (header, Global Constraints,
+  `docs/superpowers/plans/2026-10-12-01-foundations.md` (header, Global Constraints,
   Review Focus, File structure, tasks with Files/Interfaces/Steps).
 - **The repo's real code.** Before writing a task, read the files it will
   touch and the interfaces it consumes. Use the names, signatures and patterns that exist,

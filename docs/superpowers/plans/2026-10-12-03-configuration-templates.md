@@ -4156,7 +4156,7 @@ Stop the panel in the background and delete `$E2E` (`rm -rf /tmp/mcsm-test-p3`).
 
 If something deviated from the plan (itzg variable names, messages, UI behavior), note it as a footnote to this task and commit only that note:
 ```bash
-git add docs/superpowers/plans/2026-10-12-03-configuracion-plantillas.md
+git add docs/superpowers/plans/2026-10-12-03-configuration-templates.md
 git commit -m "docs: verification notes for plan 3
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"

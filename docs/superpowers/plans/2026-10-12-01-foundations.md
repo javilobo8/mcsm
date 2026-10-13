@@ -7564,7 +7564,7 @@ docker compose -f deploy/docker-compose.yml up -d --build panel
 9. Delete the server keeping the data: it disappears from the list; `deploy/data/e2e-test/data` still exists.
 10. `go test ./... && pnpm test` green.
 
-Note any deviation in `docs/superpowers/plans/2026-10-12-01-fundamentos.md` as a footnote to this task before closing the plan.
+Note any deviation in `docs/superpowers/plans/2026-10-12-01-foundations.md` as a footnote to this task before closing the plan.
 
 - [ ] **Step 6: Commit**
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (agent), TypeScript strict + zod 4 (shared), Fastify 5 (API), React 19 + TanStack Query + shadcn (web), Vitest, Playwright.
 
-**Spec:** `docs/superpowers/specs/2026-10-13-selector-versiones-design.md` (extends §4.1 and §8 of `2026-10-12-mc-server-manager-design.md`).
+**Spec:** `docs/superpowers/specs/2026-10-13-version-selector-design.md` (extends §4.1 and §8 of `2026-10-12-mc-server-manager-design.md`).
 
 ## Global Constraints
 
@@ -217,7 +217,7 @@ Expected: FAIL (`Cannot find module './versions.js'`).
 import type { z } from "zod";
 
 /**
- * Version selector (plan 10, spec docs/superpowers/specs/2026-10-13-selector-versiones-design.md):
+ * Version selector (plan 10, spec docs/superpowers/specs/2026-10-13-version-selector-design.md):
  * types with a version list, the spec's `build` field and its itzg variable, version comparison and
  * minimum Java. The `build` rules mirror agent/internal/spec/build.go; the cases in
  * proto/fixtures/build-cases.json are tested on both sides.
@@ -842,7 +842,7 @@ import { z } from "zod";
 import { compareVersions, isStableVersion, type BuildEntry, type VersionEntry, type VersionListType } from "@mcsm/shared";
 
 /**
- * Official version sources (spec 2026-10-13-selector-versiones-design.md §2). Each adapter requests
+ * Official version sources (spec 2026-10-13-version-selector-design.md §2). Each adapter requests
  * its documents with `get` (the VersionCatalog adds cache, timeout and limits) and normalises them to
  * lists from newest to oldest. A response with an unexpected shape throws UpstreamError (→ 502 or the
  * stored list), never a 500.
@@ -1250,7 +1250,7 @@ interface Entry { doc: unknown; fetchedAt: number; expiresAt: number }
 
 /**
  * Version lists and builds from the official sources with an in-memory cache per source URL (spec
- * 2026-10-13-selector-versiones-design.md §4): lists 1 h, builds 15 min, at most MAX_ENTRIES
+ * 2026-10-13-version-selector-design.md §4): lists 1 h, builds 15 min, at most MAX_ENTRIES
  * entries (the least used one is discarded). Simultaneous queries to one URL share the download. If
  * the source fails the stored copy is served with `stale: true`; with nothing stored, 502.
  */
@@ -2323,7 +2323,7 @@ and in the following paragraph change “generated env (TYPE, VERSION, MEMORY, E
 `docs/superpowers/plans/README.md`: add to the table
 
 ```markdown
-| 10 | [Version selector](2026-10-13-10-selector-versiones.md) | [own spec](../specs/2026-10-13-selector-versiones-design.md) | done (branch `feat/plan-10`) |
+| 10 | [Version selector](2026-10-13-10-version-selector.md) | [own spec](../specs/2026-10-13-version-selector-design.md) | done (branch `feat/plan-10`) |
 ```
 
 `CLAUDE.md`, at the end of “Lessons learned”:

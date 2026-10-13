@@ -26,7 +26,7 @@ interface Entry { doc: unknown; fetchedAt: number; expiresAt: number }
 
 /**
  * Lists of versions and builds from the official sources with an in-memory cache per origin URL (spec
- * 2026-10-13-selector-versiones-design.md §4): lists 1 h, builds 15 min, at most MAX_ENTRIES
+ * 2026-10-13-version-selector-design.md §4): lists 1 h, builds 15 min, at most MAX_ENTRIES
  * entries (the least used is discarded). Simultaneous queries to a URL share the download. If the
  * source fails, what is stored is served with `stale: true`; with nothing stored, 502.
  */
