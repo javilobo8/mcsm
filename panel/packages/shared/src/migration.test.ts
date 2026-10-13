@@ -45,15 +45,15 @@ describe("migration", () => {
   });
 
   it("migrationLeftovers: what is left undone when closing by hand", () => {
-    const names = (id: string) => ({ a: "Casa", b: "Garaje" })[id] ?? "?";
-    const base = { sourceNodeId: "a", targetNodeId: "b", sourceSlug: "uno", targetSlug: "uno-2", sourcePending: false, targetPending: false, targetConfirmPending: false };
+    const names = (id: string) => ({ a: "Home", b: "Garage" })[id] ?? "?";
+    const base = { sourceNodeId: "a", targetNodeId: "b", sourceSlug: "one", targetSlug: "one-2", sourcePending: false, targetPending: false, targetConfirmPending: false };
     expect(migrationLeftovers({ ...base, phase: "rolling_back", targetPending: true, sourcePending: true }, names)).toEqual([
-      expect.stringMatching(/“Garaje”.*uno-2/),
-      expect.stringMatching(/is not started again on “Casa”/),
+      expect.stringMatching(/“Garage”.*one-2/),
+      expect.stringMatching(/is not started again on “Home”/),
     ]);
     expect(migrationLeftovers({ ...base, phase: "committed", sourcePending: true, targetConfirmPending: true }, names)).toEqual([
-      expect.stringMatching(/is not removed from “Casa”.*uno is still/),
-      expect.stringMatching(/is not confirmed on “Garaje”/),
+      expect.stringMatching(/is not removed from “Home”.*one is still/),
+      expect.stringMatching(/is not confirmed on “Garage”/),
     ]);
     expect(migrationLeftovers({ ...base, phase: "done" }, names)).toEqual([]);
   });

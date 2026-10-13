@@ -23,14 +23,14 @@ const post = async (u: string, payload: object) => await app.inject({ method: "P
 
 describe("servers", () => {
   it("creates with generated slug, port and rconPassword; hides the secret in listings", async () => {
-    let res = await post("/api/servers", { nodeId, name: "Supervivencia 2024 ñ", spec: { type: "PAPER", version: "1.21.4", memory: "4G" } });
+    let res = await post("/api/servers", { nodeId, name: "Survival 2024 ñ", spec: { type: "PAPER", version: "1.21.4", memory: "4G" } });
     expect(res.statusCode).toBe(201);
     const s1 = res.json();
-    expect(s1.slug).toBe("supervivencia-2024-n");
+    expect(s1.slug).toBe("survival-2024-n");
     expect(s1.spec.ports.game).toBe(25565);
     expect(s1.spec.rconPassword).toHaveLength(43);
     expect(s1.desiredState).toBe("stopped");
-    res = await post("/api/servers", { nodeId, name: "Creativo" });
+    res = await post("/api/servers", { nodeId, name: "Creative" });
     expect(res.json().spec.ports.game).toBe(25566);
     res = await app.inject({ method: "GET", url: "/api/servers", headers: { cookie } });
     expect(res.json()).toHaveLength(2);
@@ -40,10 +40,10 @@ describe("servers", () => {
   });
 
   it("rejects a duplicate slug and a taken port on the same node", async () => {
-    await post("/api/servers", { nodeId, name: "Uno", slug: "uno", spec: { ports: { game: 25570 } } });
-    let res = await post("/api/servers", { nodeId, name: "Otro", slug: "uno" });
+    await post("/api/servers", { nodeId, name: "One", slug: "one", spec: { ports: { game: 25570 } } });
+    let res = await post("/api/servers", { nodeId, name: "Other", slug: "one" });
     expect(res.statusCode).toBe(409);
-    res = await post("/api/servers", { nodeId, name: "Dos", spec: { ports: { game: 25570 } } });
+    res = await post("/api/servers", { nodeId, name: "Two", spec: { ports: { game: 25570 } } });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toMatch(/port/i);
   });
@@ -56,7 +56,7 @@ describe("servers", () => {
   });
 
   it("with the node offline: create works, power and command return 409", async () => {
-    const s = (await post("/api/servers", { nodeId, name: "Uno" })).json();
+    const s = (await post("/api/servers", { nodeId, name: "One" })).json();
     let res = await post(`/api/servers/${s.id}/power`, { action: "start" });
     expect(res.statusCode).toBe(409);
     res = await post(`/api/servers/${s.id}/command`, { command: "list" });
@@ -69,22 +69,22 @@ describe("servers", () => {
     await agent.waitFor("helloAck");
     agent.ack((await agent.waitFor("syncSpecs")).id);
 
-    const created = post("/api/servers", { nodeId, name: "Uno", desiredState: "running" });
+    const created = post("/api/servers", { nodeId, name: "One", desiredState: "running" });
     const apply = await agent.waitFor("applySpec");
     if (apply.body.case !== "applySpec") throw new Error();
-    expect(apply.body.value.server!.slug).toBe("uno");
+    expect(apply.body.value.server!.slug).toBe("one");
     expect(apply.body.value.server!.version).toBe(1n);
     expect(apply.body.value.server!.desiredState).toBe(1); // RUNNING
     agent.ack(apply.id);
     const s = (await created).json();
 
-    const patched = app.inject({ method: "PATCH", url: `/api/servers/${s.id}`, headers: { cookie }, payload: { name: "Uno renombrado", spec: { memory: "3G" } } });
+    const patched = app.inject({ method: "PATCH", url: `/api/servers/${s.id}`, headers: { cookie }, payload: { name: "One renamed", spec: { memory: "3G" } } });
     const apply2 = await agent.waitFor("applySpec");
     if (apply2.body.case !== "applySpec") throw new Error();
     expect(apply2.body.value.server!.version).toBe(2n);
     expect(JSON.parse(new TextDecoder().decode(apply2.body.value.server!.specJson)).memory).toBe("3G");
     agent.ack(apply2.id);
-    expect((await patched).json()).toMatchObject({ name: "Uno renombrado", specVersion: 2 });
+    expect((await patched).json()).toMatchObject({ name: "One renamed", specVersion: 2 });
 
     const power = post(`/api/servers/${s.id}/power`, { action: "stop" });
     const pa = await agent.waitFor("powerAction");
@@ -109,7 +109,7 @@ describe("servers", () => {
   });
 
   it("a PATCH that only changes the name does not increment spec_version", async () => {
-    const s = (await post("/api/servers", { nodeId, name: "Uno" })).json();
+    const s = (await post("/api/servers", { nodeId, name: "One" })).json();
     const res = await app.inject({ method: "PATCH", url: `/api/servers/${s.id}`, headers: { cookie }, payload: { name: "Renombrado" } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ name: "Renombrado", specVersion: 1 });
@@ -128,7 +128,7 @@ describe("servers", () => {
   });
 
   it("a PATCH during synchronization does not reach the agent until the SyncSpecs Ack", async () => {
-    const s = (await post("/api/servers", { nodeId, name: "Uno" })).json(); // node still disconnected
+    const s = (await post("/api/servers", { nodeId, name: "One" })).json(); // node still disconnected
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
     await agent.waitFor("helloAck");
@@ -149,7 +149,7 @@ describe("servers", () => {
     await agent.connect();
     await agent.waitFor("helloAck");
     agent.ack((await agent.waitFor("syncSpecs")).id);
-    const s = (await post("/api/servers", { nodeId, name: "Uno" })).json();
+    const s = (await post("/api/servers", { nodeId, name: "One" })).json();
     agent.ack((await agent.waitFor("applySpec")).id);
     expect(app.servers.get(s.id)!.desired_state).toBe("stopped");
     const power = post(`/api/servers/${s.id}/power`, { action: "start" });

@@ -38,11 +38,11 @@ describe("templates", () => {
     expect(tpl.spec).not.toHaveProperty("rconPassword");
     expect(JSON.stringify(tpl)).not.toContain(server.spec.rconPassword);
 
-    res = await req("POST", `/api/templates/${tpl.id}/servers`, { nodeId, name: "Copia" });
+    res = await req("POST", `/api/templates/${tpl.id}/servers`, { nodeId, name: "Copy" });
     expect(res.statusCode).toBe(201);
     const copy = res.json();
-    expect(copy.name).toBe("Copia");
-    expect(copy.slug).toBe("copia");
+    expect(copy.name).toBe("Copy");
+    expect(copy.slug).toBe("copy");
     expect(copy.spec.ports).toEqual({ game: 25565, extra: [] });
     expect(copy.spec.rconPassword).toHaveLength(43);
     expect(copy.spec.rconPassword).not.toBe(server.spec.rconPassword);

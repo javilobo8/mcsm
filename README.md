@@ -313,9 +313,9 @@ The **Events** page and each server's **History** record: exit with error, out o
 
 **Nodes → Import** (or a node's detail) detects the `itzg/minecraft-server` containers on that machine that the panel doesn't manage yet. You review them before adopting.
 
-- **Adopt** stops nothing: the original container keeps running until the first **Save and apply**, which recreates it with the `mcsm.*` labels and the same data folder. **Adopt and apply** does it all at once.
+- **Adopt** stops nothing: the original container keeps running until the first **Review and apply**, which recreates it with the `mcsm.*` labels and the same data folder. **Adopt and apply** does it all at once.
 - **Data outside `DATA_ROOT`** (`dataPath`): no backups or files, and they are not migrated.
-- **Docker Compose containers:** remove the service from the compose after the first “Save and apply”, or Compose will create it again.
+- **Docker Compose containers:** remove the service from the compose after the first “Review and apply”, or Compose will create it again.
 - **Moving off an external folder:** there is no button (the agent can't see folders outside `DATA_ROOT`). Delete the server without deleting its data, move the folder to `DATA_ROOT/<slug>/data` and import it again.
 
 ## Migration between nodes
@@ -346,7 +346,7 @@ Each server's **Migrate** tab moves it (world, configuration, backups and histor
   - The target is already protected: after confirming, the agent doesn't delete the server even if a restored panel asks it to.
 - **`restartPolicy: always`.** If the source's Docker daemon restarts between step 1 and the retirement, it starts the stopped container until the agent's next reconciliation (≤ 30 s), which stops it again. Avoid restarting Docker on the source during a migration, or use `unless-stopped` (the default).
 - **Late spec.** If a migration fails right as the server is being created on the target, the target may be left with an empty `DATA_ROOT/<slug>` that wasn't deleted. It would be caused by a command the agent ran late and is almost impossible. A later migration with that slug will answer “already exists”: delete it by hand.
-- **Imported servers still in their original container** (not yet “Save and apply”): when it finishes, retiring the source removes that container, as when deleting the server. If Docker Compose created it, remove that service from the compose, or Compose will create it again on the source.
+- **Imported servers still in their original container** (not yet “Review and apply”): when it finishes, retiring the source removes that container, as when deleting the server. If Docker Compose created it, remove that service from the compose, or Compose will create it again on the source.
 - **Servers with `dataPath`** (data outside `DATA_ROOT`): they are not migrated, and `dataPath` can't be removed from the configuration. To migrate it, delete the server without deleting data, move the folder to the node's `DATA_ROOT/<slug>/data` and import it again.
 
 ## Router (mc-router)

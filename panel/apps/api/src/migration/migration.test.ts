@@ -41,8 +41,8 @@ async function finished(jobId: string): Promise<JobDto> {
 }
 
 async function setup(opts: { desired?: "running" | "stopped"; busyPorts?: number[]; spec?: Spec } = {}) {
-  const a = await FakeNode.enroll(app, url, cookie, "nodo-a");
-  const b = await FakeNode.enroll(app, url, cookie, "nodo-b");
+  const a = await FakeNode.enroll(app, url, cookie, "node-a");
+  const b = await FakeNode.enroll(app, url, cookie, "node-b");
   const s = app.servers.create({ nodeId: a.id, name: "Survival", slug: "survival", spec: opts.spec ?? spec(25565), desiredState: opts.desired ?? "running" });
   for (const [i, port] of (opts.busyPorts ?? []).entries()) {
     app.servers.create({ nodeId: b.id, name: `Ocupa ${i}`, slug: `ocupa-${i}`, spec: spec(port), desiredState: "stopped" });
@@ -131,7 +131,7 @@ describe("migration", () => {
     a.ack(retire);
     const done = await finished(job.id);
     expect(done.status).toBe("ok");
-    expect(done.message).toMatch(/Migration completed: “Survival” is on “nodo-b”, port 25565/);
+    expect(done.message).toMatch(/Migration completed: “Survival” is on “node-b”, port 25565/);
     expect(app.servers.get(s.id)).toMatchObject({ node_id: b.id, slug: "survival", spec_version: 2, desired_state: "running", observed_spec_version: 2 });
     expect(app.migrations.get(job.id)).toMatchObject({ phase: "done", source_pending: 0, target_confirm_pending: 0, pending_error: null });
     expect(stagingFiles()).toEqual([]);
@@ -240,7 +240,7 @@ describe("migration", () => {
     b.ack(await b.next("migrateConfirm"));
     const done = await finished(job.id);
     expect(done.status).toBe("ok");
-    expect(done.message).toMatch(/“nodo-a” is offline.*when it reconnects/);
+    expect(done.message).toMatch(/“node-a” is offline.*when it reconnects/);
     expect(app.migrations.get(job.id)).toMatchObject({ phase: "committed", source_pending: 1 });
     // On returning, the source does not receive the server in removed_ids (the migration removes it) and does receive MigrateRetire.
     const sync = await a.connect({ [s.id]: 1n });
@@ -316,7 +316,7 @@ describe("migration", () => {
     await vi.waitFor(() => expect(app.agents.get(b.id)).toBeUndefined());
     const offline = await begin(s.id, { targetNodeId: b.id });
     expect(offline.statusCode).toBe(409);
-    expect(offline.json().error).toMatch(/target node “nodo-b” is offline/);
+    expect(offline.json().error).toMatch(/target node “node-b” is offline/);
     expect(app.migrations.latestForServer(s.id)).toBeNull();
   });
 });
@@ -346,10 +346,10 @@ describe("migration and router (Plan 8): check on confirm", () => {
   it("if another server on the target takes the hostname during the migration, it is not confirmed", async () => {
     const done = await untilCommit((b) => {
       // Direct write: the API already prevents it (the hostname is reserved by the migration).
-      app.servers.create({ nodeId: b.id, name: "Intruso", slug: "intruso", spec: routed(25570), desiredState: "stopped" });
+      app.servers.create({ nodeId: b.id, name: "Intruder", slug: "intruder", spec: routed(25570), desiredState: "stopped" });
     });
     expect(done.status).toBe("failed");
-    expect(done.message).toMatch(/Step 7\/7.*hostname “survival\.lan” is already used by “Intruso” on “nodo-b”/);
+    expect(done.message).toMatch(/Step 7\/7.*hostname “survival\.lan” is already used by “Intruder” on “node-b”/);
   });
 
   it("if the target's router is enabled on its port during the migration, it is not confirmed", async () => {
@@ -358,7 +358,7 @@ describe("migration and router (Plan 8): check on confirm", () => {
         .run(b.id, JSON.stringify(routerDeploymentSpecSchema.parse({ enabled: true, port: 25565 })), new Date().toISOString());
     });
     expect(done.status).toBe("failed");
-    expect(done.message).toMatch(/Step 7\/7.*port 25565 is now used by the router \(mc-router\) of “nodo-b”/);
+    expect(done.message).toMatch(/Step 7\/7.*port 25565 is now used by the router \(mc-router\) of “node-b”/);
   });
 });
 
@@ -383,16 +383,16 @@ describe("migration: invariants", () => {
   });
 
   it("with the removal of a source pending, another migration towards that node does not reuse its slug", async () => {
-    const a = await FakeNode.enroll(app, url, cookie, "nodo-a");
-    const b = await FakeNode.enroll(app, url, cookie, "nodo-b");
-    const c = await FakeNode.enroll(app, url, cookie, "nodo-c");
+    const a = await FakeNode.enroll(app, url, cookie, "node-a");
+    const b = await FakeNode.enroll(app, url, cookie, "node-b");
+    const c = await FakeNode.enroll(app, url, cookie, "node-c");
     const s = app.servers.create({ nodeId: a.id, name: "Survival", slug: "survival", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert({
       id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "survival", target_slug: "survival",
       source_version: 1, target_version: 2, target_port: 25565, target_spec: JSON.stringify(spec(25565)), was_running: 1, delete_source: 0,
     });
-    expect(app.migrations.commit(m, "running", null)).toBe(true); // <DATA_ROOT>/survival stays on nodo-a until MigrateRetire
-    const t = app.servers.create({ nodeId: c.id, name: "Otro", slug: "survival", spec: spec(25565), desiredState: "stopped" });
+    expect(app.migrations.commit(m, "running", null)).toBe(true); // <DATA_ROOT>/survival stays on node-a until MigrateRetire
+    const t = app.servers.create({ nodeId: c.id, name: "Other", slug: "survival", spec: spec(25565), desiredState: "stopped" });
     const p = await app.inject({ method: "GET", url: `/api/servers/${t.id}/migration/proposal?targetNodeId=${a.id}`, headers: { cookie } });
     expect(p.json()).toMatchObject({ slug: "survival-2" });
   });
@@ -421,7 +421,7 @@ describe("migration: pending work (I1, M4)", () => {
   it("the confirmation on the target is retried until the Ack without holding back the removal of the source", async () => {
     const { a, b, job } = await committed({ confirm: "busy" });
     expect(job.status).toBe("ok");
-    expect(job.message).toMatch(/confirm the migration on “nodo-b”.*server busy.*it will be retried/);
+    expect(job.message).toMatch(/confirm the migration on “node-b”.*server busy.*it will be retried/);
     expect(app.migrations.get(job.id)).toMatchObject({ phase: "committed", source_pending: 0, target_confirm_pending: 1 });
     expect(app.migrations.get(job.id)!.pending_error).toMatch(/server busy/);
     expect(app.migrations.blockingNodeCreate(a.id)).toBeNull(); // the source is already removed
@@ -434,7 +434,7 @@ describe("migration: pending work (I1, M4)", () => {
 
   it("with the node online, the text says why the removal is missing and not “when it reconnects” (M4, m5)", async () => {
     const { job } = await committed({ retire: "busy" });
-    expect(job.message).toMatch(/Could not remove the server from “nodo-a”.*could not be deleted yet.*it will be retried/);
+    expect(job.message).toMatch(/Could not remove the server from “node-a”.*could not be deleted yet.*it will be retried/);
     expect(job.message).not.toMatch(/when it reconnects|did not respond/);
     expect(app.migrations.get(job.id)).toMatchObject({ phase: "committed", source_pending: 1 });
   });

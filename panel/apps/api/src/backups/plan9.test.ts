@@ -27,7 +27,7 @@ const connectAgent = async () => {
   agent.ack((await agent.waitFor("backupList")).id);
   return agent;
 };
-const createServer = async () => (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+const createServer = async () => (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json();
 const job = async (id: string) => (await app.inject({ method: "GET", url: `/api/jobs/${id}`, headers: { cookie } })).json();
 
 describe("backups and jobs (Plan 9)", () => {

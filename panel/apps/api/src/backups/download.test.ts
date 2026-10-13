@@ -19,8 +19,8 @@ beforeEach(async () => {
 });
 afterEach(async () => { await app.close(); });
 
-async function setupBackup(trigger = BackupTrigger.MANUAL, filename = "uno-20261013-040000-1.tar.zst") {
-  const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+async function setupBackup(trigger = BackupTrigger.MANUAL, filename = "one-20261013-040000-1.tar.zst") {
+  const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json();
   const agent = new FakeAgent(url, nodeToken);
   await agent.connect();
   await agent.handshake();
@@ -83,7 +83,7 @@ describe("backup download", () => {
 
   it("404 when requesting another server's backup", async () => {
     const { agent, b } = await setupBackup();
-    const other = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Dos" } })).json();
+    const other = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Two" } })).json();
     const res = await app.inject({ method: "GET", url: `/api/servers/${other.id}/backups/${b.id}/download`, headers: { cookie } });
     expect(res.statusCode).toBe(404);
     agent.close();

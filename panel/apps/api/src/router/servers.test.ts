@@ -34,21 +34,21 @@ describe("servers and nodes with a router", () => {
     expect(res.json().spec.router).toEqual({ enabled: true, hostname: "survival.lan" });
     res = await post("/api/servers", { nodeId, name: "Mal", spec: routed("Survival.LAN") });
     expect(res.statusCode).toBe(400);
-    res = await post("/api/servers", { nodeId, name: "Sin", spec: routed("") });
+    res = await post("/api/servers", { nodeId, name: "Bare", spec: routed("") });
     expect(res.statusCode).toBe(400);
   });
 
   it("the hostname is unique per node among servers with the router enabled", async () => {
     const a = (await post("/api/servers", { nodeId, name: "Survival", spec: routed("survival.lan") })).json();
-    let res = await post("/api/servers", { nodeId, name: "Otro", spec: routed("survival.lan") });
+    let res = await post("/api/servers", { nodeId, name: "Other", spec: routed("survival.lan") });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe("Hostname “survival.lan” is already used by server “Survival” on this node");
     // Disabled does not compete; enabling it afterwards does.
-    const b = (await post("/api/servers", { nodeId, name: "Creativo", spec: routed("survival.lan", false) })).json();
+    const b = (await post("/api/servers", { nodeId, name: "Creative", spec: routed("survival.lan", false) })).json();
     expect(b.id).toBeDefined();
     res = await patch(`/api/servers/${b.id}`, { spec: routed("survival.lan") });
     expect(res.statusCode).toBe(409);
-    res = await patch(`/api/servers/${b.id}`, { spec: routed("creativo.lan") });
+    res = await patch(`/api/servers/${b.id}`, { spec: routed("creative.lan") });
     expect(res.statusCode).toBe(200);
     // Editing itself does not clash with itself.
     res = await patch(`/api/servers/${a.id}`, { spec: { memory: "3G", ...routed("survival.lan") } });
@@ -61,9 +61,9 @@ describe("servers and nodes with a router", () => {
 
   it("with the router enabled its port is neither assigned nor can be published", async () => {
     expect((await app.inject({ method: "PUT", url: `/api/nodes/${nodeId}/router`, headers: { cookie }, payload: { enabled: true } })).statusCode).toBe(200);
-    let res = await post("/api/servers", { nodeId, name: "Uno" });
+    let res = await post("/api/servers", { nodeId, name: "One" });
     expect(res.json().spec.ports.game).toBe(25566);
-    res = await post("/api/servers", { nodeId, name: "Dos", spec: { ports: { game: 25565 } } });
+    res = await post("/api/servers", { nodeId, name: "Two", spec: { ports: { game: 25565 } } });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toMatch(/router/);
     res = await post("/api/servers", { nodeId, name: "Tres", spec: { ports: { game: 25570, extra: [{ host: 25565, container: 8100, proto: "tcp", label: "x" }] } } });

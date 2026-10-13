@@ -533,7 +533,7 @@
   "merge": {
    "properties": {
     "motd": "Hola",
-    "level-name": "mundo_2 nuevo"
+    "level-name": "world_2 new"
    }
   }
  },
@@ -543,7 +543,7 @@
   "merge": {
    "properties": {
     "motd": "Hola",
-    "level-name": "mundos/uno"
+    "level-name": "worlds/one"
    }
   }
  },
@@ -553,7 +553,7 @@
   "merge": {
    "properties": {
     "motd": "Hola",
-    "level-name": "mundos\\uno"
+    "level-name": "worlds\\one"
    }
   }
  },
@@ -573,7 +573,7 @@
   "merge": {
    "properties": {
     "motd": "Hola",
-    "level-name": "mundo..viejo"
+    "level-name": "world..old"
    }
   }
  }

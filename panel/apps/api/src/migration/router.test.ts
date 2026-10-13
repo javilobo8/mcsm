@@ -44,8 +44,8 @@ const proposal = (serverId: string, targetNodeId: string) =>
 
 /** Two enrolled nodes (not connected) and a server on the first. */
 async function nodes(s: Spec = spec(25565)) {
-  const a = await FakeNode.enroll(app, url, cookie, "nodo-a");
-  const b = await FakeNode.enroll(app, url, cookie, "nodo-b");
+  const a = await FakeNode.enroll(app, url, cookie, "node-a");
+  const b = await FakeNode.enroll(app, url, cookie, "node-b");
   const srv = app.servers.create({ nodeId: a.id, name: "Survival", slug: "survival", spec: s, desiredState: "running" });
   return { a, b, s: srv };
 }
@@ -63,10 +63,10 @@ describe("migration and router (Plans 7 and 8)", () => {
     const { b, s } = await nodes(spec(25565, "survival.lan"));
     app.servers.create({ nodeId: b.id, name: "Apagado", slug: "apagado", spec: spec(25570, "survival.lan", false), desiredState: "stopped" });
     expect((await proposal(s.id, b.id)).statusCode).toBe(200); // with the router disabled it does not compete
-    app.servers.create({ nodeId: b.id, name: "Creativo", slug: "creativo", spec: spec(25571, "survival.lan"), desiredState: "stopped" });
+    app.servers.create({ nodeId: b.id, name: "Creative", slug: "creative", spec: spec(25571, "survival.lan"), desiredState: "stopped" });
     const res = await proposal(s.id, b.id);
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("Hostname “survival.lan” is already used by server “Creativo” on the target node “nodo-b”");
+    expect(res.json().error).toBe("Hostname “survival.lan” is already used by server “Creative” on the target node “node-b”");
     const begin = await app.inject({ method: "POST", url: `/api/servers/${s.id}/migration`, headers: { cookie }, payload: { targetNodeId: b.id } });
     expect(begin.statusCode).toBe(409);
     expect(app.migrations.latestForServer(s.id)).toBeNull();
@@ -74,16 +74,16 @@ describe("migration and router (Plans 7 and 8)", () => {
 
   it("the hostname of an open migration towards a node is reserved there", async () => {
     const { a, b, s } = await nodes(spec(25565, "survival.lan"));
-    const c = await FakeNode.enroll(app, url, cookie, "nodo-c");
-    const t = app.servers.create({ nodeId: c.id, name: "Copia", slug: "copia", spec: spec(25566, "survival.lan"), desiredState: "stopped" });
-    const other = app.servers.create({ nodeId: b.id, name: "Creativo", slug: "creativo", spec: spec(25571, "creativo.lan"), desiredState: "stopped" });
+    const c = await FakeNode.enroll(app, url, cookie, "node-c");
+    const t = app.servers.create({ nodeId: c.id, name: "Copy", slug: "copy", spec: spec(25566, "survival.lan"), desiredState: "stopped" });
+    const other = app.servers.create({ nodeId: b.id, name: "Creative", slug: "creative", spec: spec(25571, "creative.lan"), desiredState: "stopped" });
     const m = app.migrations.insert({
       id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "survival", target_slug: "survival",
       source_version: 1, target_version: 2, target_port: 25565, target_spec: JSON.stringify(spec(25565, "survival.lan")), was_running: 1, delete_source: 0,
     });
     let res = await proposal(t.id, b.id);
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("Hostname “survival.lan” is reserved by “Survival”, which is being migrated to the target node “nodo-b”");
+    expect(res.json().error).toBe("Hostname “survival.lan” is reserved by “Survival”, which is being migrated to the target node “node-b”");
     // Nor does a server on that node take it in the meantime.
     res = await app.inject({ method: "PATCH", url: `/api/servers/${other.id}`, headers: { cookie }, payload: { spec: { router: { enabled: true, hostname: "survival.lan" } } } });
     expect(res.statusCode).toBe(409);
@@ -98,8 +98,8 @@ describe("migration and router (Plans 7 and 8)", () => {
     routerRow(a.id, { enabled: true, port: 25590, autoscale: true });
     let res = await proposal(s.id, b.id);
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("“Survival” has a hostname and the router of “nodo-a” has autoscale enabled: mc-router could start it on the source " +
-      "during the migration. Remove autoscale from the router of “nodo-a” or disable the server's hostname before migrating it");
+    expect(res.json().error).toBe("“Survival” has a hostname and the router of “node-a” has autoscale enabled: mc-router could start it on the source " +
+      "during the migration. Remove autoscale from the router of “node-a” or disable the server's hostname before migrating it");
     res = await app.inject({ method: "POST", url: `/api/servers/${s.id}/migration`, headers: { cookie }, payload: { targetNodeId: b.id } });
     expect(res.statusCode).toBe(409);
     // Without autoscale, yes.
@@ -107,7 +107,7 @@ describe("migration and router (Plans 7 and 8)", () => {
     expect((await proposal(s.id, b.id)).statusCode).toBe(200);
     // With autoscale, a server without an active hostname (mc-router does not see it) as well.
     routerRow(a.id, { enabled: true, port: 25590, autoscale: true });
-    const t = app.servers.create({ nodeId: a.id, name: "Sin", slug: "sin", spec: spec(25566, "sin.lan", false), desiredState: "stopped" });
+    const t = app.servers.create({ nodeId: a.id, name: "Bare", slug: "bare", spec: spec(25566, "bare.lan", false), desiredState: "stopped" });
     expect((await proposal(t.id, b.id)).statusCode).toBe(200);
   });
 

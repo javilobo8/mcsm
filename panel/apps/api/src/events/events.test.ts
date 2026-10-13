@@ -39,12 +39,12 @@ const sendEvent = (agent: FakeAgent, value: { level: EventLevel; serverId?: stri
 
 describe("agent events", () => {
   it("stores level, kind, server (with its name) and agent time, and publishes it", async () => {
-    const s = await createServer("Uno");
+    const s = await createServer("One");
     const agent = await connect();
     const published = new Promise((resolve) => app.events.once("server_event", resolve));
     sendEvent(agent, { level: EventLevel.WARN, serverId: s.id, kind: "crash", message: "The server exited with code 1 (1 in the last hour)" });
     const [ev] = await waitEvents(1);
-    expect(ev).toMatchObject({ nodeId, serverId: s.id, serverName: "Uno", level: "warn", kind: "crash", message: expect.stringContaining("code 1") });
+    expect(ev).toMatchObject({ nodeId, serverId: s.id, serverName: "One", level: "warn", kind: "crash", message: expect.stringContaining("code 1") });
     expect(ev.agentAt).toMatch(/Z$/);
     expect(await published).toMatchObject({ id: ev.id, kind: "crash" });
     agent.close();
@@ -76,7 +76,7 @@ describe("agent events", () => {
   });
 
   it("crash_loop leaves the server's desired state stopped", async () => {
-    const s = await createServer("Uno");
+    const s = await createServer("One");
     const agent = await connect();
     sendEvent(agent, { level: EventLevel.ERROR, serverId: s.id, kind: "crash_loop", message: "Crash loop" });
     await waitEvents(1);
@@ -89,7 +89,7 @@ describe("agent events", () => {
 
 describe("late crash_loop", () => {
   it("does not undo a Start later than the event's time, but does undo an earlier one", async () => {
-    const s = await createServer("Uno");
+    const s = await createServer("One");
     const agent = await connect();
     app.servers.setDesiredState(s.id, "stopped");
     app.servers.setDesiredState(s.id, "running"); // the user's “Start”, now
@@ -106,7 +106,7 @@ describe("late crash_loop", () => {
 
 describe("GET /api/events", () => {
   it("filters by server and minimum level, paginates and requires a session", async () => {
-    const s = await createServer("Uno");
+    const s = await createServer("One");
     const rec = (level: "info" | "warn" | "error", serverId: string | null) =>
       app.eventsService.record({ nodeId, serverId, level, kind: "drift", message: level });
     const a = rec("info", s.id);

@@ -65,8 +65,8 @@ describe("settings", () => {
     const { nodeId } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas" } })).json();
     expect((await put({ gamePortRange: { from: 26000, to: 26001 } })).json().gamePortRange).toEqual({ from: 26000, to: 26001 });
     const mk = (name: string) => app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name } });
-    expect((await mk("Uno")).json().spec.ports.game).toBe(26000);
-    expect((await mk("Dos")).json().spec.ports.game).toBe(26001);
+    expect((await mk("One")).json().spec.ports.game).toBe(26000);
+    expect((await mk("Two")).json().spec.ports.game).toBe(26001);
     const third = await mk("Tres");
     expect(third.statusCode).toBe(409);
     expect(third.json().error).toMatch(/26000 and 26001/);

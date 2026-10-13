@@ -32,7 +32,7 @@ async function stop() {
 async function enrollWithServer(): Promise<{ nodeId: string; nodeToken: string; serverId: string }> {
   const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } })).json().token;
   const { nodeId, nodeToken } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas", agentVersion: "fake" } })).json();
-  const serverId = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json().id;
+  const serverId = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json().id;
   return { nodeId, nodeToken, serverId };
 }
 

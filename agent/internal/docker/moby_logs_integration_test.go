@@ -31,8 +31,8 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 	_, _ = m.cli.ContainerRemove(ctx, name, client.ContainerRemoveOptions{Force: true})
 	id, err := m.Create(ctx, name,
 		&container.Config{Image: "alpine:3.22", Tty: false, Labels: map[string]string{"mcsm.test": "true"},
-			// "cuatro" waits for /tmp/sigue to exist: it arrives in streaming, with the follow already open.
-			Cmd: []string{"sh", "-c", "echo uno; echo dos >&2; echo tres; while [ ! -e /tmp/sigue ]; do sleep 0.1; done; echo cuatro >&2; sleep 300"}},
+			// "four" waits for /tmp/go-on to exist: it arrives in streaming, with the follow already open.
+			Cmd: []string{"sh", "-c", "echo one; echo two >&2; echo three; while [ ! -e /tmp/go-on ]; do sleep 0.1; done; echo four >&2; sleep 300"}},
 		&container.HostConfig{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -63,11 +63,11 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	slices.Sort(got)
-	if want := []string{"dos", "tres", "uno"}; !slices.Equal(got, want) {
+	if want := []string{"one", "three", "two"}; !slices.Equal(got, want) {
 		t.Fatalf("lines = %q, want %q (stdout and stderr, without headers)", got, want)
 	}
 	// Live follow: a new stderr line arrives separated and with its timestamp.
-	ex, err := m.cli.ExecCreate(ctx, id, client.ExecCreateOptions{Cmd: []string{"touch", "/tmp/sigue"}})
+	ex, err := m.cli.ExecCreate(ctx, id, client.ExecCreateOptions{Cmd: []string{"touch", "/tmp/go-on"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 	if !sc.Scan() {
 		t.Fatalf("the live line did not arrive: %v", sc.Err())
 	}
-	if ts, msg, _ := strings.Cut(sc.Text(), " "); msg != "cuatro" {
+	if ts, msg, _ := strings.Cut(sc.Text(), " "); msg != "four" {
 		t.Fatalf("live line = %q", sc.Text())
 	} else if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
 		t.Fatalf("live line without timestamp: %q", sc.Text())

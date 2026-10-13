@@ -80,7 +80,7 @@ describe("realtime", () => {
   });
 
   it("the agent's StreamDropped reaches browsers as log_dropped", async () => {
-    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
     await agent.handshake();
@@ -123,7 +123,7 @@ describe("realtime", () => {
   });
 
   it("forwards observed state and node changes", async () => {
-    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json();
     const b = await browser();
     b.ws.send(JSON.stringify({ type: "subscribe", topic: "servers" }));
     b.ws.send(JSON.stringify({ type: "subscribe", topic: "nodes" }));
@@ -139,7 +139,7 @@ describe("realtime", () => {
   });
 
   it("opens one log stream per server while there are subscribers and notifies when it closes", async () => {
-    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
     await agent.waitFor("helloAck");
@@ -171,7 +171,7 @@ describe("realtime", () => {
   });
 
   it("closes the agent's stream when the last subscriber leaves", async () => {
-    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
     await agent.waitFor("helloAck");
@@ -190,7 +190,7 @@ describe("realtime", () => {
   });
 
   it("reopens the log stream when the node comes back, without duplicates", async () => {
-    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
     await agent.waitFor("helloAck");
@@ -220,7 +220,7 @@ describe("realtime", () => {
 
   describe("fix round 1", () => {
     async function setup() {
-      const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+      const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json();
       const agent = new FakeAgent(url, nodeToken);
       await agent.connect({ specVersions: { [s.id]: 1n } });
       await agent.waitFor("helloAck");

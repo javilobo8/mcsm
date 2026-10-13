@@ -34,17 +34,17 @@ afterEach(async () => {
 });
 
 const spec = (game: number) => specSchema.parse({ type: "PAPER", version: "1.21.4", memory: "2G", ports: { game }, rconPassword: "abcdefgh" });
-const NAME = "uno-20261012T040000.000Z-1.tar.zst";
+const NAME = "one-20261012T040000.000Z-1.tar.zst";
 const stagingFiles = (): string[] => { try { return readdirSync(join(dataDir, "staging")); } catch { return []; } };
 
 async function setup(): Promise<{ a: FakeNode; b: FakeNode; m: MigrationRow; d: StepDeps; timers: ManualTimers }> {
   const a = await FakeNode.enroll(app, url, cookie, "a");
   const b = await FakeNode.enroll(app, url, cookie, "b");
-  const s = app.servers.create({ nodeId: a.id, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+  const s = app.servers.create({ nodeId: a.id, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
   await a.connect({ [s.id]: 1n });
   await b.connect();
   const m = app.migrations.insert({
-    id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "uno", target_slug: "uno",
+    id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "one", target_slug: "one",
     source_version: 1, target_version: 2, target_port: 25565, target_spec: JSON.stringify(spec(25565)), was_running: 1, delete_source: 0,
   });
   const timers = new ManualTimers();

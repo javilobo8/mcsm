@@ -139,12 +139,12 @@ describe("Staging", () => {
 
   it("does not overwrite an existing .bin of the same id: fails with EEXIST and destroys the origin", async () => {
     const s = new Staging(dir);
-    const first = await s.save("uno", Readable.from([Buffer.from("primero")]));
+    const first = await s.save("one", Readable.from([Buffer.from("first")]));
     const src = new PassThrough();
-    await expect(s.save("uno", src)).rejects.toMatchObject({ code: "EEXIST" });
+    await expect(s.save("one", src)).rejects.toMatchObject({ code: "EEXIST" });
     expect(src.destroyed).toBe(true);
-    expect(await readFile(first.path, "utf8")).toBe("primero");
-    expect(await readdir(dir)).toEqual(["uno.bin"]);
+    expect(await readFile(first.path, "utf8")).toBe("first");
+    expect(await readdir(dir)).toEqual(["one.bin"]);
   });
 
   it("two simultaneous saves with the same id: one wins whole and the other fails without touching anything", async () => {

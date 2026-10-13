@@ -14,7 +14,7 @@ describe("proposeTarget", () => {
   it("port taken: the first free one in the range that is not one of the server's own extra ports", () => {
     const p = proposeTarget({
       slug: "survival", spec: spec(25565, [{ host: 25566, container: 19132, proto: "udp" }]),
-      targetServers: [{ slug: "otro", spec: spec(25565) }], range,
+      targetServers: [{ slug: "other", spec: spec(25565) }], range,
     });
     expect(p).toEqual({ ok: true, slug: "survival", port: 25567, portChanged: true });
   });
@@ -67,7 +67,7 @@ describe("utilities", () => {
   });
   it("retargetFilename changes only the slug", () => {
     expect(retargetFilename("survival-20261012T040000.000Z-3.tar.zst", "survival", "survival-2")).toBe("survival-2-20261012T040000.000Z-3.tar.zst");
-    expect(() => retargetFilename("otro-20261012T040000.000Z-3.tar.zst", "survival", "x")).toThrow();
+    expect(() => retargetFilename("other-20261012T040000.000Z-3.tar.zst", "survival", "x")).toThrow();
   });
   it("requiredSpace: the greater of 5 % and a 256 MiB margin", () => {
     expect(requiredSpace(0)).toBe(256 * 1024 * 1024);

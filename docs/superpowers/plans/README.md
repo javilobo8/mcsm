@@ -80,7 +80,7 @@ it doesn't hang under `DATA_ROOT`, a new optional field in the spec and in `Buil
 Import with review and editing before adopting. Hot adoption (without recreating): the agent
 follows the container by `imported_from.container_id` until the first spec change.
 Acceptance: your current compose servers appear as candidates, are adopted without downtime and
-show logs/players; the first "Save and apply" recreates them with `mcsm.*` labels and the
+show logs/players; the first "Review and apply" recreates them with `mcsm.*` labels and the
 same data directory.
 
 ## Plan 7 — Migration

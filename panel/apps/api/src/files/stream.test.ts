@@ -20,7 +20,7 @@ describe("detachable", () => {
   it("if the consumer cuts off, the source is drained instead of destroyed", async () => {
     const src = new PassThrough();
     const out = detachable(src);
-    src.write("primero");
+    src.write("first");
     out.destroy();
     await new Promise((r) => out.once("close", r));
     src.end("rest that nobody wants");
@@ -157,8 +157,8 @@ describe("idleGuard", () => {
     const clock = new ManualTimers();
     const g = idleGuard(1000, () => new Error("inactivo"), clock);
     expect(clock.pending).toBe(1); // it also measures the wait until the first chunk
-    g.end("hola");
-    expect(await collect(g)).toBe("hola");
+    g.end("hello");
+    expect(await collect(g)).toBe("hello");
     expect(clock.pending).toBe(0);
   });
 

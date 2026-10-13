@@ -193,7 +193,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   const rconPortOk = rconPort === undefined || rconPort.trim() === String(RCON_PORT);
   if (!rconOk || rconOff || !rconPortOk) {
     const why = rconOff ? "the container has RCON disabled" : !rconPortOk ? `it uses RCON_PORT=${rconPort}` : "it does not set RCON_PASSWORD (or it has fewer than 8 characters)";
-    warn(`The command console (RCON) will not work until the first “Save and apply”: ${why}. On recreation the panel enables RCON with ${rconOk ? "the same password" : "a new password"}`);
+    warn(`The command console (RCON) will not work until the first “Review and apply”: ${why}. On recreation the panel enables RCON with ${rconOk ? "the same password" : "a new password"}`);
   }
   const cfKey = take("CF_API_KEY");
   let curseforgeApiKey: string | null = null;
@@ -365,7 +365,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   const project = c.labels[COMPOSE_PROJECT] ?? "";
   const service = c.labels[COMPOSE_SERVICE] ?? "";
   if (project) {
-    warn(`It was created by Docker Compose (project “${project}”, service “${service}”): before the first “Save and apply”, remove that service from the compose file (or do not run “docker compose up” again), or Compose will recreate the original container next to the panel's`);
+    warn(`It was created by Docker Compose (project “${project}”, service “${service}”): before the first “Review and apply”, remove that service from the compose file (or do not run “docker compose up” again), or Compose will recreate the original container next to the panel's`);
   }
   const name = (c.name || service || "Imported server").slice(0, 60);
   let slug: string;

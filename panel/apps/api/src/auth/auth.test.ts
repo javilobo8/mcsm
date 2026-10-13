@@ -80,11 +80,11 @@ describe("auth", () => {
 
   it("concurrent setup: only one wins and the valid password is the winner's", async () => {
     const [a, b] = await Promise.all([
-      app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "password-uno" } }),
-      app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "password-dos" } }),
+      app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "password-one" } }),
+      app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "password-two" } }),
     ]);
     expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
-    const [winner, loser] = a.statusCode === 200 ? ["password-uno", "password-dos"] : ["password-dos", "password-uno"];
+    const [winner, loser] = a.statusCode === 200 ? ["password-one", "password-two"] : ["password-two", "password-one"];
     expect((await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: winner } })).statusCode).toBe(200);
     expect((await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: loser } })).statusCode).toBe(401);
   });

@@ -29,7 +29,7 @@ beforeEach(async () => {
   cookie = `${c.name}=${c.value}`;
   const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } })).json().token;
   ({ nodeId, nodeToken } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas", agentVersion: "fake" } })).json());
-  serverId = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec, desiredState: "stopped" }).id;
+  serverId = app.servers.create({ nodeId, name: "One", slug: "one", spec, desiredState: "stopped" }).id;
   clock = new ManualTimers();
   app.filesService.timers = clock;
   agent = new FakeAgent(url, nodeToken);

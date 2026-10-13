@@ -3,8 +3,8 @@ import { slugify } from "./slug.js";
 
 describe("slugify", () => {
   it("normalizes accents, spaces and uppercase", () => {
-    expect(slugify("Supervivencia 2024 ñ")).toBe("supervivencia-2024-n");
-    expect(slugify("  Creativo__Él & Ella  ")).toBe("creativo-el-ella");
+    expect(slugify("Survival 2024 ñ")).toBe("survival-2024-n");
+    expect(slugify("  Creative__Él & Ella  ")).toBe("creative-el-ella");
   });
   it("truncates to 40 and never starts with a hyphen", () => {
     expect(slugify("-" + "a".repeat(60))).toHaveLength(40);

@@ -42,7 +42,7 @@ func TestMobyLifecycle(t *testing.T) {
 		}
 	}
 	id, err := m.Create(ctx, name,
-		&container.Config{Image: "alpine:3.22", Cmd: []string{"sh", "-c", "echo hola; sleep 300"}, Tty: true, Labels: map[string]string{"mcsm.managed": "true", "mcsm.server_id": "int"}},
+		&container.Config{Image: "alpine:3.22", Cmd: []string{"sh", "-c", "echo hello; sleep 300"}, Tty: true, Labels: map[string]string{"mcsm.managed": "true", "mcsm.server_id": "int"}},
 		&container.HostConfig{},
 		&network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{netName: {}}})
 	if err != nil {
@@ -62,7 +62,7 @@ func TestMobyLifecycle(t *testing.T) {
 	}
 	line, _ := bufio.NewReader(rc).ReadString('\n')
 	rc.Close()
-	if !strings.Contains(line, "hola") || !strings.Contains(line, "T") {
+	if !strings.Contains(line, "hello") || !strings.Contains(line, "T") {
 		t.Fatalf("log without timestamp or without content: %q", line)
 	}
 	list, _ := m.ListManaged(ctx)

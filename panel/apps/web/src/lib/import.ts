@@ -84,7 +84,7 @@ export function importNotices(s: Pick<ServerDto, "importedFrom" | "observed" | "
   const out: string[] = [];
   const from = s.importedFrom;
   if (from && isAdopted(s)) {
-    out.push(`Imported from “${from.containerName}”: it stays in its original container until the first “Save and apply”, which will recreate it as mcsm-${s.slug} (brief stop; the world is not touched) and delete the original container.`);
+    out.push(`Imported from “${from.containerName}”: it stays in its original container until the first “Review and apply”, which will recreate it as mcsm-${s.slug} (brief stop; the world is not touched) and delete the original container.`);
     if (from.composeProject) {
       out.push(`Comes from Docker Compose (project “${from.composeProject}”, service “${from.composeService}”): remove that service from the compose file before applying changes, or Compose will create it again.`);
     }

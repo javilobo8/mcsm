@@ -39,8 +39,8 @@ describe("agent hub", () => {
 
   it("Hello → HelloAck + SyncSpecs with what is missing, and marks the node online/offline", async () => {
     const { nodeId, nodeToken } = await enrollNode();
-    const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
-    const s2 = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
+    const s1 = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
+    const s2 = app.servers.create({ nodeId, name: "Two", slug: "two", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
     app.servers.updateSpec(s2.id, { ...baseSpec, ports: { game: 25567, extra: [] } }); // s2 moves to version 2
 
     const agent = new FakeAgent(url, nodeToken);
@@ -52,7 +52,7 @@ describe("agent hub", () => {
     if (sync.body.case !== "syncSpecs") throw new Error();
     expect(sync.body.value.servers.map((s) => s.serverId)).toEqual([s1.id]); // s2 is already up to date
     expect(sync.body.value.removedIds).toEqual(["zombie-id"]);
-    expect(sync.body.value.servers[0]!.slug).toBe("uno");
+    expect(sync.body.value.servers[0]!.slug).toBe("one");
     expect(sync.body.value.servers[0]!.version).toBe(1n);
     agent.ack(sync.id);
 
@@ -70,8 +70,8 @@ describe("agent hub", () => {
 
   it("SyncSpecs also includes specs whose desired state differs from the agent's", async () => {
     const { nodeId, nodeToken } = await enrollNode();
-    const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
-    const s2 = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
+    const s1 = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
+    const s2 = app.servers.create({ nodeId, name: "Two", slug: "two", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({
       specVersions: { [s1.id]: 1n, [s2.id]: 1n },
@@ -85,7 +85,7 @@ describe("agent hub", () => {
 
   it("ServerObserved updates the DB and emits an event", async () => {
     const { nodeId, nodeToken } = await enrollNode();
-    const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s1 = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s1.id]: 1n } });
     await agent.waitFor("helloAck");
@@ -263,7 +263,7 @@ describe("hub robustness", () => {
 
   it("an unsolicited message carrying the id of a pending request does not consume it", async () => {
     const { nodeId, nodeToken, agent, conn } = await connected();
-    const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s1 = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     void nodeToken;
     const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 2000);
     const req = await agent.waitFor("powerAction");
@@ -316,8 +316,8 @@ describe("hub robustness", () => {
   });
 
   it("ServerObserved for a server on another node is ignored", async () => {
-    const { agent } = await connected("uno");
-    const other = await enrollNode("dos");
+    const { agent } = await connected("one");
+    const other = await enrollNode("two");
     const foreign = app.servers.create({ nodeId: other.nodeId, name: "Ajeno", slug: "ajeno", spec: baseSpec, desiredState: "running" });
     let emitted = false;
     app.events.once("observed", () => { emitted = true; });

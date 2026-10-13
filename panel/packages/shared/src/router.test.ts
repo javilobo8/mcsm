@@ -51,7 +51,7 @@ describe("router in the server spec", () => {
   it("is validated inside the spec", () => {
     expect(specSchema.safeParse({ ...fixture, router: { enabled: true, hostname: "survival.lan" } }).success).toBe(true);
     expect(specSchema.safeParse({ ...fixture, router: { enabled: true, hostname: "" } }).success).toBe(false);
-    expect(specInputSchema.safeParse({ router: { enabled: true, hostname: "creativo.lan" } }).success).toBe(true);
+    expect(specInputSchema.safeParse({ router: { enabled: true, hostname: "creative.lan" } }).success).toBe(true);
   });
   it("does not travel in templates (the hostname belongs to a specific server)", () => {
     const tpl = specToTemplate({ ...fixture, router: { enabled: true, hostname: "survival.lan" } });

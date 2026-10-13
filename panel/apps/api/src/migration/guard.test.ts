@@ -31,7 +31,7 @@ async function enroll(name: string): Promise<{ nodeId: string; nodeToken: string
 
 function newMigration(serverId: string, source: string, target: string, over: Partial<NewMigration> = {}): NewMigration {
   return {
-    id: newId(), server_id: serverId, source_node_id: source, target_node_id: target, source_slug: "uno", target_slug: "uno",
+    id: newId(), server_id: serverId, source_node_id: source, target_node_id: target, source_slug: "one", target_slug: "one",
     source_version: 1, target_version: 2, target_port: 25565, target_spec: JSON.stringify(spec(25565)), was_running: 1, delete_source: 0, ...over,
   };
 }
@@ -64,7 +64,7 @@ describe("guardSubject", () => {
 describe("MigrationsRepo", () => {
   it("commit: moves the row only if it is still on the source with the same version and without breaking the unique slug", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     const m1 = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     app.servers.bumpVersion(s.id); // the spec changed during the migration
     expect(app.migrations.commit(m1, "running", observed)).toBe(false);
@@ -74,13 +74,13 @@ describe("MigrationsRepo", () => {
     const m2 = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId, {
       source_version: 2, target_version: 3, target_port: 25570, target_spec: JSON.stringify(spec(25570)),
     }));
-    const other = app.servers.create({ nodeId: b.nodeId, name: "Otro", slug: "uno", spec: spec(25580), desiredState: "stopped" });
+    const other = app.servers.create({ nodeId: b.nodeId, name: "Other", slug: "one", spec: spec(25580), desiredState: "stopped" });
     expect(app.migrations.commit(m2, "running", observed)).toBe(false); // slug taken on the target
     app.servers.delete(other.id);
 
     expect(app.migrations.commit(m2, "stopped", observed)).toBe(true);
     const row = app.servers.get(s.id)!;
-    expect(row).toMatchObject({ node_id: b.nodeId, slug: "uno", spec_version: 3, desired_state: "stopped", observed_spec_version: 3 });
+    expect(row).toMatchObject({ node_id: b.nodeId, slug: "one", spec_version: 3, desired_state: "stopped", observed_spec_version: 3 });
     expect(row.desired_changed_at).not.toBeNull(); // the commit changes the desired state: it marks the time (a late crash_loop does not undo it)
     expect(JSON.parse(row.spec).ports.game).toBe(25570);
     expect(JSON.parse(row.observed!).containerId).toBe("c1");
@@ -89,7 +89,7 @@ describe("MigrationsRepo", () => {
 
   it("commit: an imported server (imported_from, Plan 6) stops following its original container", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     app.servers.setImportedFrom(s.id, {
       containerId: "c".repeat(64), containerName: "mc-viejo", specVersion: 1, importedAt: "2026-10-12T00:00:00.000Z", composeProject: "", composeService: "",
     });
@@ -102,7 +102,7 @@ describe("MigrationsRepo", () => {
 
   it("failed commit: an imported one keeps its imported_from on the source", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     app.servers.setImportedFrom(s.id, {
       containerId: "c".repeat(64), containerName: "mc-viejo", specVersion: 1, importedAt: "2026-10-12T00:00:00.000Z", composeProject: "", composeService: "",
     });
@@ -115,9 +115,9 @@ describe("MigrationsRepo", () => {
 
   it("commit: fails if another server on the target already uses the game port or an extra port (M1)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId, { target_port: 25570, target_spec: JSON.stringify(spec(25570)) }));
-    const other = app.servers.create({ nodeId: b.nodeId, name: "Otro", slug: "otro", spec: spec(25571), desiredState: "stopped" });
+    const other = app.servers.create({ nodeId: b.nodeId, name: "Other", slug: "other", spec: spec(25571), desiredState: "stopped" });
     // Someone changed B's other server to use the reserved port (without going through checkPorts).
     app.servers.updateSpec(other.id, spec(25570));
     expect(app.migrations.commit(m, "running", observed)).toBe(false);
@@ -131,8 +131,8 @@ describe("MigrationsRepo", () => {
 
   it("checkPorts and allocatePort count the ports reserved by migrations towards the node (M1)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
-    const other = app.servers.create({ nodeId: b.nodeId, name: "Otro", slug: "otro", spec: spec(25571), desiredState: "stopped" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
+    const other = app.servers.create({ nodeId: b.nodeId, name: "Other", slug: "other", spec: spec(25571), desiredState: "stopped" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId, { target_port: 25566, target_spec: JSON.stringify(spec(25566)) }));
     const patch = await app.inject({ method: "PATCH", url: `/api/servers/${other.id}`, headers: { cookie }, payload: { spec: { ports: { game: 25566 } } } });
     expect(patch.statusCode).toBe(409);
@@ -146,7 +146,7 @@ describe("MigrationsRepo", () => {
 
   it("blockingServer and blockingNodeCreate only while there can be a conflict (I2)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     const cases: [Parameters<typeof app.migrations.update>[1], boolean, boolean][] = [
       // patch, blocks the server, blocks creating on the target
@@ -165,8 +165,8 @@ describe("MigrationsRepo", () => {
 
   it("interruptRunning, protects and the blocking queries", async () => {
     const a = await enroll("a"); const b = await enroll("b"); const c = await enroll("c");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
-    const s2 = app.servers.create({ nodeId: c.nodeId, name: "Dos", slug: "dos", spec: spec(25566), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
+    const s2 = app.servers.create({ nodeId: c.nodeId, name: "Two", slug: "two", spec: spec(25566), desiredState: "running" });
     const run = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     app.migrations.update(run.id, { target_touched: 1, target_started: 1 });
     const com = app.migrations.insert(newMigration(s2.id, c.nodeId, b.nodeId));
@@ -198,14 +198,14 @@ describe("MigrationsRepo", () => {
 describe("action guard", () => {
   it("blocks what changes the server or nodes while it lasts; reads continue", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     const call = (method: "GET" | "POST" | "PATCH" | "DELETE", u: string, payload?: object) =>
       app.inject({ method, url: u, headers: { cookie }, ...(payload ? { payload } : {}) });
 
     const blocked: [("POST" | "PATCH" | "DELETE"), string, object?][] = [
       ["POST", `/api/servers/${s.id}/power`, { action: "start" }],
-      ["PATCH", `/api/servers/${s.id}`, { name: "Otro" }],
+      ["PATCH", `/api/servers/${s.id}`, { name: "Other" }],
       ["DELETE", `/api/servers/${s.id}`],
       ["POST", `/api/servers/${s.id}/backups`],
       ["POST", `/api/servers/${s.id}/command`, { command: "list" }],
@@ -213,7 +213,7 @@ describe("action guard", () => {
     for (const [method, u, payload] of blocked) {
       const r = await call(method, u, payload);
       expect(r.statusCode, `${method} ${u}`).toBe(409);
-      expect(r.json().error).toMatch(/“Uno” is being migrated/);
+      expect(r.json().error).toMatch(/“One” is being migrated/);
     }
     expect((await call("GET", `/api/servers/${s.id}`)).statusCode).toBe(200);
     const create = await call("POST", "/api/servers", { nodeId: b.nodeId, name: "Nuevo", spec: {} });
@@ -249,7 +249,7 @@ describe("action guard", () => {
 describe("SyncSpecs", () => {
   it("does not remove from any node a server with an open migration going through it", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     let agent = new FakeAgent(url, b.nodeToken);
     await agent.connect({ specVersions: { [s.id]: 2n } }); // the target already holds the server (ghost)
@@ -283,7 +283,7 @@ describe("jobs", () => {
 describe("confirmed migration", () => {
   it("never goes back: neither undo nor reopen what is pending on the target", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     app.migrations.update(m.id, { target_touched: 1, target_started: 1 });
     expect(app.migrations.commit(m, "running", observed)).toBe(true);
@@ -301,7 +301,7 @@ describe("confirmed migration", () => {
 
   it("startRollback only moves to rolling back what is still in progress, with what is pending according to what was done", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId, { was_running: 0 }));
     app.migrations.update(m.id, { target_touched: 1 });
     expect(app.migrations.startRollback(m.id, "Step 4: failed")).toMatchObject({
@@ -312,27 +312,27 @@ describe("confirmed migration", () => {
 
   it("with the source removal pending, the slug cannot be reused on the source (MigrateRetire without spec)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     expect(app.migrations.commit(m, "running", observed)).toBe(true);
-    expect(app.servers.getBySlug(a.nodeId, "uno")).toBeNull(); // in the table the slug is already free on the source…
+    expect(app.servers.getBySlug(a.nodeId, "one")).toBeNull(); // in the table the slug is already free on the source…
     const call = (u: string, payload: object) => app.inject({ method: "POST", url: u, headers: { cookie }, payload });
-    // …but <DATA_ROOT>/uno is still there until MigrateRetire: creating with that slug on the source is rejected.
-    const created = await call("/api/servers", { nodeId: a.nodeId, name: "Uno", slug: "uno", spec: { ports: { game: 25570 } } });
+    // …but <DATA_ROOT>/one is still there until MigrateRetire: creating with that slug on the source is rejected.
+    const created = await call("/api/servers", { nodeId: a.nodeId, name: "One", slug: "one", spec: { ports: { game: 25570 } } });
     expect(created.statusCode).toBe(409);
     expect(created.json().error).toMatch(/is part of a migration/);
     const t = (await call("/api/templates", { name: "Plantilla" })).json();
-    const fromTemplate = await call(`/api/templates/${t.id}/servers`, { nodeId: a.nodeId, name: "Uno", slug: "uno" });
+    const fromTemplate = await call(`/api/templates/${t.id}/servers`, { nodeId: a.nodeId, name: "One", slug: "one" });
     expect(fromTemplate.statusCode).toBe(409);
-    expect(app.servers.getBySlug(a.nodeId, "uno")).toBeNull();
+    expect(app.servers.getBySlug(a.nodeId, "one")).toBeNull();
     // Once the source is removed, the slug is available again.
     app.migrations.update(m.id, { phase: "done", source_pending: 0 });
-    expect((await call("/api/servers", { nodeId: a.nodeId, name: "Uno", slug: "uno", spec: { ports: { game: 25570 } } })).statusCode).toBe(201);
+    expect((await call("/api/servers", { nodeId: a.nodeId, name: "One", slug: "one", spec: { ports: { game: 25570 } } })).statusCode).toBe(201);
   });
 
   it("a blocked upload receives the 409 as JSON", async () => {
     const a = await enroll("a"); const b = await enroll("b");
-    const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+    const s = app.servers.create({ nodeId: a.nodeId, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
     app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     const r = await app.inject({
       method: "PUT", url: `/api/servers/${s.id}/files/upload?path=/x.txt`, headers: { cookie, "content-type": "application/octet-stream" },

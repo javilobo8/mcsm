@@ -27,8 +27,8 @@ func TestPumpSendsStreamDroppedWithTheDifference(t *testing.T) {
 	if e := s.next(t); e.StreamId != 7 || e.GetStreamDropped().GetCount() != 5 {
 		t.Fatalf("notice = %+v", e)
 	}
-	lines <- logs.Line{TS: time.UnixMilli(1_000), Text: "hola"}
-	if e := s.next(t); e.StreamId != 7 || e.GetLogLine().GetLine() != "hola" {
+	lines <- logs.Line{TS: time.UnixMilli(1_000), Text: "hello"}
+	if e := s.next(t); e.StreamId != 7 || e.GetLogLine().GetLine() != "hello" {
 		t.Fatalf("line = %+v", e)
 	}
 	dropped.Store(7)

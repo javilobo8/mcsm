@@ -11,22 +11,22 @@ describe("migration protocol", () => {
 
   it("the new messages travel in Envelope.body with their fields", () => {
     const rx = create(EnvelopeSchema, { id: 7n, body: { case: "migrateReceive", value: {
-      serverId: "s", slug: "uno", jobId: "j", migrationId: "m", transferId: "t",
-      filename: "uno-20261012T040000.000Z-1.tar.zst", sizeBytes: 10n, sha256: "ab".repeat(32), dataBytes: 20n,
+      serverId: "s", slug: "one", jobId: "j", migrationId: "m", transferId: "t",
+      filename: "one-20261012T040000.000Z-1.tar.zst", sizeBytes: 10n, sha256: "ab".repeat(32), dataBytes: 20n,
     } } });
     const back = fromBinary(EnvelopeSchema, toBinary(EnvelopeSchema, rx));
     expect(back.body.case).toBe("migrateReceive");
     if (back.body.case !== "migrateReceive") throw new Error();
-    expect(back.body.value).toMatchObject({ slug: "uno", sizeBytes: 10n, dataBytes: 20n, migrationId: "m" });
+    expect(back.body.value).toMatchObject({ slug: "one", sizeBytes: 10n, dataBytes: 20n, migrationId: "m" });
 
     const retire = fromBinary(EnvelopeSchema, toBinary(EnvelopeSchema, create(EnvelopeSchema, {
-      body: { case: "migrateRetire", value: { serverId: "s", slug: "uno", migrationId: "m", deleteData: true, sourceVersion: 4n } },
+      body: { case: "migrateRetire", value: { serverId: "s", slug: "one", migrationId: "m", deleteData: true, sourceVersion: 4n } },
     })));
     if (retire.body.case !== "migrateRetire") throw new Error();
     expect(retire.body.value).toMatchObject({ deleteData: true, sourceVersion: 4n });
 
     const confirm = fromBinary(EnvelopeSchema, toBinary(EnvelopeSchema, create(EnvelopeSchema, {
-      id: 8n, body: { case: "migrateConfirm", value: { serverId: "s", slug: "uno", migrationId: "m" } },
+      id: 8n, body: { case: "migrateConfirm", value: { serverId: "s", slug: "one", migrationId: "m" } },
     })));
     expect(confirm.body.case).toBe("migrateConfirm");
 

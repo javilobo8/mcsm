@@ -168,7 +168,7 @@ describe("Nodes → Import", () => {
     const inRoot = candidate({ mounts: [{ type: "bind", source: `${DATA_ROOT}/survival/data`, destination: "/data", readWrite: true, name: "" }] });
     const [c] = (await listCandidates(agent, [inRoot])).json();
     expect(c.proposal).toMatchObject({ slugLocked: true, dataPath: null });
-    const adopting = post(`/api/nodes/${nodeId}/import`, { containerId: ID, name: "Survival", slug: "otro", spec: c.proposal.spec });
+    const adopting = post(`/api/nodes/${nodeId}/import`, { containerId: ID, name: "Survival", slug: "other", spec: c.proposal.spec });
     await answerScan(agent, [inRoot]);
     expect((await adopting).statusCode).toBe(400);
     agent.close();
@@ -176,7 +176,7 @@ describe("Nodes → Import", () => {
 
   it("two servers do not share a data folder", async () => {
     app.servers.create({
-      nodeId, name: "Otro", slug: "otro", desiredState: "stopped",
+      nodeId, name: "Other", slug: "other", desiredState: "stopped",
       spec: specSchema.parse({ type: "PAPER", version: "1.21.4", memory: "2G", ports: { game: 25599 }, rconPassword: "abcdefgh", dataPath: "/home/lobo/mc" }),
     });
     const agent = await online();
@@ -185,7 +185,7 @@ describe("Nodes → Import", () => {
     await answerScan(agent);
     const res = await adopting;
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toContain("Otro");
+    expect(res.json().error).toContain("Other");
     agent.close();
   });
 
@@ -235,11 +235,11 @@ describe("Nodes → Import: what the panel decides and not the browser", () => {
   });
 
   it("an already imported container (on any node) is not a candidate and cannot be adopted again", async () => {
-    const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "otro" } })).json().token;
-    const other = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "otro", agentVersion: "fake" } })).json().nodeId as string;
+    const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "other" } })).json().token;
+    const other = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "other", agentVersion: "fake" } })).json().nodeId as string;
     const row = app.servers.create({
-      nodeId: other, name: "Otro", slug: "otro", desiredState: "stopped",
-      spec: specSchema.parse({ type: "PAPER", ports: { game: 25599 }, rconPassword: "abcdefgh", dataPath: "/home/lobo/otro" }),
+      nodeId: other, name: "Other", slug: "other", desiredState: "stopped",
+      spec: specSchema.parse({ type: "PAPER", ports: { game: 25599 }, rconPassword: "abcdefgh", dataPath: "/home/lobo/other" }),
     });
     app.servers.setImportedFrom(row.id, { containerId: ID, containerName: "survival", specVersion: 1, importedAt: "", composeProject: "", composeService: "" });
     const agent = await online();
@@ -300,9 +300,9 @@ describe("container secrets (RCON_PASSWORD, CF_API_KEY, rcon.password in CUSTOM_
     const secretEnv = { RCON_PASSWORD: "s3cr3t-rcon-pass", CF_API_KEY: "$2a$10$clave-cf", CUSTOM_SERVER_PROPERTIES: "difficulty=hard\nrcon.password=supersecreta" };
     const atm = candidate({ env: { TYPE: "AUTO_CURSEFORGE", CF_SLUG: "all-the-mods-10", ...secretEnv } });
     const creative = candidate({
-      containerId: "b".repeat(64), name: "creativo", env: { TYPE: "PAPER", ...secretEnv },
+      containerId: "b".repeat(64), name: "creative", env: { TYPE: "PAPER", ...secretEnv },
       ports: [{ containerPort: 25565, proto: "tcp", hostIp: "", hostPort: 25566 }],
-      mounts: [{ type: "bind", source: "/home/lobo/mc/creativo", destination: "/data", readWrite: true, name: "" }],
+      mounts: [{ type: "bind", source: "/home/lobo/mc/creative", destination: "/data", readWrite: true, name: "" }],
     });
     const agent = await online();
     const list = await listCandidates(agent, [atm, creative]);
@@ -325,7 +325,7 @@ describe("container secrets (RCON_PASSWORD, CF_API_KEY, rcon.password in CUSTOM_
     const listed = await get("/api/servers");
 
     // The other stays unconfirmed (the panel logs it and keeps it).
-    const doubtful = post(`/api/nodes/${nodeId}/import`, { containerId: "b".repeat(64), name: "Creativo", spec: c2.proposal.spec });
+    const doubtful = post(`/api/nodes/${nodeId}/import`, { containerId: "b".repeat(64), name: "Creative", spec: c2.proposal.spec });
     await answerScan(agent, [atm, creative]);
     await agent.waitFor("importAdopt");
     agent.close();

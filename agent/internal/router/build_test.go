@@ -105,7 +105,7 @@ func TestBuildContainerHash(t *testing.T) {
 		t.Fatal("the hash must be stable")
 	}
 	for name, other := range map[string]*Build{
-		"puerto":    build(t, &mcsmv1.RouterSpec{HostPort: 25570}),
+		"port":      build(t, &mcsmv1.RouterSpec{HostPort: 25570}),
 		"autoscale": build(t, &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true}),
 	} {
 		if other.Hash == base.Hash {

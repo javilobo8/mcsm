@@ -154,7 +154,7 @@ function ImportReview({ nodeId, candidate: c, onCancel }: { nodeId: string; cand
         <Button variant="secondary" disabled={adopt.isPending || applyBlock !== null} onClick={() => { adopt.reset(); setConfirmApply(true); }}>Adopt and apply now</Button>
         {hotBlock
           ? <span id="imp-hot-why" className="text-sm text-muted-foreground">{hotBlock}</span>
-          : isPristine(c, review.spec) && <span className="text-sm text-muted-foreground">The container keeps running; it will be recreated with the first “Save and apply”.</span>}
+          : isPristine(c, review.spec) && <span className="text-sm text-muted-foreground">The container keeps running; it will be recreated with the first “Review and apply”.</span>}
       </div>
       <ConfirmDialog
         open={confirmApply}

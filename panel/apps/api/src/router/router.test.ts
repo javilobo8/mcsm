@@ -53,11 +53,11 @@ describe("a node's router: configuration", () => {
   });
 
   it("409 if the router's port is published by a server on the node (game or extra)", async () => {
-    await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno", spec: { ports: { game: 25565, extra: [{ host: 25580, container: 8100, proto: "tcp", label: "mapa" }] } } } });
+    await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One", spec: { ports: { game: 25565, extra: [{ host: 25580, container: 8100, proto: "tcp", label: "mapa" }] } } } });
     for (const port of [25565, 25580]) {
       const res = await putRouter({ enabled: true, port });
       expect(res.statusCode).toBe(409);
-      expect(res.json().error).toMatch(/is used by server “Uno”/);
+      expect(res.json().error).toMatch(/is used by server “One”/);
     }
     // Disabled does not reserve the port: it can be saved.
     expect((await putRouter({ enabled: false, port: 25565 })).statusCode).toBe(200);
@@ -113,7 +113,7 @@ describe("a node's router: agent", () => {
   it("after the handshake the stored configuration is resent; with no row nothing is sent", async () => {
     let agent = await connect();
     // No row: between the handshake and the next send (a new server) nothing from the router arrives.
-    const created = app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } });
+    const created = app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } });
     const seen: string[] = [];
     for (let e = await agent.next(); ; e = await agent.next()) {
       seen.push(e.body.case ?? "");

@@ -72,7 +72,7 @@ describe("agent inventory and notices", () => {
 
   it("on connect it requests the inventory and reflects it in backups and jobs", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     if (list.body.case !== "backupList") throw new Error();
     expect(list.body.value.serverId).toBe("");
@@ -81,8 +81,8 @@ describe("agent inventory and notices", () => {
     agent.send({ body: { case: "backupInventory", value: {
       serverIds: [s.id],
       backups: [
-        info(s.id, "uno-20261012T040000.000Z-1.tar.zst"),
-        info(s.id, "uno-20261012T050000.000Z-1.tar.zst", { startedUnixMs: T0 + 3_600_000n }),
+        info(s.id, "one-20261012T040000.000Z-1.tar.zst"),
+        info(s.id, "one-20261012T050000.000Z-1.tar.zst", { startedUnixMs: T0 + 3_600_000n }),
         info(s.id, "data.pre-restore-20261012T060000.000Z", { trigger: BackupTrigger.PRE_RESTORE, sha256: "", startedUnixMs: T0 + 7_200_000n }),
       ],
       jobs: [{ jobId: "job-agente", serverId: s.id, type: "backup", status: JobStatus.OK, progress: 100, message: "Copia creada", log: "save-off\nsave-on\n", startedUnixMs: 1n, finishedUnixMs: 2n }],
@@ -90,7 +90,7 @@ describe("agent inventory and notices", () => {
     await changed;
     const rows = await getBackups(s.id);
     expect(rows.map((b: any) => b.filename)).toEqual([
-      "data.pre-restore-20261012T060000.000Z", "uno-20261012T050000.000Z-1.tar.zst", "uno-20261012T040000.000Z-1.tar.zst",
+      "data.pre-restore-20261012T060000.000Z", "one-20261012T050000.000Z-1.tar.zst", "one-20261012T040000.000Z-1.tar.zst",
     ]);
     expect(rows[0]).toMatchObject({ trigger: "pre_restore", kind: "directory" });
     expect(rows[1]).toMatchObject({ trigger: "scheduled", kind: "archive", sizeBytes: 1234, status: "ok", specVersion: 1 });
@@ -100,11 +100,11 @@ describe("agent inventory and notices", () => {
 
   it("marks as deleted the backups that are no longer there and gives up on the open jobs the agent does not know", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     let { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     let changed = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
-    agent.send({ body: { case: "backupInventory", value: { requestId: list.id, serverIds: [s.id], backups: [info(s.id, "uno-20261012T040000.000Z-1.tar.zst")], jobs: [] } } });
+    agent.send({ body: { case: "backupInventory", value: { requestId: list.id, serverIds: [s.id], backups: [info(s.id, "one-20261012T040000.000Z-1.tar.zst")], jobs: [] } } });
     await changed;
     expect(await getBackups(s.id)).toHaveLength(1);
     const lost = app.jobs.create({ type: "backup", serverId: s.id, nodeId, status: "running" });
@@ -124,19 +124,19 @@ describe("agent inventory and notices", () => {
 
   it("an unknown JobProgress creates the scheduled job; BackupCreated and BackupDeleted update the list", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     agent.ack(list.id);
     const done = nextEvent(app.events, "job", (j) => j.id === "job-prog" && j.status === "ok");
     const progress = (status: JobStatus, extra: object) => ({ body: { case: "jobProgress" as const, value: { jobId: "job-prog", serverId: s.id, type: "backup", status, ...extra } } });
     agent.send(progress(JobStatus.RUNNING, { progress: 1, message: "Desactivando", logChunk: "save-off\n" }));
-    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "uno-20261012T040000.000Z-1.tar.zst"), jobId: "job-prog" } } });
+    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "one-20261012T040000.000Z-1.tar.zst"), jobId: "job-prog" } } });
     agent.send(progress(JobStatus.OK, { progress: 100, message: "Copia creada", logChunk: "save-on\n" }));
     await done;
     expect(app.jobs.get("job-prog")).toMatchObject({ type: "backup", serverId: s.id, nodeId, status: "ok", payload: { trigger: "scheduled" }, log: "save-off\nsave-on\n" });
     expect(await getBackups(s.id)).toHaveLength(1);
     const gone = nextEvent(app.events, "backups", (id) => id === s.id);
-    agent.send({ body: { case: "backupDeleted", value: { serverId: s.id, filename: "uno-20261012T040000.000Z-1.tar.zst", reason: "pruned" } } });
+    agent.send({ body: { case: "backupDeleted", value: { serverId: s.id, filename: "one-20261012T040000.000Z-1.tar.zst", reason: "pruned" } } });
     await gone;
     expect(await getBackups(s.id)).toEqual([]);
     agent.close();
@@ -160,7 +160,7 @@ describe("agent inventory and notices", () => {
   });
   it("is idempotent: a repeated inventory does not fail on UNIQUE and does not reopen a terminal job", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     agent.ack(list.id);
     const rec = (status: JobStatus, message: string) => ({ jobId: "job-rep", serverId: s.id, type: "backup", status, progress: 100, message, log: "x\n", startedUnixMs: 1n, finishedUnixMs: 2n });
@@ -177,17 +177,17 @@ describe("agent inventory and notices", () => {
 
   it("empty server_ids means none: it neither deletes nor inserts backups", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     agent.ack(list.id);
     let changed = nextEvent(app.events, "backups", (id) => id === s.id);
-    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "uno-20261012T040000.000Z-1.tar.zst") } } });
+    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "one-20261012T040000.000Z-1.tar.zst") } } });
     await changed;
     const barrier = nextEvent(app.events, "job", (j) => j.id === "barrera");
     agent.send({ body: { case: "backupInventory", value: { serverIds: [], backups: [info(s.id, "other.tar.zst")], jobs: [] } } });
     agent.send({ body: { case: "jobProgress", value: { jobId: "barrera", serverId: s.id, type: "backup", status: JobStatus.RUNNING } } });
     await barrier;
-    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["uno-20261012T040000.000Z-1.tar.zst"]);
+    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["one-20261012T040000.000Z-1.tar.zst"]);
     agent.close();
   });
 
@@ -206,23 +206,23 @@ describe("agent inventory and notices", () => {
 
   it("m2: a backup announced after requesting the inventory is not marked deleted even if the inventory does not include it", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     let changed = nextEvent(app.events, "backups", (id) => id === s.id);
-    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "uno-20261012T040000.000Z-1.tar.zst") } } });
+    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "one-20261012T040000.000Z-1.tar.zst") } } });
     await changed;
     changed = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
     agent.send({ body: { case: "backupInventory", value: { requestId: list.id, serverIds: [s.id], backups: [], jobs: [] } } }); // computed earlier
     await changed;
-    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["uno-20261012T040000.000Z-1.tar.zst"]);
+    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["one-20261012T040000.000Z-1.tar.zst"]);
     agent.close();
   });
 
   it("M1: an inventory that does not answer the current session's last BackupList (earlier or periodic) only applies the positive part", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
-    const kept = "uno-20261012T040000.000Z-1.tar.zst";
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
+    const kept = "one-20261012T040000.000Z-1.tar.zst";
     let { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     const firstList = list.id;
     let changed = nextEvent(app.events, "backups", (id) => id === s.id);
@@ -237,7 +237,7 @@ describe("agent inventory and notices", () => {
     ({ agent, list } = await connectAgent(nodeToken, { [s.id]: 1n }));
     expect(list.id).not.toBe(firstList); // ids are not repeated across sessions
     agent.ack(list.id);
-    const fresh = "uno-20261012T050000.000Z-1.tar.zst";
+    const fresh = "one-20261012T050000.000Z-1.tar.zst";
     for (const requestId of [firstList, 0n]) {
       changed = nextEvent(app.events, "backups", (id) => id === s.id);
       agent.send({ body: { case: "backupInventory", value: { requestId, serverIds: [s.id], backups: [info(s.id, fresh)], jobs: [] } } });
@@ -258,7 +258,7 @@ describe("agent inventory and notices", () => {
 
   it("periodic inventory (no request): closes a job whose terminal notice was lost without touching new backups or the log of a running job", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     let changed = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
@@ -268,7 +268,7 @@ describe("agent inventory and notices", () => {
     const live = app.jobs.create({ type: "restore", serverId: s.id, nodeId, status: "running" });
     app.jobs.update(live.id, { logChunk: "cabecera\n" });
     changed = nextEvent(app.events, "backups", (id) => id === s.id);
-    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "uno-20261012T040000.000Z-1.tar.zst") } } });
+    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "one-20261012T040000.000Z-1.tar.zst") } } });
     await changed;
     changed = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], backups: [], jobs: [
@@ -278,7 +278,7 @@ describe("agent inventory and notices", () => {
     await changed;
     expect(app.jobs.get(stuck.id)).toMatchObject({ status: "ok", message: "Copia creada" });
     expect(app.jobs.get(live.id)).toMatchObject({ status: "running", progress: 40, log: "cabecera\n" });
-    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["uno-20261012T040000.000Z-1.tar.zst"]);
+    expect((await getBackups(s.id)).map((b: any) => b.filename)).toEqual(["one-20261012T040000.000Z-1.tar.zst"]);
     agent.close();
   });
 
@@ -293,14 +293,14 @@ describe("backup actions", () => {
 
   async function setup() {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec: baseSpec, desiredState: "running" });
     return { nodeId, nodeToken, s };
   }
 
   it("without a session: create, restore, delete and schedule respond 401 and touch nothing", async () => {
     const { s } = await setup();
     const b = app.backupsService["repo"].upsertOk(s.node_id, {
-      serverId: s.id, filename: "uno-20261012T040000.000Z-1.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
+      serverId: s.id, filename: "one-20261012T040000.000Z-1.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
       trigger: "manual", startedAt: new Date().toISOString(), finishedAt: null,
     });
     const reqs = [
@@ -333,7 +333,7 @@ describe("backup actions", () => {
     expect(res.statusCode).toBe(202);
     expect(res.json()).toMatchObject({ id: jobId, type: "backup", status: "running", serverId: s.id, payload: { trigger: "manual" } });
     const done = nextEvent(app.events, "job", (j) => j.id === jobId && j.status === "ok");
-    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "uno-20261012T040000.000Z-1.tar.zst", { trigger: BackupTrigger.MANUAL }), jobId } } });
+    agent.send({ body: { case: "backupCreated", value: { backup: info(s.id, "one-20261012T040000.000Z-1.tar.zst", { trigger: BackupTrigger.MANUAL }), jobId } } });
     agent.send({ body: { case: "jobProgress", value: { jobId, serverId: s.id, type: "backup", status: JobStatus.OK, progress: 100, message: "Copia creada" } } });
     await done;
     expect((await getBackups(s.id))[0]).toMatchObject({ trigger: "manual", kind: "archive" });
@@ -360,7 +360,7 @@ describe("backup actions", () => {
     const synced = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
     agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [
-      info(s.id, "uno-20261012T040000.000Z-1.tar.zst"),
+      info(s.id, "one-20261012T040000.000Z-1.tar.zst"),
       info(s.id, "data.pre-restore-20261012T060000.000Z", { trigger: BackupTrigger.PRE_RESTORE, sha256: "" }),
     ] } } });
     await synced;
@@ -461,7 +461,7 @@ describe("backup actions", () => {
     const synced = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
     agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [
-      info(s.id, "uno-20261012T040000.000Z-1.tar.zst"),
+      info(s.id, "one-20261012T040000.000Z-1.tar.zst"),
       info(s.id, "data.pre-restore-20261012T060000.000Z", { trigger: BackupTrigger.PRE_RESTORE, sha256: "" }),
     ] } } });
     await synced;
@@ -484,11 +484,11 @@ describe("backup actions", () => {
 
   it("a backup from another server is 404 on restore and on delete", async () => {
     const { nodeId, nodeToken, s } = await setup();
-    const other = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: baseSpec, desiredState: "running" });
+    const other = app.servers.create({ nodeId, name: "Two", slug: "two", spec: baseSpec, desiredState: "running" });
     const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n, [other.id]: 1n });
     const synced = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
-    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [info(s.id, "uno-20261012T040000.000Z-1.tar.zst")] } } });
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [info(s.id, "one-20261012T040000.000Z-1.tar.zst")] } } });
     await synced;
     const b = (await getBackups(s.id))[0];
     expect((await post(`/api/servers/${other.id}/backups/${b.id}/restore`)).statusCode).toBe(404);
@@ -502,7 +502,7 @@ describe("backup actions", () => {
     const { agent, list } = await connectAgent(nodeToken, { [s.id]: 1n });
     const synced = nextEvent(app.events, "backups", (id) => id === s.id);
     agent.ack(list.id);
-    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [info(s.id, "uno-20261012T040000.000Z-1.tar.zst")] } } });
+    agent.send({ body: { case: "backupInventory", value: { serverIds: [s.id], jobs: [], backups: [info(s.id, "one-20261012T040000.000Z-1.tar.zst")] } } });
     await synced;
     const b = (await getBackups(s.id))[0];
     const r = post(`/api/servers/${s.id}/backups/${b.id}/restore`);

@@ -259,7 +259,7 @@ describe("GET /agent/transfer/:id (panel → agent)", () => {
 
   it("if the source ends with fewer bytes than announced, the agent sees the cut and done is rejected", async () => {
     const { nodeId, nodeToken } = await enrollNode("nas");
-    const t = app.transfers.outbound(nodeId, async () => ({ stream: Readable.from([Buffer.from("hola")]), size: 10 }));
+    const t = app.transfers.outbound(nodeId, async () => ({ stream: Readable.from([Buffer.from("hello")]), size: 10 }));
     const r = await agentGet(`/agent/transfer/${t.id}`, nodeToken);
     expect(r.complete).toBe(false);
     expect(r.body.length).toBeLessThan(10);
@@ -354,13 +354,13 @@ describe("PUT /agent/transfer/:id (agent → panel)", () => {
       req.on("response", (res) => { res.resume(); resolve(res.statusCode!); });
       req.on("error", reject);
     });
-    req.write("uno ");
-    req.end("dos");
+    req.write("one ");
+    req.end("two");
     const incoming = await t.incoming;
     expect(incoming.size).toBeNull();
     const chunks: Buffer[] = [];
     for await (const c of incoming.stream) chunks.push(c as Buffer);
-    expect(Buffer.concat(chunks).toString()).toBe("uno dos");
+    expect(Buffer.concat(chunks).toString()).toBe("one two");
     expect(await status).toBe(204);
   });
 

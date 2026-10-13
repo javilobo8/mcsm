@@ -3,7 +3,7 @@ import { finished } from "node:stream/promises";
 import { describe, expect, it } from "vitest";
 import { TransferError, TransferService } from "./service.js";
 
-const payload = () => ({ stream: Readable.from([Buffer.from("hola")]), size: 4 });
+const payload = () => ({ stream: Readable.from([Buffer.from("hello")]), size: 4 });
 
 function clock(start = 1_000_000) {
   let t = start;
@@ -259,7 +259,7 @@ describe("TransferService", () => {
     ci.deliver({ stream: body, size: 4 });
     expect(svc.activeCount).toBe(1);
     const { stream } = await inc.incoming;
-    body.end("hola");
+    body.end("hello");
     stream.resume();
     await finished(stream); // the registry's listener was attached earlier (in deliver): it has already fired
     expect(svc.activeCount).toBe(0);

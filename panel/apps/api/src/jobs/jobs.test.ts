@@ -143,7 +143,7 @@ describe("/api/jobs", () => {
     const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } })).json().token;
     const { nodeId } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas", agentVersion: "fake" } })).json();
     const spec = specSchema.parse({ type: "PAPER", version: "1.21.4", memory: "2G", ports: { game: 25565 }, rconPassword: "abcdefgh" });
-    const s = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec, desiredState: "running" });
+    const s = app.servers.create({ nodeId, name: "One", slug: "one", spec, desiredState: "running" });
     const mine = app.jobs.create({ type: "backup", serverId: s.id, nodeId, status: "running" });
     app.jobs.update(mine.id, { logChunk: "save-off\n" });
     const other = app.jobs.create({ type: "backup", status: "running" });
