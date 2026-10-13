@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- UI and error messages in English; identifiers in English. Conventional commits in English, small, with `Co-Authored-By: Claude <your model> <noreply@anthropic.com>` (Opus 5.5 / Sonnet 5.5 / Haiku 5.5 depending on who writes). Never `git push`, never `--no-verify`, never rewrite history.
+- UI and error messages in Spanish; identifiers in English. Conventional commits in Spanish, small, with `Co-Authored-By: Claude <your model> <noreply@anthropic.com>` (Opus 5.5 / Sonnet 5.5 / Haiku 5.5 depending on who writes). Never `git push`, never `--no-verify`, never rewrite history.
 - TDD: failing test → minimal code → passing test → commit. Clean test output.
 - Tests without network: no real `fetch` nor `setTimeout`/`time.Sleep` to synchronise (clock, `fetch` and timers injectable; `ManualTimers` from `panel/apps/api/test/manual-timers.ts`).
 - Regex and `build` rules identical in Go and zod, with the shared fixture `proto/fixtures/build-cases.json`: `""` or `^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`; only with type PAPER, FOLIA, PURPUR, FABRIC, QUILT, FORGE, NEOFORGE; never with version `LATEST`/`SNAPSHOT` (case-insensitive); with a value, the variable it generates cannot be in `env`.

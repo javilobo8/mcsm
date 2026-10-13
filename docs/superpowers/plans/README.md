@@ -6,6 +6,10 @@ granularity as Plan 1) once the previous one is integrated, because their tasks 
 final shape of the code that exists by then; here their scope, order and acceptance criteria are
 fixed so that nothing has to be redesigned.
 
+Plans 1–10 were written and executed while the project was in Spanish and were translated
+afterwards: their rules about Spanish UI messages and Spanish commits are historical. The current
+conventions (English) are the ones in `CLAUDE.md`.
+
 | # | Plan | Spec | Status |
 |---|------|------|--------|
 | 1 | [Foundations](2026-10-12-01-foundations.md): protocol, reconciling agent, panel with nodes/servers, logs and console, basic UI, deployment | §3, §4, §5, §6.1–6.3, §7, §8, §9, §10, §12 | done (branch `feat/plan-1`) |

@@ -21,7 +21,7 @@
 - `PATCH /api/servers/:id` and `PATCH /api/templates/:id`: `spec` is a **first-level merge** (a key present replaces, `null` deletes, a missing key is kept). The form only sends the `FORM_KEYS` keys that changed; **never** `backups` (Plan 4) nor keys it does not know.
 - Templates: same shape as the server spec **without `ports` or `rconPassword`** (spec §4 `templates`); the panel assigns port and RCON when instantiating.
 - The form has **no** Backups section (it belongs to Plan 4, the Backups tab). `panel/apps/api/src/auth/**` is not touched.
-- UI and error messages in English (zod configured with `z.locales.es()` in `@mcsm/shared`); identifiers in English.
+- UI and error messages in Spanish (zod configured with `z.locales.es()` in `@mcsm/shared`); identifiers in English.
 - Conventional commits, small, with the line `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>` (or the one of the model implementing the task). Never `git push`, `--no-verify` or rewriting history.
 - Docker on the development machine: the end-to-end verification only creates resources with the prefix `mcsm-test-` (servers with slug `test-…`, compose project `mcsm-test-p3`) and deletes them when finished.
 
