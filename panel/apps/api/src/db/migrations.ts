@@ -224,6 +224,11 @@ CREATE TABLE router_deployments (
   },
   // ── plan-9 ──
   {
+    // Cuándo cambió por última vez el estado deseado: un crash_loop atrasado no debe deshacer un «Arrancar» posterior.
+    name: "082_servers_desired_changed_at",
+    sql: `ALTER TABLE servers ADD COLUMN desired_changed_at TEXT;`,
+  },
+  {
     // Incidencias de los agentes (Event, spec §5.3) y del panel. server_id sin clave foránea a propósito: el historial
     // sobrevive al servidor (server_name guarda su nombre de entonces). Borrar un nodo borra los suyos.
     name: "080_events",

@@ -68,7 +68,11 @@ export class EventsService {
       const row = this.app.servers.get(serverId);
       if (!row || row.node_id !== nodeId) return null;
       serverName = row.name;
-      if (e.kind === "crash_loop" && row.desired_state === "running") this.app.servers.setDesiredState(serverId, "stopped");
+      if (e.kind === "crash_loop" && row.desired_state === "running") {
+        // El evento sale por la cola del agente, sin orden respecto al Ack de un «Arrancar»: solo cuenta si es posterior.
+        const at = this.agentTime(e.tsUnixMs) ?? new Date(this.now()).toISOString();
+        if (!row.desired_changed_at || at > row.desired_changed_at) this.app.servers.setDesiredState(serverId, "stopped");
+      }
     }
     return this.record({ nodeId, serverId, serverName, level, kind: e.kind, message: e.message, agentAt: this.agentTime(e.tsUnixMs) });
   }

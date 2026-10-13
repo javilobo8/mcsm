@@ -73,6 +73,23 @@ describe("eventos del agente", () => {
   });
 });
 
+describe("crash_loop atrasado", () => {
+  it("no deshace un Arrancar posterior a la hora del evento, pero sí uno anterior", async () => {
+    const s = await createServer("Uno");
+    const agent = await connect();
+    app.servers.setDesiredState(s.id, "stopped");
+    app.servers.setDesiredState(s.id, "running"); // «Arrancar» del usuario, ahora
+    const desired = async () => (await app.inject({ method: "GET", url: `/api/servers/${s.id}`, headers: { cookie } })).json().desiredState;
+    sendEvent(agent, { level: EventLevel.ERROR, serverId: s.id, kind: "crash_loop", message: "viejo", tsUnixMs: BigInt(Date.now() - 60_000) });
+    await waitEvents(1); // guardado, pero sin efecto en el estado deseado
+    expect(await desired()).toBe("running");
+    sendEvent(agent, { level: EventLevel.ERROR, serverId: s.id, kind: "crash_loop", message: "nuevo", tsUnixMs: BigInt(Date.now() + 5_000) });
+    await waitEvents(2);
+    expect(await desired()).toBe("stopped");
+    agent.close();
+  });
+});
+
 describe("GET /api/events", () => {
   it("filtra por servidor y nivel mínimo, pagina y exige sesión", async () => {
     const s = await createServer("Uno");
