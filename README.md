@@ -25,7 +25,7 @@ Si sospechas que el token de un nodo se ha filtrado, rotarlo no basta: borra el 
 ## Ajustes
 
 - **Contraseña.** Al cambiarla se cierran todas las sesiones, también las de otros navegadores.
-- **URL del panel.** La guardada manda sobre `PANEL_PUBLIC_URL`; es la del comando de alta de nodos y el `Origin` que acepta el WebSocket. Detrás de un proxy inverso que reescriba `Host`, configúrala aquí: las escrituras (`POST`/`PUT`/`PATCH`/`DELETE` bajo `/api/`) con un `Origin` que no sea el del panel dan 403.
+- **URL del panel.** La guardada manda sobre `PANEL_PUBLIC_URL`; es la del comando de alta de nodos y el `Origin` que acepta el WebSocket. Las escrituras (`POST`/`PUT`/`PATCH`/`DELETE` bajo `/api/`) con un `Origin` que no sea el del panel dan 403, y el login también es una escritura. Detrás de un proxy inverso que reescriba `Host`, ni siquiera podrías entrar para cambiarla aquí: fija `PANEL_PUBLIC_URL` en el entorno del panel (`deploy/.env`) con la dirección con la que entras por el proxy, o haz que el proxy conserve `Host` (en nginx, `proxy_set_header Host $http_host;`).
 - **Rango de puertos de juego.** Solo se usa para servidores nuevos sin puerto.
 - **API key de CurseForge.** Si la guardada no es válida, la página lo avisa.
 
@@ -102,7 +102,7 @@ La pestaña **Backups** de cada servidor hace copias al momento, programa copias
 - **Dónde:** `DATA_ROOT/<slug>/backups/<slug>-<fecha>-<versión de la spec>.tar.zst` (tar + zstd), con un `.json` al lado (sha256, tamaño). Con el servidor en marcha la copia es en caliente (`save-off`, `save-all flush`, copia, `save-on`, que se envía aunque la copia falle); parado, directa. Los temporales de las subidas de Archivos nunca entran.
 - **Retención:** solo poda las copias programadas, y nunca la más reciente. Las manuales y los datos pre-restore se borran a mano.
 - **Descargar una copia:** desde la pestaña Backups; el fichero pasa por el panel en streaming. Los datos pre-restore no se descargan.
-- **`save-on` fallido:** si tras una copia en caliente no se pudo reactivar el guardado automático, el agente lo reintenta solo cada 15 s y lo registra como evento «Guardado automático desactivado».
+- **`save-on` fallido:** si tras una copia en caliente no se pudo reactivar el guardado automático, el agente lo reintenta solo, con una espera que empieza en 30 s y se duplica en cada fallo hasta 5 min, y lo registra como evento «Guardado automático desactivado».
 - **Las plantillas se llevan la programación.** «Guardar como plantilla» la incluye y cada servidor creado con la plantilla la hereda; el editor de plantillas y el asistente la enseñan, pero se cambia en la pestaña Backups de cada servidor.
 
 ### Restaurar y los datos pre-restore
