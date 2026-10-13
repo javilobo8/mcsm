@@ -147,3 +147,19 @@ describe("cambio de contraseña", () => {
     expect((await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "nueva-larga" } })).statusCode).toBe(200);
   });
 });
+
+describe("fallos de la contraseña actual", () => {
+  it("cuentan en el límite global de fallos, también el del login", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
+    const mine = cookieOf(res);
+    for (let i = 0; i < 30; i++) {
+      const r = await app.inject({ method: "POST", url: "/api/auth/password", headers: { cookie: mine }, remoteAddress: `10.1.${i}.1`, payload: { currentPassword: "mal", newPassword: "nueva-larga" } });
+      expect(r.statusCode).toBe(400);
+    }
+    const blocked = await app.inject({ method: "POST", url: "/api/auth/password", headers: { cookie: mine }, remoteAddress: "10.9.9.9", payload: { currentPassword: "correct horse", newPassword: "nueva-larga" } });
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json().error).toMatch(/Demasiados intentos fallidos/);
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", remoteAddress: "10.9.9.8", payload: { password: "correct horse" } });
+    expect(login.statusCode).toBe(429);
+  });
+});

@@ -59,10 +59,14 @@ export async function authRoutes(app: FastifyInstance) {
   // Sesión obligatoria (no está en la lista pública del guard). Una actual incorrecta es 400, no 401: en la web un
   // 401 fuera de /api/auth/ significa sesión caducada.
   app.post("/api/auth/password", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
+    if (failures.blocked()) {
+      return reply.code(429).send({ error: "Demasiados intentos fallidos en el último minuto: espera un poco y vuelve a probar" });
+    }
     const parsed = passwordChangeSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: formatZodError(parsed.error) });
     const stored = app.auth.getSetting("admin_password_hash");
     if (!stored || !(await verifyPassword(parsed.data.currentPassword, stored))) {
+      failures.fail();
       return reply.code(400).send({ error: "La contraseña actual no es correcta" });
     }
     app.auth.setSetting("admin_password_hash", await hashPassword(parsed.data.newPassword));
