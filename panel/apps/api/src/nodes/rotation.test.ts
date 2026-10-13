@@ -44,6 +44,16 @@ describe("rotación del token de un nodo", () => {
     expect((await node()).tokenRotationPending).toBe(false);
   });
 
+  it("un nodo cuyo socket ya se cerró (aún en el registro) es 409 sin dejar pendiente", async () => {
+    const agent = await connect(nodeToken);
+    app.agents.get(nodeId)!.terminate(); // el socket del panel ya no está abierto, pero el registro aún no se enteró
+    const res = await rotate();
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/desconectado/);
+    expect((await node()).tokenRotationPending).toBe(false);
+    agent.close();
+  });
+
   it("los dos tokens valen hasta que el agente conecta con el nuevo; después solo el nuevo", async () => {
     const agent = await connect(nodeToken);
     const { res, msg, token } = await startRotation(agent);

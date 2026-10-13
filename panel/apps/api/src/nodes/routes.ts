@@ -86,7 +86,7 @@ export async function nodeRoutes(app: FastifyInstance) {
     const node = repo.get(req.params.id);
     if (!node) throw new HttpError(404, "Nodo no encontrado");
     const conn = app.agents.get(node.id);
-    if (!conn) throw new HttpError(409, "El nodo está desconectado: la rotación necesita el agente conectado");
+    if (!conn?.isOpen) throw new HttpError(409, "El nodo está desconectado: la rotación necesita el agente conectado");
     if (node.pending_token_hash && node.pending_token_at && Date.parse(node.pending_token_at) > Date.now() - ROTATION_WINDOW_MS) {
       throw new HttpError(409, "Ya hay una rotación en curso: espera a que el agente se reconecte con el token nuevo");
     }

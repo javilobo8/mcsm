@@ -239,6 +239,8 @@ export class AgentConn {
   }
 
   terminate() { this.socket.terminate(); }
+  /** El socket está abierto y la conexión no se ha descartado: una petición saldrá de verdad. */
+  get isOpen(): boolean { return !this.disposed && this.socket.readyState === this.socket.OPEN; }
 }
 
 export class AgentHub extends EventEmitter {
