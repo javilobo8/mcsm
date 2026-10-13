@@ -1,20 +1,20 @@
 import type { Spec } from "@mcsm/shared";
 
-/** Margen mínimo libre tras escribir: el mismo que el agente (max(5 %, 256 MiB)). */
+/** Minimum free margin after writing: the same as the agent's (max(5 %, 256 MiB)). */
 export const SPACE_MARGIN_MIN = 256 * 1024 * 1024;
 export const requiredSpace = (n: number): number => n + Math.max(Math.floor(n * 0.05), SPACE_MARGIN_MIN);
 
 export interface TargetServer { slug: string; spec: Spec }
 export interface ProposalInput {
   slug: string; spec: Spec; targetServers: TargetServer[]; range: { from: number; to: number }; requestedPort?: number;
-  /** Slugs ocupados en el destino sin servidor (p. ej. un origen con la retirada pendiente: su directorio sigue allí). */
+  /** Slugs taken on the target without a server (e.g. a source with the removal pending: its directory is still there). */
   reservedSlugs?: Iterable<string>;
-  /** plan-8: puerto del host del router (mc-router) activo en el destino; null o ausente sin router. */
+  /** plan-8: host port of the active router (mc-router) on the target; null or absent without a router. */
   routerPort?: number | null;
 }
 export type Proposal = { ok: true; slug: string; port: number; portChanged: boolean } | { ok: false; error: string };
 
-/** Slug libre entre `taken`: el mismo o con sufijo -2, -3… (máx. 40 caracteres), como al crear un servidor. */
+/** Free slug among `taken`: the same or with suffix -2, -3… (max. 40 characters), as when creating a server. */
 export function uniqueSlugAmong(base: string, taken: ReadonlySet<string>): string {
   if (!taken.has(base)) return base;
   for (let n = 2; ; n++) {
@@ -25,9 +25,9 @@ export function uniqueSlugAmong(base: string, taken: ReadonlySet<string>): strin
 }
 
 /**
- * Slug y puerto de juego del servidor en el destino (spec §7: «puerto nuevo si colisiona»). El puerto pedido se
- * respeta si está libre; si no se pide, el actual si está libre y, si no, el primero libre del rango del panel. Los
- * puertos extra no se cambian solos: si chocan, error. El puerto del router del destino (plan-8) cuenta como usado. Pura.
+ * Slug and game port of the server on the target (spec §7: “new port if it collides”). The requested port is
+ * respected if free; if none is requested, the current one if free and, if not, the first free one in the panel's range. Extra
+ * ports are not changed on their own: if they clash, error. The target router's port (plan-8) counts as used. Pure.
  */
 export function proposeTarget(i: ProposalInput): Proposal {
   const used = new Set<number>();
@@ -38,31 +38,31 @@ export function proposeTarget(i: ProposalInput): Proposal {
   const router = i.routerPort ?? null;
   const onRouter = i.spec.ports.extra.find((e) => e.host === router);
   if (onRouter) {
-    return { ok: false, error: `El puerto extra ${onRouter.host} (${onRouter.label || onRouter.proto}) lo usa el router (mc-router) del nodo destino: cámbialo antes de migrar` };
+    return { ok: false, error: `Extra port ${onRouter.host} (${onRouter.label || onRouter.proto}) is used by the target node's router (mc-router): change it before migrating` };
   }
   const clash = i.spec.ports.extra.find((e) => used.has(e.host));
   if (clash) {
-    return { ok: false, error: `El puerto extra ${clash.host} (${clash.label || clash.proto}) ya lo usa otro servidor del nodo destino: cámbialo antes de migrar` };
+    return { ok: false, error: `Extra port ${clash.host} (${clash.label || clash.proto}) is already used by another server on the target node: change it before migrating` };
   }
   const extras = new Set(i.spec.ports.extra.map((e) => e.host));
   let port: number | undefined;
-  if (router !== null) used.add(router); // tras comprobar los extra: el choque con el router tiene su mensaje
+  if (router !== null) used.add(router); // after checking the extras: the clash with the router has its own message
   if (i.requestedPort !== undefined) {
-    if (i.requestedPort === router) return { ok: false, error: `El puerto ${router} lo usa el router (mc-router) del nodo destino` };
-    if (used.has(i.requestedPort) || extras.has(i.requestedPort)) return { ok: false, error: `El puerto ${i.requestedPort} ya está en uso en el nodo destino` };
+    if (i.requestedPort === router) return { ok: false, error: `Port ${router} is used by the target node's router (mc-router)` };
+    if (used.has(i.requestedPort) || extras.has(i.requestedPort)) return { ok: false, error: `Port ${i.requestedPort} is already in use on the target node` };
     port = i.requestedPort;
   } else if (!used.has(i.spec.ports.game)) {
     port = i.spec.ports.game;
   } else {
     for (let p = i.range.from; p <= i.range.to && port === undefined; p++) if (!used.has(p) && !extras.has(p)) port = p;
-    if (port === undefined) return { ok: false, error: `No quedan puertos libres entre ${i.range.from} y ${i.range.to} en el nodo destino` };
+    if (port === undefined) return { ok: false, error: `No free ports left between ${i.range.from} and ${i.range.to} on the target node` };
   }
   const slug = uniqueSlugAmong(i.slug, new Set([...i.targetServers.map((s) => s.slug), ...(i.reservedSlugs ?? [])]));
   return { ok: true, slug, port, portChanged: port !== i.spec.ports.game };
 }
 
-/** Nombre de la copia en el destino: el mismo con el slug del destino (el agente exige `<slug>-<ts>-<v>.tar.zst`). */
+/** Name of the backup on the target: the same with the target's slug (the agent requires `<slug>-<ts>-<v>.tar.zst`). */
 export function retargetFilename(filename: string, fromSlug: string, toSlug: string): string {
-  if (!filename.startsWith(`${fromSlug}-`)) throw new Error(`La copia ${filename} no es del servidor ${fromSlug}`);
+  if (!filename.startsWith(`${fromSlug}-`)) throw new Error(`The backup ${filename} does not belong to server ${fromSlug}`);
   return toSlug + filename.slice(fromSlug.length);
 }

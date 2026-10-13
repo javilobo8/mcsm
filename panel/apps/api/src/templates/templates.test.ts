@@ -27,8 +27,8 @@ const fullSpec = {
   ports: { game: 25580, extra: [{ host: 24454, container: 24454, proto: "udp", label: "Voice" }] },
 };
 
-describe("plantillas", () => {
-  it("guardar como plantilla quita puertos y rconPassword; instanciar reproduce el servidor salvo nombre, puertos y RCON", async () => {
+describe("templates", () => {
+  it("save as template strips ports and rconPassword; instantiating reproduces the server except name, ports and RCON", async () => {
     const server = (await req("POST", "/api/servers", { nodeId, name: "Original", spec: fullSpec })).json();
     let res = await req("POST", "/api/templates", { name: "Fabric optimizado", description: "Con lithium", fromServerId: server.id });
     expect(res.statusCode).toBe(201);
@@ -50,7 +50,7 @@ describe("plantillas", () => {
     expect(strip(copy.spec)).toEqual(strip(server.spec));
   });
 
-  it("instanciar con puerto explícito; puerto ocupado da 409", async () => {
+  it("instantiate with an explicit port; a taken port gives 409", async () => {
     const tpl = (await req("POST", "/api/templates", { name: "Vanilla", spec: { type: "VANILLA" } })).json();
     let res = await req("POST", `/api/templates/${tpl.id}/servers`, { nodeId, name: "A", port: 25590, desiredState: "running" });
     expect(res.statusCode).toBe(201);
@@ -61,7 +61,7 @@ describe("plantillas", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("crear desde spec descarta puertos y rconPassword y valida igual que un servidor", async () => {
+  it("create from a spec discards ports and rconPassword and validates like a server", async () => {
     let res = await req("POST", "/api/templates", { name: "Con puertos", spec: { ...fullSpec, rconPassword: "secretosecreto" } });
     expect(res.statusCode).toBe(201);
     expect(res.json().spec).not.toHaveProperty("ports");
@@ -73,7 +73,7 @@ describe("plantillas", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it("nombres únicos, PATCH con merge, duplicar y borrar", async () => {
+  it("unique names, PATCH with merge, duplicate and delete", async () => {
     const tpl = (await req("POST", "/api/templates", { name: "Base", spec: { type: "PAPER", memory: "4G" } })).json();
     expect((await req("POST", "/api/templates", { name: "Base", spec: {} })).statusCode).toBe(409);
 
@@ -85,42 +85,42 @@ describe("plantillas", () => {
 
     const d1 = (await req("POST", `/api/templates/${tpl.id}/duplicate`)).json();
     const d2 = (await req("POST", `/api/templates/${tpl.id}/duplicate`)).json();
-    expect([d1.name, d2.name]).toEqual(["Base (copia)", "Base (copia 2)"]);
+    expect([d1.name, d2.name]).toEqual(["Base (copy)", "Base (copy 2)"]);
     expect(d1.spec).toEqual(res.json().spec);
     expect((await req("PATCH", `/api/templates/${d1.id}`, { name: "Base" })).statusCode).toBe(409);
 
-    expect((await req("GET", "/api/templates")).json().map((t: { name: string }) => t.name)).toEqual(["Base", "Base (copia 2)", "Base (copia)"]); // orden por nombre (NOCASE)
+    expect((await req("GET", "/api/templates")).json().map((t: { name: string }) => t.name)).toEqual(["Base", "Base (copy 2)", "Base (copy)"]); // ordered by name (NOCASE)
     expect((await req("DELETE", `/api/templates/${d2.id}`)).statusCode).toBe(204);
     expect((await req("DELETE", `/api/templates/${d2.id}`)).statusCode).toBe(404);
     expect((await req("GET", `/api/templates/${d2.id}`)).statusCode).toBe(404);
   });
 
-  it("borrar el servidor de origen deja la plantilla con sourceServerId null", async () => {
+  it("deleting the source server leaves the template with sourceServerId null", async () => {
     const server = (await req("POST", "/api/servers", { nodeId, name: "Origen" })).json();
     const tpl = (await req("POST", "/api/templates", { name: "De origen", fromServerId: server.id })).json();
     expect((await req("DELETE", `/api/servers/${server.id}`)).statusCode).toBe(204);
     expect((await req("GET", `/api/templates/${tpl.id}`)).json().sourceServerId).toBeNull();
   });
 
-  it("requiere sesión", async () => {
+  it("requires a session", async () => {
     expect((await app.inject({ method: "GET", url: "/api/templates" })).statusCode).toBe(401);
   });
 });
 
-describe("PATCH de plantilla: null en claves obligatorias", () => {
-  it("responde 400 y conserva la spec", async () => {
+describe("template PATCH: null on required keys", () => {
+  it("responds 400 and keeps the spec", async () => {
     const { ports: _p, ...spec } = fullSpec;
     const tpl = (await req("POST", "/api/templates", { name: "T", spec })).json();
     const res = await req("PATCH", `/api/templates/${tpl.id}`, { spec: { type: null } });
     expect(res.statusCode).toBe(400);
-    expect(res.json().error).toContain("«type»");
+    expect(res.json().error).toContain("“type”");
     expect((await req("GET", `/api/templates/${tpl.id}`)).json().spec.type).toBe("FABRIC");
     expect((await req("PATCH", `/api/templates/${tpl.id}`, { spec: { whitelist: null } })).json().spec).not.toHaveProperty("whitelist");
   });
 });
 
-describe("plantillas: tope de 64 KiB", () => {
-  it("no se guarda una plantilla que no se podría instanciar", async () => {
+describe("templates: 64 KiB cap", () => {
+  it("a template that could not be instantiated is not saved", async () => {
     const env = Object.fromEntries(Array.from({ length: 18 }, (_, i) => [`V${i}`, "x".repeat(4000)]));
     const res = await req("POST", "/api/templates", { name: "Enorme", spec: { env } });
     expect(res.statusCode).toBe(400);

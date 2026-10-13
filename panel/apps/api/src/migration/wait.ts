@@ -10,15 +10,15 @@ import { StepError } from "./errors.js";
 
 export interface Waiter<T> { promise: Promise<T>; cancel(): void }
 
-/** Escucha los mensajes no solicitados de los agentes (los mismos que despacha AgentService). */
+/** Listens to the agents' unsolicited messages (the same ones AgentService dispatches). */
 export function onAgentMessage(agents: EventEmitter, fn: (nodeId: string, env: Envelope) => void): () => void {
   agents.on("message", fn);
   return () => { agents.off("message", fn); };
 }
 
 /**
- * Espera a que el job termine (ok, failed o cancelled). `onProgress` recibe cada avance; sin avances durante `idleMs`
- * rechaza con `idleMessage`. Mira también el estado actual: si ya terminó, resuelve enseguida.
+ * Waits for the job to end (ok, failed or cancelled). `onProgress` receives each update; with no updates for `idleMs`
+ * rejects with `idleMessage`. Also looks at the current state: if it already ended, it resolves right away.
  */
 export function waitJob(app: FastifyInstance, jobId: string, opts: { idleMs: number; timers: Timers; idleMessage: string; onProgress?: (j: JobDto) => void }): Waiter<JobDto> {
   let off = () => {};
@@ -48,8 +48,8 @@ export function waitJob(app: FastifyInstance, jobId: string, opts: { idleMs: num
 }
 
 /**
- * Espera a que el servidor quede sano en el nodo: `running` con healthcheck `healthy` o ping SLP correcto. Un
- * `exited`/`dead` rechaza al instante; si vence `timeoutMs`, también. Hay que crearlo ANTES de ordenar el arranque.
+ * Waits for the server to become healthy on the node: `running` with healthcheck `healthy` or a correct SLP ping. An
+ * `exited`/`dead` rejects immediately; if `timeoutMs` expires, it does too. It must be created BEFORE ordering the start.
  */
 export function waitObserved(agents: EventEmitter, nodeId: string, serverId: string, opts: { timeoutMs: number; timers: Timers; onObserved?: (o: ObservedDto) => void }): Waiter<ObservedDto> {
   let off = () => {};
@@ -62,11 +62,11 @@ export function waitObserved(agents: EventEmitter, nodeId: string, serverId: str
       opts.onObserved?.(o);
       if (o.state === "running" && (o.health === "healthy" || o.mc.online)) settle(() => resolve(o));
       else if (o.state === "exited" || o.state === "dead") {
-        settle(() => reject(new StepError(`El servidor se paró en el destino (código de salida ${o.exitCode})${o.error ? `: ${o.error}` : ""}`)));
+        settle(() => reject(new StepError(`The server stopped on the target (exit code ${o.exitCode})${o.error ? `: ${o.error}` : ""}`)));
       }
     });
     const minutes = Math.round(opts.timeoutMs / 60_000);
-    disarm = opts.timers.set(() => settle(() => reject(new StepError(`El servidor no quedó sano en el destino en ${minutes} min (healthcheck o ping)`))), opts.timeoutMs);
+    disarm = opts.timers.set(() => settle(() => reject(new StepError(`The server did not become healthy on the target within ${minutes} min (healthcheck or ping)`))), opts.timeoutMs);
   });
   promise.catch(() => {});
   return { promise, cancel: () => { off(); disarm(); } };

@@ -7,7 +7,7 @@ import { HttpError, agentErrorToHttp } from "../lib/http.js";
 import { hostnameOwner, portOwner } from "./checks.js";
 import { RouterRepo, rowSpec, toRouterDto } from "./repo.js";
 
-/** Fallos de envío que no impiden guardar: la configuración llega en el próximo handshake. */
+/** Send failures that do not prevent saving: the configuration arrives on the next handshake. */
 const TRANSIENT = new Set<string>([AgentErrorCode.Disconnected, AgentErrorCode.Syncing, AgentErrorCode.Timeout]);
 
 export function observedToDto(o: RouterObserved): RouterObservedDto {
@@ -18,14 +18,14 @@ export function observedToDto(o: RouterObserved): RouterObservedDto {
   };
 }
 
-/** Un agente sin el Plan 8 no tiene router: activarlo ahí no se guarda (ver `put`). */
-export const ROUTER_UNSUPPORTED = "El agente de este nodo está desactualizado y no admite el router (mc-router): actualízalo. No se ha guardado el cambio.";
+/** An agent without Plan 8 has no router: enabling it there is not saved (see `put`). */
+export const ROUTER_UNSUPPORTED = "The agent on this node is out of date and does not support the router (mc-router): update it. The change was not saved.";
 
 /**
- * mc-router de cada nodo (spec §7 RouterService). La fila de `router_deployments` es la verdad: tras el
- * handshake de un nodo con fila se le reenvía (RouterApply si está activo, RouterRemove si no) y cada
- * cambio del usuario se envía al momento si el nodo está conectado. Los envíos de un nodo van en
- * cadena y cada uno lee la fila al salir, así que el último en llegar al agente es siempre el vigente.
+ * mc-router of each node (spec §7 RouterService). The `router_deployments` row is the truth: after a
+ * node's handshake with a row it is resent (RouterApply if enabled, RouterRemove if not) and each
+ * user change is sent immediately if the node is online. A node's sends are chained
+ * and each one reads the row when it goes out, so the last to reach the agent is always the current one.
  */
 export class RouterService {
   private chains = new Map<string, Promise<void>>();
@@ -35,15 +35,15 @@ export class RouterService {
   start() {
     this.app.agents.on("attached", (nodeId: string) => {
       const conn = this.app.agents.get(nodeId);
-      // Tras el Ack de SyncSpecs (conn.ready): nada sale al agente antes.
+      // After the SyncSpecs Ack (conn.ready): nothing goes out to the agent before it.
       conn?.ready.then(() => {
-        if (this.repo.get(nodeId)) this.push(nodeId).catch((e) => this.app.log.warn({ nodeId, err: e }, "no se pudo enviar el router al agente"));
-      }, () => { /* desconectado antes de sincronizar: el próximo handshake lo reenvía */ });
+        if (this.repo.get(nodeId)) this.push(nodeId).catch((e) => this.app.log.warn({ nodeId, err: e }, "could not send the router to the agent"));
+      }, () => { /* disconnected before syncing: the next handshake resends it */ });
     });
   }
 
   private requireNode(nodeId: string) {
-    if (!this.app.nodes.get(nodeId)) throw new HttpError(404, "Nodo no encontrado");
+    if (!this.app.nodes.get(nodeId)) throw new HttpError(404, "Node not found");
   }
 
   get(nodeId: string): RouterDto {
@@ -51,41 +51,41 @@ export class RouterService {
     return toRouterDto(nodeId, this.repo.get(nodeId));
   }
 
-  /** ¿Está activo el router del nodo? */
+  /** Is the node's router enabled? */
   isEnabled(nodeId: string): boolean {
     return rowSpec(this.repo.get(nodeId)).enabled;
   }
 
   /**
-   * Por qué no se puede borrar el nodo por su router (null si se puede): activo, o desactivado pero el
-   * agente conectado aún no ha confirmado que lo retiró. Desconectado se permite: si no, el nodo de una
-   * máquina perdida no se podría borrar nunca; un router huérfano lo retira el agente que vuelva a
-   * arrancar en esa máquina (sin spec de router, o al darse de alta de nuevo) o `docker rm -f mcsm-router`.
+   * Why the node cannot be deleted because of its router (null if it can): enabled, or disabled but the
+   * connected agent has not yet confirmed it removed it. Offline is allowed: otherwise the node of a
+   * lost machine could never be deleted; an orphaned router is removed by the agent that starts again
+   * on that machine (without a router spec, or when enrolled again) or `docker rm -f mcsm-router`.
    */
   deleteBlock(nodeId: string): string | null {
     const row = this.repo.get(nodeId);
-    if (rowSpec(row).enabled) return "Desactiva el router del nodo antes de borrarlo";
+    if (rowSpec(row).enabled) return "Disable the node's router before deleting it";
     const observed = toRouterDto(nodeId, row).observed;
-    if (observed?.configured && this.app.agents.get(nodeId)) return "El router de este nodo todavía se está retirando: espera unos segundos y vuelve a intentarlo";
+    if (observed?.configured && this.app.agents.get(nodeId)) return "This node's router is still being removed: wait a few seconds and try again";
     return null;
   }
 
-  /** Puerto del host que ocupa el router activo del nodo; null si no está activo. */
+  /** Host port occupied by the node's enabled router; null if it is not enabled. */
   reservedPort(nodeId: string): number | null {
     const spec = rowSpec(this.repo.get(nodeId));
     return spec.enabled ? spec.port : null;
   }
 
-  /** ¿Arranca y para mc-router por su cuenta los servidores con hostname del nodo (router activo con autoscale)? */
+  /** Does mc-router start and stop the node's servers with a hostname on its own (router enabled with autoscale)? */
   autoscaleOn(nodeId: string): boolean {
     const spec = rowSpec(this.repo.get(nodeId));
     return spec.enabled && spec.autoscale;
   }
 
   /**
-   * Quién usa ya en `nodeId` el hostname del router de `spec` (null si está libre o `spec` no lo usa): un servidor del
-   * nodo con el router activo, o uno que se está migrando a ese nodo (Plan 7: su copia puede estar ya allí, con las
-   * etiquetas de mc-router). `selfId` es el propio servidor.
+   * Who already uses the router hostname of `spec` on `nodeId` (null if it is free or `spec` does not use it): a server of the
+   * node with the router enabled, or one being migrated to that node (Plan 7: its copy may already be there, with the
+   * mc-router labels). `selfId` is the server itself.
    */
   hostnameUser(nodeId: string, spec: Spec, selfId?: string): { name: string; migrating: boolean } | null {
     if (!spec.router?.enabled) return null;
@@ -93,21 +93,21 @@ export class RouterService {
     const owner = hostnameOwner(this.app.servers.list(nodeId), hostname, selfId);
     if (owner) return { name: owner.name, migrating: false };
     const m = this.app.migrations.incoming(nodeId, selfId).find((i) => i.spec.router?.enabled && i.spec.router.hostname === hostname);
-    return m ? { name: this.app.servers.get(m.serverId)?.name ?? "otro servidor", migrating: true } : null;
+    return m ? { name: this.app.servers.get(m.serverId)?.name ?? "another server", migrating: true } : null;
   }
 
   /**
-   * 409 si el hostname del router de `spec` ya está en uso en el nodo (ver `hostnameUser`). `targetName`: el nodo es el
-   * destino de una migración con ese nombre (cambia el texto).
+   * 409 if the router hostname of `spec` is already in use on the node (see `hostnameUser`). `targetName`: the node is the
+   * target of a migration with that name (changes the text).
    */
   checkHostname(nodeId: string, spec: Spec, selfId?: string, targetName?: string) {
     const user = this.hostnameUser(nodeId, spec, selfId);
     if (!user) return;
     const hostname = spec.router!.hostname;
     if (user.migrating) {
-      throw new HttpError(409, `El hostname «${hostname}» lo reserva «${user.name}», que se está migrando ${targetName ? `al nodo destino «${targetName}»` : "a este nodo"}`);
+      throw new HttpError(409, `Hostname “${hostname}” is reserved by “${user.name}”, which is being migrated ${targetName ? `to the target node “${targetName}”` : "to this node"}`);
     }
-    throw new HttpError(409, `El hostname «${hostname}» ya lo usa el servidor «${user.name}» ${targetName ? `del nodo destino «${targetName}»` : "de este nodo"}`);
+    throw new HttpError(409, `Hostname “${hostname}” is already used by server “${user.name}” ${targetName ? `on the target node “${targetName}”` : "on this node"}`);
   }
 
   async put(nodeId: string, input: unknown): Promise<RouterDto> {
@@ -118,20 +118,20 @@ export class RouterService {
     if (spec.enabled) {
       const owner = portOwner(this.app.servers.list(nodeId), spec.port);
       if (owner) {
-        throw new HttpError(409, `El puerto ${spec.port} lo usa el servidor «${owner.name}» de este nodo: elige otro puerto para el router o cambia el del servidor`);
+        throw new HttpError(409, `Port ${spec.port} is used by server “${owner.name}” on this node: choose another port for the router or change the server's`);
       }
-      // Plan 7: el puerto de un servidor que se está migrando a este nodo (su copia arrancará en él).
+      // Plan 7: the port of a server being migrated to this node (its copy will start on it).
       if (this.app.migrations.reservedPorts(nodeId).has(spec.port)) {
-        throw new HttpError(409, `El puerto ${spec.port} lo reserva una migración en curso hacia este nodo: elige otro puerto para el router`);
+        throw new HttpError(409, `Port ${spec.port} is reserved by a migration in progress towards this node: choose another port for the router`);
       }
     }
     if (spec.enabled && spec.autoscale) {
-      // Plan 7: con el autoscale, mc-router arrancaría aquí el origen parado de una migración con hostname (la migración
-      // lo exige sin autoscale al empezar: MigrationService.plan).
+      // Plan 7: with autoscale, mc-router would start here the stopped source of a migration with a hostname (the migration
+      // requires it without autoscale at the start: MigrationService.plan).
       const m = this.app.migrations.openFrom(nodeId).find((o) => (JSON.parse(o.target_spec) as Spec).router?.enabled);
       if (m) {
-        const name = this.app.servers.get(m.server_id)?.name ?? "Un servidor";
-        throw new HttpError(409, `«${name}» tiene hostname y se está migrando desde este nodo: activa el autoscale cuando termine la migración (mc-router podría arrancarlo aquí a mitad)`);
+        const name = this.app.servers.get(m.server_id)?.name ?? "A server";
+        throw new HttpError(409, `“${name}” has a hostname and is being migrated from this node: enable autoscale when the migration ends (mc-router could start it here midway)`);
       }
     }
     const before = this.repo.get(nodeId);
@@ -141,18 +141,18 @@ export class RouterService {
       await this.push(nodeId);
     } catch (e) {
       if (e instanceof AgentError && e.code === AgentErrorCode.Unsupported) {
-        // Un agente sin router no tiene nada que retirar: desactivar se guarda. Activar no: quedaría un
-        // puerto reservado, un nodo sin poder borrarse y un reenvío en cada handshake para nada.
+        // An agent without a router has nothing to remove: disabling is saved. Enabling is not: it would leave a
+        // reserved port, a node that cannot be deleted and a resend on every handshake for nothing.
         if (!spec.enabled) return toRouterDto(nodeId, this.repo.get(nodeId));
         if (this.repo.revert(nodeId, before, row)) this.app.events.emit("router", nodeId, toRouterDto(nodeId, this.repo.get(nodeId)));
         throw new HttpError(409, ROUTER_UNSUPPORTED);
       }
-      if (!(e instanceof AgentError && TRANSIENT.has(e.code))) throw agentErrorToHttp(e, "El agente no pudo aplicar el router");
+      if (!(e instanceof AgentError && TRANSIENT.has(e.code))) throw agentErrorToHttp(e, "The agent could not apply the router");
     }
     return toRouterDto(nodeId, this.repo.get(nodeId));
   }
 
-  /** Envía al agente la configuración vigente del nodo (si está conectado). Serializado por nodo. */
+  /** Sends the node's current configuration to the agent (if connected). Serialized per node. */
   push(nodeId: string): Promise<void> {
     const prev = this.chains.get(nodeId) ?? Promise.resolve();
     const next = prev.catch(() => {}).then(async () => {
@@ -176,16 +176,16 @@ export class RouterService {
     if (this.chains.get(nodeId) === p) this.chains.delete(nodeId);
   }
 
-  /** RouterObserved del agente (no solicitado). */
+  /** RouterObserved from the agent (unsolicited). */
   onObserved(nodeId: string, o: RouterObserved) {
     if (!this.app.nodes.get(nodeId)) return;
     const dto = observedToDto(o);
     const before = this.repo.get(nodeId);
-    if (!before && !dto.configured) return; // nodo sin router: nada que guardar
+    if (!before && !dto.configured) return; // node without a router: nothing to store
     const row = this.repo.setObserved(nodeId, dto);
-    // Un router que el panel no quiere (p. ej. tras restaurar la BD del panel) se retira.
+    // A router the panel does not want (e.g. after restoring the panel DB) is removed.
     if (dto.configured && !rowSpec(row).enabled) {
-      this.push(nodeId).catch((e) => this.app.log.warn({ nodeId, err: e }, "no se pudo retirar el router del agente"));
+      this.push(nodeId).catch((e) => this.app.log.warn({ nodeId, err: e }, "could not remove the router from the agent"));
     }
     if (before?.observed !== row.observed) this.app.events.emit("router", nodeId, toRouterDto(nodeId, row));
   }

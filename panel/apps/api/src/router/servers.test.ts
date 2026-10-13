@@ -27,8 +27,8 @@ const post = async (u: string, payload: object) => await app.inject({ method: "P
 const patch = async (u: string, payload: object) => await app.inject({ method: "PATCH", url: u, headers: { cookie }, payload });
 const routed = (hostname: string, enabled = true) => ({ router: { enabled, hostname } });
 
-describe("servidores y nodos con router", () => {
-  it("guarda la sección router y la valida", async () => {
+describe("servers and nodes with a router", () => {
+  it("stores the router section and validates it", async () => {
     let res = await post("/api/servers", { nodeId, name: "Survival", spec: routed("survival.lan") });
     expect(res.statusCode).toBe(201);
     expect(res.json().spec.router).toEqual({ enabled: true, hostname: "survival.lan" });
@@ -38,28 +38,28 @@ describe("servidores y nodos con router", () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it("el hostname es único por nodo entre los servidores con el router activo", async () => {
+  it("the hostname is unique per node among servers with the router enabled", async () => {
     const a = (await post("/api/servers", { nodeId, name: "Survival", spec: routed("survival.lan") })).json();
     let res = await post("/api/servers", { nodeId, name: "Otro", spec: routed("survival.lan") });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("El hostname «survival.lan» ya lo usa el servidor «Survival» de este nodo");
-    // Desactivado no compite; activarlo después sí.
+    expect(res.json().error).toBe("Hostname “survival.lan” is already used by server “Survival” on this node");
+    // Disabled does not compete; enabling it afterwards does.
     const b = (await post("/api/servers", { nodeId, name: "Creativo", spec: routed("survival.lan", false) })).json();
     expect(b.id).toBeDefined();
     res = await patch(`/api/servers/${b.id}`, { spec: routed("survival.lan") });
     expect(res.statusCode).toBe(409);
     res = await patch(`/api/servers/${b.id}`, { spec: routed("creativo.lan") });
     expect(res.statusCode).toBe(200);
-    // Editarse a sí mismo no choca consigo.
+    // Editing itself does not clash with itself.
     res = await patch(`/api/servers/${a.id}`, { spec: { memory: "3G", ...routed("survival.lan") } });
     expect(res.statusCode).toBe(200);
-    // Otro nodo puede usar el mismo hostname (su DNS apunta a otra máquina).
+    // Another node can use the same hostname (its DNS points to another machine).
     const other = await enroll("salon");
     res = await post("/api/servers", { nodeId: other.nodeId, name: "Survival", spec: routed("survival.lan") });
     expect(res.statusCode).toBe(201);
   });
 
-  it("con el router activo su puerto no se reparte ni se puede publicar", async () => {
+  it("with the router enabled its port is neither assigned nor can be published", async () => {
     expect((await app.inject({ method: "PUT", url: `/api/nodes/${nodeId}/router`, headers: { cookie }, payload: { enabled: true } })).statusCode).toBe(200);
     let res = await post("/api/servers", { nodeId, name: "Uno" });
     expect(res.json().spec.ports.game).toBe(25566);
@@ -68,12 +68,12 @@ describe("servidores y nodos con router", () => {
     expect(res.json().error).toMatch(/router/);
     res = await post("/api/servers", { nodeId, name: "Tres", spec: { ports: { game: 25570, extra: [{ host: 25565, container: 8100, proto: "tcp", label: "x" }] } } });
     expect(res.statusCode).toBe(409);
-    // Desactivado, el puerto vuelve a estar libre.
+    // Disabled, the port is free again.
     await app.inject({ method: "PUT", url: `/api/nodes/${nodeId}/router`, headers: { cookie }, payload: { enabled: false } });
     expect((await post("/api/servers", { nodeId, name: "Cuatro", spec: { ports: { game: 25565 } } })).statusCode).toBe(201);
   });
 
-  it("la spec que recibe el agente lleva el router", async () => {
+  it("the spec the agent receives carries the router", async () => {
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
     await agent.handshake();
@@ -86,19 +86,19 @@ describe("servidores y nodos con router", () => {
     agent.close();
   });
 
-  it("borrar un nodo con el router activo es 409; desactivado se borra con su fila", async () => {
+  it("deleting a node with the router enabled is 409; disabled it is deleted with its row", async () => {
     const put = async (payload: object) => await app.inject({ method: "PUT", url: `/api/nodes/${nodeId}/router`, headers: { cookie }, payload });
     await put({ enabled: true, port: 25590 });
     let res = await app.inject({ method: "DELETE", url: `/api/nodes/${nodeId}`, headers: { cookie } });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("Desactiva el router del nodo antes de borrarlo");
+    expect(res.json().error).toBe("Disable the node's router before deleting it");
     await put({ enabled: false, port: 25590 });
     res = await app.inject({ method: "DELETE", url: `/api/nodes/${nodeId}`, headers: { cookie } });
     expect(res.statusCode).toBe(204);
     expect(app.db.prepare("SELECT COUNT(*) AS n FROM router_deployments").get()).toEqual({ n: 0 });
   });
 
-  it("borrar un nodo con el router retirándose: 409 conectado; desconectado se permite (lo retira el próximo agente)", async () => {
+  it("deleting a node with the router being removed: 409 online; offline it is allowed (the next agent removes it)", async () => {
     const put = async (payload: object) => await app.inject({ method: "PUT", url: `/api/nodes/${nodeId}/router`, headers: { cookie }, payload });
     const del = async () => await app.inject({ method: "DELETE", url: `/api/nodes/${nodeId}`, headers: { cookie } });
     const agent = new FakeAgent(url, nodeToken);
@@ -116,12 +116,12 @@ describe("servidores y nodos con router", () => {
     const off = put({ enabled: false, port: 25590 });
     agent.ack((await agent.waitFor("routerRemove")).id);
     await off;
-    // El agente aún no ha informado de que lo retiró.
+    // The agent has not yet reported that it removed it.
     let res = await del();
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("El router de este nodo todavía se está retirando: espera unos segundos y vuelve a intentarlo");
-    // Desconectado con el router aún desplegado: se permite (si no, un nodo de una máquina perdida no se
-    // podría borrar nunca); el router huérfano lo retira el agente que vuelva a arrancar allí.
+    expect(res.json().error).toBe("This node's router is still being removed: wait a few seconds and try again");
+    // Offline with the router still deployed: allowed (otherwise a node on a lost machine could
+    // never be deleted); the orphaned router is removed by the agent that starts again there.
     const gone = new Promise<void>((r) => app.agents.once("detached", () => r()));
     agent.close();
     await gone;
@@ -129,7 +129,7 @@ describe("servidores y nodos con router", () => {
     expect(res.statusCode).toBe(204);
   });
 
-  it("una plantilla guardada desde un servidor no lleva el router", async () => {
+  it("a template saved from a server does not carry the router", async () => {
     const s = (await post("/api/servers", { nodeId, name: "Survival", spec: routed("survival.lan") })).json();
     const res = await post("/api/templates", { name: "Base", fromServerId: s.id });
     expect(res.statusCode).toBe(201);

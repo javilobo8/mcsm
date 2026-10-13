@@ -62,11 +62,11 @@ describe("guardSubject", () => {
 });
 
 describe("MigrationsRepo", () => {
-  it("commit: mueve la fila solo si sigue en el origen con la misma versión y sin romper el slug único", async () => {
+  it("commit: moves the row only if it is still on the source with the same version and without breaking the unique slug", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const m1 = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
-    app.servers.bumpVersion(s.id); // la spec cambió durante la migración
+    app.servers.bumpVersion(s.id); // the spec changed during the migration
     expect(app.migrations.commit(m1, "running", observed)).toBe(false);
     expect(app.servers.get(s.id)!.node_id).toBe(a.nodeId);
     expect(app.migrations.get(m1.id)!.phase).toBe("running");
@@ -75,19 +75,19 @@ describe("MigrationsRepo", () => {
       source_version: 2, target_version: 3, target_port: 25570, target_spec: JSON.stringify(spec(25570)),
     }));
     const other = app.servers.create({ nodeId: b.nodeId, name: "Otro", slug: "uno", spec: spec(25580), desiredState: "stopped" });
-    expect(app.migrations.commit(m2, "running", observed)).toBe(false); // slug ocupado en el destino
+    expect(app.migrations.commit(m2, "running", observed)).toBe(false); // slug taken on the target
     app.servers.delete(other.id);
 
     expect(app.migrations.commit(m2, "stopped", observed)).toBe(true);
     const row = app.servers.get(s.id)!;
     expect(row).toMatchObject({ node_id: b.nodeId, slug: "uno", spec_version: 3, desired_state: "stopped", observed_spec_version: 3 });
-    expect(row.desired_changed_at).not.toBeNull(); // el commit cambia el estado deseado: marca la hora (un crash_loop atrasado no lo deshace)
+    expect(row.desired_changed_at).not.toBeNull(); // the commit changes the desired state: it marks the time (a late crash_loop does not undo it)
     expect(JSON.parse(row.spec).ports.game).toBe(25570);
     expect(JSON.parse(row.observed!).containerId).toBe("c1");
     expect(app.migrations.get(m2.id)).toMatchObject({ phase: "committed", source_pending: 1 });
   });
 
-  it("commit: un servidor importado (imported_from, Plan 6) deja de seguir a su contenedor original", async () => {
+  it("commit: an imported server (imported_from, Plan 6) stops following its original container", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     app.servers.setImportedFrom(s.id, {
@@ -100,25 +100,25 @@ describe("MigrationsRepo", () => {
     expect(app.servers.get(s.id)!.imported_from).toBeNull();
   });
 
-  it("commit fallido: un importado sigue con su imported_from en el origen", async () => {
+  it("failed commit: an imported one keeps its imported_from on the source", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     app.servers.setImportedFrom(s.id, {
       containerId: "c".repeat(64), containerName: "mc-viejo", specVersion: 1, importedAt: "2026-10-12T00:00:00.000Z", composeProject: "", composeService: "",
     });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
-    app.servers.bumpVersion(s.id); // la spec cambió durante la migración: el commit no mueve nada
+    app.servers.bumpVersion(s.id); // the spec changed during the migration: the commit moves nothing
     expect(app.migrations.commit(m, "running", null)).toBe(false);
     expect(app.servers.get(s.id)).toMatchObject({ node_id: a.nodeId });
     expect(app.servers.get(s.id)!.imported_from).toMatch(/mc-viejo/);
   });
 
-  it("commit: falla si otro servidor del destino ya usa el puerto de juego o un puerto extra (M1)", async () => {
+  it("commit: fails if another server on the target already uses the game port or an extra port (M1)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId, { target_port: 25570, target_spec: JSON.stringify(spec(25570)) }));
     const other = app.servers.create({ nodeId: b.nodeId, name: "Otro", slug: "otro", spec: spec(25571), desiredState: "stopped" });
-    // Alguien cambió el otro servidor de B para usar el puerto reservado (sin pasar por checkPorts).
+    // Someone changed B's other server to use the reserved port (without going through checkPorts).
     app.servers.updateSpec(other.id, spec(25570));
     expect(app.migrations.commit(m, "running", observed)).toBe(false);
     expect(app.servers.get(s.id)!.node_id).toBe(a.nodeId);
@@ -129,7 +129,7 @@ describe("MigrationsRepo", () => {
     expect(app.migrations.commit(m, "running", observed)).toBe(true);
   });
 
-  it("checkPorts y allocatePort cuentan los puertos reservados por migraciones hacia el nodo (M1)", async () => {
+  it("checkPorts and allocatePort count the ports reserved by migrations towards the node (M1)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const other = app.servers.create({ nodeId: b.nodeId, name: "Otro", slug: "otro", spec: spec(25571), desiredState: "stopped" });
@@ -139,17 +139,17 @@ describe("MigrationsRepo", () => {
     expect(patch.json().error).toMatch(/25566/);
     expect(app.serversService.allocatePort(b.nodeId)).toBe(25565);
     app.servers.updateSpec(other.id, spec(25565));
-    expect(app.serversService.allocatePort(b.nodeId)).toBe(25567); // 25566 lo reserva la migración
+    expect(app.serversService.allocatePort(b.nodeId)).toBe(25567); // 25566 is reserved by the migration
     app.migrations.update(m.id, { phase: "failed" });
     expect(app.serversService.allocatePort(b.nodeId)).toBe(25566);
   });
 
-  it("blockingServer y blockingNodeCreate solo mientras puede haber conflicto (I2)", async () => {
+  it("blockingServer and blockingNodeCreate only while there can be a conflict (I2)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     const cases: [Parameters<typeof app.migrations.update>[1], boolean, boolean][] = [
-      // patch, bloquea el servidor, bloquea crear en el destino
+      // patch, blocks the server, blocks creating on the target
       [{ phase: "rolling_back", source_pending: 1, target_pending: 1, target_started: 0 }, true, true],
       [{ phase: "rolling_back", source_pending: 0, target_pending: 1, target_started: 1 }, true, true],
       [{ phase: "rolling_back", source_pending: 0, target_pending: 1, target_started: 0 }, false, true],
@@ -163,7 +163,7 @@ describe("MigrationsRepo", () => {
     }
   });
 
-  it("interruptRunning, protects y las consultas de bloqueo", async () => {
+  it("interruptRunning, protects and the blocking queries", async () => {
     const a = await enroll("a"); const b = await enroll("b"); const c = await enroll("c");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const s2 = app.servers.create({ nodeId: c.nodeId, name: "Dos", slug: "dos", spec: spec(25566), desiredState: "running" });
@@ -176,9 +176,9 @@ describe("MigrationsRepo", () => {
     expect(app.migrations.protects(b.nodeId, s.id)).toBe(true);
     expect(app.migrations.protects(c.nodeId, s.id)).toBe(false);
     expect(app.migrations.blockingServer(s.id)?.id).toBe(run.id);
-    expect(app.migrations.blockingServer(s2.id)).toBeNull(); // confirmada: el servidor ya es libre
+    expect(app.migrations.blockingServer(s2.id)).toBeNull(); // confirmed: the server is free now
     expect(app.migrations.blockingNodeCreate(b.nodeId)?.id).toBe(run.id);
-    expect(app.migrations.blockingNodeCreate(c.nodeId)?.id).toBe(com.id); // origen pendiente de retirar
+    expect(app.migrations.blockingNodeCreate(c.nodeId)?.id).toBe(com.id); // source pending removal
     expect(app.migrations.blockingNodeDelete(b.nodeId)?.id).toBe(run.id);
     expect(app.migrations.blockingNodeDelete(c.nodeId)).toBeNull();
 
@@ -187,7 +187,7 @@ describe("MigrationsRepo", () => {
     expect(app.migrations.get(run.id)).toMatchObject({ phase: "rolling_back", target_pending: 1, source_pending: 1, target_started: 1, error: "interrumpido" });
     expect(app.migrations.get(com.id)!.phase).toBe("committed");
     expect(app.migrations.listOpen().map((r) => r.id).sort()).toEqual([run.id, com.id].sort());
-    expect(app.migrations.blockingNodeDelete(b.nodeId)).toBeNull(); // deshaciéndose: el destino se puede borrar
+    expect(app.migrations.blockingNodeDelete(b.nodeId)).toBeNull(); // rolling back: the target can be deleted
     app.migrations.update(run.id, { phase: "failed", target_pending: 0, source_pending: 0 });
     expect(app.migrations.protects(b.nodeId, s.id)).toBe(false);
     expect(app.migrations.latestForServer(s.id)?.phase).toBe("failed");
@@ -195,8 +195,8 @@ describe("MigrationsRepo", () => {
   });
 });
 
-describe("guarda de acciones", () => {
-  it("bloquea lo que cambia el servidor o los nodos mientras dura; las lecturas siguen", async () => {
+describe("action guard", () => {
+  it("blocks what changes the server or nodes while it lasts; reads continue", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
@@ -213,46 +213,46 @@ describe("guarda de acciones", () => {
     for (const [method, u, payload] of blocked) {
       const r = await call(method, u, payload);
       expect(r.statusCode, `${method} ${u}`).toBe(409);
-      expect(r.json().error).toMatch(/«Uno» se está migrando/);
+      expect(r.json().error).toMatch(/“Uno” is being migrated/);
     }
     expect((await call("GET", `/api/servers/${s.id}`)).statusCode).toBe(200);
     const create = await call("POST", "/api/servers", { nodeId: b.nodeId, name: "Nuevo", spec: {} });
     expect(create.statusCode).toBe(409);
-    expect(create.json().error).toMatch(/participa en una migración/);
-    // Plan 6: importar un contenedor en el nodo destino también crea allí un servidor (la guarda corre antes que la ruta).
+    expect(create.json().error).toMatch(/is part of a migration/);
+    // Plan 6: importing a container on the target node also creates a server there (the guard runs before the route).
     const imported = await call("POST", `/api/nodes/${b.nodeId}/import`, { containerId: "c".repeat(64), name: "Importado", spec: {}, applyNow: false });
     expect(imported.statusCode).toBe(409);
-    expect(imported.json().error).toMatch(/participa en una migración/);
+    expect(imported.json().error).toMatch(/is part of a migration/);
     expect((await call("DELETE", `/api/nodes/${b.nodeId}`)).statusCode).toBe(409);
 
-    // Deshaciéndose con el origen aún por arrancar: bloqueado (lo arranca la migración).
+    // Rolling back with the source still to be started: blocked (the migration starts it).
     app.migrations.update(m.id, { phase: "rolling_back", target_pending: 1, source_pending: 1 });
-    expect((await call("POST", `/api/servers/${s.id}/power`, { action: "start" })).json().error).toMatch(/deshaciendo/);
-    // La copia del destino llegó a arrancar y no se ha limpiado: bloqueado aunque el origen ya no esté pendiente.
+    expect((await call("POST", `/api/servers/${s.id}/power`, { action: "start" })).json().error).toMatch(/rolled back/);
+    // The target copy did get to start and has not been cleaned up: blocked even if the source is no longer pending.
     app.migrations.update(m.id, { source_pending: 0, target_started: 1 });
-    expect((await call("POST", `/api/servers/${s.id}/power`, { action: "start" })).json().error).toMatch(/deshaciendo/);
-    // I2: solo falta limpiar un destino que nunca arrancó: el servidor se usa en el origen aunque el destino no vuelva.
+    expect((await call("POST", `/api/servers/${s.id}/power`, { action: "start" })).json().error).toMatch(/rolled back/);
+    // I2: only a target that never started remains to be cleaned: the server is used on the source even if the target never comes back.
     app.migrations.update(m.id, { target_started: 0 });
     const usable = await call("POST", `/api/servers/${s.id}/power`, { action: "start" });
-    expect(usable.json().error).toMatch(/desconectado/); // llega al servicio (el nodo de pruebas no está conectado)
-    expect((await call("POST", "/api/servers", { nodeId: b.nodeId, name: "Nuevo", spec: {} })).statusCode).toBe(409); // el destino, aún sucio
-    // Y el nodo destino se puede borrar (escapatoria).
+    expect(usable.json().error).toMatch(/offline/); // reaches the service (the test node is not connected)
+    expect((await call("POST", "/api/servers", { nodeId: b.nodeId, name: "Nuevo", spec: {} })).statusCode).toBe(409); // the target, still dirty
+    // And the target node can be deleted (escape hatch).
     expect((await call("DELETE", `/api/nodes/${b.nodeId}`)).statusCode).toBe(204);
     expect(app.migrations.get(m.id)).toBeNull(); // en cascada
-    // Sin migración, la orden llega al servicio (el nodo no está conectado).
+    // Without a migration, the command reaches the service (the node is not connected).
     const r = await call("POST", `/api/servers/${s.id}/power`, { action: "start" });
     expect(r.statusCode).toBe(409);
-    expect(r.json().error).toMatch(/desconectado/);
+    expect(r.json().error).toMatch(/offline/);
   });
 });
 
 describe("SyncSpecs", () => {
-  it("no retira de ningún nodo un servidor con una migración abierta que pasa por él", async () => {
+  it("does not remove from any node a server with an open migration going through it", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     let agent = new FakeAgent(url, b.nodeToken);
-    await agent.connect({ specVersions: { [s.id]: 2n } }); // el destino ya guarda el servidor (fantasma)
+    await agent.connect({ specVersions: { [s.id]: 2n } }); // the target already holds the server (ghost)
     let sync = await agent.handshake();
     if (sync.body.case !== "syncSpecs") throw new Error();
     expect(sync.body.value.removedIds).toEqual([]);
@@ -271,7 +271,7 @@ describe("SyncSpecs", () => {
 });
 
 describe("jobs", () => {
-  it("migrate_in es un job del agente: un reinicio del panel no lo da por interrumpido; migrate sí", () => {
+  it("migrate_in is an agent job: a panel restart does not mark it as interrupted; migrate does", () => {
     const rx = app.jobs.create({ type: "migrate_in", status: "running" });
     const mig = app.jobs.create({ type: "migrate", status: "running" });
     app.jobs.interruptStale();
@@ -280,57 +280,57 @@ describe("jobs", () => {
   });
 });
 
-describe("migración confirmada", () => {
-  it("nunca vuelve atrás: ni deshacer ni reabrir lo pendiente del destino", async () => {
+describe("confirmed migration", () => {
+  it("never goes back: neither undo nor reopen what is pending on the target", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     app.migrations.update(m.id, { target_touched: 1, target_started: 1 });
     expect(app.migrations.commit(m, "running", observed)).toBe(true);
 
-    expect(app.migrations.startRollback(m.id, "tarde")).toBeNull(); // un fallo tras el commit no deshace
-    expect(() => app.migrations.update(m.id, { phase: "rolling_back" })).toThrow(/ya confirmada/);
-    expect(() => app.migrations.update(m.id, { phase: "failed" })).toThrow(/ya confirmada/);
-    expect(() => app.migrations.update(m.id, { target_pending: 1 })).toThrow(/ya confirmada/);
+    expect(app.migrations.startRollback(m.id, "late")).toBeNull(); // a failure after the commit does not undo
+    expect(() => app.migrations.update(m.id, { phase: "rolling_back" })).toThrow(/already confirmed/);
+    expect(() => app.migrations.update(m.id, { phase: "failed" })).toThrow(/already confirmed/);
+    expect(() => app.migrations.update(m.id, { target_pending: 1 })).toThrow(/already confirmed/);
     expect(app.migrations.get(m.id)).toMatchObject({ phase: "committed", target_pending: 0, source_pending: 1 });
     app.migrations.update(m.id, { phase: "done", source_pending: 0 });
-    expect(() => app.migrations.update(m.id, { phase: "rolling_back" })).toThrow(/ya confirmada/);
+    expect(() => app.migrations.update(m.id, { phase: "rolling_back" })).toThrow(/already confirmed/);
     expect(app.migrations.interruptRunning("x")).toEqual([]);
     expect(app.migrations.get(m.id)!.phase).toBe("done");
   });
 
-  it("startRollback solo pasa a deshacerse lo que sigue en curso, con lo pendiente según lo hecho", async () => {
+  it("startRollback only moves to rolling back what is still in progress, with what is pending according to what was done", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId, { was_running: 0 }));
     app.migrations.update(m.id, { target_touched: 1 });
-    expect(app.migrations.startRollback(m.id, "Paso 4: falló")).toMatchObject({
-      phase: "rolling_back", target_pending: 1, source_pending: 0, error: "Paso 4: falló",
+    expect(app.migrations.startRollback(m.id, "Step 4: failed")).toMatchObject({
+      phase: "rolling_back", target_pending: 1, source_pending: 0, error: "Step 4: failed",
     });
-    expect(app.migrations.startRollback(m.id, "otra vez")).toBeNull();
+    expect(app.migrations.startRollback(m.id, "again")).toBeNull();
   });
 
-  it("con la retirada del origen pendiente, el slug no se puede reutilizar en el origen (MigrateRetire sin spec)", async () => {
+  it("with the source removal pending, the slug cannot be reused on the source (MigrateRetire without spec)", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     const m = app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
     expect(app.migrations.commit(m, "running", observed)).toBe(true);
-    expect(app.servers.getBySlug(a.nodeId, "uno")).toBeNull(); // en la tabla el slug ya está libre en el origen…
+    expect(app.servers.getBySlug(a.nodeId, "uno")).toBeNull(); // in the table the slug is already free on the source…
     const call = (u: string, payload: object) => app.inject({ method: "POST", url: u, headers: { cookie }, payload });
-    // …pero <DATA_ROOT>/uno sigue allí hasta MigrateRetire: crear con ese slug en el origen se rechaza.
+    // …but <DATA_ROOT>/uno is still there until MigrateRetire: creating with that slug on the source is rejected.
     const created = await call("/api/servers", { nodeId: a.nodeId, name: "Uno", slug: "uno", spec: { ports: { game: 25570 } } });
     expect(created.statusCode).toBe(409);
-    expect(created.json().error).toMatch(/participa en una migración/);
+    expect(created.json().error).toMatch(/is part of a migration/);
     const t = (await call("/api/templates", { name: "Plantilla" })).json();
     const fromTemplate = await call(`/api/templates/${t.id}/servers`, { nodeId: a.nodeId, name: "Uno", slug: "uno" });
     expect(fromTemplate.statusCode).toBe(409);
     expect(app.servers.getBySlug(a.nodeId, "uno")).toBeNull();
-    // Retirado el origen, el slug vuelve a estar disponible.
+    // Once the source is removed, the slug is available again.
     app.migrations.update(m.id, { phase: "done", source_pending: 0 });
     expect((await call("/api/servers", { nodeId: a.nodeId, name: "Uno", slug: "uno", spec: { ports: { game: 25570 } } })).statusCode).toBe(201);
   });
 
-  it("una subida bloqueada recibe el 409 en JSON", async () => {
+  it("a blocked upload receives the 409 as JSON", async () => {
     const a = await enroll("a"); const b = await enroll("b");
     const s = app.servers.create({ nodeId: a.nodeId, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
     app.migrations.insert(newMigration(s.id, a.nodeId, b.nodeId));
@@ -339,6 +339,6 @@ describe("migración confirmada", () => {
       payload: Buffer.alloc(64 * 1024, 1),
     });
     expect(r.statusCode).toBe(409);
-    expect(r.json().error).toMatch(/se está migrando/);
+    expect(r.json().error).toMatch(/is being migrated/);
   });
 });

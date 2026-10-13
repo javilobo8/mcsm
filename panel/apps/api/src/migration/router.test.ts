@@ -9,8 +9,8 @@ import { openDb } from "../db/db.js";
 import { newId } from "../lib/ids.js";
 import { FakeNode } from "../../test/fake-node.js";
 
-// Planes 7 × 8: la migración entre nodos y el mc-router de cada nodo (puerto reservado, hostname único por nodo,
-// autoscale del origen).
+// Plans 7 × 8: migration between nodes and each node's mc-router (reserved port, unique hostname per node,
+// source autoscale).
 
 let app: FastifyInstance; let url: string; let cookie: string; let dataDir: string;
 
@@ -33,7 +33,7 @@ const spec = (game: number, hostname?: string, enabled = true): Spec => specSche
   ...(hostname ? { router: { enabled, hostname } } : {}),
 });
 
-/** Router del nodo guardado directamente (sin enviarlo a ningún agente). */
+/** Node router saved directly (without sending it to any agent). */
 function routerRow(nodeId: string, s: Partial<RouterDeploymentSpec>) {
   app.db.prepare(`INSERT INTO router_deployments (node_id, spec, updated_at) VALUES (?, ?, ?)
     ON CONFLICT(node_id) DO UPDATE SET spec = excluded.spec`).run(nodeId, JSON.stringify(routerDeploymentSpecSchema.parse(s)), new Date().toISOString());
@@ -42,7 +42,7 @@ function routerRow(nodeId: string, s: Partial<RouterDeploymentSpec>) {
 const proposal = (serverId: string, targetNodeId: string) =>
   app.inject({ method: "GET", url: `/api/servers/${serverId}/migration/proposal?targetNodeId=${targetNodeId}`, headers: { cookie } });
 
-/** Dos nodos dados de alta (sin conectar) y un servidor en el primero. */
+/** Two enrolled nodes (not connected) and a server on the first. */
 async function nodes(s: Spec = spec(25565)) {
   const a = await FakeNode.enroll(app, url, cookie, "nodo-a");
   const b = await FakeNode.enroll(app, url, cookie, "nodo-b");
@@ -50,8 +50,8 @@ async function nodes(s: Spec = spec(25565)) {
   return { a, b, s: srv };
 }
 
-describe("migración y router (Planes 7 y 8)", () => {
-  it("el puerto del router del destino no se conserva: se propone otro", async () => {
+describe("migration and router (Plans 7 and 8)", () => {
+  it("the target router's port is not kept: another is proposed", async () => {
     const { b, s } = await nodes();
     routerRow(b.id, { enabled: true, port: 25565 });
     expect((await proposal(s.id, b.id)).json()).toEqual({ targetNodeId: b.id, slug: "survival", port: 25566, currentPort: 25565, portChanged: true });
@@ -59,20 +59,20 @@ describe("migración y router (Planes 7 y 8)", () => {
     expect((await proposal(s.id, b.id)).json()).toMatchObject({ port: 25565, portChanged: false });
   });
 
-  it("el hostname del servidor tiene que estar libre en el destino", async () => {
+  it("the server's hostname must be free on the target", async () => {
     const { b, s } = await nodes(spec(25565, "survival.lan"));
     app.servers.create({ nodeId: b.id, name: "Apagado", slug: "apagado", spec: spec(25570, "survival.lan", false), desiredState: "stopped" });
-    expect((await proposal(s.id, b.id)).statusCode).toBe(200); // con el router desactivado no compite
+    expect((await proposal(s.id, b.id)).statusCode).toBe(200); // with the router disabled it does not compete
     app.servers.create({ nodeId: b.id, name: "Creativo", slug: "creativo", spec: spec(25571, "survival.lan"), desiredState: "stopped" });
     const res = await proposal(s.id, b.id);
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("El hostname «survival.lan» ya lo usa el servidor «Creativo» del nodo destino «nodo-b»");
+    expect(res.json().error).toBe("Hostname “survival.lan” is already used by server “Creativo” on the target node “nodo-b”");
     const begin = await app.inject({ method: "POST", url: `/api/servers/${s.id}/migration`, headers: { cookie }, payload: { targetNodeId: b.id } });
     expect(begin.statusCode).toBe(409);
     expect(app.migrations.latestForServer(s.id)).toBeNull();
   });
 
-  it("el hostname de una migración abierta hacia un nodo queda reservado allí", async () => {
+  it("the hostname of an open migration towards a node is reserved there", async () => {
     const { a, b, s } = await nodes(spec(25565, "survival.lan"));
     const c = await FakeNode.enroll(app, url, cookie, "nodo-c");
     const t = app.servers.create({ nodeId: c.id, name: "Copia", slug: "copia", spec: spec(25566, "survival.lan"), desiredState: "stopped" });
@@ -83,35 +83,35 @@ describe("migración y router (Planes 7 y 8)", () => {
     });
     let res = await proposal(t.id, b.id);
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("El hostname «survival.lan» lo reserva «Survival», que se está migrando al nodo destino «nodo-b»");
-    // Tampoco lo coge un servidor de ese nodo mientras tanto.
+    expect(res.json().error).toBe("Hostname “survival.lan” is reserved by “Survival”, which is being migrated to the target node “nodo-b”");
+    // Nor does a server on that node take it in the meantime.
     res = await app.inject({ method: "PATCH", url: `/api/servers/${other.id}`, headers: { cookie }, payload: { spec: { router: { enabled: true, hostname: "survival.lan" } } } });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("El hostname «survival.lan» lo reserva «Survival», que se está migrando a este nodo");
-    // Deshecha (sin nada en el destino), queda libre.
+    expect(res.json().error).toBe("Hostname “survival.lan” is reserved by “Survival”, which is being migrated to this node");
+    // Once rolled back (with nothing on the target), it is free.
     app.migrations.update(m.id, { phase: "failed" });
     expect((await proposal(t.id, b.id)).statusCode).toBe(200);
   });
 
-  it("con el autoscale del router del origen, un servidor con hostname no se migra (mc-router lo podría arrancar en el origen)", async () => {
+  it("with the source router's autoscale, a server with a hostname is not migrated (mc-router could start it on the source)", async () => {
     const { a, b, s } = await nodes(spec(25565, "survival.lan"));
     routerRow(a.id, { enabled: true, port: 25590, autoscale: true });
     let res = await proposal(s.id, b.id);
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("«Survival» tiene hostname y el router de «nodo-a» tiene el autoscale activo: mc-router podría arrancarlo en el origen " +
-      "durante la migración. Quita el autoscale del router de «nodo-a» o desactiva el hostname del servidor antes de migrarlo");
+    expect(res.json().error).toBe("“Survival” has a hostname and the router of “nodo-a” has autoscale enabled: mc-router could start it on the source " +
+      "during the migration. Remove autoscale from the router of “nodo-a” or disable the server's hostname before migrating it");
     res = await app.inject({ method: "POST", url: `/api/servers/${s.id}/migration`, headers: { cookie }, payload: { targetNodeId: b.id } });
     expect(res.statusCode).toBe(409);
-    // Sin autoscale, sí.
+    // Without autoscale, yes.
     routerRow(a.id, { enabled: true, port: 25590, autoscale: false });
     expect((await proposal(s.id, b.id)).statusCode).toBe(200);
-    // Con autoscale, un servidor sin hostname activo (mc-router no lo ve) también.
+    // With autoscale, a server without an active hostname (mc-router does not see it) as well.
     routerRow(a.id, { enabled: true, port: 25590, autoscale: true });
     const t = app.servers.create({ nodeId: a.id, name: "Sin", slug: "sin", spec: spec(25566, "sin.lan", false), desiredState: "stopped" });
     expect((await proposal(t.id, b.id)).statusCode).toBe(200);
   });
 
-  it("con una migración abierta de un servidor con hostname, el router del origen no activa el autoscale", async () => {
+  it("with an open migration of a server with a hostname, the source's router does not enable autoscale", async () => {
     const { a, b, s } = await nodes(spec(25565, "survival.lan"));
     const m = app.migrations.insert({
       id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "survival", target_slug: "survival",
@@ -120,15 +120,15 @@ describe("migración y router (Planes 7 y 8)", () => {
     const put = (payload: object) => app.inject({ method: "PUT", url: `/api/nodes/${a.id}/router`, headers: { cookie }, payload });
     let res = await put({ enabled: true, port: 25590, autoscale: true });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("«Survival» tiene hostname y se está migrando desde este nodo: activa el autoscale cuando termine la migración " +
-      "(mc-router podría arrancarlo aquí a mitad)");
-    expect(app.routerService.get(a.id).spec.enabled).toBe(false); // no se guardó nada
-    expect((await put({ enabled: true, port: 25590 })).statusCode).toBe(200); // sin autoscale, sí (nodo desconectado: se guarda)
+    expect(res.json().error).toBe("“Survival” has a hostname and is being migrated from this node: enable autoscale when the migration ends " +
+      "(mc-router could start it here midway)");
+    expect(app.routerService.get(a.id).spec.enabled).toBe(false); // nothing was saved
+    expect((await put({ enabled: true, port: 25590 })).statusCode).toBe(200); // without autoscale, yes (node offline: it is saved)
     app.migrations.update(m.id, { phase: "failed" });
     expect((await put({ enabled: true, port: 25590, autoscale: true })).statusCode).toBe(200);
   });
 
-  it("el router no se activa en un puerto que reserva una migración hacia el nodo", async () => {
+  it("the router is not enabled on a port reserved by a migration towards the node", async () => {
     const { a, b, s } = await nodes();
     app.migrations.insert({
       id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "survival", target_slug: "survival",
@@ -137,7 +137,7 @@ describe("migración y router (Planes 7 y 8)", () => {
     const put = (payload: object) => app.inject({ method: "PUT", url: `/api/nodes/${b.id}/router`, headers: { cookie }, payload });
     const res = await put({ enabled: true, port: 25570 });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("El puerto 25570 lo reserva una migración en curso hacia este nodo: elige otro puerto para el router");
+    expect(res.json().error).toBe("Port 25570 is reserved by a migration in progress towards this node: choose another port for the router");
     expect(app.routerService.get(b.id).spec.enabled).toBe(false);
     expect((await put({ enabled: true, port: 25571 })).statusCode).toBe(200);
   });

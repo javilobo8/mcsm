@@ -3,12 +3,12 @@ import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { EnvelopeSchema } from "@mcsm/proto";
 import { isResponseCase } from "../agents/hub.js";
 
-describe("protocolo del router", () => {
-  it("ningún cuerpo del router resuelve una petición: RouterApply/RouterRemove responden con Ack", () => {
+describe("router protocol", () => {
+  it("no router body resolves a request: RouterApply/RouterRemove reply with Ack", () => {
     for (const c of ["routerApply", "routerRemove", "routerObserved"]) expect(isResponseCase(c)).toBe(false);
   });
 
-  it("los mensajes nuevos viajan en Envelope.body con sus campos", () => {
+  it("the new messages travel in Envelope.body with their fields", () => {
     const apply = fromBinary(EnvelopeSchema, toBinary(EnvelopeSchema, create(EnvelopeSchema, {
       id: 7n, body: { case: "routerApply", value: { spec: { hostPort: 25565, autoscale: true, autoscaleDownAfterMinutes: 15 } } },
     })));

@@ -3,26 +3,26 @@ import { AgentErrorCode } from "../agents/error-codes.js";
 import { HttpError, agentErrorToHttp } from "../lib/http.js";
 import { TransferError } from "../transfers/service.js";
 
-/** Fallo de un paso de la migración, con un texto para el usuario (va al job). */
+/** Failure of a migration step, with a text for the user (goes to the job). */
 export class StepError extends Error {
   constructor(message: string) { super(message); this.name = "StepError"; }
 }
 
-/** Fallos que el panel conoce (los demás son un bug: se registran en el log). */
+/** Failures the panel knows about (the rest are a bug: they are logged). */
 export const isKnownError = (e: unknown): boolean =>
   e instanceof StepError || e instanceof HttpError || e instanceof TransferError || e instanceof AgentError;
 
-/** Texto de un fallo para el job: el del agente o Docker se conserva (spec §10); lo inesperado no filtra detalles. */
+/** Text of a failure for the job: the agent's or Docker's is kept (spec §10); anything unexpected does not leak details. */
 export function errorText(e: unknown): string {
   if (e instanceof StepError || e instanceof HttpError || e instanceof TransferError) return e.message;
   if (e instanceof AgentError) return agentErrorToHttp(e).message;
-  return "error interno del panel (mira su log)";
+  return "internal panel error (see its log)";
 }
 
 /**
- * Rechazos que no se arreglan reintentando lo pendiente (deshacer, confirmar, retirar): el agente dice que el estado
- * del nodo no es el que el panel cree (invalid_request), no entiende la orden (unsupported: agente desactualizado), o
- * el panel ya no tiene el servidor (404). Se dejan anotados y se dejan de reintentar; el usuario decide.
+ * Rejections that retrying what is pending (undo, confirm, remove) does not fix: the agent says the node's state
+ * is not what the panel believes (invalid_request), does not understand the command (unsupported: out-of-date agent), or
+ * the panel no longer has the server (404). They are noted and no longer retried; the user decides.
  */
 export function isDefinitive(e: unknown): boolean {
   if (e instanceof AgentError) return e.code === AgentErrorCode.InvalidRequest || e.code === AgentErrorCode.Unsupported;

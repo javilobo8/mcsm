@@ -1,18 +1,18 @@
 import { stepMessage, stepProgress, type MigrationStep } from "@mcsm/shared";
 import type { JobService } from "../jobs/service.js";
 
-/** Cómo cuentan los pasos su avance. En producción, el job de la migración (JobReporter). */
+/** How the steps report their progress. In production, the migration job (JobReporter). */
 export interface Reporter {
-  /** Empieza el paso n: progreso al inicio de su tramo, mensaje y una línea en el log. */
+  /** Starts step n: progress at the start of its range, message and a log line. */
   step(n: MigrationStep, detail: string): void;
-  /** Avance dentro del paso (fracción 0-1). Solo escribe si cambia el porcentaje o el texto. */
+  /** Progress within the step (fraction 0-1). Only writes if the percentage or the text changes. */
   within(n: MigrationStep, fraction: number, detail: string): void;
-  /** Cambia el mensaje sin tocar el progreso (p. ej. «deshaciendo»). */
+  /** Changes the message without touching progress (e.g. “rolling back”). */
   message(n: MigrationStep, detail: string): void;
   log(line: string): void;
 }
 
-/** Reporter sobre el job `migrate`: cada cambio emite el evento `job` (la web lo ve en vivo, topic `jobs`). */
+/** Reporter over the `migrate` job: each change emits the `job` event (the web sees it live, `jobs` topic). */
 export class JobReporter implements Reporter {
   private last = { progress: -1, message: "" };
 

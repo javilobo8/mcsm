@@ -21,7 +21,7 @@ afterEach(async () => { await app.close(); });
 
 const getRouter = async (id = nodeId) => await app.inject({ method: "GET", url: `/api/nodes/${id}/router`, headers: { cookie } });
 const putRouter = async (payload: object, id = nodeId) => await app.inject({ method: "PUT", url: `/api/nodes/${id}/router`, headers: { cookie }, payload });
-/** Conecta un agente falso y espera a que el panel procese el Ack de SyncSpecs (`ready`). */
+/** Connects a fake agent and waits for the panel to process the SyncSpecs Ack (`ready`). */
 const connect = async () => {
   const agent = new FakeAgent(url, nodeToken);
   await agent.connect();
@@ -30,8 +30,8 @@ const connect = async () => {
   return agent;
 };
 
-describe("router de un nodo: configuración", () => {
-  it("sin configurar: desactivado en 25565, sin estado; 404 si el nodo no existe", async () => {
+describe("a node's router: configuration", () => {
+  it("not configured: disabled on 25565, no state; 404 if the node does not exist", async () => {
     const res = await getRouter();
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
@@ -41,7 +41,7 @@ describe("router de un nodo: configuración", () => {
     expect((await putRouter({ enabled: true }, "no-existe")).statusCode).toBe(404);
   });
 
-  it("valida la configuración (400) y la guarda con el nodo desconectado", async () => {
+  it("validates the configuration (400) and stores it with the node offline", async () => {
     expect((await putRouter({ enabled: true, port: 0 })).statusCode).toBe(400);
     expect((await putRouter({ enabled: true, autoscaleDownAfterMinutes: 2000 })).statusCode).toBe(400);
     const res = await putRouter({ enabled: true, port: 25590, autoscale: true });
@@ -52,20 +52,20 @@ describe("router de un nodo: configuración", () => {
     expect((await getRouter()).json().spec.port).toBe(25590);
   });
 
-  it("409 si el puerto del router lo publica un servidor del nodo (juego o extra)", async () => {
+  it("409 if the router's port is published by a server on the node (game or extra)", async () => {
     await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno", spec: { ports: { game: 25565, extra: [{ host: 25580, container: 8100, proto: "tcp", label: "mapa" }] } } } });
     for (const port of [25565, 25580]) {
       const res = await putRouter({ enabled: true, port });
       expect(res.statusCode).toBe(409);
-      expect(res.json().error).toMatch(/lo usa el servidor «Uno»/);
+      expect(res.json().error).toMatch(/is used by server “Uno”/);
     }
-    // Desactivado no reserva el puerto: se puede guardar.
+    // Disabled does not reserve the port: it can be saved.
     expect((await putRouter({ enabled: false, port: 25565 })).statusCode).toBe(200);
   });
 });
 
-describe("router de un nodo: agente", () => {
-  it("activar envía RouterApply y desactivar RouterRemove; responde tras el Ack", async () => {
+describe("a node's router: agent", () => {
+  it("enabling sends RouterApply and disabling RouterRemove; responds after the Ack", async () => {
     const agent = await connect();
     const put = putRouter({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] });
     const apply = await agent.waitFor("routerApply");
@@ -81,28 +81,28 @@ describe("router de un nodo: agente", () => {
     agent.close();
   });
 
-  it("un agente desactualizado (unsupported): activar es 409 y no se guarda; desactivar sí", async () => {
+  it("an out-of-date agent (unsupported): enabling is 409 and is not saved; disabling is", async () => {
     const agent = await connect();
-    const unsupported = (a: FakeAgent, id: bigint) => a.send({ id, body: { case: "error", value: { code: "unsupported", message: "mensaje desconocido: actualiza el agente" } } });
+    const unsupported = (a: FakeAgent, id: bigint) => a.send({ id, body: { case: "error", value: { code: "unsupported", message: "unknown message: update the agent" } } });
     const put = putRouter({ enabled: true, port: 25590 });
     unsupported(agent, (await agent.waitFor("routerApply")).id);
     const res = await put;
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe("El agente de este nodo está desactualizado y no admite el router (mc-router): actualízalo. No se ha guardado el cambio.");
-    // Sin fila previa vuelve a «sin configurar»: el puerto no queda reservado ni el nodo bloqueado.
+    expect(res.json().error).toBe("The agent on this node is out of date and does not support the router (mc-router): update it. The change was not saved.");
+    // With no previous row it goes back to “not configured”: the port is not reserved nor the node blocked.
     expect((await getRouter()).json()).toMatchObject({ spec: { enabled: false, port: 25565 }, updatedAt: null });
-    // Con una configuración previa (guardada con el nodo desconectado), vuelve a ella.
+    // With a previous configuration (saved with the node offline), it goes back to it.
     const gone = new Promise<void>((r) => app.agents.once("detached", () => r()));
     agent.close();
     await gone;
     expect((await putRouter({ enabled: false, port: 25600 })).statusCode).toBe(200);
     const again = await connect();
-    unsupported(again, (await again.waitFor("routerRemove")).id); // reenvío tras el handshake
+    unsupported(again, (await again.waitFor("routerRemove")).id); // resend after the handshake
     const put2 = putRouter({ enabled: true, port: 25591 });
     unsupported(again, (await again.waitFor("routerApply")).id);
     expect((await put2).statusCode).toBe(409);
     expect((await getRouter()).json().spec).toMatchObject({ enabled: false, port: 25600 });
-    // Desactivar en un agente sin router no tiene nada que retirar: se guarda.
+    // Disabling on an agent without a router has nothing to remove: it is saved.
     const off = putRouter({ enabled: false, port: 25601 });
     unsupported(again, (await again.waitFor("routerRemove")).id);
     expect((await off).statusCode).toBe(200);
@@ -110,9 +110,9 @@ describe("router de un nodo: agente", () => {
     again.close();
   });
 
-  it("tras el handshake se reenvía la configuración guardada; sin fila no se envía nada", async () => {
+  it("after the handshake the stored configuration is resent; with no row nothing is sent", async () => {
     let agent = await connect();
-    // Sin fila: entre el handshake y el siguiente envío (un servidor nuevo) no llega nada del router.
+    // No row: between the handshake and the next send (a new server) nothing from the router arrives.
     const created = app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } });
     const seen: string[] = [];
     for (let e = await agent.next(); ; e = await agent.next()) {
@@ -125,7 +125,7 @@ describe("router de un nodo: agente", () => {
     agent.close();
     await gone;
 
-    await putRouter({ enabled: true, port: 25590 }); // offline: solo se guarda
+    await putRouter({ enabled: true, port: 25590 }); // offline: only saved
     agent = await connect();
     const apply = await agent.waitFor("routerApply");
     if (apply.body.case !== "routerApply") throw new Error();
@@ -134,7 +134,7 @@ describe("router de un nodo: agente", () => {
     agent.close();
   });
 
-  it("dos cambios seguidos llegan en orden y el último es el vigente", async () => {
+  it("two consecutive changes arrive in order and the last one is the current one", async () => {
     const agent = await connect();
     const a = putRouter({ enabled: true, port: 25590 });
     const b = putRouter({ enabled: true, port: 25591 });
@@ -148,13 +148,13 @@ describe("router de un nodo: agente", () => {
     agent.close();
   });
 
-  it("RouterObserved se guarda, se publica y retira un router que el panel no quiere", async () => {
+  it("RouterObserved is stored, published and removes a router the panel does not want", async () => {
     const events: unknown[] = [];
     app.events.on("router", (_id: string, dto: unknown) => events.push(dto));
     const agent = await connect();
-    // Sin fila y sin router en el agente: no se crea nada.
+    // No row and no router on the agent: nothing is created.
     agent.send({ body: { case: "routerObserved", value: { configured: false, state: "missing" } } });
-    // Sin fila y con router en el agente (BD del panel restaurada): se guarda y se pide retirarlo.
+    // No row and a router on the agent (panel DB restored): it is stored and asked to be removed.
     agent.send({ body: { case: "routerObserved", value: { configured: true, state: "running", containerId: "c1", image: "itzg/mc-router:1.47.1", hostPort: 25565 } } });
     const remove = await agent.waitFor("routerRemove");
     agent.ack(remove.id);
@@ -169,7 +169,7 @@ describe("router de un nodo: agente", () => {
     agent.close();
   });
 
-  it("la spec aplicada en el agente viaja en el estado observado (minutos y lista del autoscale)", async () => {
+  it("the spec applied on the agent travels in the observed state (minutes and autoscale list)", async () => {
     const agent = await connect();
     const put = putRouter({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] });
     agent.ack((await agent.waitFor("routerApply")).id);

@@ -1,7 +1,7 @@
 import type { Spec } from "@mcsm/shared";
 import type { ServerRow } from "../servers/repo.js";
 
-/** Servidor de la lista que publica `port` en el host (puerto de juego o extra), si lo hay. Pura. */
+/** Server in the list that publishes `port` on the host (game port or extra), if any. Pure. */
 export function portOwner(rows: readonly ServerRow[], port: number): ServerRow | null {
   for (const r of rows) {
     const s = JSON.parse(r.spec) as Spec;
@@ -10,7 +10,7 @@ export function portOwner(rows: readonly ServerRow[], port: number): ServerRow |
   return null;
 }
 
-/** Servidor de la lista (distinto de `selfId`) con el router activo y ese hostname, si lo hay. Pura. */
+/** Server in the list (other than `selfId`) with the router enabled and that hostname, if any. Pure. */
 export function hostnameOwner(rows: readonly ServerRow[], hostname: string, selfId?: string): ServerRow | null {
   for (const r of rows) {
     if (r.id === selfId) continue;

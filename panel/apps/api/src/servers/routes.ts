@@ -5,7 +5,7 @@ import { powerActionSchema, serverCreateSchema, serverPatchSchema } from "@mcsm/
 import { HttpError, ServersService } from "./service.js";
 import { toServerDto } from "./repo.js";
 
-/** Decora el servicio en la raíz y registra las rutas encapsuladas. Los errores los traduce el manejador global (lib/http.ts). */
+/** Decorates the service at the root and registers the encapsulated routes. Errors are translated by the global handler (lib/http.ts). */
 export const serverRoutes = fp(async function serverRoutes(root: FastifyInstance) {
   const svc = new ServersService(root);
   root.decorate("serversService", svc);
@@ -19,7 +19,7 @@ async function serverRoutesInner(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>("/api/servers/:id", async (req) => {
     const row = app.servers.get(req.params.id);
-    if (!row) throw new HttpError(404, "Servidor no encontrado");
+    if (!row) throw new HttpError(404, "Server not found");
     return toServerDto(row, { includeSecrets: true });
   });
 
