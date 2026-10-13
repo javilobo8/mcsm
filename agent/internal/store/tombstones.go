@@ -39,6 +39,13 @@ func (s *Store) ForgetWithTombstone(id string, at time.Time) error {
 		if err := tx.Bucket(bApplied).Delete([]byte(id)); err != nil {
 			return err
 		}
+		// plan-9: sin spec sobran su retención por bucle de crash y su save-on pendiente.
+		if err := deleteCrashLatch(tx, id); err != nil {
+			return err
+		}
+		if err := deleteSaveOn(tx, id); err != nil {
+			return err
+		}
 		b, err := tx.CreateBucketIfNotExists(bTombstones)
 		if err != nil {
 			return err

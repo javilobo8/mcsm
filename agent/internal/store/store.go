@@ -131,7 +131,14 @@ func (s *Store) DeleteSpec(id string) error {
 		if err := tx.Bucket(bSpecs).Delete([]byte(id)); err != nil {
 			return err
 		}
-		return tx.Bucket(bApplied).Delete([]byte(id))
+		if err := tx.Bucket(bApplied).Delete([]byte(id)); err != nil {
+			return err
+		}
+		// plan-9: sin spec sobran su retención por bucle de crash y su save-on pendiente.
+		if err := deleteCrashLatch(tx, id); err != nil {
+			return err
+		}
+		return deleteSaveOn(tx, id)
 	})
 }
 
