@@ -83,8 +83,8 @@ Spigot: itzg ya no puede descargarlo de getbukkit; solo funciona con `BUILD_FROM
 
 - `sources.ts`: un adaptador por tipo con `versions(fetchJson)` y, si aplica,
   `builds(version, fetchJson)`, que devuelven `{ id, stable, recommended? }[]` ya ordenadas. Puros
-  salvo por el `fetchJson` inyectado; tests con fixtures reales recortadas
-  (`versions/fixtures/*.json|html`).
+  salvo por el `fetchJson` inyectado; tests con documentos recortados con la forma exacta de las
+  respuestas reales, en línea en el propio test.
 - `catalog.ts` — `VersionCatalog` (decorado como `app.versions` en `buildApp`):
   - Caché en memoria por URL de origen: listas de versiones (y los documentos compartidos de Forge
     y NeoForge) 1 h; endpoints de builds 15 min. Máximo 256 entradas; al llenarse se descarta la
@@ -121,7 +121,7 @@ Spigot: itzg ya no puede descargarlo de getbukkit; solo funciona con `BUILD_FROM
 - `components/spec-form/build-picker.tsx`: `Select` con «(el último)» + builds (Forge marca
   «recomendada»; los inestables de Fabric/Quilt/NeoForge con el mismo interruptor). Etiqueta por
   tipo («Build de Paper», «Versión del loader de Fabric», «Versión de Forge»…). Oculto para tipos
-  sin build; desactivado con pista si la versión es `LATEST`/`SNAPSHOT`.
+  sin build; sin opciones y con pista si la versión es `LATEST`/`SNAPSHOT`.
 - Lógica pura con tests:
   - shared `minJavaTag(version)`: `LATEST`/`SNAPSHOT` y mayor ≥ 26 (`26.3`, `26.4-snapshot-3`,
     `26.3-rc-3`) → `java25`; `1.20.5`–`1.21.x` → `java21`; `1.17`–`1.20.4` → `java17`; `< 1.17` →
