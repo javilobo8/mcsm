@@ -249,13 +249,15 @@ Agente → panel:
 - `MetricSample{...}` cada 10 s por servidor y por nodo (en un solo mensaje agrupado).
 - `JobProgress{job_id, progress, message, log_chunk, status}`.
 - `BackupCreated{...}`, `BackupDeleted{...}` para backups programados sin intervención del panel.
-- `Event{level, server_id?, message}` para incidencias (OOM, reinicio por crash, drift corregido).
+- `Event{level, server_id?, kind, message, ts}` para incidencias (`crash`, `oom`, `crash_loop`, `crash_loop_failed`,
+  `drift`, `save_on_pending`, `save_on_resumed`). No hay suscripción: el agente los envía no solicitados (id = 0) por
+  su propia cola; sin conexión se pierden (lo importante queda también en `observed.error`).
 
 Panel → agente:
 - `SyncSpecs{servers: [ServerSpec{server_id, slug, version, desired_state, spec}], removed_ids}` tras `Hello`, con solo lo que difiere, y después `ApplySpec{...}` por cada cambio.
 - `PowerAction{server_id, action: start|stop|restart|kill}`.
 - `SendCommand{server_id, command}` → `CommandResult{output}` (RCON).
-- `SubscribeLogs{server_id, tail}` → stream `LogLine{ts, line}`; `SubscribeEvents{}`.
+- `SubscribeLogs{server_id, tail}` → stream `LogLine{ts, line}`.
 - `Files*`: `List`, `Stat`, `Read{path, max_bytes}`, `Write{path, content}`, `Mkdir`,
   `Rename`, `Delete`, `Download{path} → transfer_id`, `Upload{path, transfer_id}`.
 - `BackupNow{server_id, job_id}`, `BackupList{server_id}`, `BackupRestore{server_id, backup_id, job_id}`,
@@ -398,9 +400,16 @@ el usuario pida el primer cambio de spec; mientras tanto se gestiona por `import
   el nodo, ni con autoscale mientras salga de él una migración de un servidor con hostname. Un
   nodo con el router activo (o retirándose, conectado) no se borra.
   - En el agente, un contenedor `mcsm-router` de `itzg/mc-router` **fijado por digest**
-    (`1.47.1@sha256:…`) con `-in-docker`, en la red de los servidores y con el socket de Docker
-    (equivale a root en el nodo: se documenta). Endurecido: usuario 65532 con solo el grupo del
-    socket, `CapDrop ALL`, `no-new-privileges`, raíz de solo lectura, 256 MiB y 256 procesos,
+    (`1.47.1@sha256:…`) con `-in-docker`, en la red de los servidores. Desde el Plan 9 no recibe
+    el socket de Docker: monta, de solo lectura, el directorio del socket filtrado del agente
+    (`<DATA_ROOT>/.mcsm-router/docker.sock`, `-docker-socket`), un proxy de lista blanca que solo
+    deja ping, versión, info, listar e inspeccionar (sin `Config.Env`) los contenedores con
+    `mc-router.host`, seguir sus eventos y arrancar o parar servidores de este agente con hostname
+    que no estén reservados (ni, para arrancar, retenidos por bucle de crash); nada con cuerpo ni
+    con API < 1.24. Montar el directorio (no el fichero) deja que mc-router se reconecte solo al
+    socket nuevo de cada arranque del agente; si el proxy no puede escuchar, el agente lo reintenta
+    (1–30 s) y el error se ve en el estado del router. Endurecido: usuario 65532 (dueño del socket,
+    0600), `CapDrop ALL`, `no-new-privileges`, raíz de solo lectura, 256 MiB y 256 procesos,
     `-connection-rate-limit 10`, logs `json-file` con rotación. Hash propio en
     `mcsm.router_hash` (independiente de `mcsm.spec_hash`): un cambio lo recrea (no tiene
     estado). Se reconcilia al arrancar, cada 30 s y con sus eventos; un arranque fallido o en
@@ -444,7 +453,8 @@ administración, no una landing.
 - El agente valida que el `server_id` de cualquier operación de archivos/backup pertenece
   a su nodo. Rutas confinadas (6.6). Nombres de slug restringidos a `[a-z0-9-]{1,40}`.
 - `rconPassword` no se muestra en la UI por defecto (botón revelar) y no viaja al navegador en listados.
-- El socket de Docker da root efectivo en el nodo; se documenta claramente en el README.
+- El socket de Docker da root efectivo en el nodo (lo tiene el agente); se documenta claramente en el README.
+  mc-router no lo recibe: usa el socket filtrado del agente (§7).
 
 ## 10. Manejo de errores
 
@@ -453,9 +463,14 @@ administración, no una landing.
   consola, archivos) fallan con mensaje claro en vez de encolarse.
 - **Fallo al aplicar spec**: `observed.error` visible en la tarjeta del servidor con el
   texto de Docker (puerto ocupado, imagen inválida, memoria). El agente reintenta con backoff.
-- **Crash del servidor MC**: evento `die` con exit code ≠ 0 → `Event` y, si
-  `restartPolicy` lo permite, Docker lo reinicia; se contabilizan reinicios en la hora
-  para avisar de bucles de crash (>3) y detener.
+- **Crash del servidor MC**: evento `die` con exit code ≠ 0 que nadie pidió → `Event` `crash` y, si
+  `restartPolicy` lo permite, Docker lo reinicia. Cada parada pedida (Stop/Kill/Remove del agente o
+  parada que el proxy deja hacer a mc-router) explica un solo `die` de ese contenedor en los 3 min
+  siguientes; no cuentan los de un servidor reservado ni los de contenedores sin la spec del agente.
+  Con más de 3 en una hora el agente lo para y lo **retiene** (guardado en su store): ni el
+  reconciliador, ni Docker, ni mc-router lo arrancan hasta un **Arrancar** manual o una versión
+  nueva de la spec; emite `Event` `crash_loop` y el panel pone su estado deseado en parado. Un OOM
+  emite `Event` `oom`.
 - **Backup fallido**: `save-on` garantizado en `defer`; job marcado `failed` con causa;
   el fichero parcial se borra.
 - **Migración fallida**: cualquier paso fallido deja el origen intacto y arrancado como
