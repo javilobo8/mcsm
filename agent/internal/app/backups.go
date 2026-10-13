@@ -235,6 +235,7 @@ func (b *backupService) resumeSaves(ctx context.Context, serverID string) {
 	defer cancel()
 	if _, err := b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on"); err != nil {
 		b.a.log.Error("una copia interrumpida pudo dejar el guardado automático desactivado y save-on falló: ejecuta save-on en la consola", "server", t.slug, "err", err)
+		b.markSaveOn(serverID) // plan-9 (m7): se reintenta cada 15 s
 		return
 	}
 	b.a.log.Warn("copia interrumpida por el cierre del agente: guardado automático reactivado (save-on)", "server", t.slug)
@@ -350,6 +351,7 @@ func (b *backupService) start(ctx context.Context) {
 			case <-b.clock.Until(b.clock.Now().Add(scheduleRefreshEvery)):
 				b.refreshSchedules()
 				b.checkBlocked()
+				b.retrySaveOn(ctx) // plan-9 (m6/m7)
 			}
 		}
 	})
@@ -688,6 +690,9 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 	}
 	meta, err := backup.Create(ctx, req)
 	if err != nil { // una copia fallida no queda en disco: ni se anuncia ni se poda
+		if errors.Is(err, backup.ErrResume) { // plan-9 (m6): el mundo pudo quedar en save-off
+			b.markSaveOn(serverID)
+		}
 		return backup.Meta{}, err
 	}
 	b.announce(meta, serverID, j.ID())
@@ -1067,6 +1072,59 @@ func (b *backupService) lastBackup(t *target) time.Time {
 		return time.Time{}
 	}
 	return metas[0].StartedAt
+}
+
+// markSaveOn anota que el guardado automático de serverID pudo quedar desactivado (save-on falló al terminar una
+// copia o al arrancar el agente) y avisa al panel. retrySaveOn lo reintenta (m6/m7 del Plan 4).
+func (b *backupService) markSaveOn(serverID string) {
+	if err := b.a.st.MarkSaveOnPending(serverID, b.clock.Now()); err != nil {
+		b.a.log.Error("anotar save-on pendiente", "server", serverID, "err", err)
+	}
+	b.a.emitEvent(serverID, mcsmv1.EventLevel_EVENT_LEVEL_WARN, KindSaveOnPending,
+		"El guardado automático puede haber quedado desactivado (save-on falló). El agente lo reintenta cada 15 s; si puedes, ejecuta save-on en la consola")
+}
+
+// retrySaveOn reintenta save-on en los servidores pendientes. Un servidor retirado o parado se olvida (al arrancar,
+// Minecraft vuelve a guardar solo); uno reservado se salta: su copia o restauración gestiona su propio save-off.
+func (b *backupService) retrySaveOn(ctx context.Context) {
+	ids, err := b.a.st.SaveOnPending()
+	if err != nil {
+		b.a.log.Warn("listar save-on pendientes", "err", err)
+		return
+	}
+	for _, id := range ids {
+		if b.a.rec.Held(id) {
+			continue
+		}
+		t, err := b.target(id)
+		if errors.Is(err, errUnknownServer) {
+			_ = b.a.st.ClearSaveOnPending(id)
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		running, err := b.isRunning(ctx, id)
+		if err != nil {
+			continue
+		}
+		if !running {
+			_ = b.a.st.ClearSaveOnPending(id)
+			b.a.log.Info("save-on pendiente olvidado: el servidor está parado y guardará al arrancar", "server", t.slug)
+			continue
+		}
+		cctx, cancel := context.WithTimeout(ctx, resumeOnStartTimeout)
+		_, err = b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on")
+		cancel()
+		if err != nil {
+			continue
+		}
+		if err := b.a.st.ClearSaveOnPending(id); err != nil {
+			b.a.log.Warn("borrar save-on pendiente", "server", t.slug, "err", err)
+		}
+		b.a.log.Info("guardado automático reactivado (save-on)", "server", t.slug)
+		b.a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_INFO, KindSaveOnResumed, "Guardado automático reactivado (save-on)")
+	}
 }
 
 // outbox entrega al panel, en orden y sin bloquear a quien los emite, los avisos de copias y
