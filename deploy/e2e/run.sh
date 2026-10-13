@@ -24,7 +24,7 @@ PW_IMAGE="mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5
 ALPINE="alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8"
 MC_IMAGE="itzg/minecraft-server:java21"
 export E2E_PANEL_PORT="$PORT"
-export E2E_PASSWORD="${E2E_PASSWORD:-e2e-contrasena-segura}"
+export E2E_PASSWORD="${E2E_PASSWORD:-e2e-secure-password}"
 export E2E_SETUP_TOKEN="${E2E_SETUP_TOKEN:-e2e-setup-$(date +%s)}"
 
 log() { printf '\n== %s\n' "$*"; }

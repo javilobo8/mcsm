@@ -25,7 +25,7 @@ services:
     environment:
       PANEL_URL: http://panel:8080
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
-      NODE_NAME: ${NODE_NAME:-principal}
+      NODE_NAME: ${NODE_NAME:-main}
       DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
       # Optional: maximum size of a file upload, in bytes (empty = 4 GiB).
       UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
