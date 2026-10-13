@@ -81,7 +81,7 @@ export function NodesPage() {
           {nodes.data?.length === 0 && <TableRow><TableCell colSpan={9} className="text-center text-zinc-400">No hay nodos. Pulsa «Añadir nodo» para dar de alta el primero.</TableCell></TableRow>}
           {nodes.data?.map((n) => (
             <TableRow key={n.id}>
-              <TableCell className="font-medium">{n.name}</TableCell>
+              <TableCell className="font-medium"><Link to="/nodes/$nodeId" params={{ nodeId: n.id }} className="hover:underline">{n.name}</Link></TableCell>
               <TableCell><Badge variant="outline" className={n.status === "online" ? "border-emerald-700 text-emerald-300" : "border-zinc-700 text-zinc-400"}>{n.status === "online" ? "Conectado" : "Desconectado"}</Badge></TableCell>
               <TableCell><NodeRouterCell node={n} /></TableCell>
               <TableCell>{n.agentVersion ?? "—"}</TableCell>

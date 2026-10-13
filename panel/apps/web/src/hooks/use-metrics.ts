@@ -20,3 +20,12 @@ export function useNodeLive(nodeId: string) {
     staleTime: Infinity,
   });
 }
+
+/** Serie histórica de un nodo (detalle de nodo). */
+export function useNodeMetrics(nodeId: string, range: MetricRange) {
+  return useQuery({
+    queryKey: ["metrics", "node", nodeId, range],
+    queryFn: () => api.get<MetricSeries>(`${apiPath`/api/nodes/${nodeId}/metrics`}?range=${range}`),
+    refetchInterval: REFRESH_MS[range],
+  });
+}
