@@ -104,8 +104,9 @@ func restrictFilters(rawQuery string) (string, error) {
 }
 
 var (
-	// prefixRe separa el prefijo de versión opcional (/v1.47) del resto. Solo caracteres de ruta sencillos.
-	prefixRe    = regexp.MustCompile(`^(/v[0-9]{1,2}\.[0-9]{1,3})?(/[A-Za-z0-9_./-]*)$`)
+	// prefixRe separa el prefijo de versión opcional (/v1.47: mayor y menor) del resto. Solo caracteres de ruta
+	// sencillos.
+	prefixRe    = regexp.MustCompile(`^(?:/v([0-9]{1,2})\.([0-9]{1,3}))?(/[A-Za-z0-9_./-]*)$`)
 	containerRe = regexp.MustCompile(`^/containers/([A-Za-z0-9][A-Za-z0-9_.-]{0,127})/(json|start|stop)$`)
 )
 
@@ -116,10 +117,10 @@ func Classify(method, path, rawPath string) (op Op, container string, ok bool) {
 		return 0, "", false
 	}
 	m := prefixRe.FindStringSubmatch(path)
-	if m == nil {
+	if m == nil || (m[1] != "" && !supportedAPI(m[1], m[2])) {
 		return 0, "", false
 	}
-	p, get := m[2], method == http.MethodGet
+	p, get := m[3], method == http.MethodGet
 	switch {
 	case p == "/_ping" && (get || method == http.MethodHead):
 		return OpPing, "", true
@@ -145,6 +146,19 @@ func Classify(method, path, rawPath string) (op Op, container string, ok bool) {
 		return OpStop, c[1], true
 	}
 	return 0, "", false
+}
+
+// minAPIMinor: con versiones de API anteriores a la 1.24, Docker aplica el HostConfig que llegue en el cuerpo de
+// POST /containers/{id}/start (privilegiado, binds de la raíz del host…). Los daemons hasta Docker 24 las aceptan.
+const minAPIMinor = 24
+
+// supportedAPI acepta solo v1.N con N ≥ minAPIMinor y sin ceros a la izquierda (una versión ambigua no pasa).
+func supportedAPI(major, minor string) bool {
+	if major != "1" || (len(minor) > 1 && minor[0] == '0') {
+		return false
+	}
+	n, err := strconv.Atoi(minor)
+	return err == nil && n >= minAPIMinor
 }
 
 // StripEnv borra Config.Env de un inspect de contenedor (lleva RCON_PASSWORD, CF_API_KEY…).
@@ -265,6 +279,29 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.opts.Log.Warn("proxy del router: petición denegada", "method", r.Method, "path", r.URL.Path)
 		writeErr(w, http.StatusForbidden, "mcsm: operación no permitida al router")
 		return
+	}
+	// Nada de la lista blanca lleva cuerpo: un cuerpo en start sería un HostConfig (S1 de la revisión del Plan 9).
+	if r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
+		p.opts.Log.Warn("proxy del router: petición con cuerpo denegada", "method", r.Method, "path", r.URL.Path)
+		writeErr(w, http.StatusBadRequest, "mcsm: el router no puede enviar cuerpos a Docker")
+		return
+	}
+	switch op {
+	case OpStart: // sin query: checkpoint, checkpoint-dir y detachKeys no le hacen falta al router
+		r.URL.RawQuery = ""
+	case OpStop: // solo la espera y la señal de la parada
+		q, err := url.ParseQuery(r.URL.RawQuery)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "mcsm: query ilegible")
+			return
+		}
+		keep := url.Values{}
+		for _, k := range []string{"t", "signal"} {
+			if v, ok := q[k]; ok {
+				keep[k] = v[:1]
+			}
+		}
+		r.URL.RawQuery = keep.Encode()
 	}
 	if op == OpList || op == OpEvents {
 		q, err := restrictFilters(r.URL.RawQuery)

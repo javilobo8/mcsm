@@ -428,3 +428,86 @@ func TestProxyOnlyShowsRouterContainers(t *testing.T) {
 		t.Fatalf("inspect del router = %d %s", code, body)
 	}
 }
+
+// S1: con API < 1.24 Docker aplica el HostConfig del cuerpo de start (privilegiado, binds…): esos prefijos no pasan.
+func TestClassifyRejectsOldAPIVersions(t *testing.T) {
+	for _, c := range []struct {
+		path string
+		ok   bool
+	}{
+		{"/v1.24/containers/abc/start", true},
+		{"/v1.47/containers/abc/start", true},
+		{"/v1.100/containers/json", true},
+		{"/containers/abc/start", true}, // sin prefijo: la versión del daemon
+		{"/v1.23/containers/abc/start", false},
+		{"/v1.12/containers/json", false},
+		{"/v1.9/_ping", false},
+		{"/v1.024/_ping", false}, // ceros a la izquierda: ambiguo, fuera
+		{"/v0.99/_ping", false},
+		{"/v2.0/_ping", false},
+	} {
+		method := http.MethodGet
+		if strings.HasSuffix(c.path, "/start") {
+			method = http.MethodPost
+		}
+		if _, _, ok := Classify(method, c.path, ""); ok != c.ok {
+			t.Errorf("%s → ok=%v, se esperaba %v", c.path, ok, c.ok)
+		}
+	}
+}
+
+// S1: ninguna operación de la lista blanca lleva cuerpo; start va sin query y stop solo con t y signal.
+func TestProxyRejectsBodiesAndTrimsStartStopQuery(t *testing.T) {
+	dir := t.TempDir()
+	up, upPath := startUpstream(t, dir)
+	listen := filepath.Join(dir, "p.sock")
+	p := New(Options{Listen: listen, Upstream: upPath, UID: -1, GID: -1, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err := p.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go p.Serve(ctx)
+	raw := func(req string) int {
+		t.Helper()
+		conn, err := net.Dial("unix", listen)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer conn.Close()
+		_, _ = io.WriteString(conn, req)
+		res, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	for _, c := range []struct{ name, req string }{
+		{"start con cuerpo", "POST /v1.47/containers/abc/start HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"Privileged\":1}\n"},
+		{"start chunked", "POST /v1.47/containers/abc/start HTTP/1.1\r\nHost: docker\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n"},
+		{"stop con cuerpo", "POST /v1.47/containers/abc/stop HTTP/1.1\r\nHost: docker\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"},
+		{"inspect con cuerpo", "GET /v1.47/containers/abc/json HTTP/1.1\r\nHost: docker\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"},
+		{"start de API vieja", "POST /v1.23/containers/abc/start HTTP/1.1\r\nHost: docker\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"},
+	} {
+		if code := raw(c.req); code != http.StatusBadRequest && code != http.StatusForbidden {
+			t.Errorf("%s → %d", c.name, code)
+		}
+	}
+	if got := up.requests(); len(got) != 0 {
+		t.Fatalf("al Docker real llegó: %v", got)
+	}
+
+	if code := raw("POST /v1.47/containers/abc/start?checkpoint=x&checkpoint-dir=/tmp&detachKeys=a HTTP/1.1\r\nHost: docker\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); code != 204 {
+		t.Fatalf("start sin cuerpo = %d", code)
+	}
+	if q := up.query("/v1.47/containers/abc/start"); q != "" {
+		t.Fatalf("start llegó con query %q", q)
+	}
+	if code := raw("POST /v1.47/containers/abc/stop?t=10&signal=SIGTERM&otro=1 HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n"); code != 204 {
+		t.Fatalf("stop = %d", code)
+	}
+	if q := up.query("/v1.47/containers/abc/stop"); q != "signal=SIGTERM&t=10" {
+		t.Fatalf("stop llegó con query %q", q)
+	}
+}
