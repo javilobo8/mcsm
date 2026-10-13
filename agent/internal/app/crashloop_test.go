@@ -205,7 +205,8 @@ func TestCoalescedCrashLoopStopUsesTheLatestDecision(t *testing.T) {
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART}}}, s.send)
 	cid = a.rec.ContainerID(context.Background(), "a")
 	for i := 0; i < crashloop.MaxCrashes+1; i++ { // el servidor arrancado a mano vuelve a entrar en bucle
-		a.onDie("a", die(cid, "1"))
+		// Otro id en el evento: el die de la parada del reinicio queda anotado en Intents con el id del contenedor.
+		a.onDie("a", die("tras-arrancar", "1"))
 	}
 	for i := 0; i < cap(a.sem); i++ {
 		<-a.sem
