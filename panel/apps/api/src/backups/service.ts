@@ -1,3 +1,4 @@
+import { pipeline, type Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { BackupTrigger, JobStatus, type BackupCreated, type BackupDeleted, type BackupInfo, type BackupInventory, type Envelope, type JobProgress } from "@mcsm/proto";
 import { MAX_CLOCK_SKEW_SECONDS } from "@mcsm/shared";
@@ -5,6 +6,8 @@ import { AgentError, type AgentConn, type Body } from "../agents/hub.js";
 import { AgentErrorCode } from "../agents/error-codes.js";
 import type { JobDto, JobState } from "../jobs/repo.js";
 import { AGENT_JOB_TYPES, FINAL_STATES } from "../jobs/service.js";
+import { toHttpError } from "../files/service.js";
+import { IDLE_TIMEOUT_MS, idleGuard } from "../files/stream.js";
 import { agentErrorToHttp } from "../lib/http.js";
 import { nowIso } from "../lib/time.js";
 import type { ServerRow } from "../servers/repo.js";
@@ -42,6 +45,9 @@ export function infoToInput(b: BackupInfo): BackupInput {
 }
 
 /** Copias de seguridad (spec §7 BackupService): tabla `backups`, órdenes al agente e inventario. */
+/** Sin plazo total: dura lo que haga falta mientras pasen bytes (la cortan el vigilante, la caducidad y el WS). */
+const DOWNLOAD_DEADLINE_MS = 2 ** 31 - 1;
+
 /** Cada cuánto el panel pide el inventario a los nodos conectados (m-f: el periódico del agente no va correlacionado). */
 export const INVENTORY_EVERY_MS = 10 * 60_000;
 
@@ -193,6 +199,38 @@ export class BackupService {
       const err = agentErrorToHttp(e, "El agente rechazó la orden");
       this.app.jobs.finish(jobId, "failed", err.message);
       throw err;
+    }
+  }
+
+  /**
+   * Descarga de una copia al navegador (spec §6.5 «descargar»): el agente la sube con BackupPush (Plan 7) a una
+   * transferencia entrante, que se reenvía al navegador sin pasar por disco. Los datos pre-restore son una carpeta:
+   * no se descargan.
+   */
+  async download(serverId: string, backupId: string, signal?: AbortSignal): Promise<{ stream: Readable; size: number | null; filename: string; done: Promise<void> }> {
+    const row = this.requireServer(serverId);
+    const b = this.requireBackup(serverId, backupId);
+    if (b.trigger === "pre_restore") throw new HttpError(400, "Son los datos de antes de una restauración (una carpeta en el nodo): no se descargan desde aquí");
+    const conn = this.onlineConn(row.node_id);
+    const t = this.app.transfers.inbound(row.node_id);
+    signal?.addEventListener("abort", () => t.cancel("el navegador canceló la descarga"), { once: true });
+    const req = conn.request({ case: "backupPush", value: { serverId, filename: b.filename, transferId: t.id } }, DOWNLOAD_DEADLINE_MS);
+    const done = req.then(() => undefined);
+    done.catch(() => {});
+    try {
+      const incoming = await Promise.race([
+        t.incoming,
+        req.then((): never => { throw new HttpError(502, "El agente terminó sin enviar la copia"); }),
+      ]);
+      const guard = idleGuard(IDLE_TIMEOUT_MS, () => {
+        t.cancel("el nodo dejó de enviar la copia");
+        return new HttpError(504, "El nodo dejó de enviar la copia");
+      });
+      pipeline(incoming.stream, guard, () => { /* el resultado lo ve la respuesta */ });
+      return { stream: guard, size: incoming.size, filename: b.filename, done };
+    } catch (e) {
+      t.cancel("descarga fallida");
+      throw toHttpError(e, "No se pudo descargar la copia");
     }
   }
 
