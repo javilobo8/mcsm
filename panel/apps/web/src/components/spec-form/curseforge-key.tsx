@@ -10,7 +10,7 @@ import { dialogSubmit } from "@/lib/dialog-form";
 
 interface KeyStatus { configured: boolean; valid?: boolean }
 
-/** Estado de la API key global de CurseForge y diálogo para cambiarla. La key nunca se lee de vuelta. */
+/** Status of the global CurseForge API key and dialog to change it. The key is never read back. */
 export function CurseForgeKeyNotice() {
   const qc = useQueryClient();
   const status = useQuery({ queryKey: ["settings", "curseforge"], queryFn: () => api.get<KeyStatus>("/api/settings/curseforge") });
@@ -26,35 +26,35 @@ export function CurseForgeKeyNotice() {
   });
   const configured = status.data?.configured;
   const removeKey = () => {
-    if (window.confirm("Quitar la API key de CurseForge recreará los servidores de CurseForge que estén en marcha. ¿Continuar?")) save.mutate("");
+    if (window.confirm("Removing the CurseForge API key will recreate the running CurseForge servers. Continue?")) save.mutate("");
   };
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-xs">
       <KeyRound className="size-4 text-muted-foreground" />
       <span>
-        API key de CurseForge: {status.isError ? <strong role="alert" className="text-red-400">no se pudo consultar</strong> : configured === undefined ? "…" : configured ? <strong className="text-emerald-400">configurada</strong> : <strong className="text-amber-400">sin configurar</strong>}
-        {configured === false && " (las imágenes java17 o superiores traen una; con java8 es obligatoria)"}
+        CurseForge API key: {status.isError ? <strong role="alert" className="text-red-400">could not be checked</strong> : configured === undefined ? "…" : configured ? <strong className="text-emerald-400">configured</strong> : <strong className="text-amber-400">not configured</strong>}
+        {configured === false && " (java17 or newer images include one; with java8 it is required)"}
       </span>
       {configured && status.data?.valid === false && (
-        <span role="alert" className="text-amber-400">La key guardada no es válida (tiene espacios o caracteres no permitidos): vuelve a pegarla.</span>
+        <span role="alert" className="text-amber-400">The saved key is not valid (it has spaces or disallowed characters): paste it again.</span>
       )}
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setKey(""); save.reset(); } }}>
-        <DialogTrigger asChild><Button type="button" size="sm" variant="secondary">{configured ? "Cambiar" : "Configurar"}</Button></DialogTrigger>
+        <DialogTrigger asChild><Button type="button" size="sm" variant="secondary">{configured ? "Change" : "Configure"}</Button></DialogTrigger>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>API key de CurseForge</DialogTitle>
-            <DialogDescription>Es global para todos los servidores. Al cambiarla se recrean los que descargan de CurseForge.</DialogDescription>
+            <DialogTitle>CurseForge API key</DialogTitle>
+            <DialogDescription>It is global for all servers. Changing it recreates the ones that download from CurseForge.</DialogDescription>
           </DialogHeader>
           <form className="flex flex-col gap-3" onSubmit={dialogSubmit(() => save.mutate(key.trim()))}>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="cf-api-key">Nueva API key</Label>
+              <Label htmlFor="cf-api-key">New API key</Label>
               <Input id="cf-api-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="$2a$10$…" />
-              <p className="text-xs text-muted-foreground">Se obtiene en console.curseforge.com. Pégala tal cual: los «$» no se escapan.</p>
+              <p className="text-xs text-muted-foreground">Get it at console.curseforge.com. Paste it as is: “$” signs are not escaped.</p>
             </div>
-            {save.error && <p role="alert" className="text-sm text-red-400">{save.error instanceof ApiError ? save.error.message : "Error inesperado"}</p>}
+            {save.error && <p role="alert" className="text-sm text-red-400">{save.error instanceof ApiError ? save.error.message : "Unexpected error"}</p>}
             <DialogFooter>
-              {configured && <Button type="button" variant="ghost" disabled={save.isPending} onClick={removeKey}>Quitar la key</Button>}
-              <Button type="submit" disabled={save.isPending || key.trim() === ""}>{save.isPending ? "Guardando…" : "Guardar"}</Button>
+              {configured && <Button type="button" variant="ghost" disabled={save.isPending} onClick={removeKey}>Remove the key</Button>}
+              <Button type="submit" disabled={save.isPending || key.trim() === ""}>{save.isPending ? "Saving…" : "Save"}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

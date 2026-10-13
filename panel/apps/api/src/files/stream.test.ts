@@ -10,26 +10,26 @@ const collect = async (s: AsyncIterable<unknown>) => {
 };
 
 describe("detachable", () => {
-  it("copia el cuerpo tal cual", async () => {
+  it("copies the body as is", async () => {
     const src = new PassThrough();
     const out = detachable(src);
     src.end("hola mundo");
     expect(await collect(out)).toBe("hola mundo");
   });
 
-  it("si el consumidor corta, el origen se drena en vez de destruirse", async () => {
+  it("if the consumer cuts off, the source is drained instead of destroyed", async () => {
     const src = new PassThrough();
     const out = detachable(src);
-    src.write("primero");
+    src.write("first");
     out.destroy();
     await new Promise((r) => out.once("close", r));
-    src.end("resto que nadie quiere");
+    src.end("rest that nobody wants");
     await drain(src);
     expect(src.destroyed && !src.readableEnded).toBe(false);
     expect(src.readableEnded).toBe(true);
   });
 
-  it("si el origen falla o se corta, la copia se destruye con error", async () => {
+  it("if the source fails or is cut, the copy is destroyed with an error", async () => {
     const src = new PassThrough();
     const out = detachable(src);
     const failed = new Promise<Error>((r) => out.once("error", r));
@@ -37,31 +37,31 @@ describe("detachable", () => {
     expect((await failed).message).toBe("aborted");
   });
 
-  it("si el origen se cierra sin terminar y sin error, la copia falla igualmente (no se da por completa)", async () => {
+  it("if the source closes without finishing and without error, the copy fails anyway (it is not taken as complete)", async () => {
     const src = new PassThrough();
     const out = detachable(src);
     const failed = new Promise<Error>((r) => out.once("error", r));
     src.destroy();
-    expect((await failed).message).toMatch(/interrumpió/);
+    expect((await failed).message).toMatch(/interrupted/);
     expect(out.readableEnded).toBe(false);
   });
 
-  it("con el consumidor parado por contrapresión, cortarlo reanuda el origen hasta el final", async () => {
+  it("with the consumer stalled by backpressure, cutting it resumes the source to the end", async () => {
     const src = new PassThrough({ highWaterMark: 1024 });
     const out = detachable(src);
-    // Nadie lee `out`: la tubería se detiene y el origen deja de aceptar escrituras.
+    // Nobody reads `out`: the pipeline stalls and the source stops accepting writes.
     let accepted = true;
     for (let i = 0; i < 4096 && accepted; i++) accepted = src.write(Buffer.alloc(1024));
     expect(accepted).toBe(false);
     out.destroy();
     await new Promise((r) => out.once("close", r));
-    if (src.writableNeedDrain) await new Promise((r) => src.once("drain", r)); // el origen vuelve a aceptar datos
+    if (src.writableNeedDrain) await new Promise((r) => src.once("drain", r)); // the origin accepts data again
     src.end(Buffer.alloc(4096));
     await drain(src);
     expect(src.readableEnded).toBe(true);
   });
 
-  it("sobre un origen ya destruido con error, la copia falla con ese error (no se queda colgada)", async () => {
+  it("on an already destroyed source with an error, the copy fails with that error (it does not hang)", async () => {
     const src = new PassThrough();
     src.on("error", () => {});
     src.destroy(new Error("aborted"));
@@ -71,20 +71,20 @@ describe("detachable", () => {
     expect((await failed).message).toBe("aborted");
   });
 
-  it("sobre un origen ya destruido sin error, la copia falla igualmente", async () => {
+  it("on an already destroyed source without an error, the copy fails anyway", async () => {
     const src = new PassThrough();
     src.destroy();
     await new Promise((r) => src.once("close", r));
     const out = detachable(src);
     const failed = new Promise<Error>((r) => out.once("error", r));
-    expect((await failed).message).toMatch(/interrumpió/);
+    expect((await failed).message).toMatch(/interrupted/);
   });
 
-  it("si el origen ya terminó, la copia se cierra limpia y el origen queda sin errores", async () => {
+  it("if the source already finished, the copy closes cleanly and the source is left without errors", async () => {
     const src = new PassThrough();
     const out = detachable(src);
-    src.end("todo");
-    expect(await collect(out)).toBe("todo");
+    src.end("all");
+    expect(await collect(out)).toBe("all");
     await new Promise((r) => (out.closed ? r(null) : out.once("close", r)));
     expect(out.errored).toBeNull();
     expect(src.readableEnded).toBe(true);
@@ -93,7 +93,7 @@ describe("detachable", () => {
 });
 
 describe("drain", () => {
-  it("no hace nada si el cuerpo ya terminó", async () => {
+  it("does nothing if the body already finished", async () => {
     const src = new PassThrough();
     src.end();
     src.resume();
@@ -101,16 +101,16 @@ describe("drain", () => {
     await expect(drain(src)).resolves.toBe(true);
   });
 
-  it("lee y descarta lo que quede hasta el final", async () => {
+  it("reads and discards whatever remains to the end", async () => {
     const src = new PassThrough();
-    src.write("sin leer");
+    src.write("unread");
     const drained = drain(src);
-    src.end("y más");
+    src.end("and more");
     await expect(drained).resolves.toBe(true);
     expect(src.readableEnded).toBe(true);
   });
 
-  it("un cuerpo destruido o que falla a mitad no la hace fallar", async () => {
+  it("a body destroyed or failing midway does not make it fail", async () => {
     const gone = new PassThrough();
     gone.destroy();
     await expect(drain(gone)).resolves.toBe(false);
@@ -120,7 +120,7 @@ describe("drain", () => {
     await expect(drained).resolves.toBe(false);
   });
 
-  it("con tope: si queda más de maxBytes deja de esperar, sin destruir el cuerpo", async () => {
+  it("with a cap: if more than maxBytes remains it stops waiting, without destroying the body", async () => {
     const clock = new ManualTimers();
     const src = new PassThrough();
     const drained = drain(src, { maxBytes: 1024, timers: clock });
@@ -131,20 +131,20 @@ describe("drain", () => {
     expect(clock.pending).toBe(0);
   });
 
-  it("dentro del tope termina normal", async () => {
+  it("within the cap it ends normally", async () => {
     const src = new PassThrough();
     const drained = drain(src, { maxBytes: 1024, timers: new ManualTimers() });
     src.end(Buffer.alloc(1024));
     await expect(drained).resolves.toBe(true);
   });
 
-  it("si el cuerpo se calla durante idleMs, lo destruye y devuelve false; cada trozo rearma el plazo", async () => {
+  it("if the body goes silent for idleMs, it destroys it and returns false; each chunk re-arms the deadline", async () => {
     const clock = new ManualTimers();
     const src = new PassThrough();
     const drained = drain(src, { idleMs: 1000, timers: clock });
     clock.advance(900);
     await new Promise((r) => src.write("a", r));
-    clock.advance(900); // 1800 desde el principio, pero solo 900 desde el último trozo
+    clock.advance(900); // 1800 since the start, but only 900 since the last chunk
     expect(src.destroyed).toBe(false);
     clock.advance(100);
     await expect(drained).resolves.toBe(false);
@@ -153,16 +153,16 @@ describe("drain", () => {
 });
 
 describe("idleGuard", () => {
-  it("deja pasar los datos tal cual y se desarma al terminar", async () => {
+  it("passes data through as is and disarms itself on finishing", async () => {
     const clock = new ManualTimers();
     const g = idleGuard(1000, () => new Error("inactivo"), clock);
-    expect(clock.pending).toBe(1); // mide también la espera hasta el primer trozo
-    g.end("hola");
-    expect(await collect(g)).toBe("hola");
+    expect(clock.pending).toBe(1); // it also measures the wait until the first chunk
+    g.end("hello");
+    expect(await collect(g)).toBe("hello");
     expect(clock.pending).toBe(0);
   });
 
-  it("sin trozos durante el plazo, se destruye con el error que devuelve onIdle", async () => {
+  it("with no chunks during the deadline, it is destroyed with the error returned by onIdle", async () => {
     const clock = new ManualTimers();
     let called = 0;
     const g = idleGuard(1000, () => { called++; return new Error("inactivo"); }, clock);
@@ -175,7 +175,7 @@ describe("idleGuard", () => {
     expect(clock.pending).toBe(0);
   });
 
-  it("cada trozo rearma el plazo: un flujo lento pero continuo no se corta", async () => {
+  it("each chunk re-arms the deadline: a slow but continuous flow is not cut", async () => {
     const clock = new ManualTimers();
     const g = idleGuard(1000, () => new Error("inactivo"), clock);
     const got = collect(g);
@@ -188,17 +188,17 @@ describe("idleGuard", () => {
     expect(g.destroyed && g.errored).toBeFalsy();
   });
 
-  it("si quien lee deja de leer tras el último trozo, también vence", async () => {
+  it("if the reader stops reading after the last chunk, it also expires", async () => {
     const clock = new ManualTimers();
     const g = idleGuard(1000, () => new Error("inactivo"), clock);
     const failed = new Promise<Error>((r) => g.once("error", r));
     g.write("a");
-    g.end(); // nadie lee: 'end' no llega
+    g.end(); // nobody reads: 'end' does not arrive
     clock.advance(1000);
     expect((await failed).message).toBe("inactivo");
   });
 
-  it("destruida por fuera, se desarma", () => {
+  it("destroyed from outside, it disarms itself", () => {
     const clock = new ManualTimers();
     const g = idleGuard(1000, () => new Error("inactivo"), clock);
     g.destroy();

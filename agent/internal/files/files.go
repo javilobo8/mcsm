@@ -1,11 +1,11 @@
-// Package files implementa las operaciones de archivos de un servidor confinadas a
-// su directorio de datos (spec §6.6).
+// Package files implements a server's file operations confined to
+// its data directory (spec §6.6).
 //
-// Cada ruta pasa por tres barreras:
-//  1. Clean: validación léxica; ".." y caracteres de control se rechazan, nunca se "arreglan".
-//  2. resolve: filepath.EvalSymlinks + comprobación de prefijo con separador sobre la raíz real.
-//  3. La E/S se hace con os.Root (openat sin seguir enlaces que salgan de la raíz): si un enlace
-//     se cambia entre la comprobación y el uso (TOCTOU), la operación falla en vez de escapar.
+// Each path goes through three barriers:
+//  1. Clean: lexical validation; ".." and control characters are rejected, never "fixed".
+//  2. resolve: filepath.EvalSymlinks + prefix check with separator against the real root.
+//  3. I/O is done with os.Root (openat without following links that leave the root): if a link
+//     is changed between the check and the use (TOCTOU), the operation fails instead of escaping.
 package files
 
 import (
@@ -25,44 +25,44 @@ import (
 	"mcsm/agent/internal/spec"
 )
 
-// InlineMax es el máximo de lectura/escritura inline por el WebSocket (spec §6.6).
+// InlineMax is the maximum inline read/write over the WebSocket (spec §6.6).
 const InlineMax = 2 << 20
 
-// maxEntries limita un listado; el resto se marca como truncado. Variable para los tests.
+// maxEntries limits a listing; the rest is marked as truncated. A variable for tests.
 var maxEntries = 5000
 
-// tmpPrefix empieza el nombre de los temporales de las escrituras atómicas (ver TempGlob).
+// tmpPrefix starts the name of the temporaries of atomic writes (see TempGlob).
 const tmpPrefix = ".mcsm-tmp-"
 
-// TempGlob casa (path.Match) exactamente con el nombre de un temporal de una escritura
-// atómica: tmpPrefix y 16 hexadecimales en minúscula (randHex). Esos se ocultan en los
-// listados, las copias de seguridad los excluyen siempre (backup.Excluder) y SweepTemps barre
-// los huérfanos. Un fichero del usuario que solo empiece igual («.mcsm-tmp-notas») es un
-// fichero más: se ve, se copia y no se barre.
+// TempGlob matches (path.Match) exactly the name of an atomic write's
+// temporary: tmpPrefix and 16 lowercase hexadecimal characters (randHex). Those are hidden in
+// listings, backups always exclude them (backup.Excluder) and SweepTemps sweeps
+// the orphans. A user file that merely starts the same way (".mcsm-tmp-notes") is
+// just another file: it is shown, copied and not swept.
 const TempGlob = tmpPrefix + "[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]" +
 	"[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]"
 
-// IsTempName indica si name (un nombre, sin carpetas) es el de un temporal de una escritura
-// atómica (TempGlob).
+// IsTempName reports whether name (a name, without folders) is that of an atomic write's
+// temporary (TempGlob).
 func IsTempName(name string) bool {
 	ok, _ := path.Match(TempGlob, name)
 	return ok
 }
 
 var (
-	ErrInvalidPath   = errors.New("ruta inválida")
-	ErrOutside       = errors.New("la ruta sale del directorio del servidor")
-	ErrUnknownServer = errors.New("servidor desconocido en este nodo")
-	ErrNotFound      = errors.New("no existe")
-	ErrExists        = errors.New("ya existe")
-	ErrIsDir         = errors.New("es una carpeta")
-	ErrNotDir        = errors.New("no es una carpeta")
-	ErrTooLarge      = errors.New("demasiado grande para abrirlo en línea (máx. 2 MiB): descárgalo")
-	ErrRoot          = errors.New("no se puede modificar la carpeta raíz del servidor")
-	ErrTransfer      = errors.New("transferencia fallida")
+	ErrInvalidPath   = errors.New("invalid path")
+	ErrOutside       = errors.New("the path leaves the server's directory")
+	ErrUnknownServer = errors.New("unknown server on this node")
+	ErrNotFound      = errors.New("does not exist")
+	ErrExists        = errors.New("already exists")
+	ErrIsDir         = errors.New("is a folder")
+	ErrNotDir        = errors.New("is not a folder")
+	ErrTooLarge      = errors.New("too large to open inline (max. 2 MiB): download it")
+	ErrRoot          = errors.New("the server's root folder cannot be modified")
+	ErrTransfer      = errors.New("transfer failed")
 )
 
-// Code traduce un error a su código de protocolo (Error.code).
+// Code translates an error to its protocol code (Error.code).
 func Code(err error) string {
 	switch {
 	case errors.Is(err, ErrInvalidPath):
@@ -90,17 +90,17 @@ func Code(err error) string {
 	}
 }
 
-// Entry describe un fichero o carpeta.
+// Entry describes a file or folder.
 type Entry struct {
 	Name    string
 	Dir     bool
 	Symlink bool
 	Size    int64
 	ModTime time.Time
-	Mode    fs.FileMode // solo bits de permisos
+	Mode    fs.FileMode // permission bits only
 }
 
-// Root devuelve el directorio de datos de un servidor: <dataRoot>/<slug>/data.
+// Root returns a server's data directory: <dataRoot>/<slug>/data.
 func Root(dataRoot, slug string) (string, error) {
 	if !spec.ValidSlug(slug) {
 		return "", fmt.Errorf("%w: slug %q", ErrInvalidPath, slug)
@@ -108,21 +108,21 @@ func Root(dataRoot, slug string) (string, error) {
 	return filepath.Join(filepath.Clean(dataRoot), slug, "data"), nil
 }
 
-// FS opera dentro de una raíz.
+// FS operates inside a root.
 type FS struct {
 	root string
-	// afterCheck se invoca entre la comprobación de una ruta y su uso. Solo para tests (TOCTOU).
+	// afterCheck is invoked between the check of a path and its use. Tests only (TOCTOU).
 	afterCheck func()
 }
 
-// New crea un FS confinado a root (normalmente el resultado de Root).
+// New creates an FS confined to root (normally the result of Root).
 func New(root string) *FS { return &FS{root: filepath.Clean(root)} }
 
-// Clean valida una ruta del panel ("/", "mods/a.jar", "/config/x.yml") y la devuelve relativa
-// a la raíz, con "/" como separador ("." es la raíz).
+// Clean validates a path from the panel ("/", "mods/a.jar", "/config/x.yml") and returns it relative
+// to the root, with "/" as separator ("." is the root).
 func Clean(p string) (string, error) {
 	if len(p) > 4096 {
-		return "", fmt.Errorf("%w: demasiado larga", ErrInvalidPath)
+		return "", fmt.Errorf("%w: too long", ErrInvalidPath)
 	}
 	parts := make([]string, 0, 8)
 	for _, seg := range strings.Split(p, "/") {
@@ -130,11 +130,11 @@ func Clean(p string) (string, error) {
 		case "", ".":
 			continue
 		case "..":
-			return "", fmt.Errorf("%w: no se permite «..»", ErrInvalidPath)
+			return "", fmt.Errorf("%w: \"..\" is not allowed", ErrInvalidPath)
 		}
 		for _, r := range seg {
 			if r < 0x20 || r == 0x7f {
-				return "", fmt.Errorf("%w: contiene caracteres de control", ErrInvalidPath)
+				return "", fmt.Errorf("%w: contains control characters", ErrInvalidPath)
 			}
 		}
 		parts = append(parts, seg)
@@ -145,7 +145,7 @@ func Clean(p string) (string, error) {
 	return strings.Join(parts, "/"), nil
 }
 
-// display es la ruta tal y como la ve el usuario ("/" + relativa).
+// display is the path as the user sees it ("/" + relative).
 func display(rel string) string {
 	if rel == "." {
 		return "/"
@@ -153,26 +153,26 @@ func display(rel string) string {
 	return "/" + rel
 }
 
-// within comprueba que p es root o cuelga de root. El separador evita que /x/data2
-// pase por estar "dentro" de /x/data.
+// within checks that p is root or hangs under root. The separator prevents /x/data2
+// from passing as "inside" /x/data.
 func within(root, p string) bool {
 	return p == root || strings.HasPrefix(p, root+string(filepath.Separator))
 }
 
-// realRoot resuelve los enlaces de la propia raíz (DATA_ROOT puede ser un enlace).
+// realRoot resolves the links of the root itself (DATA_ROOT may be a link).
 func (f *FS) realRoot() (string, error) {
 	r, err := filepath.EvalSymlinks(f.root)
 	if errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("%w: la carpeta de datos del servidor aún no existe (arráncalo una vez)", ErrNotFound)
+		return "", fmt.Errorf("%w: the server's data folder does not exist yet (start it once)", ErrNotFound)
 	}
 	if err != nil {
-		return "", fmt.Errorf("error de E/S en la carpeta de datos: %v", errors.Unwrap(err))
+		return "", fmt.Errorf("I/O error in the data folder: %v", errors.Unwrap(err))
 	}
 	return r, nil
 }
 
-// resolve aplica la spec §6.6 a una ruta limpia: EvalSymlinks y prefijo. Devuelve la ruta real
-// relativa a la raíz real (siguiendo los enlaces que quedan dentro).
+// resolve applies spec §6.6 to a clean path: EvalSymlinks and prefix. It returns the real path
+// relative to the real root (following the links that remain inside).
 func (f *FS) resolve(rel string) (string, error) {
 	root, err := f.realRoot()
 	if err != nil {
@@ -181,8 +181,8 @@ func (f *FS) resolve(rel string) (string, error) {
 	real, err := filepath.EvalSymlinks(filepath.Join(root, filepath.FromSlash(rel)))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-			// Si un componente intermedio sale de la raíz se informa como tal, no como
-			// "no existe": no se revela qué hay fuera.
+			// If an intermediate component leaves the root it is reported as such, not as
+			// "does not exist": what is outside is not revealed.
 			if rel != "." {
 				if _, perr := f.resolve(path.Dir(rel)); errors.Is(perr, ErrOutside) {
 					return "", perr
@@ -193,7 +193,7 @@ func (f *FS) resolve(rel string) (string, error) {
 		if errors.Is(err, syscall.ELOOP) || errors.Is(err, syscall.ENAMETOOLONG) {
 			return "", fmt.Errorf("%w: %s", ErrInvalidPath, display(rel))
 		}
-		// EACCES y demás: fallo de E/S del host, no una ruta mala del usuario.
+		// EACCES and the like: a host I/O failure, not a bad user path.
 		return "", mapErr(err, rel)
 	}
 	if !within(root, real) {
@@ -206,8 +206,8 @@ func (f *FS) resolve(rel string) (string, error) {
 	return filepath.ToSlash(out), nil
 }
 
-// resolveEntry resuelve la carpeta padre (siguiendo enlaces) y conserva el último componente
-// sin seguirlo: borrar o renombrar un enlace actúa sobre el enlace, nunca sobre su destino.
+// resolveEntry resolves the parent folder (following links) and keeps the last component
+// without following it: deleting or renaming a link acts on the link, never on its target.
 func (f *FS) resolveEntry(rel string) (string, error) {
 	if rel == "." {
 		return "", ErrRoot
@@ -219,8 +219,8 @@ func (f *FS) resolveEntry(rel string) (string, error) {
 	return path.Join(parent, path.Base(rel)), nil
 }
 
-// open abre la raíz real como os.Root. Se abre en cada operación: una restauración de backup
-// renombra la carpeta y un descriptor guardado apuntaría a la antigua.
+// open opens the real root as os.Root. It is opened on each operation: a backup restore
+// renames the folder and a saved descriptor would point to the old one.
 func (f *FS) open() (*os.Root, error) {
 	if f.afterCheck != nil {
 		f.afterCheck()
@@ -231,14 +231,14 @@ func (f *FS) open() (*os.Root, error) {
 	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
-		return nil, fmt.Errorf("error de E/S en la carpeta de datos: %v", errors.Unwrap(err))
+		return nil, fmt.Errorf("I/O error in the data folder: %v", errors.Unwrap(err))
 	}
 	return r, nil
 }
 
-// La stdlib no exporta errPathEscapes (os/file.go): no hay forma tipada de reconocerlo y se compara
-// el texto; TestTOCTOUSwapToSymlinkIsRefused falla si cambia.
-// isEscape detecta el error de os.Root cuando una ruta sale de la raíz.
+// The stdlib does not export errPathEscapes (os/file.go): there is no typed way to recognize it and the
+// text is compared; TestTOCTOUSwapToSymlinkIsRefused fails if it changes.
+// isEscape detects os.Root's error when a path leaves the root.
 func isEscape(err error) bool {
 	var pe *fs.PathError
 	if errors.As(err, &pe) && pe.Err != nil && pe.Err.Error() == "path escapes from parent" {
@@ -248,7 +248,7 @@ func isEscape(err error) bool {
 	return errors.As(err, &le) && le.Err != nil && le.Err.Error() == "path escapes from parent"
 }
 
-// mapErr traduce errores de os.Root a los errores del paquete, sin rutas absolutas del host.
+// mapErr translates os.Root errors into the package's errors, without absolute host paths.
 func mapErr(err error, rel string) error {
 	if err == nil {
 		return nil
@@ -276,7 +276,7 @@ func mapErr(err error, rel string) error {
 	} else if errors.As(err, &le) {
 		cause = le.Err
 	}
-	return fmt.Errorf("error de E/S en %s: %v", d, cause)
+	return fmt.Errorf("I/O error in %s: %v", d, cause)
 }
 
 func entryOf(name string, info fs.FileInfo) Entry {
@@ -286,8 +286,8 @@ func entryOf(name string, info fs.FileInfo) Entry {
 	}
 }
 
-// List devuelve el contenido de una carpeta: carpetas primero y luego por nombre. Los enlaces
-// que apuntan dentro de la raíz se describen por su destino; los que salen, como enlaces.
+// List returns a folder's contents: folders first and then by name. Links
+// that point inside the root are described by their target; those that leave, as links.
 func (f *FS) List(p string) ([]Entry, bool, error) {
 	rel, err := Clean(p)
 	if err != nil {
@@ -329,7 +329,7 @@ func (f *FS) List(p string) ([]Entry, bool, error) {
 		}
 		info, err := de.Info()
 		if err != nil {
-			continue // borrado entre ReadDir e Info
+			continue // deleted between ReadDir and Info
 		}
 		e := entryOf(de.Name(), info)
 		if e.Symlink {
@@ -348,7 +348,7 @@ func (f *FS) List(p string) ([]Entry, bool, error) {
 	return out, truncated, nil
 }
 
-// Stat describe una ruta siguiendo los enlaces que quedan dentro de la raíz.
+// Stat describes a path following the links that remain inside the root.
 func (f *FS) Stat(p string) (Entry, error) {
 	rel, err := Clean(p)
 	if err != nil {
@@ -370,8 +370,8 @@ func (f *FS) Stat(p string) (Entry, error) {
 	return entryOf(path.Base(display(rel)), info), nil
 }
 
-// openRegular abre solo ficheros regulares. O_NONBLOCK evita quedarse bloqueado al abrir una
-// FIFO que alguien haya creado dentro de /data; en un fichero regular no tiene efecto.
+// openRegular opens only regular files. O_NONBLOCK avoids getting blocked when opening a
+// FIFO someone created inside /data; on a regular file it has no effect.
 func openRegular(r *os.Root, real, rel string) (*os.File, fs.FileInfo, error) {
 	fh, err := r.OpenFile(real, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
@@ -388,12 +388,12 @@ func openRegular(r *os.Root, real, rel string) (*os.File, fs.FileInfo, error) {
 	}
 	if !info.Mode().IsRegular() {
 		fh.Close()
-		return nil, nil, fmt.Errorf("%w: %s no es un fichero normal", ErrInvalidPath, display(rel))
+		return nil, nil, fmt.Errorf("%w: %s is not a regular file", ErrInvalidPath, display(rel))
 	}
 	return fh, info, nil
 }
 
-// Read lee un fichero entero si no supera max (o InlineMax si max <= 0 o es mayor).
+// Read reads a whole file if it does not exceed max (or InlineMax if max <= 0 or it is greater).
 func (f *FS) Read(p string, max int64) ([]byte, int64, error) {
 	if max <= 0 || max > InlineMax {
 		max = InlineMax
@@ -417,19 +417,19 @@ func (f *FS) Read(p string, max int64) ([]byte, int64, error) {
 	}
 	defer fh.Close()
 	if info.Size() > max {
-		return nil, info.Size(), fmt.Errorf("%w: %s ocupa %d bytes", ErrTooLarge, display(rel), info.Size())
+		return nil, info.Size(), fmt.Errorf("%w: %s takes %d bytes", ErrTooLarge, display(rel), info.Size())
 	}
 	data, err := io.ReadAll(io.LimitReader(fh, max+1))
 	if err != nil {
 		return nil, 0, mapErr(err, rel)
 	}
-	if int64(len(data)) > max { // creció mientras se leía
+	if int64(len(data)) > max { // it grew while being read
 		return nil, int64(len(data)), fmt.Errorf("%w: %s", ErrTooLarge, display(rel))
 	}
 	return data, info.Size(), nil
 }
 
-// Open abre un fichero regular para descargarlo en streaming. El llamante lo cierra.
+// Open opens a regular file to download it as a stream. The caller closes it.
 func (f *FS) Open(p string) (*os.File, Entry, error) {
 	rel, err := Clean(p)
 	if err != nil {
@@ -443,7 +443,7 @@ func (f *FS) Open(p string) (*os.File, Entry, error) {
 	if err != nil {
 		return nil, Entry{}, err
 	}
-	defer r.Close() // el fichero abierto sigue siendo válido tras cerrar la raíz
+	defer r.Close() // the open file remains valid after closing the root
 	fh, info, err := openRegular(r, real, rel)
 	if err != nil {
 		return nil, Entry{}, err

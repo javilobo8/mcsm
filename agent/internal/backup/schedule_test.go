@@ -14,7 +14,7 @@ type fakeWaiter struct {
 	ch chan time.Time
 }
 
-// fakeClock avanza a mano. registered recibe un aviso cada vez que el bucle se pone a esperar.
+// fakeClock advances by hand. registered receives a notice every time the loop starts waiting.
 type fakeClock struct {
 	mu         sync.Mutex
 	now        time.Time
@@ -62,13 +62,13 @@ func (c *fakeClock) Advance(d time.Duration) {
 	c.waiters = keep
 }
 
-// waitLoop espera a que el bucle vuelva a dormir (el timeout es solo una red de seguridad).
+// waitLoop waits for the loop to sleep again (the timeout is only a safety net).
 func (c *fakeClock) waitLoop(t *testing.T) {
 	t.Helper()
 	select {
 	case <-c.registered:
 	case <-time.After(2 * time.Second):
-		t.Fatal("el planificador no volvió a esperar")
+		t.Fatal("the scheduler did not wait again")
 	}
 }
 
@@ -77,10 +77,10 @@ func expectFire(t *testing.T, ch <-chan string, want string) {
 	select {
 	case got := <-ch:
 		if got != want {
-			t.Fatalf("disparó %s, esperaba %s", got, want)
+			t.Fatalf("fired %s, expected %s", got, want)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatalf("no se disparó %s", want)
+		t.Fatalf("%s did not fire", want)
 	}
 }
 
@@ -88,7 +88,7 @@ func expectNoFire(t *testing.T, ch <-chan string) {
 	t.Helper()
 	select {
 	case got := <-ch:
-		t.Fatalf("disparo inesperado de %s", got)
+		t.Fatalf("unexpected firing of %s", got)
 	default:
 	}
 }
@@ -127,29 +127,29 @@ func TestSchedulerDailyAndReschedule(t *testing.T) {
 	defer cancel()
 	go s.Run(ctx)
 	clk.waitLoop(t)
-	clk.Advance(time.Hour) // 11:00:30: nada que hacer
+	clk.Advance(time.Hour) // 11:00:30: nothing to do
 	clk.waitLoop(t)
 	expectNoFire(t, fired)
-	clk.Advance(17 * time.Hour) // 04:00:30 del día siguiente
+	clk.Advance(17 * time.Hour) // 04:00:30 the next day
 	expectFire(t, fired, "b")
 	clk.waitLoop(t)
 
 	before, _ := s.Next("b")
-	if err := s.Set("b", "0 4 * * *"); err != nil { // misma expresión: no cambia nada
+	if err := s.Set("b", "0 4 * * *"); err != nil { // same expression: changes nothing
 		t.Fatal(err)
 	}
 	if after, _ := s.Next("b"); !after.Equal(before) {
-		t.Fatalf("misma expresión no debe reprogramar: %v → %v", before, after)
+		t.Fatalf("the same expression must not reschedule: %v → %v", before, after)
 	}
-	if err := s.Set("b", "*/5 * * * *"); err != nil { // despierta al bucle
+	if err := s.Set("b", "*/5 * * * *"); err != nil { // wakes the loop
 		t.Fatal(err)
 	}
 	clk.waitLoop(t)
 	if next, _ := s.Next("b"); !next.Equal(time.Date(2026, 10, 13, 4, 5, 0, 0, time.UTC)) {
-		t.Fatalf("next tras reprogramar = %v", next)
+		t.Fatalf("next after rescheduling = %v", next)
 	}
-	if err := s.Set("b", "cada día"); err == nil {
-		t.Fatal("expresión inválida")
+	if err := s.Set("b", "every day"); err == nil {
+		t.Fatal("invalid expression")
 	}
 	s.Remove("b")
 	clk.waitLoop(t)
@@ -170,12 +170,12 @@ func TestShouldRun(t *testing.T) {
 		last, seen, w time.Time
 		want          bool
 	}{
-		{"sin onlyIfPlayersSince siempre", false, last, time.Time{}, start, true},
-		{"primera copia", true, time.Time{}, time.Time{}, start, true},
-		{"nadie desde la última", true, last, time.Time{}, start, false},
-		{"jugadores antes de la última", true, last, last.Add(-time.Minute), start, false},
-		{"jugadores después de la última", true, last, last.Add(time.Minute), start, true},
-		{"agente reiniciado tras la última", true, last, time.Time{}, last.Add(time.Minute), true},
+		{"without onlyIfPlayersSince always", false, last, time.Time{}, start, true},
+		{"first backup", true, time.Time{}, time.Time{}, start, true},
+		{"nobody since the last", true, last, time.Time{}, start, false},
+		{"players before the last", true, last, last.Add(-time.Minute), start, false},
+		{"players after the last", true, last, last.Add(time.Minute), start, true},
+		{"agent restarted after the last", true, last, time.Time{}, last.Add(time.Minute), true},
 	}
 	for _, c := range cases {
 		if got := ShouldRun(c.only, c.last, c.seen, c.w); got != c.want {
@@ -188,12 +188,12 @@ func TestPlayerWatch(t *testing.T) {
 	now := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
 	w := NewPlayerWatch(func() time.Time { return now })
 	if !w.Since().Equal(now) || !w.LastSeen("a").IsZero() {
-		t.Fatal("estado inicial")
+		t.Fatal("initial state")
 	}
 	now = now.Add(time.Minute)
 	w.Observe("a", 0)
 	if !w.LastSeen("a").IsZero() {
-		t.Fatal("0 jugadores no cuenta")
+		t.Fatal("0 players does not count")
 	}
 	w.Observe("a", 2)
 	if !w.LastSeen("a").Equal(now) {
@@ -215,7 +215,7 @@ func TestSchedulerStopsWithContext(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("Run no terminó al cancelar el contexto")
+		t.Fatal("Run did not finish when the context was cancelled")
 	}
 }
 
@@ -229,17 +229,17 @@ func TestSchedulerEmptyExprUnschedules(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := s.Next("a"); ok || len(s.IDs()) != 0 {
-		t.Fatal("Set(\"\") debe desprogramar")
+		t.Fatal("Set(\"\") must unschedule")
 	}
-	// Una expresión inválida no pisa la programación vigente.
+	// An invalid expression does not overwrite the current schedule.
 	if err := s.Set("b", "0 4 * * *"); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Set("b", "nope"); err == nil {
-		t.Fatal("expresión inválida")
+		t.Fatal("invalid expression")
 	}
 	if _, ok := s.Next("b"); !ok {
-		t.Fatal("la programación anterior debe seguir")
+		t.Fatal("the previous schedule must remain")
 	}
 }
 
@@ -261,7 +261,7 @@ func TestSchedulerMultipleServersDueTogether(t *testing.T) {
 	expectFire(t, fired, "b")
 }
 
-// Set concurrente con los disparos: debe ser limpio bajo -race y no perder el bucle.
+// Set concurrent with the firings: it must be clean under -race and not lose the loop.
 func TestSchedulerConcurrentSetAndFire(t *testing.T) {
 	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC))
 	fired := make(chan string, 4096)
@@ -294,7 +294,7 @@ func TestSchedulerConcurrentSetAndFire(t *testing.T) {
 		}
 	}()
 	wg.Wait()
-	// Tras la tormenta el planificador sigue vivo: solo dispara "a" y lo hace al vencer.
+	// After the storm the scheduler is still alive: it only fires "a" and does so on time.
 	if err := s.Set("a", "* * * * *"); err != nil {
 		t.Fatal(err)
 	}
@@ -307,15 +307,15 @@ func TestSchedulerConcurrentSetAndFire(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("Run no terminó")
+		t.Fatal("Run did not finish")
 	}
 	if ids := s.IDs(); len(ids) != 1 || ids[0] != "a" {
 		t.Fatalf("ids = %v", ids)
 	}
 }
 
-// Set valida igual que el panel (proto/fixtures/cron-cases.json) y no acepta lo que solo
-// cron.ParseStandard tolera (@daily, CRON_TZ, nombres).
+// Set validates the same as the panel (proto/fixtures/cron-cases.json) and does not accept what only
+// cron.ParseStandard tolerates (@daily, CRON_TZ, names).
 func TestSchedulerSetMatchesPanelFixture(t *testing.T) {
 	raw, err := os.ReadFile("../../../proto/fixtures/cron-cases.json")
 	if err != nil {
@@ -328,31 +328,31 @@ func TestSchedulerSetMatchesPanelFixture(t *testing.T) {
 	s := NewScheduler(newFakeClock(time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)), func(string) {})
 	for _, e := range cases.Valid {
 		if err := s.Set("x", e); err != nil {
-			t.Errorf("Set(%q) debería aceptarla: %v", e, err)
+			t.Errorf("Set(%q) should accept it: %v", e, err)
 		}
 	}
 	for _, e := range cases.Invalid {
 		if e == "" {
-			continue // "" desprograma, no es un error
+			continue // "" unschedules, it is not an error
 		}
 		if err := s.Set("y", e); err == nil {
-			t.Errorf("Set(%q) debería rechazarla", e)
+			t.Errorf("Set(%q) should reject it", e)
 		}
 	}
 	for _, e := range []string{"@daily", "@every 1h", "CRON_TZ=UTC 0 4 * * *"} {
 		if err := s.Set("z", e); err == nil {
-			t.Errorf("Set(%q) debería rechazarla", e)
+			t.Errorf("Set(%q) should reject it", e)
 		}
 	}
 }
 
-// Go y JS difieren en el espacio en blanco (U+0085, U+FEFF): el panel y el agente rechazan
-// todo lo que no sea ASCII imprimible, espacio o tabulador (también está en el fixture).
+// Go and JS differ on whitespace (U+0085, U+FEFF): the panel and the agent reject
+// everything that is not printable ASCII, space or tab (it is also in the fixture).
 func TestSchedulerSetRejectsNonASCIIWhitespace(t *testing.T) {
 	s := NewScheduler(newFakeClock(time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)), func(string) {})
 	for _, e := range []string{"0\u00854 * * *", "0\ufeff4 * * *", "\ufeff0 4 * * *", "0\u00a04 * * *"} {
 		if err := s.Set("a", e); err == nil {
-			t.Errorf("Set(%q) debería rechazarla", e)
+			t.Errorf("Set(%q) should reject it", e)
 		}
 	}
 }
@@ -369,11 +369,11 @@ func TestSchedulerNormalizesExpression(t *testing.T) {
 		t.Fatal(err)
 	}
 	if after, _ := s.Next("a"); !after.Equal(before) {
-		t.Fatalf("una variante con espacios no debe reprogramar: %v → %v", before, after)
+		t.Fatalf("a variant with extra spaces must not reschedule: %v → %v", before, after)
 	}
 }
 
-// Un Remove hecho por fire (o por otro hilo) entre el vencimiento y el disparo se respeta.
+// A Remove done by fire (or by another thread) between the deadline and the firing is respected.
 func TestSchedulerRemoveBetweenDueAndFire(t *testing.T) {
 	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC))
 	fired := make(chan string, 10)
@@ -399,7 +399,7 @@ func TestSchedulerRemoveBetweenDueAndFire(t *testing.T) {
 	expectNoFire(t, fired)
 }
 
-// Set sobre una entrada vencida ya recogida: la entrada vieja no dispara.
+// Set on an already collected overdue entry: the old entry does not fire.
 func TestSchedulerSetReplacesDueEntry(t *testing.T) {
 	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC))
 	fired := make(chan string, 10)
@@ -425,7 +425,7 @@ func TestSchedulerSetReplacesDueEntry(t *testing.T) {
 	expectNoFire(t, fired)
 }
 
-// Tras suspender el equipo, una ejecución perdida por más de maxLate no se recupera.
+// After suspending the machine, a run missed by more than maxLate is not recovered.
 func TestSchedulerSkipsLateFire(t *testing.T) {
 	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 30, 0, time.UTC))
 	fired := make(chan string, 10)
@@ -437,8 +437,8 @@ func TestSchedulerSkipsLateFire(t *testing.T) {
 	defer cancel()
 	go s.Run(ctx)
 	clk.waitLoop(t)
-	clk.Advance(20 * time.Hour) // 06:00:30 del 13: el disparo de las 04:00 llega 2 h tarde
-	// El poke de Set puede dejar un aviso de espera antiguo: espera hasta ver la reprogramación.
+	clk.Advance(20 * time.Hour) // 06:00:30 on the 13th: the 04:00 firing arrives 2 h late
+	// Set's poke may leave an old wait notice: wait until the rescheduling is seen.
 	want := time.Date(2026, 10, 14, 4, 0, 0, 0, time.UTC)
 	for i := 0; i < 5; i++ {
 		if next, _ := s.Next("a"); next.Equal(want) {
@@ -450,8 +450,8 @@ func TestSchedulerSkipsLateFire(t *testing.T) {
 	if next, _ := s.Next("a"); !next.Equal(want) {
 		t.Fatalf("next = %v", next)
 	}
-	// Un disparo con poca tardanza sí se hace.
-	clk.Advance(22 * time.Hour) // 04:00:30 del 14
+	// A firing with little lateness does happen.
+	clk.Advance(22 * time.Hour) // 04:00:30 on the 14th
 	expectFire(t, fired, "a")
 }
 
@@ -470,11 +470,11 @@ func TestSchedulerWaitIsBounded(t *testing.T) {
 	got := clk.untilArgs[len(clk.untilArgs)-1]
 	clk.mu.Unlock()
 	if !got.Equal(start.Add(time.Minute)) {
-		t.Fatalf("espera hasta %v, esperaba %v", got, start.Add(time.Minute))
+		t.Fatalf("waits until %v, expected %v", got, start.Add(time.Minute))
 	}
 }
 
-// Un salto del reloj hacia atrás no provoca disparos duplicados.
+// A clock jump backwards does not cause duplicate firings.
 func TestSchedulerClockJumpsBack(t *testing.T) {
 	clk := newFakeClock(time.Date(2026, 10, 12, 10, 0, 30, 0, time.UTC))
 	fired := make(chan string, 10)
@@ -490,7 +490,7 @@ func TestSchedulerClockJumpsBack(t *testing.T) {
 	expectFire(t, fired, "a")
 	clk.waitLoop(t)
 	clk.Advance(-time.Hour)
-	clk.Advance(time.Hour) // vuelve a 10:01:00
+	clk.Advance(time.Hour) // goes back to 10:01:00
 	expectNoFire(t, fired)
 	clk.Advance(time.Minute)
 	expectFire(t, fired, "a")

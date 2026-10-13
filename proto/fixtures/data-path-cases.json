@@ -1,5 +1,5 @@
 [
-  { "path": "/srv/minecraft-viejo/survival", "ok": true },
+  { "path": "/srv/minecraft-old/survival", "ok": true },
   { "path": "/home/lobo/minecraft/survival/data", "ok": true },
   { "path": "/srv/minecraft", "ok": true },
   { "path": "/mnt/disco 2/mc_world-1", "ok": true },
@@ -9,7 +9,7 @@
   { "path": "/etcetera/mc", "ok": true },
   { "path": "/procs/mc", "ok": true },
   { "path": "/tmp/mc", "ok": true },
-  { "path": "relativa/mc", "ok": false },
+  { "path": "relative/mc", "ok": false },
   { "path": "/", "ok": false },
   { "path": "/data", "ok": false },
   { "path": "/home", "ok": false },

@@ -9,7 +9,7 @@ export const BUILDS_TTL_MS = 15 * 60_000;
 export const FETCH_TIMEOUT_MS = 10_000;
 export const MAX_BODY_BYTES = 8 * 1024 * 1024;
 export const MAX_ENTRIES = 256;
-/** Fill v3 (PaperMC) pide un User-Agent que identifique al cliente. */
+/** Fill v3 (PaperMC) asks for a User-Agent that identifies the client. */
 export const USER_AGENT = "mc-server-manager (self-hosted)";
 
 export type FetchFn = (url: string, init: { signal: AbortSignal; headers: Record<string, string>; redirect: "manual" }) => Promise<Response>;
@@ -18,20 +18,20 @@ export interface CatalogOptions {
   fetch?: FetchFn;
   now?: () => number;
   timers?: Timers;
-  /** Fallo de una fuente (también cuando se sirve lo guardado): para el log. */
+  /** Failure of a source (also when stored data is served): for the log. */
   onError?: (url: string, err: unknown) => void;
 }
 
 interface Entry { doc: unknown; fetchedAt: number; expiresAt: number }
 
 /**
- * Listas de versiones y builds de las fuentes oficiales con caché en memoria por URL de origen (spec
- * 2026-10-13-selector-versiones-design.md §4): listas 1 h, builds 15 min, como mucho MAX_ENTRIES
- * entradas (se descarta la menos usada). Consultas simultáneas a una URL comparten la descarga. Si la
- * fuente falla se sirve lo guardado con `stale: true`; sin nada guardado, 502.
+ * Lists of versions and builds from the official sources with an in-memory cache per origin URL (spec
+ * 2026-10-13-version-selector-design.md §4): lists 1 h, builds 15 min, at most MAX_ENTRIES
+ * entries (the least used is discarded). Simultaneous queries to a URL share the download. If the
+ * source fails, what is stored is served with `stale: true`; with nothing stored, 502.
  */
 export class VersionCatalog {
-  private readonly cache = new Map<string, Entry>(); // orden de inserción: de menos a más usada
+  private readonly cache = new Map<string, Entry>(); // insertion order: from least to most used
   private readonly inflight = new Map<string, Promise<Entry>>();
   private readonly fetch: FetchFn;
   private readonly now: () => number;
@@ -59,14 +59,14 @@ export class VersionCatalog {
   async builds(type: string, version: string): Promise<BuildListDto> {
     const src = this.source(type);
     if (!src.builds) throw new HttpError(400, BUILD_MESSAGES.type(type));
-    if (!VERSION_QUERY_RE.test(version)) throw new HttpError(400, "Versión inválida");
+    if (!VERSION_QUERY_RE.test(version)) throw new HttpError(400, "Invalid version");
     const run = this.run();
     try {
       const builds = await src.builds(run.get, version);
       return { type, version, builds, fetchedAt: run.fetchedAt(), stale: run.stale() };
     } catch (e) {
-      // La fuente no conoce esa versión (404; Fabric responde 400): no hay builds que elegir. Otros 4xx
-      // (401, 403, 429…) son un fallo de la fuente, no una lista vacía.
+      // The source does not know that version (404; Fabric responds 400): there are no builds to choose. Other 4xx
+      // (401, 403, 429…) are a failure of the source, not an empty list.
       if (e instanceof UpstreamError && (e.status === 400 || e.status === 404)) {
         return { type, version, builds: [], fetchedAt: new Date(this.now()).toISOString(), stale: false };
       }
@@ -75,11 +75,11 @@ export class VersionCatalog {
   }
 
   private source(type: string): Source {
-    if (!(VERSION_LIST_TYPES as readonly string[]).includes(type)) throw new HttpError(400, "Tipo sin lista de versiones");
+    if (!(VERSION_LIST_TYPES as readonly string[]).includes(type)) throw new HttpError(400, "Type without a version list");
     return SOURCES[type as VersionListType];
   }
 
-  /** `get` de una consulta: anota si algo salió de lo guardado caducado y la descarga más antigua usada. */
+  /** `get` of a query: notes whether anything came from expired stored data and the oldest download used. */
   private run() {
     let stale = false;
     let oldest = Number.POSITIVE_INFINITY;
@@ -129,7 +129,7 @@ export class VersionCatalog {
     return p;
   }
 
-  /** La pone como la más usada y descarta las menos usadas por encima del tope. */
+  /** Makes it the most used and discards the least used above the cap. */
   private touch(url: string, entry: Entry): void {
     this.cache.delete(url);
     this.cache.set(url, entry);
@@ -141,7 +141,7 @@ export class VersionCatalog {
   }
 
   private async download(url: string, schema: z.ZodType, kind: "json" | "text"): Promise<unknown> {
-    if (!allowedSource(url)) throw new UpstreamError(null, "origen no permitido");
+    if (!allowedSource(url)) throw new UpstreamError(null, "origin not allowed");
     const ctrl = new AbortController();
     const cancel = this.timers.set(() => ctrl.abort(), FETCH_TIMEOUT_MS);
     try {
@@ -152,7 +152,7 @@ export class VersionCatalog {
       });
       if (res.status >= 300 && res.status < 400) {
         await res.body?.cancel().catch(() => {});
-        throw new UpstreamError(res.status, "redirección no permitida");
+        throw new UpstreamError(res.status, "redirect not allowed");
       }
       if (!res.ok) {
         await res.body?.cancel().catch(() => {});
@@ -164,16 +164,16 @@ export class VersionCatalog {
         try {
           doc = JSON.parse(text);
         } catch {
-          throw new UpstreamError(null, "JSON inválido");
+          throw new UpstreamError(null, "invalid JSON");
         }
       }
-      // Se valida antes de guardar: una respuesta con otra forma es un fallo de la fuente y no pisa lo guardado.
+      // It is validated before storing: a response with another shape is a failure of the source and does not overwrite what is stored.
       const checked = schema.safeParse(doc);
-      if (!checked.success) throw new UpstreamError(null, `respuesta inesperada de ${new URL(url).host}`);
+      if (!checked.success) throw new UpstreamError(null, `unexpected response from ${new URL(url).host}`);
       return checked.data;
     } catch (e) {
       if (e instanceof UpstreamError) throw e;
-      throw new UpstreamError(null, ctrl.signal.aborted ? "plazo agotado" : "error de red", { cause: e });
+      throw new UpstreamError(null, ctrl.signal.aborted ? "deadline exceeded" : "network error", { cause: e });
     } finally {
       cancel();
     }
@@ -182,11 +182,11 @@ export class VersionCatalog {
 
 function unavailable(src: Source, e: unknown): HttpError {
   if (e instanceof HttpError) return e;
-  return new HttpError(502, `No se pudo consultar la lista de versiones de ${src.label}`);
+  return new HttpError(502, `Could not query the version list of ${src.label}`);
 }
 
 async function readCapped(res: Response, max: number): Promise<string> {
-  if (Number(res.headers.get("content-length") ?? 0) > max) throw new UpstreamError(null, "respuesta demasiado grande");
+  if (Number(res.headers.get("content-length") ?? 0) > max) throw new UpstreamError(null, "response too large");
   if (!res.body) return "";
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -197,7 +197,7 @@ async function readCapped(res: Response, max: number): Promise<string> {
     total += value.byteLength;
     if (total > max) {
       await reader.cancel();
-      throw new UpstreamError(null, "respuesta demasiado grande");
+      throw new UpstreamError(null, "response too large");
     }
     chunks.push(value);
   }

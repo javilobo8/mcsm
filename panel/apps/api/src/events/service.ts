@@ -16,9 +16,9 @@ const LEVELS: Partial<Record<EventLevel, EventLevelName>> = {
 
 type Cancel = () => void;
 export interface EventsOptions {
-  /** Reloj en ms (tests). */
+  /** Clock in ms (tests). */
   now?: () => number;
-  /** Repite `fn` cada `ms` y devuelve la función que lo cancela (tests). */
+  /** Repeats `fn` every `ms` and returns the function that cancels it (tests). */
   every?: (fn: () => void, ms: number) => Cancel;
 }
 
@@ -33,7 +33,7 @@ const defaultEvery = (fn: () => void, ms: number): Cancel => {
   return () => clearInterval(t);
 };
 
-/** Incidencias de los agentes (Event, spec §5.3) y del panel: tabla `events`, topic `events` del WS. */
+/** Agent (Event, spec §5.3) and panel events: `events` table, `events` WS topic. */
 export class EventsService {
   private stopPurge: Cancel | null = null;
   private now: () => number;
@@ -42,7 +42,7 @@ export class EventsService {
     this.now = opts.now ?? Date.now;
   }
 
-  /** Guarda un evento y lo publica (`server_event` → topic `events`). */
+  /** Stores an event and publishes it (`server_event` → `events` topic). */
   record(i: RecordInput): EventDto {
     const row: EventRow = {
       id: newId(), node_id: i.nodeId, server_id: i.serverId, server_name: i.serverName ?? null, level: i.level,
@@ -56,9 +56,9 @@ export class EventsService {
   }
 
   /**
-   * Event no solicitado de un agente. Se descarta si no trae nivel o si su servidor no es de ese nodo (o ya no existe).
-   * `crash_loop`: el agente ha parado y retiene el servidor; el panel pone su estado deseado en parado (sin versión
-   * nueva), así la UI ofrece «Arrancar» y el siguiente SyncSpecs no lo pide en marcha.
+   * Unsolicited Event from an agent. Discarded if it has no level or if its server is not on that node (or no longer exists).
+   * `crash_loop`: the agent has stopped and holds the server; the panel sets its desired state to stopped (no new
+   * version), so the UI offers “Start” and the next SyncSpecs does not ask for it running.
    */
   ingest(nodeId: string, e: AgentEvent): EventDto | null {
     const level = LEVELS[e.level];
@@ -70,10 +70,10 @@ export class EventsService {
       if (!row || row.node_id !== nodeId) return null;
       serverName = row.name;
       if (e.kind === "crash_loop" && row.desired_state === "running") {
-        // El evento sale por la cola del agente, sin orden respecto al Ack de un «Arrancar»: solo cuenta si es posterior.
-        // Con el reloj del agente fuera de rango (`agentIso` null) se usa la hora de llegada, que se compara con
-        // `desired_changed_at` (hora del panel): efecto residual, un crash_loop viejo y encolado que llegue tras un
-        // «Arrancar» reciente parece posterior y vuelve a parar el servidor.
+        // The event goes through the agent's queue, unordered with respect to the Ack of a “Start”: it only counts if later.
+        // With the agent's clock out of range (`agentIso` null) the arrival time is used, which is compared with
+        // `desired_changed_at` (panel time): residual effect, an old queued crash_loop arriving after a recent
+        // “Start” looks later and stops the server again.
         const at = agentIso(e.tsUnixMs, this.now()) ?? new Date(this.now()).toISOString();
         if (!row.desired_changed_at || at > row.desired_changed_at) this.app.servers.setDesiredState(serverId, "stopped");
       }
@@ -104,7 +104,7 @@ export class EventsService {
     try {
       this.purge();
     } catch (e) {
-      this.app.log.warn({ err: e }, "fallo purgando eventos antiguos");
+      this.app.log.warn({ err: e }, "failed purging old events");
     }
   }
 }

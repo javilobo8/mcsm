@@ -2,9 +2,9 @@ import { z } from "zod";
 import { PLAYER_RE } from "./spec-content.js";
 
 /**
- * Hostname de un servidor en el mc-router de su nodo: nombre DNS en minúsculas (RFC 1123), etiquetas
- * de 1 a 63 caracteres [a-z0-9-] que no empiezan ni acaban por guion, separadas por puntos, sin punto
- * final, máx. 253. Misma regex que el agente (hostnameRe en agent/internal/spec/router.go; fixture
+ * Hostname of a server on its node's mc-router: lowercase DNS name (RFC 1123), labels
+ * of 1 to 63 [a-z0-9-] characters that neither start nor end with a hyphen, separated by dots, with no trailing
+ * dot, max. 253. Same regex as the agent (hostnameRe in agent/internal/spec/router.go; fixture
  * proto/fixtures/router-hostname-cases.json).
  */
 export const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
@@ -14,18 +14,18 @@ export function validHostname(h: string): boolean {
   return h.length <= MAX_HOSTNAME_LEN && HOSTNAME_RE.test(h);
 }
 
-/** Mensaje para un hostname inválido; null si vale (vacío = sin hostname, lo decide el esquema). */
+/** Message for an invalid hostname; null if valid (empty = no hostname, decided by the schema). */
 export function hostnameError(h: string): string | null {
   if (h === "" || validHostname(h)) return null;
-  if (h !== h.toLowerCase()) return "El hostname va en minúsculas";
-  if (h.length > MAX_HOSTNAME_LEN) return `El hostname no puede pasar de ${MAX_HOSTNAME_LEN} caracteres`;
-  return "Hostname inválido: letras minúsculas, números, guiones y puntos (p. ej. survival.lan)";
+  if (h !== h.toLowerCase()) return "The hostname must be lowercase";
+  if (h.length > MAX_HOSTNAME_LEN) return `The hostname cannot exceed ${MAX_HOSTNAME_LEN} characters`;
+  return "Invalid hostname: lowercase letters, numbers, hyphens and dots (e.g. survival.lan)";
 }
 
 /**
- * Sección `router` de la spec de un servidor (plan-8): entrar por `hostname` a través del mc-router del
- * nodo. Activada exige hostname. El agente añade las etiquetas `mc-router.host`/`mc-router.network`
- * al contenedor (activarla, desactivarla o cambiar el hostname recrea el contenedor).
+ * `router` section of a server's spec (plan-8): join through the node's mc-router by `hostname`. When
+ * enabled it requires a hostname. The agent adds the `mc-router.host`/`mc-router.network` labels
+ * to the container (enabling it, disabling it or changing the hostname recreates the container).
  */
 export const serverRouterSchema = z
   .object({
@@ -35,27 +35,27 @@ export const serverRouterSchema = z
       if (msg) ctx.addIssue({ code: "custom", message: msg });
     }),
   })
-  .refine((r) => !r.enabled || r.hostname !== "", { message: "Indica el hostname para entrar por el router", path: ["hostname"] });
+  .refine((r) => !r.enabled || r.hostname !== "", { message: "Specify the hostname to join through the router", path: ["hostname"] });
 export type ServerRouter = z.infer<typeof serverRouterSchema>;
 
 export const ROUTER_DEFAULT_PORT = 25565;
 export const ROUTER_DEFAULT_DOWN_AFTER_MINUTES = 10;
 export const ROUTER_MAX_DOWN_AFTER_MINUTES = 1440;
-/** Tope de la lista de jugadores que despiertan servidores (como las listas de la spec). */
+/** Cap on the list of players that wake servers (like the spec's lists). */
 export const ROUTER_MAX_ALLOW_PLAYERS = 1000;
 
-/** Configuración del mc-router de un nodo (`router_deployments.spec`). */
+/** Configuration of a node's mc-router (`router_deployments.spec`). */
 export const routerDeploymentSpecSchema = z.object({
   enabled: z.boolean().default(false),
   port: z.number().int().min(1).max(65535).default(ROUTER_DEFAULT_PORT),
   autoscale: z.boolean().default(false),
   autoscaleDownAfterMinutes: z.number().int().min(1).max(ROUTER_MAX_DOWN_AFTER_MINUTES).default(ROUTER_DEFAULT_DOWN_AFTER_MINUTES),
   /**
-   * Con autoscale, solo estos jugadores (nombre de perfil o UUID, como la whitelist) despiertan un
-   * servidor dormido o cancelan su parada (`-auto-scale-allow-deny`). Vacía = cualquiera que llegue
-   * al puerto. Cambiarla recrea el router (mc-router no relee la lista).
+   * With autoscale, only these players (profile name or UUID, like the whitelist) wake a
+   * sleeping server or cancel its stop (`-auto-scale-allow-deny`). Empty = anyone who reaches
+   * the port. Changing it recreates the router (mc-router does not reread the list).
    */
-  autoscaleAllowPlayers: z.array(z.string().regex(PLAYER_RE, "Jugador inválido: nombre de 1-16 letras, números o _, o UUID"))
+  autoscaleAllowPlayers: z.array(z.string().regex(PLAYER_RE, "Invalid player: name of 1-16 letters, numbers or _, or UUID"))
     .max(ROUTER_MAX_ALLOW_PLAYERS).default([]),
 });
 export type RouterDeploymentSpec = z.infer<typeof routerDeploymentSpecSchema>;
@@ -65,15 +65,15 @@ export function defaultRouterDeploymentSpec(): RouterDeploymentSpec {
 }
 
 /**
- * Último RouterObserved del agente (proto `RouterObserved`, sin el ts). `autoscaleDownAfterMinutes` y
- * `autoscaleAllowPlayers` son los de la spec guardada en el agente (0 y [] sin spec).
+ * The agent's latest RouterObserved (proto `RouterObserved`, without the ts). `autoscaleDownAfterMinutes` and
+ * `autoscaleAllowPlayers` are those of the spec stored on the agent (0 and [] without a spec).
  */
 export interface RouterObservedDto {
   configured: boolean; state: string; containerId: string; image: string; hostPort: number; autoscale: boolean; error: string;
   autoscaleDownAfterMinutes: number; autoscaleAllowPlayers: string[];
 }
 
-/** Router de un nodo tal y como lo sirve `GET/PUT /api/nodes/:id/router` y el evento `router` del WS. */
+/** A node's router as served by `GET/PUT /api/nodes/:id/router` and the WS `router` event. */
 export interface RouterDto {
   nodeId: string; spec: RouterDeploymentSpec; observed: RouterObservedDto | null; observedAt: string | null; updatedAt: string | null;
 }

@@ -1,6 +1,6 @@
-/** Misma regla que la API (`dataRootSchema`): ruta absoluta sin `..`. Devuelve el error o null. */
+/** Same rule as the API (`dataRootSchema`): absolute path without `..`. Returns the error or null. */
 export function validateDataRoot(p: string): string | null {
-  if (!/^\/[A-Za-z0-9._/-]{1,200}$/.test(p)) return "Ruta inválida: debe ser absoluta y solo con letras, números, . _ - /";
-  if (p.split("/").includes("..")) return "Ruta inválida: no se admite '..'";
+  if (!/^\/[A-Za-z0-9._/-]{1,200}$/.test(p)) return "Invalid path: it must be absolute and contain only letters, numbers, . _ - /";
+  if (p.split("/").includes("..")) return "Invalid path: '..' is not allowed";
   return null;
 }

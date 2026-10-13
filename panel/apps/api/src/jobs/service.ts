@@ -4,37 +4,37 @@ import { nowIso } from "../lib/time.js";
 import { JobsRepo, toJobDetailDto, toJobDto, type JobDetailDto, type JobDto, type JobListFilter, type JobRow, type JobState } from "./repo.js";
 
 export const FINAL_STATES: ReadonlySet<JobState> = new Set<JobState>(["ok", "failed", "cancelled"]);
-/** Jobs que ejecuta el agente: sobreviven a un reinicio del panel; el agente informa al reconectar (spec §10).
- *  migrate_in: la recepción de una migración en el nodo destino (Plan 7). */
+/** Jobs run by the agent: they survive a panel restart; the agent reports on reconnect (spec §10).
+ *  migrate_in: the receiving end of a migration on the target node (Plan 7). */
 export const AGENT_JOB_TYPES = ["backup", "restore", "migrate_in"] as const;
 export const MAX_JOB_LOG = 256 * 1024;
-export const INTERRUPTED = "interrumpido: el panel se reinició durante el job";
+export const INTERRUPTED = "interrupted: the panel restarted during the job";
 
 export interface CreateJobInput {
   id?: string; type: string; serverId?: string | null; nodeId?: string | null;
   status?: "queued" | "running"; message?: string; payload?: Record<string, unknown>;
-  /** Hora real de inicio (la del agente): solo fija started_at. created_at es siempre la hora del panel
-   *  (el barrido de perdidos la compara con relojes del panel). */
+  /** Actual start time (the agent's): only sets started_at. created_at is always the panel's time
+   *  (the lost-jobs sweep compares it with panel clocks). */
   startedAt?: string;
 }
 
 export interface JobUpdate {
   status?: JobState; progress?: number; message?: string;
-  /** Hora real de fin (la del agente), con un estado final. */
+  /** Actual end time (the agent's), with a final status. */
   finishedAt?: string;
-  /** Líneas nuevas que se añaden al log. */
+  /** New lines to append to the log. */
   logChunk?: string;
-  /** Log completo que sustituye al guardado (inventario del agente). */
+  /** Full log that replaces the stored one (agent inventory). */
   log?: string;
 }
 
 function capLog(log: string): string {
   if (log.length <= MAX_JOB_LOG) return log;
-  const mark = "…(recortado)\n";
+  const mark = "…(trimmed)\n";
   return mark + log.slice(log.length - MAX_JOB_LOG + mark.length);
 }
 
-/** Jobs genéricos con progreso y log (spec §7). Cada cambio emite `events.emit("job", dto, logChunk)`. */
+/** Generic jobs with progress and log (spec §7). Each change emits `events.emit("job", dto, logChunk)`. */
 export class JobService {
   constructor(private repo: JobsRepo, private events: EventEmitter) {}
 
@@ -51,7 +51,7 @@ export class JobService {
     return this.emit(row, "");
   }
 
-  /** Aplica un avance. Un job terminado ya no cambia: un aviso tardío no lo reabre. */
+  /** Applies a progress update. A finished job no longer changes: a late notice does not reopen it. */
   update(id: string, u: JobUpdate): JobDto | null {
     const row = this.repo.get(id);
     if (!row) return null;
@@ -89,7 +89,7 @@ export class JobService {
     return this.repo.list(f).map(toJobDto);
   }
 
-  /** Al arrancar el panel: los jobs a medias pasan a failed "interrumpido", salvo los del agente (spec §10). */
+  /** When the panel starts: half-done jobs become failed "interrupted", except the agent's (spec §10). */
   interruptStale(): number {
     const ids = this.repo.failOpen(AGENT_JOB_TYPES, INTERRUPTED, nowIso());
     for (const id of ids) {
@@ -99,12 +99,12 @@ export class JobService {
     return ids.length;
   }
 
-  /** Jobs abiertos de un servidor (plan-9: comprobación previa de una subida). */
+  /** Open jobs of a server (plan-9: pre-check of an upload). */
   activeForServer(serverId: string): JobDto[] {
     return this.repo.openForServer(serverId).map(toJobDto);
   }
 
-  /** Jobs del agente (backup, restore) de un nodo, aún abiertos y creados antes de `createdBefore`. */
+  /** Agent jobs (backup, restore) of a node, still open and created before `createdBefore`. */
   openAgentJobs(nodeId: string, createdBefore: string): JobRow[] {
     return this.repo.openForNode(nodeId, AGENT_JOB_TYPES, createdBefore);
   }

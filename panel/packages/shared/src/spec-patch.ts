@@ -1,12 +1,12 @@
 import { z } from "zod";
 
 /**
- * PATCH de spec: merge de primer nivel (RFC 7386 solo en la raíz).
- * - clave presente → sustituye el valor anterior entero (no se mezclan objetos anidados);
- * - clave con `null` → se borra (vuelve a su valor por defecto o a "sin sección");
- * - clave ausente → se conserva lo que había.
- * Así cada pantalla (formulario de configuración, pestaña Backups del Plan 4…) envía solo
- * las secciones que edita sin pisar las demás.
+ * Spec PATCH: first-level merge (RFC 7386 only at the root).
+ * - key present → replaces the whole previous value (nested objects are not merged);
+ * - key with `null` → deleted (goes back to its default value or to "no section");
+ * - key absent → what was there is kept.
+ * This way each screen (configuration form, Plan 4 Backups tab…) sends only
+ * the sections it edits without overwriting the others.
  */
 export const specPatchSchema = z.record(z.string(), z.unknown());
 export type SpecPatch = z.infer<typeof specPatchSchema>;
@@ -23,7 +23,7 @@ export function mergeSpecPatch(previous: Record<string, unknown>, patch: SpecPat
   return out;
 }
 
-/** JSON con las claves ordenadas: compara specs sin depender del orden de inserción. */
+/** JSON with sorted keys: compares specs without depending on insertion order. */
 export function canonicalJson(v: unknown): string {
   return JSON.stringify(v, (_k, val: unknown) =>
     val && typeof val === "object" && !Array.isArray(val)
@@ -32,9 +32,9 @@ export function canonicalJson(v: unknown): string {
   );
 }
 
-/** Primer error de zod con la ruta del campo delante ("modpack.slugOrUrl: …"). */
+/** First zod error with the field path in front ("modpack.slugOrUrl: …"). */
 export function formatZodError(err: z.ZodError): string {
   const issue = err.issues[0];
-  if (!issue) return "Spec inválida";
+  if (!issue) return "Invalid spec";
   return issue.path.length ? `${issue.path.join(".")}: ${issue.message}` : issue.message;
 }

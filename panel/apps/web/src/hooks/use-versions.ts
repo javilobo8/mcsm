@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { BuildListDto, VersionListDto } from "@mcsm/shared";
 import { api, apiPath } from "@/lib/api";
 
-/** El panel guarda las listas 1 h (builds 15 min); aquí basta con no repetir la petición en 10 min. */
+/** The panel keeps the lists for 1 h (builds 15 min); here it is enough not to repeat the request within 10 min. */
 const STALE_MS = 10 * 60_000;
 
 export function useVersions(type: string, enabled: boolean) {

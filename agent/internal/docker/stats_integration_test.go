@@ -37,12 +37,12 @@ func TestMobyStats(t *testing.T) {
 		t.Fatal(err)
 	}
 	if took := time.Since(start); took > 900*time.Millisecond {
-		t.Fatalf("Stats tardó %s: debe ser one-shot (sin esperar la muestra previa)", took)
+		t.Fatalf("Stats took %s: it must be one-shot (without waiting for the previous sample)", took)
 	}
 	if first.SystemCPUNs == 0 || first.OnlineCPUs == 0 || first.MemBytes == 0 || first.MemLimit == 0 {
-		t.Fatalf("lectura incompleta: %+v", first)
+		t.Fatalf("incomplete reading: %+v", first)
 	}
-	// El contenedor quema CPU: la segunda lectura debe tener más CPU acumulada.
+	// The container burns CPU: the second reading must have more accumulated CPU.
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		second, err := m.Stats(ctx, id)
@@ -53,10 +53,10 @@ func TestMobyStats(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("la CPU acumulada no avanza: %+v → %+v", first, second)
+			t.Fatalf("accumulated CPU does not advance: %+v → %+v", first, second)
 		}
 	}
-	if _, err := m.Stats(ctx, "mcsm-test-no-existe"); !errors.Is(err, ErrNotFound) {
+	if _, err := m.Stats(ctx, "mcsm-test-nonexistent"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
 }

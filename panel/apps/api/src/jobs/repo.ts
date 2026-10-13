@@ -14,7 +14,7 @@ export interface JobDto {
   createdAt: string; updatedAt: string; startedAt: string | null; finishedAt: string | null;
 }
 
-/** Detalle con el log (los listados no lo llevan: puede ocupar 256 KiB). */
+/** Detail with the log (listings do not carry it: it can take up 256 KiB). */
 export interface JobDetailDto extends JobDto { log: string }
 
 export interface JobListFilter { serverId?: string; status?: JobState | JobState[]; limit?: number; before?: string }
@@ -40,7 +40,7 @@ export class JobsRepo {
       .run(r.id, r.type, r.server_id, r.node_id, r.status, r.progress, r.message, r.log, r.payload, r.created_at, r.updated_at, r.started_at, r.finished_at);
   }
 
-  /** Guarda los campos que cambian con el avance. */
+  /** Saves the fields that change with progress. */
   save(r: JobRow): void {
     this.db.prepare(`UPDATE jobs SET status = ?, progress = ?, message = ?, log = ?, started_at = ?, finished_at = ?, updated_at = ? WHERE id = ?`)
       .run(r.status, r.progress, r.message, r.log, r.started_at, r.finished_at, r.updated_at, r.id);
@@ -50,7 +50,7 @@ export class JobsRepo {
     return (this.db.prepare("SELECT * FROM jobs WHERE id = ?").get(id) as JobRow | undefined) ?? null;
   }
 
-  /** Los más nuevos primero; como mucho 200. */
+  /** Newest first; at most 200. */
   list(f: JobListFilter): JobRow[] {
     const where: string[] = [];
     const args: (string | number)[] = [];
@@ -63,7 +63,7 @@ export class JobsRepo {
     return this.db.prepare(sql).all(...args) as unknown as JobRow[];
   }
 
-  /** Marca failed los jobs abiertos cuyo tipo no esté en `exceptTypes`. Devuelve sus ids. */
+  /** Marks open jobs whose type is not in `exceptTypes` as failed. Returns their ids. */
   failOpen(exceptTypes: readonly string[], message: string, now: string): string[] {
     const ph = exceptTypes.map(() => "?").join(", ");
     const rows = this.db.prepare(`SELECT id FROM jobs WHERE status IN ('queued', 'running') AND type NOT IN (${ph})`).all(...exceptTypes) as unknown as { id: string }[];
@@ -72,13 +72,13 @@ export class JobsRepo {
     return rows.map((r) => r.id);
   }
 
-  /** Jobs abiertos (en cola o en curso) de un servidor. */
+  /** Open jobs (queued or running) of a server. */
   openForServer(serverId: string): JobRow[] {
     return this.db.prepare("SELECT * FROM jobs WHERE server_id = ? AND status IN ('queued', 'running') ORDER BY created_at")
       .all(serverId) as unknown as JobRow[];
   }
 
-  /** Jobs abiertos de un nodo, de los tipos dados, creados antes de `createdBefore`. */
+  /** Open jobs of a node, of the given types, created before `createdBefore`. */
   openForNode(nodeId: string, types: readonly string[], createdBefore: string): JobRow[] {
     const ph = types.map(() => "?").join(", ");
     return this.db.prepare(`SELECT * FROM jobs WHERE node_id = ? AND status IN ('queued', 'running') AND type IN (${ph}) AND created_at < ?`)

@@ -11,23 +11,23 @@ import { contentDisposition } from "./disposition.js";
 import { drain, type Timers } from "./stream.js";
 
 const pathQuery = z.object({ path: filePathSchema });
-const writeBody = z.object({ path: filePathSchema, content: z.string({ error: "Falta el contenido" }) });
+const writeBody = z.object({ path: filePathSchema, content: z.string({ error: "Missing content" }) });
 const renameBody = z.object({ from: filePathSchema, to: filePathSchema });
 
-/** 2 MiB de texto pueden ocupar bastante más en JSON (escapes); el límite real lo aplica el servicio. */
+/** 2 MiB of text can take up quite a bit more in JSON (escapes); the real limit is applied by the service. */
 const WRITE_BODY_LIMIT = 16 * 1024 * 1024;
 
-/** Decora el servicio en la raíz y registra las rutas encapsuladas (errores: manejador global). */
+/** Decorates the service at the root and registers the encapsulated routes (errors: global handler). */
 export const fileRoutes = fp(async function fileRoutes(root: FastifyInstance) {
   root.decorate("filesService", new FilesService(root));
   await root.register(fileRoutesInner);
 }, { name: "files" });
 
 /**
- * Señal de "el navegador se fue": se aborta si la respuesta se cierra sin haber terminado (el
- * navegador canceló, se cayó la red o el panel cortó la conexión al cerrarse). No sirve
- * `request.signal` de Fastify: salta en cuanto se ha leído el cuerpo de la petición, con la
- * subida aún esperando la respuesta del agente.
+ * "The browser left" signal: aborted if the response closes without having finished (the
+ * browser cancelled, the network dropped or the panel cut the connection on shutdown). Fastify's
+ * `request.signal` does not work: it fires as soon as the request body has been read, with the
+ * upload still waiting for the agent's response.
  */
 function browserGone(reply: FastifyReply, live: Set<ServerResponse>): AbortSignal {
   const res = reply.raw;
@@ -45,23 +45,23 @@ function browserGone(reply: FastifyReply, live: Set<ServerResponse>): AbortSigna
 }
 
 /**
- * "Lectura breve" tras responder con `Connection: close` a una subida que no se drenó entera: Node
- * cierra la conexión al enviar la respuesta; si por lo que sea siguiera abierta, el cuerpo se
- * destruye pasado este tiempo.
+ * "Short read" after responding with `Connection: close` to an upload that was not fully drained: Node
+ * closes the connection when sending the response; if for whatever reason it stayed open, the body is
+ * destroyed after this time.
  */
 const LINGER_MS = 2_000;
 
-/** Cabeceras de la descarga que no valen para una respuesta de error en JSON. */
+/** Download headers that are not valid for a JSON error response. */
 const DOWNLOAD_ONLY_HEADERS = ["content-type", "content-length", "content-disposition"];
 
 /**
- * Prepara la respuesta de error de una subida: drena hasta DRAIN_MAX_BYTES para que el navegador
- * reciba el JSON (si se le corta mientras envía, suele mostrar "error de red" en vez del mensaje).
- * Si queda más por llegar, la respuesta lleva `Connection: close` y el resto no se espera.
+ * Prepares the error response of an upload: drains up to DRAIN_MAX_BYTES so the browser
+ * receives the JSON (if it is cut off while sending, it usually shows "network error" instead of the message).
+ * If more is still to arrive, the response carries `Connection: close` and the rest is not waited for.
  */
 async function settleBody(body: Readable, reply: FastifyReply, timers: Timers): Promise<void> {
   if (await drain(body, { timers })) return;
-  if (body.destroyed) return; // el navegador se fue o se calló: no hay a quién responder
+  if (body.destroyed) return; // the browser left or went silent: there is nobody to respond to
   reply.header("connection", "close");
   reply.raw.once("finish", () => {
     const disarm = timers.set(() => body.destroy(), LINGER_MS);
@@ -72,9 +72,9 @@ async function settleBody(body: Readable, reply: FastifyReply, timers: Timers): 
 async function fileRoutesInner(app: FastifyInstance) {
   const svc = app.filesService;
 
-  // Transferencias con el navegador en curso. Al cerrar el panel se cortan: el servidor HTTP
-  // espera a las peticiones abiertas y una subida o descarga grande lo retendría (horas). Las
-  // del agente las corta `transfers.closeAll`; aquí, las del navegador.
+  // Transfers with the browser in progress. They are cut when the panel shuts down: the HTTP server
+  // waits for open requests and a large upload or download would hold it back (for hours). The
+  // agent's are cut by `transfers.closeAll`; here, the browser's.
   const live = new Set<ServerResponse>();
   app.addHook("preClose", async () => {
     for (const res of live) res.destroy();
@@ -115,18 +115,18 @@ async function fileRoutesInner(app: FastifyInstance) {
     return reply.code(204).send();
   });
 
-  // ── transferencias con el navegador (sin pasar por disco del panel) ──
-  // El cuerpo octet-stream llega como stream, sin leer y sin bodyLimit (Fastify solo lo aplica a
-  // los parsers con parseAs): ni el tope de 1 MiB por defecto ni el de WRITE_BODY_LIMIT.
+  // ── transfers with the browser (without going through the panel's disk) ──
+  // The octet-stream body arrives as a stream, unread and without bodyLimit (Fastify only applies it to
+  // parsers with parseAs): neither the default 1 MiB cap nor WRITE_BODY_LIMIT.
   app.addContentTypeParser("application/octet-stream", (_req, payload, done) => done(null, payload));
 
   app.get<P>("/api/servers/:id/files/download", {
-    // Sin HEAD automático: un HEAD pediría al agente subir el fichero entero.
+    // No automatic HEAD: a HEAD would ask the agent to upload the whole file.
     exposeHeadRoute: false,
-    // Un fallo del stream antes del primer byte (p. ej. el nodo no envía nada) se responde en
-    // JSON. Fastify ya copió las cabeceras de la descarga en la respuesta cruda: con su
-    // Content-Type no serializaría el JSON (FST_ERR_REP_INVALID_PAYLOAD_TYPE → 500) y con su
-    // Content-Disposition el navegador guardaría el error como si fuera el fichero.
+    // A stream failure before the first byte (e.g. the node sends nothing) is answered in
+    // JSON. Fastify already copied the download headers into the raw response: with its
+    // Content-Type it would not serialize the JSON (FST_ERR_REP_INVALID_PAYLOAD_TYPE → 500) and with its
+    // Content-Disposition the browser would save the error as if it were the file.
     onError: async (_req, reply) => {
       for (const h of DOWNLOAD_ONLY_HEADERS) {
         reply.removeHeader(h);
@@ -137,12 +137,12 @@ async function fileRoutesInner(app: FastifyInstance) {
     const { path } = pathQuery.parse(req.query);
     const gone = browserGone(reply, live);
     const dl = await svc.download(req.params.id, path, gone);
-    // El agente confirma (Ack) al terminar su PUT. Si la confirmación no llega (p. ej. cae el WS)
-    // pero el navegador recibió el fichero entero, es solo informativo; si la descarga se cortó,
-    // ese corte ya lo registra Fastify, o fue el navegador quien canceló.
+    // The agent confirms (Ack) when its PUT finishes. If the confirmation does not arrive (e.g. the WS drops)
+    // but the browser received the whole file, it is only informational; if the download was cut,
+    // Fastify already logs that cut, or it was the browser that cancelled.
     dl.done.catch((e) => {
       finished(reply.raw, () => {
-        if (reply.raw.writableFinished) req.log.info({ err: e, path }, "la descarga llegó entera al navegador, pero el agente no la confirmó");
+        if (reply.raw.writableFinished) req.log.info({ err: e, path }, "the download reached the browser in full, but the agent did not confirm it");
       });
     });
     reply.header("content-type", "application/octet-stream");
@@ -155,11 +155,11 @@ async function fileRoutesInner(app: FastifyInstance) {
 
   app.put<P>("/api/servers/:id/files/upload", async (req, reply) => {
     const body = req.body as Readable | undefined;
-    if (!body || typeof body.pipe !== "function") throw new HttpError(415, "Envía el fichero como application/octet-stream");
+    if (!body || typeof body.pipe !== "function") throw new HttpError(415, "Send the file as application/octet-stream");
     const gone = browserGone(reply, live);
     try {
       const { path } = pathQuery.parse(req.query);
-      if (path === "/") throw new HttpError(400, "Indica la ruta del fichero de destino");
+      if (path === "/") throw new HttpError(400, "Specify the destination file path");
       await svc.upload(req.params.id, path, body, contentLength(req), gone);
     } catch (e) {
       await settleBody(body, reply, svc.timers);

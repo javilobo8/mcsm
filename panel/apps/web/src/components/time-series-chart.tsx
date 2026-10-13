@@ -8,21 +8,21 @@ export interface ChartLine { label: string; color: string; dash?: number[]; fill
 interface Props {
   title: string;
   data: Aligned;
-  /** Debe ser estable (constante de módulo): si cambia, la gráfica se recrea. */
+  /** Must be stable (module constant): if it changes, the chart is recreated. */
   lines: ChartLine[];
-  /** Debe ser estable: formatea el eje Y y la leyenda. */
+  /** Must be stable: formats the Y axis and the legend. */
   format: (v: number) => string;
-  /** Rango fijo del eje Y (estable); por defecto de 0 al máximo de los datos. */
+  /** Fixed Y axis range (stable); by default from 0 to the data maximum. */
   yRange?: [number, number];
-  /** Tipo de eje Y (por defecto `value`): decide las etiquetas con rangos pequeños. */
+  /** Y axis type (default `value`): decides the labels with small ranges. */
   axis?: AxisKind;
   height?: number;
 }
 
 const MIN_WIDTH = 200;
 
-/** Lee un token del tema ya resuelto (el canvas no entiende `var()`). */
-/** Color con alpha 15 % sea cual sea el formato de entrada (el navegador lo resuelve vía canvas). */
+/** Reads a token from the resolved theme (the canvas does not understand `var()`). */
+/** Colour with 15 % alpha whatever the input format (the browser resolves it through the canvas). */
 function translucent(color: string): string {
   try {
     const ctx = document.createElement("canvas").getContext("2d");
@@ -38,9 +38,9 @@ function translucent(color: string): string {
 const token = (el: Element, name: string, fallback: string): string => getComputedStyle(el).getPropertyValue(name).trim() || fallback;
 
 /**
- * Gráfica temporal con uPlot, cargado con import dinámico (no engorda el bundle principal).
- * Los huecos (null) se dibujan como cortes. El eje X usa la zona horaria local del navegador
- * (uPlot sin `tzDate` = hora local). Se destruye al desmontar y al recrearse.
+ * Time series chart with uPlot, loaded with a dynamic import (it does not bloat the main bundle).
+ * Gaps (null) are drawn as breaks. The X axis uses the browser's local time zone
+ * (uPlot without `tzDate` = local time). It is destroyed on unmount and when recreated.
  */
 export function TimeSeriesChart({ title, data, lines, format, yRange, axis: axisKind = "value", height = 160 }: Props) {
   const box = useRef<HTMLDivElement>(null);
@@ -88,7 +88,7 @@ export function TimeSeriesChart({ title, data, lines, format, yRange, axis: axis
   return (
     <figure className="min-w-0">
       <figcaption className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">{title}</figcaption>
-      <div ref={box} className="w-full" role="img" aria-label={`Gráfica de ${title}`} aria-describedby={descId} />
+      <div ref={box} className="w-full" role="img" aria-label={`Chart of ${title}`} aria-describedby={descId} />
       <p id={descId} className="sr-only">{summarize(data, lines.map((l) => l.label), format)}</p>
     </figure>
   );

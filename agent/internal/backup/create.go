@@ -18,34 +18,34 @@ import (
 )
 
 const (
-	// FlushWait es la espera tras save-all flush (spec §6.5).
+	// FlushWait is the wait after save-all flush (spec §6.5).
 	FlushWait = 3 * time.Second
-	// resumeTimeout acota el save-on, que se envía aunque el job esté cancelado.
+	// resumeTimeout bounds save-on, which is sent even if the job is cancelled.
 	resumeTimeout = 15 * time.Second
-	// maxReply acota la respuesta de RCON que se copia al log del job.
+	// maxReply bounds the RCON reply that is copied to the job log.
 	maxReply = 200
-	// spaceCheckEvery: cada cuántos bytes escritos se vuelve a mirar el espacio libre.
+	// spaceCheckEvery: how many bytes written between free space checks.
 	spaceCheckEvery = 64 << 20
 )
 
-// ErrResume indica que no se pudo reactivar el guardado automático tras una copia en
-// caliente: el mundo puede seguir con save-off hasta que alguien ejecute save-on.
-var ErrResume = errors.New("no se pudo reactivar el guardado automático (save-on); ejecuta save-on en la consola")
+// ErrResume indicates that autosave could not be re-enabled after a hot
+// backup: the world may stay with save-off until someone runs save-on.
+var ErrResume = errors.New("could not re-enable autosave (save-on); run save-on in the console")
 
-// ErrServerStopped: el contenedor de una copia en caliente se paró, se reinició o cambió
-// durante la copia. Minecraft guarda el mundo al pararse aunque haya save-off, así que lo
-// leído puede mezclar dos estados: la copia no vale.
-var ErrServerStopped = errors.New("el servidor se paró o se reinició durante la copia")
+// ErrServerStopped: the container of a hot backup stopped, restarted or changed
+// during the backup. Minecraft saves the world when stopping even with save-off, so what was
+// read may mix two states: the backup is not valid.
+var ErrServerStopped = errors.New("the server stopped or restarted during the backup")
 
-// ErrNoSpace: no hay (o deja de haber) espacio libre para la copia o la restauración sin
-// dejar el disco del nodo por debajo del margen con el que los servidores siguen guardando.
-var ErrNoSpace = errors.New("no hay espacio libre suficiente")
+// ErrNoSpace: there is not (or is no longer) free space for the backup or restore without
+// leaving the node's disk below the margin the servers need to keep saving.
+var ErrNoSpace = errors.New("not enough free space")
 
-// RconFunc ejecuta un comando de consola en el servidor. El plazo de cada comando es el
-// del contexto que recibe (save-all flush en un mundo grande tarda más de 5 s).
+// RconFunc runs a console command on the server. The deadline of each command is that
+// of the context it receives (save-all flush on a large world takes more than 5 s).
 type RconFunc func(ctx context.Context, command string) (string, error)
 
-// CreateRequest describe una copia.
+// CreateRequest describes a backup.
 type CreateRequest struct {
 	ServerID    string
 	Slug        string
@@ -54,17 +54,17 @@ type CreateRequest struct {
 	DataDir     string // <DATA_ROOT>/<slug>/data
 	BackupsDir  string // <DATA_ROOT>/<slug>/backups
 	Excludes    []string
-	// Rcon es nil si el servidor está parado: entonces se copia sin save-off.
+	// Rcon is nil if the server is stopped: then it is copied without save-off.
 	Rcon RconFunc
-	// Running (obligatorio con Rcon) comprueba que el contenedor sigue siendo el mismo que al
-	// empezar y que no se ha parado ni reiniciado; si no, devuelve un error que envuelve
-	// ErrServerStopped. Otro error: no se pudo comprobar.
+	// Running (required with Rcon) checks that the container is still the same as when it
+	// started and that it has not stopped or restarted; otherwise it returns an error that wraps
+	// ErrServerStopped. Any other error: it could not be checked.
 	Running  func(ctx context.Context) error
 	Now      func() time.Time
 	Sleep    func(ctx context.Context, d time.Duration) error
 	Progress func(pct uint32, msg string)
 	Log      func(line string)
-	// FreeSpace devuelve el espacio libre del sistema de ficheros de dir (nil: statfs).
+	// FreeSpace returns the free space of dir's filesystem (nil: statfs).
 	FreeSpace func(dir string) (uint64, error)
 }
 
@@ -86,7 +86,7 @@ func (r *CreateRequest) defaults() {
 	}
 }
 
-// Sleep espera d o hasta que ctx termine.
+// Sleep waits d or until ctx ends.
 func Sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()
@@ -98,28 +98,28 @@ func Sleep(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// Create hace una copia consistente (spec §6.5). Con el servidor en marcha: save-off,
-// save-all flush, espera de 3 s, tar y save-on en cuanto el tar se cierra (antes del
-// fsync, los metadatos y el renombrado). save-on está además en un defer registrado antes
-// del save-off y con un contexto propio: ni un fallo ni una cancelación dejan el mundo sin
-// autoguardado, y se envía una sola vez. El fichero se escribe como .partial; su .json se
-// escribe antes de darle el nombre final (el inventario nunca ve una copia sin
-// metadatos); si algo falla, el parcial (y su .json) se borran (spec §10) y no se devuelven
-// metadatos: una copia fallida nunca se confirma.
+// Create makes a consistent backup (spec §6.5). With the server running: save-off,
+// save-all flush, a 3 s wait, tar and save-on as soon as the tar is closed (before the
+// fsync, the metadata and the rename). save-on is also in a defer registered before
+// save-off and with a context of its own: neither a failure nor a cancellation leaves the world without
+// autosave, and it is sent only once. The file is written as .partial; its .json is
+// written before giving it the final name (the inventory never sees a backup without
+// metadata); if anything fails, the partial (and its .json) are deleted (spec §10) and no
+// metadata is returned: a failed backup is never confirmed.
 //
-// En caliente, req.Running comprueba al cerrar el tar y otra vez antes del .json que el
-// contenedor es el mismo y no se paró ni se reinició: Minecraft guarda el mundo al pararse
-// aunque haya save-off, así que una parada durante la copia la invalida (ErrServerStopped).
-// Entonces save-on sobra (save-off no sobrevive al reinicio) y no se envía. Si save-on falla
-// con el servidor en marcha, la copia también se descarta y el error envuelve ErrResume; si
-// además falló la copia, el error envuelve ambas cosas.
+// Hot, req.Running checks when the tar is closed and again before the .json that the
+// container is the same and did not stop or restart: Minecraft saves the world when stopping
+// even with save-off, so a stop during the backup invalidates it (ErrServerStopped).
+// Then save-on is unnecessary (save-off does not survive the restart) and is not sent. If save-on fails
+// with the server running, the backup is also discarded and the error wraps ErrResume; if
+// the backup also failed, the error wraps both.
 func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 	req.defaults()
 	if !spec.ValidSlug(req.Slug) {
-		return Meta{}, fmt.Errorf("slug inválido %q", req.Slug)
+		return Meta{}, fmt.Errorf("invalid slug %q", req.Slug)
 	}
 	if req.Rcon != nil && req.Running == nil {
-		return Meta{}, errors.New("copia en caliente sin comprobación del contenedor")
+		return Meta{}, errors.New("hot backup without container check")
 	}
 	excl, err := NewExcluder(req.Excludes)
 	if err != nil {
@@ -128,47 +128,47 @@ func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 	fi, serr := os.Lstat(req.DataDir)
 	switch {
 	case errors.Is(serr, fs.ErrNotExist):
-		return Meta{}, fmt.Errorf("el servidor aún no tiene datos que copiar (%s)", req.DataDir)
+		return Meta{}, fmt.Errorf("the server has no data to back up yet (%s)", req.DataDir)
 	case serr != nil:
-		return Meta{}, fmt.Errorf("leer el directorio de datos: %w", serr)
+		return Meta{}, fmt.Errorf("read the data directory: %w", serr)
 	case !fi.IsDir():
-		return Meta{}, fmt.Errorf("%s no es un directorio (los enlaces simbólicos no se siguen): no se copia", req.DataDir)
+		return Meta{}, fmt.Errorf("%s is not a directory (symbolic links are not followed): it is not backed up", req.DataDir)
 	}
 	if err := os.MkdirAll(req.BackupsDir, 0o750); err != nil {
-		return Meta{}, fmt.Errorf("crear el directorio de copias: %w", err)
+		return Meta{}, fmt.Errorf("create the backups directory: %w", err)
 	}
 	started := req.Now()
 	name := Filename(req.Slug, started, req.SpecVersion)
 	final := filepath.Join(req.BackupsDir, name)
 	if _, serr := os.Lstat(final); serr == nil {
-		return Meta{}, fmt.Errorf("la copia %s ya existe", name)
+		return Meta{}, fmt.Errorf("the backup %s already exists", name)
 	}
-	// Antes de save-off: sin espacio, el servidor ni se entera.
+	// Before save-off: without space, the server does not even notice.
 	margin, err := backupSpace(ctx, req, excl)
 	if err != nil {
 		return Meta{}, err
 	}
 
-	var hot *hotCopy // nil en frío
+	var hot *hotCopy // nil when cold
 	if req.Rcon != nil {
 		hot = &hotCopy{ctx: ctx, req: &req}
-		// Registrado ANTES de save-off: aunque save-off falle (quizá sí llegó al servidor),
-		// la copia falle o el job se cancele, save-on se envía con su propio contexto.
+		// Registered BEFORE save-off: even if save-off fails (it may have reached the server),
+		// the backup fails or the job is cancelled, save-on is sent with its own context.
 		defer func() {
 			if err = hot.finish(err); err != nil {
 				meta = Meta{}
 			}
 		}()
-		req.Progress(1, "Desactivando el guardado automático")
+		req.Progress(1, "Disabling autosave")
 		out, rerr := req.Rcon(ctx, "save-off")
 		if rerr != nil {
 			return Meta{}, fmt.Errorf("RCON save-off: %w", rerr)
 		}
-		logRcon(req.Log, "save-off", "guardado automático desactivado", out)
+		logRcon(req.Log, "save-off", "autosave disabled", out)
 		if out, rerr = req.Rcon(ctx, "save-all flush"); rerr != nil {
 			return Meta{}, fmt.Errorf("RCON save-all flush: %w", rerr)
 		}
-		logRcon(req.Log, "save-all flush", "mundo escrito en disco", out)
+		logRcon(req.Log, "save-all flush", "world written to disk", out)
 		if err := req.Sleep(ctx, FlushWait); err != nil {
 			return Meta{}, err
 		}
@@ -189,29 +189,29 @@ func Create(ctx context.Context, req CreateRequest) (meta Meta, err error) {
 	}
 	metaErr := WriteMeta(req.BackupsDir, meta)
 	if metaErr != nil {
-		req.Log("aviso: no se pudo escribir el .json de metadatos (la copia es válida): " + metaErr.Error())
+		req.Log("warning: could not write the .json metadata file (the backup is valid): " + metaErr.Error())
 	}
 	if err := rename(partial, final); err != nil {
 		_ = os.Remove(partial)
 		if metaErr == nil {
 			_ = os.Remove(final + MetaExt)
 		}
-		return Meta{}, fmt.Errorf("guardar la copia: %w", err)
+		return Meta{}, fmt.Errorf("save the backup: %w", err)
 	}
 	_ = syncDir(req.BackupsDir)
-	req.Progress(99, "Copia escrita")
-	req.Log(fmt.Sprintf("copia escrita: %s (%d ficheros, %d bytes comprimidos)", name, stats.Files, size))
+	req.Progress(99, "Backup written")
+	req.Log(fmt.Sprintf("backup written: %s (%d files, %d compressed bytes)", name, stats.Files, size))
 	return meta, nil
 }
 
-// writeArchive escribe la copia en partial calculando su sha256 y la sincroniza. En
-// caliente, en cuanto el tar está cerrado (ya no se leen los datos del mundo) comprueba el
-// contenedor y envía save-on, y antes de volver lo comprueba otra vez. Si algo falla, borra
-// el parcial.
+// writeArchive writes the backup to partial computing its sha256 and syncs it. When
+// hot, as soon as the tar is closed (the world data is no longer read) it checks the
+// container and sends save-on, and before returning it checks again. If anything fails, it deletes
+// the partial.
 func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partial string, margin uint64, hot *hotCopy) (size int64, sum string, st ArchiveStats, err error) {
 	f, err := os.OpenFile(partial, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
 	if err != nil {
-		return 0, "", st, fmt.Errorf("crear la copia: %w", err)
+		return 0, "", st, fmt.Errorf("create the backup: %w", err)
 	}
 	closed := false
 	defer func() {
@@ -227,22 +227,22 @@ func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partia
 	if margin > 0 {
 		out = &spaceGuard{w: f, free: req.FreeSpace, dir: req.BackupsDir, margin: margin, since: -1}
 	}
-	req.Progress(2, "Copiando datos")
+	req.Progress(2, "Copying data")
 	st, err = WriteArchive(ctx, req.DataDir, io.MultiWriter(out, h), excl, func(done, total int64) {
-		pct := uint32(97) // done supera total si un fichero creció tras el escaneo
+		pct := uint32(97) // done exceeds total if a file grew after the scan
 		if total > 0 && done < total {
 			pct = 2 + uint32(done*95/total)
 		}
-		req.Progress(pct, "Copiando datos")
+		req.Progress(pct, "Copying data")
 	})
 	if err != nil {
-		return 0, "", st, hot.explain(fmt.Errorf("copiar los datos: %w", err))
+		return 0, "", st, hot.explain(fmt.Errorf("copy the data: %w", err))
 	}
 	if err = hot.archived(); err != nil {
 		return 0, "", st, err
 	}
 	if err = f.Sync(); err != nil {
-		return 0, "", st, fmt.Errorf("guardar la copia en disco: %w", err)
+		return 0, "", st, fmt.Errorf("save the backup to disk: %w", err)
 	}
 	info, err := f.Stat()
 	if err != nil {
@@ -250,7 +250,7 @@ func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partia
 	}
 	closed = true
 	if err = f.Close(); err != nil {
-		return 0, "", st, fmt.Errorf("guardar la copia en disco: %w", err)
+		return 0, "", st, fmt.Errorf("save the backup to disk: %w", err)
 	}
 	if err = hot.verify(); err != nil {
 		return 0, "", st, err
@@ -258,23 +258,23 @@ func writeArchive(ctx context.Context, req CreateRequest, excl *Excluder, partia
 	return info.Size(), hex.EncodeToString(h.Sum(nil)), st, nil
 }
 
-// hotCopy lleva el save-on y las comprobaciones del contenedor de una copia en caliente. Sus
-// métodos admiten nil (copia en frío) salvo resume y finish.
+// hotCopy carries the save-on and the container checks of a hot backup. Its
+// methods accept nil (cold backup) except resume and finish.
 type hotCopy struct {
 	ctx       context.Context
 	req       *CreateRequest
-	resumed   bool  // save-on ya enviado (o descartado por la parada): una sola vez
-	resumeErr error // save-on falló con el servidor en marcha
-	stopErr   error // el servidor se paró o se reinició durante la copia
+	resumed   bool  // save-on already sent (or dropped because of the stop): only once
+	resumeErr error // save-on failed with the server running
+	stopErr   error // the server stopped or restarted during the backup
 }
 
-// discarded añade a err que la copia no se ha guardado.
+// discarded adds to err that the backup was not saved.
 func discarded(err error) error {
-	return fmt.Errorf("%w; la copia se ha descartado: vuelve a intentarlo", err)
+	return fmt.Errorf("%w; the backup was discarded: try again", err)
 }
 
-// check pregunta si el contenedor sigue siendo el mismo y en marcha. Una parada o un reinicio
-// quedan en stopErr (y save-on sobra); si Docker no deja comprobarlo, la copia tampoco vale.
+// check asks whether the container is still the same and running. A stop or a restart
+// stay in stopErr (and save-on is unnecessary); if Docker does not allow checking it, the backup is not valid either.
 func (h *hotCopy) check() error {
 	cctx, cancel := context.WithTimeout(h.ctx, resumeTimeout)
 	defer cancel()
@@ -288,16 +288,16 @@ func (h *hotCopy) check() error {
 		}
 		return h.stopErr
 	default:
-		return discarded(fmt.Errorf("no se pudo comprobar que el servidor siguiera en marcha durante la copia (%w)", err))
+		return discarded(fmt.Errorf("could not check that the server stayed running during the backup (%w)", err))
 	}
 }
 
-// explain: el tar falló. Un fichero que cambió mientras se leía descarta la copia; en
-// caliente, si es porque el servidor se paró, el motivo es la parada (el fichero va al log).
+// explain: the tar failed. A file that changed while being read discards the backup; when
+// hot, if it is because the server stopped, the reason is the stop (the file goes to the log).
 func (h *hotCopy) explain(err error) error {
 	if h != nil && h.ctx.Err() == nil {
 		if serr := h.check(); errors.Is(serr, ErrServerStopped) {
-			h.req.Log("aviso: " + err.Error())
+			h.req.Log("warning: " + err.Error())
 			if errors.Is(err, ErrSourceChanged) {
 				return serr
 			}
@@ -310,8 +310,8 @@ func (h *hotCopy) explain(err error) error {
 	return err
 }
 
-// archived: el tar está cerrado. Comprueba que el servidor siguió en marcha y reactiva el
-// guardado; si save-on no llega porque se acaba de parar, el motivo es la parada.
+// archived: the tar is closed. It checks that the server stayed running and re-enables
+// autosave; if save-on does not arrive because it just stopped, the reason is the stop.
 func (h *hotCopy) archived() error {
 	if h == nil {
 		return nil
@@ -325,8 +325,8 @@ func (h *hotCopy) archived() error {
 	return h.stopErr
 }
 
-// verify: justo antes de confirmar (.json y nombre final), otra vez: una parada que empezó
-// durante el tar puede no haber terminado al cerrarlo (Minecraft sigue guardando).
+// verify: right before confirming (.json and final name), again: a stop that started
+// during the tar may not have finished when it was closed (Minecraft is still saving).
 func (h *hotCopy) verify() error {
 	if h == nil {
 		return nil
@@ -334,36 +334,36 @@ func (h *hotCopy) verify() error {
 	return h.check()
 }
 
-// resume envía save-on una sola vez, con su propio contexto (también con el job cancelado).
-// Si el servidor se paró o se reinició, sobra: vuelve a arrancar con el guardado activado. Si
-// falla con el servidor en marcha, lo avisa y devuelve un error que envuelve ErrResume.
+// resume sends save-on only once, with its own context (also with the job cancelled).
+// If the server stopped or restarted, it is unnecessary: it starts again with autosave enabled. If it
+// fails with the server running, it warns and returns an error that wraps ErrResume.
 func (h *hotCopy) resume() error {
 	if h.resumed {
 		return h.resumeErr
 	}
 	h.resumed = true
 	if h.stopErr != nil {
-		h.req.Log("save-on no hace falta: el servidor se paró o se reinició y vuelve a arrancar con el guardado automático activado")
+		h.req.Log("save-on is not needed: the server stopped or restarted and starts again with autosave enabled")
 		return nil
 	}
 	rctx, cancel := context.WithTimeout(context.WithoutCancel(h.ctx), resumeTimeout)
 	defer cancel()
 	out, err := h.req.Rcon(rctx, "save-on")
 	if err == nil {
-		logRcon(h.req.Log, "save-on", "guardado automático reactivado", out)
+		logRcon(h.req.Log, "save-on", "autosave re-enabled", out)
 		return nil
 	}
 	if errors.Is(h.check(), ErrServerStopped) {
-		h.req.Log("save-on no llegó: el servidor se paró o se reinició y vuelve a arrancar con el guardado automático activado")
+		h.req.Log("save-on did not arrive: the server stopped or restarted and starts again with autosave enabled")
 		return nil
 	}
-	h.req.Log("ATENCIÓN: save-on falló; el guardado automático puede seguir desactivado: " + err.Error())
+	h.req.Log("WARNING: save-on failed; autosave may still be disabled: " + err.Error())
 	h.resumeErr = fmt.Errorf("%w: %v", ErrResume, err)
 	return h.resumeErr
 }
 
-// finish va en el defer de Create: save-on sale aunque save-off, la copia o el job fallen, y
-// su fallo se cuenta una sola vez en el error.
+// finish goes in Create's defer: save-on goes out even if save-off, the backup or the job fail, and
+// its failure is counted only once in the error.
 func (h *hotCopy) finish(err error) error {
 	rerr := h.resume()
 	switch {
@@ -372,15 +372,15 @@ func (h *hotCopy) finish(err error) error {
 	case err == nil:
 		return rerr
 	default:
-		return fmt.Errorf("%w; además, %w", err, rerr)
+		return fmt.Errorf("%w; additionally, %w", err, rerr)
 	}
 }
 
-// backupSpace comprueba, antes de tocar el servidor, que cabe la copia: la estimación (la
-// última copia del servidor ×1,2 o, si es la primera, lo que ocupan los datos sin comprimir)
-// más el margen de la restauración, max(5 %, 256 MiB), para que los servidores del nodo
-// sigan pudiendo guardar. Devuelve ese margen, que vigila spaceGuard durante el tar, o 0 si
-// no se pudo consultar el espacio (se avisa y se copia sin vigilancia).
+// backupSpace checks, before touching the server, that the backup fits: the estimate (the
+// server's last backup ×1.2 or, if it is the first, what the uncompressed data takes)
+// plus the restore margin, max(5 %, 256 MiB), so that the node's servers
+// can keep saving. It returns that margin, which spaceGuard watches during the tar, or 0 if
+// the space could not be queried (a warning is logged and it is copied without watching).
 func backupSpace(ctx context.Context, req CreateRequest, excl *Excluder) (uint64, error) {
 	est, basis, err := estimateBackup(ctx, req, excl)
 	if err != nil {
@@ -388,53 +388,53 @@ func backupSpace(ctx context.Context, req CreateRequest, excl *Excluder) (uint64
 	}
 	free, err := req.FreeSpace(req.BackupsDir)
 	if err != nil {
-		req.Log("aviso: no se pudo comprobar el espacio libre en " + req.BackupsDir + ": " + err.Error())
+		req.Log("warning: could not check the free space on " + req.BackupsDir + ": " + err.Error())
 		return 0, nil
 	}
 	need := requiredSpace(est)
 	margin := need - uint64(max(est, 0))
 	if free < need {
-		return 0, fmt.Errorf("%w para la copia: hacen falta %s (%s de copia según %s, más un margen de %s para que los servidores del nodo sigan pudiendo guardar) y quedan %s libres en %s; faltan %s",
+		return 0, fmt.Errorf("%w for the backup: %s needed (%s of backup according to %s, plus a margin of %s so the node's servers can keep saving) and %s free on %s; %s short",
 			ErrNoSpace, humanBytes(need), humanBytes(uint64(max(est, 0))), basis, humanBytes(margin), humanBytes(free), req.BackupsDir, humanBytes(need-free))
 	}
 	return margin, nil
 }
 
-// estimateBackup estima lo que ocupará la copia y explica de dónde sale la cifra.
+// estimateBackup estimates what the backup will take and explains where the figure comes from.
 func estimateBackup(ctx context.Context, req CreateRequest, excl *Excluder) (int64, string, error) {
 	if metas, err := List(req.BackupsDir, req.Slug); err == nil && len(metas) > 0 && metas[0].SizeBytes > 0 {
 		last := metas[0].SizeBytes
-		return last + last/5, "la última copia (" + humanBytes(uint64(last)) + ") más un 20 %", nil
+		return last + last/5, "the last backup (" + humanBytes(uint64(last)) + ") plus 20 %", nil
 	}
 	root, err := os.OpenRoot(req.DataDir)
 	if err != nil {
-		return 0, "", fmt.Errorf("medir los datos: %w", err)
+		return 0, "", fmt.Errorf("measure the data: %w", err)
 	}
 	defer root.Close()
 	var st ArchiveStats
 	_, total, err := scan(ctx, root, excl, &st)
 	if err != nil {
-		return 0, "", fmt.Errorf("medir los datos: %w", err)
+		return 0, "", fmt.Errorf("measure the data: %w", err)
 	}
-	return total, "lo que ocupan los datos sin comprimir (es la primera copia)", nil
+	return total, "the uncompressed size of the data (it is the first backup)", nil
 }
 
-// spaceGuard deja de escribir la copia si el espacio libre baja del margen: otra copia u otro
-// servidor pueden estar llenando el disco. Lo mira al empezar y cada spaceCheckEvery bytes; si
-// no puede consultarlo, sigue.
+// spaceGuard stops writing the backup if the free space drops below the margin: another backup or another
+// server may be filling the disk. It checks at the start and every spaceCheckEvery bytes; if
+// it cannot query it, it continues.
 type spaceGuard struct {
 	w      io.Writer
 	free   func(dir string) (uint64, error)
 	dir    string
 	margin uint64
-	since  int64 // bytes desde la última comprobación; -1 = ninguna todavía
+	since  int64 // bytes since the last check; -1 = none yet
 }
 
 func (g *spaceGuard) Write(p []byte) (int, error) {
 	if g.since < 0 || g.since >= spaceCheckEvery {
 		g.since = 0
 		if free, err := g.free(g.dir); err == nil && free < g.margin {
-			return 0, fmt.Errorf("%w: el espacio libre bajó a %s durante la copia, por debajo del margen de %s en %s; copia cancelada para no llenar el disco",
+			return 0, fmt.Errorf("%w: free space dropped to %s during the backup, below the margin of %s on %s; backup cancelled to avoid filling the disk",
 				ErrNoSpace, humanBytes(free), humanBytes(g.margin), g.dir)
 		}
 	}
@@ -443,17 +443,17 @@ func (g *spaceGuard) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// logRcon registra en el log del job la respuesta a un comando de la copia. Minecraft
-// contesta con texto aunque el comando falle («Unable to save the game», «Unknown or
-// incomplete command»): esas respuestas se marcan con ATENCIÓN (la copia sigue: el disco
-// conserva el último guardado completo).
+// logRcon records in the job log the reply to a backup command. Minecraft
+// answers with text even if the command fails ("Unable to save the game", "Unknown or
+// incomplete command"): those replies are marked WARNING (the backup continues: the disk
+// keeps the last complete save).
 func logRcon(log func(string), cmd, done, reply string) {
 	reply = oneLine(reply)
 	switch {
 	case reply == "":
 		log(cmd + ": " + done)
 	case looksLikeFailure(reply):
-		log("ATENCIÓN: respuesta inesperada a " + cmd + ": " + reply)
+		log("WARNING: unexpected reply to " + cmd + ": " + reply)
 	default:
 		log(cmd + ": " + done + " (" + reply + ")")
 	}
@@ -469,7 +469,7 @@ func looksLikeFailure(reply string) bool {
 	return false
 }
 
-// oneLine quita los códigos de color (§x), junta las líneas y recorta a maxReply bytes.
+// oneLine removes color codes (§x), joins the lines and trims to maxReply bytes.
 func oneLine(s string) string {
 	var b strings.Builder
 	skip := false
@@ -494,7 +494,7 @@ func oneLine(s string) string {
 	return s
 }
 
-// syncDir sincroniza las entradas de un directorio (renombrados y ficheros nuevos).
+// syncDir syncs a directory's entries (renames and new files).
 func syncDir(dir string) error {
 	d, err := os.Open(dir)
 	if err != nil {

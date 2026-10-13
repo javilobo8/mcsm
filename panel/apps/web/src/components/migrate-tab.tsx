@@ -27,11 +27,11 @@ const ICON: Record<StepState, React.ReactNode> = {
   pending: <Circle className="size-4 text-zinc-600" aria-hidden />,
 };
 
-/** Los 7 pasos de la migración con su estado según el job. */
+/** The 7 migration steps with their status according to the job. */
 export function MigrationSteps({ job }: { job: Pick<JobDto, "progress" | "status"> }) {
   const states = stepStates(job);
   return (
-    <ol className="flex flex-col gap-1 text-sm" aria-label="Pasos de la migración">
+    <ol className="flex flex-col gap-1 text-sm" aria-label="Migration steps">
       {MIGRATION_STEPS.map((label, i) => (
         <li key={label} aria-current={states[i] === "current" ? "step" : undefined}
           className={cn("flex items-center gap-2", states[i] === "pending" && "text-zinc-500", states[i] === "failed" && "text-red-400")}>
@@ -53,9 +53,9 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
   const [deleteSource, setDeleteSource] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [closing, setClosing] = useState(false);
-  // Elegir destino y puerto no es mucho trabajo, pero se avisa antes de perderlo al cambiar de pestaña (m9).
+  // Choosing a target and port is not much work, but the user is warned before losing it when switching tabs (m9).
   useTabGuard(migrateFormDirty(targetId, portText, deleteSource), {
-    title: "Migración sin lanzar", description: "Has elegido a dónde migrar el servidor. Si cambias de pestaña se perderá la selección.", confirmLabel: "Descartar y cambiar",
+    title: "Migration not started", description: "You have chosen where to migrate the server. If you switch tabs the selection will be lost.", confirmLabel: "Discard and switch",
   });
 
   const active = activeMigrationJob(jobs.data);
@@ -63,9 +63,9 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
   const options = targetOptions(nodes.data, server.nodeId);
   const target = options.find((o) => o.id === targetId);
   const port = parsePortInput(portText);
-  // Con el puerto escrito, la propuesta comprueba ese puerto (m8): su error solo bloquea si de verdad no vale.
+  // With the port typed in, the proposal checks that port (m8): its error only blocks if it is really not valid.
   const proposal = useMigrationProposal(server.id, target && !target.disabled ? target.id : null, port ?? undefined);
-  const nodeName = (id: string) => nodes.data?.find((n) => n.id === id)?.name ?? "otro nodo";
+  const nodeName = (id: string) => nodes.data?.find((n) => n.id === id)?.name ?? "another node";
   const nodeOnlineById = (id: string) => (nodes.data ? nodes.data.find((n) => n.id === id)?.status === "online" : undefined);
   const pending = migration.data ? pendingText(migration.data, nodeName, nodeOnlineById) : null;
   const closable = canCloseMigration(migration.data, active);
@@ -73,9 +73,9 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
     sourceOnline: nodeOnline, active, migration: migration.data, target, portInvalid: port === null, proposalError: proposal.error?.message ?? null,
   });
   const finalPort = port ?? proposal.data?.port;
-  // Plan 6: si aún es el contenedor original importado, la retirada del origen lo elimina (como el borrado).
+  // Plan 6: if it is still the original imported container, removing the source deletes it (like deleting the server).
   const importedRetire = serverImportView(server).retire;
-  // Plan 8: con hostname, el DNS tiene que apuntar al destino tras migrar.
+  // Plan 8: with a hostname, DNS has to point at the target after migrating.
   const dnsNote = routerDnsNote(server.spec.router, nodeName(server.nodeId), target ? nodeName(target.id) : undefined);
 
   const close = useMutation({
@@ -99,12 +99,12 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <section className="flex flex-col gap-3" aria-label="Migración">
+      <section className="flex flex-col gap-3" aria-label="Migration">
         <div>
-          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Migrar a otro nodo</h2>
+          <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Migrate to another node</h2>
           <p className="text-xs text-zinc-500">
-            Mueve el mundo, la configuración y el historial de «{server.name}» a otro nodo: copia previa, envío por el panel con
-            sha256 comprobado, restauración y arranque de prueba en el destino. Si algo falla, el servidor sigue aquí intacto.
+            Moves the world, the configuration and the history of “{server.name}” to another node: previous backup, transfer through the panel with
+            sha256 checked, restore and a test start on the target. If anything fails, the server stays here untouched.
           </p>
         </div>
         {active && (
@@ -116,7 +116,7 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
         )}
         {!active && last?.status === "failed" && (
           <div role="alert" className="rounded-md border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">
-            <p>La última migración falló: {last.message}</p>
+            <p>The last migration failed: {last.message}</p>
             <div className="mt-3"><MigrationSteps job={last} /></div>
           </div>
         )}
@@ -124,24 +124,24 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
         {pending && <p role="status" className="text-sm text-amber-400">{pending}</p>}
         {closable && (
           <div>
-            <Button variant="outline" size="sm" onClick={() => { close.reset(); setClosing(true); }}>Cerrar la migración a mano…</Button>
+            <Button variant="outline" size="sm" onClick={() => { close.reset(); setClosing(true); }}>Close the migration by hand…</Button>
           </div>
         )}
       </section>
 
       {!active && (
-        <section className="flex flex-col gap-4" aria-label="Nueva migración">
+        <section className="flex flex-col gap-4" aria-label="New migration">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="mig-target">Nodo destino</Label>
+            <Label htmlFor="mig-target">Target node</Label>
             <Select value={targetId} onValueChange={(v) => { setTargetId(v); setPortText(""); start.reset(); }}>
               <SelectTrigger id="mig-target" className="w-72">
-                <SelectValue placeholder={nodes.isPending ? "Cargando nodos…" : options.length ? "Elige un nodo" : "No hay otros nodos"} />
+                <SelectValue placeholder={nodes.isPending ? "Loading nodes…" : options.length ? "Choose a node" : "No other nodes"} />
               </SelectTrigger>
               <SelectContent>{options.map((o) => <SelectItem key={o.id} value={o.id} disabled={o.disabled}>{o.label}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="mig-port">Puerto de juego en el destino</Label>
+            <Label htmlFor="mig-port">Game port on the target</Label>
             <Input id="mig-port" className="w-40" inputMode="numeric" disabled={!target} value={portText}
               placeholder={proposal.data ? String(proposal.data.port) : ""}
               onChange={(e) => { setPortText(e.target.value); start.reset(); }} />
@@ -150,14 +150,14 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
           </div>
           <label className="flex items-start gap-2 text-sm">
             <input type="checkbox" className="mt-1" checked={deleteSource} onChange={(e) => setDeleteSource(e.target.checked)} />
-            <span>{`Borrar el origen al terminar (sus datos y sus copias en este nodo). Si no, se conservan en ${server.slug}.migrated-….`}</span>
+            <span>{`Delete the source when finished (its data and its backups on this node). Otherwise they are kept in ${server.slug}.migrated-….`}</span>
           </label>
           {importedRetire && <p role="note" className="text-sm text-amber-400">{importedRetire}</p>}
           {dnsNote && <p role="note" className="text-sm text-amber-400">{dnsNote}</p>}
           {start.error && <p role="alert" className="text-sm text-red-400">{start.error.message}</p>}
           <div className="flex items-center gap-3">
             <Button onClick={() => { start.reset(); setConfirming(true); }} disabled={blocked !== null || finalPort === undefined} title={blocked ?? undefined}>
-              <ArrowRightLeft className="size-4" /> Migrar…
+              <ArrowRightLeft className="size-4" /> Migrate…
             </Button>
             {blocked && <span className="text-xs text-zinc-500">{blocked}</span>}
           </div>
@@ -167,14 +167,14 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
       <AlertDialog open={closing} onOpenChange={(open) => { if (!close.isPending) setClosing(open); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cerrar a mano la migración de «{server.name}»?</AlertDialogTitle>
+            <AlertDialogTitle>Close the migration of “{server.name}” by hand?</AlertDialogTitle>
             <AlertDialogDescription>{migration.data ? closeMigrationText(migration.data, nodeName) : ""}</AlertDialogDescription>
           </AlertDialogHeader>
           {close.error && <p role="alert" className="text-sm text-red-400">{close.error.message}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={close.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={close.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={close.isPending} onClick={(e) => { e.preventDefault(); close.mutate(); }}>
-              {close.isPending ? "Cerrando…" : "Cerrar la migración"}
+              {close.isPending ? "Closing…" : "Close the migration"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -183,7 +183,7 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
       <AlertDialog open={confirming} onOpenChange={(open) => { if (!start.isPending) setConfirming(open); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Migrar «{server.name}» a «{target?.label ?? ""}»?</AlertDialogTitle>
+            <AlertDialogTitle>Migrate “{server.name}” to “{target?.label ?? ""}”?</AlertDialogTitle>
             <AlertDialogDescription>
               {finalPort !== undefined ? confirmText({
                 serverName: server.name, slug: server.slug, source: nodeName(server.nodeId), target: target?.label ?? "", port: finalPort,
@@ -193,10 +193,10 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
           </AlertDialogHeader>
           {start.error && <p role="alert" className="text-sm text-red-400">{start.error.message}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={start.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel disabled={start.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction variant={deleteSource ? "destructive" : "default"} disabled={start.isPending}
               onClick={(e) => { e.preventDefault(); start.mutate(); }}>
-              {start.isPending ? "Iniciando…" : "Migrar"}
+              {start.isPending ? "Starting…" : "Migrate"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

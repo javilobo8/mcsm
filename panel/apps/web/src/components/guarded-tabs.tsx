@@ -3,14 +3,14 @@ import { Tabs } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { decideTabChange, tabGuardText, type GuardText } from "@/lib/tab-guard";
 
-/** Lo que registra la pestaña montada: si hay algo que perder y, opcionalmente, su texto. */
+/** What the mounted tab registers: whether there is something to lose and, optionally, its text. */
 interface Guard { active: boolean; text?: GuardText }
 
 const GuardContext = createContext<(guard: Guard) => void>(() => {});
 
 /**
- * Pestañas que piden confirmación al salir de la pestaña actual mientras algún contenido
- * suyo haya registrado algo que perder con `useTabGuard`. No conoce ninguna pestaña concreta.
+ * Tabs that ask for confirmation when leaving the current tab while any of its content
+ * has registered something to lose with `useTabGuard`. It knows no specific tab.
  */
 export function GuardedTabs({ defaultValue, children, ...rest }: Omit<ComponentProps<typeof Tabs>, "value" | "onValueChange" | "defaultValue"> & { defaultValue: string }) {
   const [tab, setTab] = useState(defaultValue);
@@ -37,8 +37,8 @@ export function GuardedTabs({ defaultValue, children, ...rest }: Omit<ComponentP
 }
 
 /**
- * Registra si el contenido de la pestaña montada tiene algo que perder al salir (cambios sin
- * guardar, una subida en curso…) y, si quiere, el texto del diálogo de confirmación.
+ * Registers whether the mounted tab's content has something to lose on leaving (unsaved
+ * changes, an upload in progress…) and, optionally, the text of the confirmation dialog.
  */
 export function useTabGuard(active: boolean, text?: GuardText): void {
   const set = useContext(GuardContext);

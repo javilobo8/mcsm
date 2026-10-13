@@ -6,7 +6,7 @@ export interface RouterRow {
   node_id: string; spec: string; observed: string | null; observed_at: string | null; updated_at: string | null;
 }
 
-/** Spec guardada de la fila (la por defecto, desactivada, si no hay fila). */
+/** The row's stored spec (the default, disabled, if there is no row). */
 export function rowSpec(r: RouterRow | null): RouterDeploymentSpec {
   return r ? routerDeploymentSpecSchema.parse(JSON.parse(r.spec)) : defaultRouterDeploymentSpec();
 }
@@ -26,7 +26,7 @@ export class RouterRepo {
     return (this.db.prepare("SELECT * FROM router_deployments WHERE node_id = ?").get(nodeId) as RouterRow | undefined) ?? null;
   }
 
-  /** Guarda la configuración del usuario (crea la fila si no existe). */
+  /** Stores the user's configuration (creates the row if it does not exist). */
   upsertSpec(nodeId: string, spec: RouterDeploymentSpec): RouterRow {
     this.db.prepare(`INSERT INTO router_deployments (node_id, spec, updated_at) VALUES (?, ?, ?)
       ON CONFLICT(node_id) DO UPDATE SET spec = excluded.spec, updated_at = excluded.updated_at`)
@@ -35,8 +35,8 @@ export class RouterRepo {
   }
 
   /**
-   * Deshace un `upsertSpec` (`written`) volviendo a la fila previa (`before`; sin ella, sin
-   * configurar), solo si nadie la ha cambiado después. Devuelve si la deshizo.
+   * Undoes an `upsertSpec` (`written`) by going back to the previous row (`before`; without it, not
+   * configured), only if nobody has changed it since. Returns whether it undid it.
    */
   revert(nodeId: string, before: RouterRow | null, written: RouterRow): boolean {
     const res = before
@@ -47,7 +47,7 @@ export class RouterRepo {
     return Number(res.changes) > 0;
   }
 
-  /** Guarda el último estado observado (crea la fila, desactivada, si no existe). */
+  /** Stores the last observed state (creates the row, disabled, if it does not exist). */
   setObserved(nodeId: string, observed: RouterObservedDto): RouterRow {
     this.db.prepare(`INSERT INTO router_deployments (node_id, spec, observed, observed_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(node_id) DO UPDATE SET observed = excluded.observed, observed_at = excluded.observed_at`)

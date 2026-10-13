@@ -17,7 +17,7 @@ const node = (id: string, name = id): NodeDto => ({
 const observedMsg = (serverId: string, o = obs()): Extract<ServerMessage, { type: "observed" }> => ({ type: "observed", serverId, observed: o, observedAt: "2026-01-01T00:00:00Z" });
 
 describe("applyObservedEvent", () => {
-  it("fusiona el estado observado en la lista y en el detalle", () => {
+  it("merges the observed state into the list and the detail", () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a"), server("b")]);
     qc.setQueryData(["server", "a"], server("a"));
@@ -29,7 +29,7 @@ describe("applyObservedEvent", () => {
     expect(list[1]!.observed).toBeNull();
     expect(qc.getQueryData<ServerDto>(["server", "a"])!.observedSpecVersion).toBe(3);
   });
-  it("ignora un evento más antiguo que el observedAt en caché", () => {
+  it("ignores an event older than the cached observedAt", () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [{ ...server("a"), observed: obs({ state: "exited" }), observedAt: "2026-01-02T00:00:00Z" }]);
     qc.setQueryData(["server", "a"], { ...server("a"), observed: obs({ state: "exited" }), observedAt: "2026-01-02T00:00:00Z" });
@@ -37,13 +37,13 @@ describe("applyObservedEvent", () => {
     expect(qc.getQueryData<ServerDto[]>(["servers"])![0]!.observed?.state).toBe("exited");
     expect(qc.getQueryData<ServerDto>(["server", "a"])!.observed?.state).toBe("exited");
   });
-  it("aplica un evento más nuevo", () => {
+  it("applies a newer event", () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [{ ...server("a"), observed: obs({ state: "exited" }), observedAt: "2025-12-31T00:00:00Z" }]);
     applyObservedEvent(qc, observedMsg("a"));
     expect(qc.getQueryData<ServerDto[]>(["servers"])![0]!.observed?.state).toBe("running");
   });
-  it("evento durante la carga inicial: no la rompe y al resolver se muestra la lista", async () => {
+  it("event during the initial load: does not break it and when it resolves the list is shown", async () => {
     const qc = new QueryClient();
     let resolve!: (v: ServerDto[]) => void;
     const p = qc.fetchQuery({ queryKey: ["servers"], queryFn: () => new Promise<ServerDto[]>((r) => { resolve = r; }) });
@@ -53,18 +53,18 @@ describe("applyObservedEvent", () => {
     expect(qc.getQueryData<ServerDto[]>(["servers"])).toHaveLength(1);
     expect(qc.getQueryState(["servers"])?.status).toBe("success");
   });
-  it("evento durante un refetch con datos: el evento nuevo prevalece sobre la respuesta vieja", async () => {
+  it("event during a refetch with data: the new event prevails over the old response", async () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);
     let resolve!: (v: ServerDto[]) => void;
     const p = qc.fetchQuery({ queryKey: ["servers"], queryFn: () => new Promise<ServerDto[]>((r) => { resolve = r; }), staleTime: 0 }).catch(() => undefined);
     applyObservedEvent(qc, observedMsg("a"));
-    resolve([server("a")]); // respuesta vieja, sin observed
+    resolve([server("a")]); // old response, without observed
     await p;
     await new Promise((r) => setTimeout(r, 0));
     expect(qc.getQueryData<ServerDto[]>(["servers"])![0]!.observed?.state).toBe("running");
   });
-  it("limita la invalidación por servidor desconocido y conserva una llamada final", () => {
+  it("throttles invalidation for an unknown server and keeps a final call", () => {
     vi.useFakeTimers();
     try {
       const qc = new QueryClient();
@@ -75,64 +75,64 @@ describe("applyObservedEvent", () => {
       applyObservedEvent(qc, observedMsg("z"));
       expect(spy).toHaveBeenCalledTimes(1);
       vi.advanceTimersByTime(1100);
-      expect(spy).toHaveBeenCalledTimes(2); // trailing: no se pierde el último
+      expect(spy).toHaveBeenCalledTimes(2); // trailing: the last one is not lost
       vi.advanceTimersByTime(5000);
       expect(spy).toHaveBeenCalledTimes(2);
     } finally { vi.useRealTimers(); }
   });
-  it("servidor desconocido: el refetch que lanza la invalidación no se cancela y el servidor aparece", async () => {
+  it("unknown server: the refetch launched by the invalidation is not cancelled and the server appears", async () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);
     let resolve!: (v: ServerDto[]) => void;
     const obsr = new QueryObserver(qc, { queryKey: ["servers"], queryFn: () => new Promise<ServerDto[]>((r) => { resolve = r; }), staleTime: Infinity });
     const unsub = obsr.subscribe(() => {});
-    applyObservedEvent(qc, observedMsg("nuevo"));
+    applyObservedEvent(qc, observedMsg("new"));
     await new Promise((r) => setTimeout(r, 0));
-    resolve([server("a"), server("nuevo")]);
+    resolve([server("a"), server("new")]);
     await new Promise((r) => setTimeout(r, 0));
-    expect(qc.getQueryData<ServerDto[]>(["servers"])!.map((s) => s.id)).toEqual(["a", "nuevo"]);
+    expect(qc.getQueryData<ServerDto[]>(["servers"])!.map((s) => s.id)).toEqual(["a", "new"]);
     unsub();
   });
-  it("desconocido en la lista con detalle en caché: el detalle recibe el evento y la lista lo incluye tras el refetch", async () => {
+  it("unknown in the list with detail cached: the detail receives the event and the list includes it after the refetch", async () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);
-    qc.setQueryData(["server", "nuevo"], server("nuevo"));
+    qc.setQueryData(["server", "new"], server("new"));
     let resolveList!: (v: ServerDto[]) => void;
     const listObs = new QueryObserver(qc, { queryKey: ["servers"], queryFn: () => new Promise<ServerDto[]>((r) => { resolveList = r; }), staleTime: Infinity });
     const detailFn = vi.fn(() => new Promise<ServerDto>(() => {}));
-    const detailObs = new QueryObserver(qc, { queryKey: ["server", "nuevo"], queryFn: detailFn, staleTime: Infinity });
+    const detailObs = new QueryObserver(qc, { queryKey: ["server", "new"], queryFn: detailFn, staleTime: Infinity });
     const offs = [listObs.subscribe(() => {}), detailObs.subscribe(() => {})];
-    applyObservedEvent(qc, observedMsg("nuevo"));
+    applyObservedEvent(qc, observedMsg("new"));
     await new Promise((r) => setTimeout(r, 0));
     expect(detailObs.getCurrentResult().data?.observed?.state).toBe("running");
     expect(detailObs.getCurrentResult().data?.observedAt).toBe("2026-01-01T00:00:00Z");
     expect(detailFn).not.toHaveBeenCalled();
-    resolveList([server("a"), server("nuevo")]);
+    resolveList([server("a"), server("new")]);
     await new Promise((r) => setTimeout(r, 0));
-    expect(listObs.getCurrentResult().data!.map((s) => s.id)).toEqual(["a", "nuevo"]);
+    expect(listObs.getCurrentResult().data!.map((s) => s.id)).toEqual(["a", "new"]);
     offs.forEach((off) => off());
   });
-  it("desconocido en la lista con el detalle en refetch: el evento prevalece en el detalle y el refetch de la lista no se cancela", async () => {
+  it("unknown in the list with the detail refetching: the event prevails in the detail and the list refetch is not cancelled", async () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);
-    qc.setQueryData(["server", "nuevo"], server("nuevo"));
+    qc.setQueryData(["server", "new"], server("new"));
     let resolveList!: (v: ServerDto[]) => void;
     let resolveDetail!: (v: ServerDto) => void;
     const listObs = new QueryObserver(qc, { queryKey: ["servers"], queryFn: () => new Promise<ServerDto[]>((r) => { resolveList = r; }), staleTime: Infinity });
-    const detailObs = new QueryObserver(qc, { queryKey: ["server", "nuevo"], queryFn: () => new Promise<ServerDto>((r) => { resolveDetail = r; }), staleTime: Infinity });
+    const detailObs = new QueryObserver(qc, { queryKey: ["server", "new"], queryFn: () => new Promise<ServerDto>((r) => { resolveDetail = r; }), staleTime: Infinity });
     const offs = [listObs.subscribe(() => {}), detailObs.subscribe(() => {})];
     void detailObs.refetch();
     await new Promise((r) => setTimeout(r, 0));
-    applyObservedEvent(qc, observedMsg("nuevo"));
-    resolveDetail(server("nuevo")); // respuesta vieja, sin observed
+    applyObservedEvent(qc, observedMsg("new"));
+    resolveDetail(server("new")); // old response, without observed
     await new Promise((r) => setTimeout(r, 0));
     expect(detailObs.getCurrentResult().data?.observed?.state).toBe("running");
-    resolveList([server("a"), server("nuevo")]);
+    resolveList([server("a"), server("new")]);
     await new Promise((r) => setTimeout(r, 0));
-    expect(listObs.getCurrentResult().data!.map((s) => s.id)).toEqual(["a", "nuevo"]);
+    expect(listObs.getCurrentResult().data!.map((s) => s.id)).toEqual(["a", "new"]);
     offs.forEach((off) => off());
   });
-  it("conocido en lista y detalle, ambos en refetch: el evento prevalece en los dos", async () => {
+  it("known in list and detail, both refetching: the event prevails in both", async () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);
     qc.setQueryData(["server", "a"], server("a"));
@@ -145,7 +145,7 @@ describe("applyObservedEvent", () => {
     void detailObs.refetch();
     await new Promise((r) => setTimeout(r, 0));
     applyObservedEvent(qc, observedMsg("a"));
-    resolveList([server("a")]); // respuestas viejas, sin observed
+    resolveList([server("a")]); // old responses, without observed
     resolveDetail(server("a"));
     await new Promise((r) => setTimeout(r, 0));
     expect(listObs.getCurrentResult().data![0]!.observed?.state).toBe("running");
@@ -154,18 +154,18 @@ describe("applyObservedEvent", () => {
     expect(qc.getQueryState(["server", "a"])?.status).toBe("success");
     offs.forEach((off) => off());
   });
-  it("desconocido en la lista y detalle en carga inicial: no se cancela ni se escribe el detalle", async () => {
+  it("unknown in the list and detail in initial load: the detail is neither cancelled nor written", async () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);
     let resolveDetail!: (v: ServerDto) => void;
-    const p = qc.fetchQuery({ queryKey: ["server", "nuevo"], queryFn: () => new Promise<ServerDto>((r) => { resolveDetail = r; }) });
-    applyObservedEvent(qc, observedMsg("nuevo"));
-    resolveDetail(server("nuevo"));
+    const p = qc.fetchQuery({ queryKey: ["server", "new"], queryFn: () => new Promise<ServerDto>((r) => { resolveDetail = r; }) });
+    applyObservedEvent(qc, observedMsg("new"));
+    resolveDetail(server("new"));
     await p;
-    expect(qc.getQueryState(["server", "nuevo"])?.status).toBe("success");
-    expect(qc.getQueryData<ServerDto>(["server", "nuevo"])!.observed).toBeNull();
+    expect(qc.getQueryState(["server", "new"])?.status).toBe("success");
+    expect(qc.getQueryData<ServerDto>(["server", "new"])!.observed).toBeNull();
   });
-  it("invalida la lista si el servidor es desconocido (creado desde otra pestaña)", () => {
+  it("invalidates the list if the server is unknown (created from another tab)", () => {
     const qc = new QueryClient();
     qc.setQueryData(["servers"], [server("a")]);
     const spy = vi.spyOn(qc, "invalidateQueries");
@@ -173,7 +173,7 @@ describe("applyObservedEvent", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: ["servers"] });
     expect(qc.getQueryData<ServerDto[]>(["servers"])).toHaveLength(1);
   });
-  it("no crea caché si aún no se ha cargado", () => {
+  it("does not create a cache if it has not been loaded yet", () => {
     const qc = new QueryClient();
     applyObservedEvent(qc, observedMsg("a"));
     expect(qc.getQueryData(["servers"])).toBeUndefined();
@@ -182,19 +182,19 @@ describe("applyObservedEvent", () => {
 });
 
 describe("applyNodeEvent (P14)", () => {
-  it("actualiza un nodo existente", () => {
+  it("updates an existing node", () => {
     const qc = new QueryClient();
-    qc.setQueryData(["nodes"], [node("n1", "viejo")]);
-    applyNodeEvent(qc, { type: "node", node: node("n1", "nuevo") });
-    expect(qc.getQueryData<NodeDto[]>(["nodes"])!.map((n) => n.name)).toEqual(["nuevo"]);
+    qc.setQueryData(["nodes"], [node("n1", "old")]);
+    applyNodeEvent(qc, { type: "node", node: node("n1", "new") });
+    expect(qc.getQueryData<NodeDto[]>(["nodes"])!.map((n) => n.name)).toEqual(["new"]);
   });
-  it("incorpora un nodo nuevo que llega por WS", () => {
+  it("adds a new node that arrives over WS", () => {
     const qc = new QueryClient();
     qc.setQueryData(["nodes"], [node("n1")]);
     applyNodeEvent(qc, { type: "node", node: node("n2") });
     expect(qc.getQueryData<NodeDto[]>(["nodes"])!.map((n) => n.id)).toEqual(["n1", "n2"]);
   });
-  it("con la lista vacía también lo incorpora", () => {
+  it("also adds it with an empty list", () => {
     const qc = new QueryClient();
     qc.setQueryData(["nodes"], []);
     applyNodeEvent(qc, { type: "node", node: node("n2") });
@@ -213,7 +213,7 @@ describe("bindLive", () => {
     };
     return { live, handlers, fire: () => reconnect?.(), unsubs };
   }
-  it("enruta eventos y limpia al desmontar", () => {
+  it("routes events and cleans up on unmount", () => {
     const qc = new QueryClient();
     qc.setQueryData(["nodes"], []);
     const { live, handlers, unsubs } = fakeLive();
@@ -224,7 +224,7 @@ describe("bindLive", () => {
     expect(unsubs.topics).toHaveBeenCalledTimes(2);
     expect(unsubs.reconnect).toHaveBeenCalledTimes(1);
   });
-  it("invalida servidores y nodos al reconectar", () => {
+  it("invalidates servers and nodes on reconnect", () => {
     const qc = new QueryClient();
     const spy = vi.spyOn(qc, "invalidateQueries");
     const { live, fire } = fakeLive();

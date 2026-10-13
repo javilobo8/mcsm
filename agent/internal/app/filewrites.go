@@ -2,25 +2,25 @@ package app
 
 import "sync"
 
-// fileWrites cuenta, por servidor, las mutaciones de archivos (Files* que escriben) en curso.
-// Cierra la carrera entre una mutación que empezó antes de la reserva de una restauración y el
-// intercambio de data: una subida que ya tenía abierto el os.Root del data viejo acabaría, tras
-// el rename de la restauración, en el pre-restore (o un borrado recursivo seguiría vaciando el
-// pre-restore, que es la red de seguridad), y el panel la daría por buena.
+// fileWrites counts, per server, the file mutations (Files* that write) in progress.
+// It closes the race between a mutation that started before a restore's reservation and the
+// swap of data: an upload that already had the old data's os.Root open would end up, after
+// the restore's rename, in the pre-restore (or a recursive deletion would keep emptying the
+// pre-restore, which is the safety net), and the panel would consider it done.
 //
-// Protocolo (sin carreras por el orden de los locks):
-//   - la mutación hace enter ANTES de mirar rec.Held y, si está reservado, responde busy;
-//   - la restauración hace rec.Hold ANTES de mirar drained y espera a que se cierre.
+// Protocol (no races thanks to the lock order):
+//   - the mutation does enter BEFORE looking at rec.Held and, if reserved, answers busy;
+//   - the restore does rec.Hold BEFORE looking at drained and waits for it to close.
 //
-// O la mutación ve la reserva, o la restauración la ve en el contador y la espera. El valor
-// cero es utilizable.
+// Either the mutation sees the reservation, or the restore sees it in the counter and waits for it. The zero
+// value is usable.
 type fileWrites struct {
 	mu   sync.Mutex
 	n    map[string]int
-	idle map[string]chan struct{} // se cierra cuando n[id] vuelve a 0
+	idle map[string]chan struct{} // closed when n[id] returns to 0
 }
 
-// enter registra una mutación en curso en serverID; leave (idempotente) la da por terminada.
+// enter registers a mutation in progress on serverID; leave (idempotent) marks it as finished.
 func (w *fileWrites) enter(serverID string) (leave func()) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -47,8 +47,8 @@ func (w *fileWrites) enter(serverID string) (leave func()) {
 	}
 }
 
-// drained devuelve un canal que se cierra cuando no queda ninguna mutación en curso en
-// serverID (ya cerrado si no hay ninguna).
+// drained returns a channel that closes when no mutation is left in progress on
+// serverID (already closed if there is none).
 func (w *fileWrites) drained(serverID string) <-chan struct{} {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -60,7 +60,7 @@ func (w *fileWrites) drained(serverID string) <-chan struct{} {
 	return ch
 }
 
-// count es el número de mutaciones en curso en serverID.
+// count is the number of mutations in progress on serverID.
 func (w *fileWrites) count(serverID string) int {
 	w.mu.Lock()
 	defer w.mu.Unlock()

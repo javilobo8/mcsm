@@ -1,314 +1,314 @@
 # MC Server Manager
 
-Gestor web self-hosted, de un solo administrador, para servidores Minecraft Java que
-corren con `itzg/minecraft-server` en varias máquinas de la LAN. Un **panel**
-(TypeScript: API Fastify + web React) y un **agente** Go por nodo que reconcilia Docker
-y se conecta al panel por WebSocket con protobuf.
+Self-hosted, single-administrator web manager for Minecraft Java servers running
+`itzg/minecraft-server` on several LAN machines. A **panel**
+(TypeScript: Fastify API + React web) and a Go **agent** per node that reconciles Docker
+and connects to the panel over WebSocket with protobuf.
 
-- Spec (autoridad): `docs/superpowers/specs/2026-10-12-mc-server-manager-design.md`
-- Planes: `docs/superpowers/plans/README.md` (hoja de ruta de los planes 1–9) y un
-  fichero por plan detallado (`2026-10-12-NN-<nombre>.md`).
+- Spec (authority): `docs/superpowers/specs/2026-10-12-mc-server-manager-design.md`
+- Plans: `docs/superpowers/plans/README.md` (roadmap of plans 1–9) and one
+  file per detailed plan (`2026-10-12-NN-<name>.md`).
 
-## Estructura
+## Structure
 
 ```
 agent/            Go module mcsm/agent (cmd/agent, internal/*)
-panel/            workspace pnpm: apps/api, apps/web, packages/shared, packages/proto-ts
-proto/            .proto, fuente única del protocolo (buf)
-deploy/           docker-compose de despliegue
-docs/             spec, plan, notas
-.claude/agents/   subagentes del proyecto (ver "Agentes")
+panel/            pnpm workspace: apps/api, apps/web, packages/shared, packages/proto-ts
+proto/            .proto, single source of the protocol (buf)
+deploy/           deployment docker-compose
+docs/             spec, plan, notes
+.claude/agents/   project subagents (see "Agents")
 ```
 
-## Comandos
+## Commands
 
-Toolchain: Go 1.27.2 y buf 1.73.0 vía `mise` (ejecuta `eval "$(mise env)"` en la raíz
-antes de `go`/`buf`); Node 26 y pnpm 12 globales.
+Toolchain: Go 1.27.2 and buf 1.73.0 via `mise` (run `eval "$(mise env)"` at the root
+before `go`/`buf`); Node 26 and pnpm 12 global.
 
 ```bash
-pnpm install                       # dependencias del workspace del panel
-pnpm gen                           # buf generate → agent/gen y panel/packages/proto-ts/src/gen (se commitea)
+pnpm install                       # panel workspace dependencies
+pnpm gen                           # buf generate → agent/gen and panel/packages/proto-ts/src/gen (committed)
 pnpm lint:proto                    # buf lint
 (cd agent && go build ./... && go vet ./... && go test ./...)
-(cd agent && go test -race ./...)  # paquetes con goroutines
-(cd agent && go test -tags integration ./...)   # contra Docker real (lento)
-pnpm typecheck && pnpm test        # todos los paquetes del panel
-pnpm --filter @mcsm/web build      # build de la web
-pnpm dev:api                       # panel en :8080
-pnpm dev:web                       # web en :5173 (proxy a :8080)
+(cd agent && go test -race ./...)  # packages with goroutines
+(cd agent && go test -tags integration ./...)   # against real Docker (slow)
+pnpm typecheck && pnpm test        # all panel packages
+pnpm --filter @mcsm/web build      # web build
+pnpm dev:api                       # panel on :8080
+pnpm dev:web                       # web on :5173 (proxy to :8080)
 ```
 
-### Verificación completa (antes de cerrar un plan)
+### Full verification (before closing a plan)
 
 `eval "$(mise env)" && pnpm lint:proto && (cd agent && go vet ./... && go test -race ./...) && pnpm typecheck && pnpm test && pnpm --filter @mcsm/web build`
 
-## Convenciones
+## Conventions
 
-- Commits: conventional commits en español (`feat(agent): …`, `fix(panel): …`,
-  `test(web): …`, `docs: …`), pequeños. Línea final de co-autoría con el modelo que
-  escribió el cambio: `Co-Authored-By: Claude Opus 5.5|Sonnet 5.5|Haiku 5.5
-  <noreply@anthropic.com>` (sustituye la de `Claude Fable 5.1` que traen los planes).
-  Nunca `git push`, nunca reescribir historia, nunca `--no-verify`.
-- TDD en todo lo que tenga lógica. Salida de tests limpia.
-- No editar código generado (`buf generate`); se regenera.
-- Mensajes de UI y de error en castellano; identificadores de código en inglés.
-- Panel: TypeScript `strict`, ESM, `node:sqlite` con SQL a mano (sin ORM, sin
-  dependencias nativas), zod 4 compartido en `panel/packages/shared`.
-- Agente: dependencias externas tras interfaces con fakes, `context` en todo I/O,
-  `slog`, reloj inyectable, `-race` limpio.
+- Commits: conventional commits in English (`feat(agent): …`, `fix(panel): …`,
+  `test(web): …`, `docs: …`), small. Final co-authorship line with the model that
+  wrote the change: `Co-Authored-By: Claude Opus 5.5|Sonnet 5.5|Haiku 5.5
+  <noreply@anthropic.com>` (replaces the `Claude Fable 5.1` one the plans carry).
+  Never `git push`, never rewrite history, never `--no-verify`.
+- TDD for anything with logic. Clean test output.
+- Don't edit generated code (`buf generate`); it is regenerated.
+- UI and error messages in English; code identifiers in English.
+- Panel: TypeScript `strict`, ESM, `node:sqlite` with hand-written SQL (no ORM, no
+  native dependencies), zod 4 shared in `panel/packages/shared`.
+- Agent: external dependencies behind interfaces with fakes, `context` on all I/O,
+  `slog`, injectable clock, clean `-race`.
 
-## Docker en la máquina de desarrollo
+## Docker on the development machine
 
-Hay contenedores ajenos al proyecto en esta máquina. Tests y pruebas manuales solo
-crean/tocan recursos con prefijo `mcsm-test-` o etiqueta `mcsm.test=true`, y los
-limpian. Prohibido `docker system prune`, borrados masivos o tocar contenedores ajenos.
+There are containers on this machine that don't belong to the project. Tests and manual checks only
+create/touch resources prefixed `mcsm-test-` or labelled `mcsm.test=true`, and clean
+them up. `docker system prune`, mass deletions and touching other people's containers are forbidden.
 
-## Agentes
+## Agents
 
-Definidos en `.claude/agents/`. Regla general: **Haiku** para lo mecánico y para
-resumir, **Sonnet** para implementar y revisar tareas, **Opus** para diseñar, depurar
-lo difícil, lo concurrente y las revisiones finales y de seguridad.
+Defined in `.claude/agents/`. General rule: **Haiku** for the mechanical and for
+summarizing, **Sonnet** for implementing and reviewing tasks, **Opus** for designing, debugging
+the hard stuff, the concurrent, and the final and security reviews.
 
-| Agente | Modelo | Cuándo |
+| Agent | Model | When |
 |---|---|---|
-| `architect` | Opus | Dictámenes de conflicto, desbloquear BLOCKED, trocear tareas, cambios de protocolo |
-| `systems-expert` | Opus | Concurrencia/streaming/estado distribuido (conn WS, reconciliador, logs, transferencias, backup/restore, migración, NodeRegistry); rescate en rondas de fix 4-5 |
-| `debugger` | Opus | Tests que fallan sin causa obvia, intermitencias, `-race`, integración/E2E |
-| `final-reviewer` | Opus | Revisión de rama completa al cerrar un bloque o el plan |
-| `security-auditor` | Opus | Auth, tokens, archivos, transferencias, socket Docker; antes de desplegar |
-| `plan-writer` | Opus | Detallar los planes 2–9 de la hoja de ruta a partir del código existente |
-| `go-agent-dev` | Sonnet | Tareas Go del agente con requisitos claros |
-| `panel-api-dev` | Sonnet | API Fastify, SQLite, servicios, rutas, WS, agente falso |
-| `web-ui-dev` | Sonnet | Web React/shadcn/TanStack |
-| `infra-dev` | Sonnet | Dockerfiles, compose, buf, CI, integración Docker real, Playwright |
-| `task-reviewer` | Sonnet | Revisión por tarea (spec + calidad) |
-| `mechanical-dev` | Haiku | Tareas cuyo brief trae el código completo, scaffolding, config, codegen |
-| `re-reviewer` | Haiku | Re-revisión acotada de arreglos pequeños |
-| `test-runner` | Haiku | Ejecutar suites/lint/build y resumir fallos |
-| `docs-writer` | Haiku | README, guías de despliegue y uso |
+| `architect` | Opus | Conflict rulings, unblocking BLOCKED, splitting tasks, protocol changes |
+| `systems-expert` | Opus | Concurrency/streaming/distributed state (WS conn, reconciler, logs, transfers, backup/restore, migration, NodeRegistry); rescue in fix rounds 4-5 |
+| `debugger` | Opus | Tests that fail for no obvious reason, flakiness, `-race`, integration/E2E |
+| `final-reviewer` | Opus | Whole-branch review when closing a block or the plan |
+| `security-auditor` | Opus | Auth, tokens, files, transfers, Docker socket; before deploying |
+| `plan-writer` | Opus | Detailing plans 2–9 of the roadmap from the existing code |
+| `go-agent-dev` | Sonnet | Agent Go tasks with clear requirements |
+| `panel-api-dev` | Sonnet | Fastify API, SQLite, services, routes, WS, fake agent |
+| `web-ui-dev` | Sonnet | React/shadcn/TanStack web |
+| `infra-dev` | Sonnet | Dockerfiles, compose, buf, CI, real Docker integration, Playwright |
+| `task-reviewer` | Sonnet | Per-task review (spec + quality) |
+| `mechanical-dev` | Haiku | Tasks whose brief carries the complete code, scaffolding, config, codegen |
+| `re-reviewer` | Haiku | Bounded re-review of small fixes |
+| `test-runner` | Haiku | Run suites/lint/build and summarize failures |
+| `docs-writer` | Haiku | README, deployment and usage guides |
 
-### Flujo de trabajo con el plan
+### Workflow with the plan
 
-Se ejecuta con `superpowers:subagent-driven-development`. Por cada tarea:
+It is run with `superpowers:subagent-driven-development`. For each task:
 
-1. Elegir implementador: brief con código completo → `mechanical-dev`; Go →
+1. Choose the implementer: brief with complete code → `mechanical-dev`; Go →
    `go-agent-dev`; API → `panel-api-dev`; web → `web-ui-dev`; Docker/CI/E2E →
-   `infra-dev`; concurrencia, streaming o protocolo vivo → `systems-expert`.
-2. Revisión con `task-reviewer` (o `security-auditor` además, si la tarea toca auth,
-   tokens, archivos o transferencias).
-3. Arreglos: rondas 1-3 reanudan al implementador; rondas 4-5 pasan a
-   `systems-expert` o `debugger` (un nivel por encima). Re-revisión con `re-reviewer`
-   si el arreglo es pequeño, `task-reviewer` si no.
-4. BLOCKED/NEEDS_CONTEXT o conflicto con la spec → `architect`.
-5. Al cerrar cada plan: `test-runner` con la verificación completa, `final-reviewer`
-   (y `security-auditor` si el plan tocó superficie sensible), integrar la rama, y
-   `plan-writer` detalla el siguiente plan de la hoja de ruta.
+   `infra-dev`; concurrency, streaming or live protocol → `systems-expert`.
+2. Review with `task-reviewer` (or `security-auditor` as well, if the task touches auth,
+   tokens, files or transfers).
+3. Fixes: rounds 1-3 resume the implementer; rounds 4-5 move to
+   `systems-expert` or `debugger` (one level up). Re-review with `re-reviewer`
+   if the fix is small, `task-reviewer` if not.
+4. BLOCKED/NEEDS_CONTEXT or conflict with the spec → `architect`.
+5. When closing each plan: `test-runner` with the full verification, `final-reviewer`
+   (and `security-auditor` if the plan touched sensitive surface), merge the branch, and
+   `plan-writer` details the next plan of the roadmap.
 
-Pistas independientes (p. ej. agente Go y panel TS) pueden ir en paralelo, cada una en
-su propio worktree bajo `.worktrees/` (ignorado por git) y con conjuntos de ficheros
-disjuntos; nunca dos implementadores a la vez sobre el mismo working tree.
+Independent tracks (e.g. Go agent and TS panel) can go in parallel, each in
+its own worktree under `.worktrees/` (ignored by git) and with disjoint file
+sets; never two implementers at once on the same working tree.
 
-## Notas aprendidas
+## Learned notes
 
-(El controlador añade aquí trampas de librerías y decisiones que los agentes deben
-conocer.)
+(The controller adds here library pitfalls and decisions that agents must
+know.)
 
-- Versiones del Plan 1 que no existen en npm: `vitest ^4.3.0` → usa `^4.1.11`;
-  `@fastify/static ^8.4.0` → usa `^8.3.0`. El resto de versiones del plan existen.
-- Fastify: decora servicios/repos (`app.nodes`, `app.servers`, `app.agents`,
-  `app.events`, `app.serversService`…) en `buildApp()` o con `fastify-plugin`; nunca
-  dentro de un plugin encapsulado (quedan invisibles para el resto). Las rutas sí van
-  encapsuladas. Errores HTTP: lanza `HttpError` (`panel/apps/api/src/lib/http.ts`; también
-  re-exportado desde `servers/service.ts`) y deja que el manejador global (registrado en
-  `buildApp`) responda `{ error: "mensaje en castellano" }`: 5xx genéricos ("Error interno")
-  salvo 502/504; ZodError → 400; un `AgentError` se traduce con `agentErrorToHttp` (502 con
-  el texto del agente/Docker, spec §10). No hace falta `setErrorHandler` propio.
-- Códigos de `Error.code` del agente: catálogo en el comentario de `message Error`
-  (`agent.proto`), constantes en `agent/internal/errcode` y
-  `panel/apps/api/src/agents/error-codes.ts`; un código nuevo va a los tres sitios y, si no
-  es 502, a la tabla de `agentErrorToHttp`. El agente responde `unsupported` a cuerpos que no
-  conoce y nunca contesta a un Ack/Error.
-- `AgentConn.ready`: ninguna petición sale al agente antes del Ack de `SyncSpecs`;
-  `request`/`openStream` esperan solas (plazo vencido retenida → `syncing`, 409). El agente
-  confirma `SyncSpecs` tras guardar en el store y reconcilia en segundo plano.
-- Guard de sesión: decide por la ruta enrutada (`req.routeOptions.url`), no por
-  `req.url` (los paths percent-encoded saltaban la auth). Allowlist pública exacta.
-- `@fastify/websocket` se registra una sola vez en toda la app (antes de `authPlugin`).
-- Migraciones: nunca edites una aplicada; añade una nueva al array (se aplican por
-  nombre, en orden del array).
-- Protocolo agente↔panel: solo `ack`/`error`/`commandResult` con `id≠0` resuelven
-  peticiones del panel; los mensajes no solicitados del agente van con `id=0`.
-  `AgentConn.request/openStream` fallan al instante con `AgentError("disconnected")`.
-  `openStream` registra el stream antes de pedirlo.
-- Agente: usa `rec.Apply(ctx, spec)` (guarda de versión + PutSpec + Reconcile bajo el
-  lock por servidor), nunca PutSpec+Reconcile a mano; `rec.Remove` borra la spec
-  dentro del lock. El observer del reconciliador se invoca con el lock tomado: no
-  reentrar. RCON con cliente Source propio (`internal/mc`), no `mcutil/rcon`.
-- Agente: las operaciones que mutan Docker o disco usan el contexto de vida del agente
-  (`App.life`), no el `ctx` de la sesión WS que recibe `Handle`; el de la sesión es solo
-  para streams de logs y comandos RCON cuyo resultado va a esa sesión; las
-  transferencias (escriben en disco) usan `App.life`. `send` sigue ligado a la sesión.
-- Agente: `Power` solo persiste el estado deseado si la acción Docker tiene éxito. El
-  `Hello` lleva `spec_versions` y `desired_states`; el panel reenvía en `SyncSpecs` lo que
-  difiera en cualquiera de los dos (`specDiffers`).
-- `BuildContainer` y `mcsm.spec_hash`: cambiar su salida recrea **todos** los contenedores
-  al actualizar el agente. El hash se calcula sobre `hashInput` (forma canónica propia +
-  `hashSchema`); lo que se añada al contenedor debe entrar en `hashInput`, y los campos
-  nuevos de spec deben dejar el hash igual cuando vienen vacíos (`omitempty`, nada en el
-  env). `TestHashGolden` fija el hash de la fixture. Contenedores con `CapDrop ALL` + el
-  mínimo de itzg, `no-new-privileges`, `PidsLimit` 4096 y memoria `memory + 1G` sin
+- Plan 1 versions that don't exist on npm: `vitest ^4.3.0` → use `^4.1.11`;
+  `@fastify/static ^8.4.0` → use `^8.3.0`. The rest of the plan's versions exist.
+- Fastify: decorate services/repos (`app.nodes`, `app.servers`, `app.agents`,
+  `app.events`, `app.serversService`…) in `buildApp()` or with `fastify-plugin`; never
+  inside an encapsulated plugin (they become invisible to the rest). Routes do go
+  encapsulated. HTTP errors: throw `HttpError` (`panel/apps/api/src/lib/http.ts`; also
+  re-exported from `servers/service.ts`) and let the global handler (registered in
+  `buildApp`) respond `{ error: "message in English" }`: generic 5xx ("Internal error")
+  except 502/504; ZodError → 400; an `AgentError` is translated with `agentErrorToHttp` (502 with
+  the agent/Docker text, spec §10). No need for your own `setErrorHandler`.
+- Agent `Error.code` codes: catalog in the comment of `message Error`
+  (`agent.proto`), constants in `agent/internal/errcode` and
+  `panel/apps/api/src/agents/error-codes.ts`; a new code goes in all three places and, if it is not
+  502, in the `agentErrorToHttp` table. The agent responds `unsupported` to bodies it doesn't
+  know and never replies to an Ack/Error.
+- `AgentConn.ready`: no request goes out to the agent before the `SyncSpecs` Ack;
+  `request`/`openStream` wait on their own (expired deadline held → `syncing`, 409). The agent
+  acknowledges `SyncSpecs` after saving to the store and reconciles in the background.
+- Session guard: decides by the routed route (`req.routeOptions.url`), not by
+  `req.url` (percent-encoded paths used to skip auth). Exact public allowlist.
+- `@fastify/websocket` is registered only once in the whole app (before `authPlugin`).
+- Migrations: never edit an applied one; add a new one to the array (they are applied by
+  name, in array order).
+- Agent↔panel protocol: only `ack`/`error`/`commandResult` with `id≠0` resolve
+  panel requests; unsolicited agent messages go with `id=0`.
+  `AgentConn.request/openStream` fail immediately with `AgentError("disconnected")`.
+  `openStream` registers the stream before requesting it.
+- Agent: use `rec.Apply(ctx, spec)` (version guard + PutSpec + Reconcile under the
+  per-server lock), never PutSpec+Reconcile by hand; `rec.Remove` deletes the spec
+  inside the lock. The reconciler's observer is invoked with the lock held: don't
+  re-enter. RCON with our own Source client (`internal/mc`), not `mcutil/rcon`.
+- Agent: operations that mutate Docker or disk use the agent's lifetime context
+  (`App.life`), not the `ctx` of the WS session that receives `Handle`; the session's is only
+  for log streams and RCON commands whose result goes to that session; transfers
+  (which write to disk) use `App.life`. `send` stays tied to the session.
+- Agent: `Power` only persists the desired state if the Docker action succeeds. The
+  `Hello` carries `spec_versions` and `desired_states`; the panel resends in `SyncSpecs` whatever
+  differs in either of the two (`specDiffers`).
+- `BuildContainer` and `mcsm.spec_hash`: changing its output recreates **all** containers
+  when the agent is updated. The hash is computed over `hashInput` (own canonical form +
+  `hashSchema`); whatever is added to the container must enter `hashInput`, and new spec
+  fields must leave the hash unchanged when empty (`omitempty`, nothing in the
+  env). `TestHashGolden` pins the fixture's hash. Containers with `CapDrop ALL` + the
+  itzg minimum, `no-new-privileges`, `PidsLimit` 4096 and memory `memory + 1G` without
   `memLimit`.
-- Web: toda ruta de la API con valores se construye con `apiPath` (`lib/api.ts`), que
-  codifica cada valor: ``api.get(apiPath`/api/servers/${id}`)``.
-- Fake de Docker (`internal/docker/fake.go`): semántica real (puertos se enlazan en
-  Start; Kill sobre parado = conflicto). Mantén `CreateErr`, `Calls`, `Pulled`.
-- WS del navegador: `log_reset {serverId}` precede a la cola de líneas al (re)abrir
-  (la consola se vacía), `log_dropped {serverId,count}`, `error {message}`,
-  `stream_closed`. La web invalida sus queries en `realtime.onReconnect`.
-- Web: shadcn se usa con `pnpm dlx shadcn@3.8.5` (variante Radix), nunca `@latest`.
-  `cn` = clsx + tailwind-merge. Tests con vitest (`pnpm --filter @mcsm/web test`).
-- Validación de spec (Go y zod idénticas): nombres de env `^[A-Za-z_][A-Za-z0-9_]*$`
-  y reservadas; memoria `^[1-9]\d*[MmGg]$`; puertos extra sin container 25575;
-  properties con clave `^[a-z0-9][a-z0-9._-]*$`, sin saltos de línea y sin
+- Web: every API route with values is built with `apiPath` (`lib/api.ts`), which
+  encodes each value: ``api.get(apiPath`/api/servers/${id}`)``.
+- Docker fake (`internal/docker/fake.go`): real semantics (ports are bound at
+  Start; Kill on a stopped container = conflict). Keep `CreateErr`, `Calls`, `Pulled`.
+- Browser WS: `log_reset {serverId}` precedes the line backlog on (re)open
+  (the console is cleared), `log_dropped {serverId,count}`, `error {message}`,
+  `stream_closed`. The web invalidates its queries in `realtime.onReconnect`.
+- Web: shadcn is used with `pnpm dlx shadcn@3.8.5` (Radix variant), never `@latest`.
+  `cn` = clsx + tailwind-merge. Tests with vitest (`pnpm --filter @mcsm/web test`).
+- Spec validation (Go and zod identical): env names `^[A-Za-z_][A-Za-z0-9_]*$`
+  and reserved ones; memory `^[1-9]\d*[MmGg]$`; extra ports without container 25575;
+  properties with key `^[a-z0-9][a-z0-9._-]*$`, without line breaks and without
   `server-port`/`enable-rcon`/`rcon.port`/`rcon.password`; `imageTag`
-  `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, por defecto `latest`. Slug autogenerado repetido
-  → sufijo `-2`, `-3`…
-- Tests sin `time.Sleep`/`setTimeout` para sincronizar: relojes y planificadores
-  inyectables.
-- Web: el panel se sirve por HTTP en la LAN (sin contexto seguro): nada de
-  `crypto.randomUUID()` ni APIs que exijan HTTPS sin fallback; ids con
+  `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`, `latest` by default. Repeated autogenerated slug
+  → suffix `-2`, `-3`…
+- Tests without `time.Sleep`/`setTimeout` to synchronize: injectable clocks and
+  schedulers.
+- Web: the panel is served over HTTP on the LAN (no secure context): no
+  `crypto.randomUUID()` or APIs that require HTTPS without a fallback; ids with
   `crypto.getRandomValues`.
 
-- PATCH de spec = merge de primer nivel: `null` solo borra secciones opcionales; `null` en una
-  clave obligatoria es 400. Una sección ausente ≠ presente y vacía (`[]` emite SYNCHRONIZE).
-  Una sección presente (ops/whitelist) prohíbe en `env` las variables que genera.
-- Topes de la spec iguales en Go y zod (listas ≤ 1000, strings ≤ 4 KiB, URLs ≤ 2 KiB) y
-  spec serializada ≤ 64 KiB en el panel tras el merge. Divergencias Go/zod solo en la
-  dirección segura (zod igual o más estricto) y con fixture compartida en `proto/fixtures/`.
-- `toServerSpecMessage(row, curseforgeApiKey)`: la key es obligatoria en todo emisor de
-  `ApplySpec`/`SyncSpecs` (si falta, los servidores CurseForge se recrean en bucle).
-- Web: un `<form>` dentro de un diálogo anidado en otro formulario hace `stopPropagation`
-  en su submit (React propaga por el árbol aunque el diálogo esté en un portal).
-- `routes/server.tsx` tiene DOS anclas por plan: la primera (dentro de `<TabsList>`) solo
-  para `TabsTrigger`; la segunda (tras `</TabsList>` y el último `TabsContent`) para
-  `TabsContent`. Comprueba con `grep -n` que ningún `TabsContent` queda dentro de `TabsList`.
-- Web: vitest corre en node sin jsdom; la lógica de UI va en funciones puras con test. Cachés
-  con `mergeIntoCached` y, al resincronizar formularios, no pisar ediciones sin guardar
-  (decisión pura con test, patrón `shouldResyncNumber`).
-- Relojes: el panel acepta el `ts` del agente con ±45 s (`MAX_CLOCK_SKEW_SECONDS` en shared);
-  la frescura en la web se mide con la hora de llegada local.
-- Cron: solo ASCII imprimible y espacio/tab, igual en Go y zod (fixture `cron-cases.json`).
-- E2E con Docker en esta máquina: nftables descarta contenedor → host, así que todo va en
-  contenedores. `bash deploy/e2e/run.sh` (proyecto `mcsm-test-e2e`, panel en 18080, puertos
-  de juego 26600–26620, nodo B en `docker:dind` unido a la red de los servidores, Playwright
-  en su contenedor) corre la suite de `panel/apps/e2e` y deja capturas en
-  `panel/apps/e2e/screenshots/` (así se hacen las comprobaciones visuales: Claude in Chrome no
-  abre `localhost:8080`). En esta máquina hay PRODUCCIÓN del usuario (`mcsm-panel-1`,
-  `mcsm-agent-1`, `mcsm-agent`, red `mcsm`, volúmenes `mcsm_*`, puertos 8080 y 25565–25600):
-  compara `docker ps -a`/`network ls`/`volume ls` antes y después de cualquier prueba.
-- Tras cada fusión busca duplicados que git no marca: claves YAML repetidas (`docker compose
-  config`), flags repetidos en snippets, `var`/`const` homónimas en un paquete Go, tests
-  duplicados; y compara `pnpm gen` con lo commiteado.
-- Archivos (`Files*`) que escriben responden `busy` si `rec.Held(id)`. Protocolo `fileWrites`:
-  la mutación hace `enter` antes de mirar `Held`; la restauración hace `Hold` antes de
-  `drained` (≤ 10 s, si no drena → busy). Toda operación nueva que escriba en `data`
-  (importación, migración) usa el mismo contador y la misma comprobación.
-- Copias: los temporales de subida (`files.TempGlob` = `.mcsm-tmp-` + 16 hex, `files.IsTempName`)
-  quedan fuera siempre, también con un `Excluder` nil; un `.mcsm-tmp-x` del usuario es normal. Toda sección de la spec cambia vía `serversService.patch` (p. ej. la programación es
-  `patch(id, {spec:{backups}})`), nunca `servers.updateSpec` directo desde otro servicio.
-- Cierre del agente: esperas en paralelo con `waitAll`, total ≤ 25 s frente a
-  `stop_grace_period: 30s` / `--stop-timeout 30`; una espera nueva entra en `waitAll`.
-- Avisos de copias (`BackupCreated`/`BackupDeleted`/inventario) van por la `outbox` FIFO, no
-  por el `send` de la sesión; lo encolado puede llegar tras el siguiente `Hello`: no
-  interpretes un mensaje no solicitado con el estado de la sesión actual sin correlacionarlo.
-  El panel aplica la vía negativa del inventario (borradas/perdidas) solo si
-  `BackupInventory.request_id` coincide con su último `BackupList` del nodo y a filas con
-  `created_at < since`; el periódico (0) o uno viejo solo aplican lo positivo. Los ids de
-  envelope del panel salen de `AgentHub.allocateId` (no se repiten entre sesiones); para
-  correlacionar, `conn.requestTracked`.
-- Reserva y jobs: como mucho 2 copias/restauraciones por nodo (`withSlot`, antes de
-  `save-off`/`Stop`); mientras esperan, el servidor sigue reservado (Power 409, Files busy).
-  Sondas de Docker en operaciones peligrosas con `rec.Container` (devuelve error), nunca
+- Spec PATCH = first-level merge: `null` only deletes optional sections; `null` on a
+  required key is 400. An absent section ≠ present and empty (`[]` emits SYNCHRONIZE).
+  A present section (ops/whitelist) forbids in `env` the variables it generates.
+- Spec caps equal in Go and zod (lists ≤ 1000, strings ≤ 4 KiB, URLs ≤ 2 KiB) and
+  serialized spec ≤ 64 KiB in the panel after the merge. Go/zod divergences only in the
+  safe direction (zod equal or stricter) and with a shared fixture in `proto/fixtures/`.
+- `toServerSpecMessage(row, curseforgeApiKey)`: the key is mandatory in every emitter of
+  `ApplySpec`/`SyncSpecs` (if missing, CurseForge servers get recreated in a loop).
+- Web: a `<form>` inside a dialog nested in another form calls `stopPropagation`
+  on its submit (React propagates through the tree even if the dialog is in a portal).
+- `routes/server.tsx` has TWO anchors per plan: the first (inside `<TabsList>`) only
+  for `TabsTrigger`; the second (after `</TabsList>` and the last `TabsContent`) for
+  `TabsContent`. Check with `grep -n` that no `TabsContent` ends up inside `TabsList`.
+- Web: vitest runs in node without jsdom; UI logic goes in pure functions with tests. Caches
+  with `mergeIntoCached` and, when resyncing forms, don't overwrite unsaved edits
+  (pure decision with a test, `shouldResyncNumber` pattern).
+- Clocks: the panel accepts the agent's `ts` within ±45 s (`MAX_CLOCK_SKEW_SECONDS` in shared);
+  freshness in the web is measured with the local arrival time.
+- Cron: only printable ASCII and space/tab, the same in Go and zod (fixture `cron-cases.json`).
+- E2E with Docker on this machine: nftables drops container → host, so everything runs in
+  containers. `bash deploy/e2e/run.sh` (project `mcsm-test-e2e`, panel on 18080, game ports
+  26600–26620, node B in `docker:dind` joined to the servers' network, Playwright
+  in its own container) runs the `panel/apps/e2e` suite and leaves screenshots in
+  `panel/apps/e2e/screenshots/` (that is how visual checks are done: Claude in Chrome can't
+  open `localhost:8080`). On this machine there is the user's PRODUCTION (`mcsm-panel-1`,
+  `mcsm-agent-1`, `mcsm-agent`, network `mcsm`, volumes `mcsm_*`, ports 8080 and 25565–25600):
+  compare `docker ps -a`/`network ls`/`volume ls` before and after any test.
+- After every merge look for duplicates git doesn't flag: repeated YAML keys (`docker compose
+  config`), repeated flags in snippets, same-named `var`/`const` in a Go package, duplicated
+  tests; and compare `pnpm gen` with what is committed.
+- Files (`Files*`) that write respond `busy` if `rec.Held(id)`. `fileWrites` protocol:
+  the mutation does `enter` before looking at `Held`; the restore does `Hold` before
+  `drained` (≤ 10 s, if it doesn't drain → busy). Every new operation that writes to `data`
+  (import, migration) uses the same counter and the same check.
+- Backups: upload temporaries (`files.TempGlob` = `.mcsm-tmp-` + 16 hex, `files.IsTempName`)
+  are always excluded, even with a nil `Excluder`; a user's `.mcsm-tmp-x` is normal. Every spec section changes via `serversService.patch` (e.g. the schedule is
+  `patch(id, {spec:{backups}})`), never `servers.updateSpec` directly from another service.
+- Agent shutdown: waits in parallel with `waitAll`, total ≤ 25 s against
+  `stop_grace_period: 30s` / `--stop-timeout 30`; a new wait goes into `waitAll`.
+- Backup notices (`BackupCreated`/`BackupDeleted`/inventory) go through the FIFO `outbox`, not
+  through the session's `send`; what is queued may arrive after the next `Hello`: don't
+  interpret an unsolicited message with the current session's state without correlating it.
+  The panel applies the inventory's negative path (deleted/lost) only if
+  `BackupInventory.request_id` matches its last `BackupList` for the node and to rows with
+  `created_at < since`; the periodic one (0) or an old one only applies the positive. The panel's
+  envelope ids come from `AgentHub.allocateId` (not repeated across sessions); to
+  correlate, `conn.requestTracked`.
+- Reservation and jobs: at most 2 backups/restores per node (`withSlot`, before
+  `save-off`/`Stop`); while they wait, the server stays reserved (Power 409, Files busy).
+  Docker probes in dangerous operations with `rec.Container` (returns an error), never
   `ContainerID`.
-  `reconcile.ErrBusy` es neutro («servidor ocupado o reservado»): envuélvelo con
-  `reconcile.Busy(reason)`; `rec.HeldReason(id)` da el motivo de la reserva.
-- Espacio: lo que escribe mucho en el nodo (copias, restauraciones, importación, migración)
-  exige estimación + `max(5 %, 256 MiB)` libres y vigila durante la escritura.
-- Topes encadenados: `maxPayload` 4 MiB ↔ inventario 3 MiB ↔ `readLimit` del agente 4 MiB ↔
-  spec 64 KiB ↔ `FilesReadResult` 2 MiB. Si cambia uno, revisa los demás.
-- Plantillas: `templateSpecSchema = {...baseFields}`; toda sección nueva viaja en plantillas
-  salvo que se excluya en `specToTemplate` (`dataPath` va fuera de `baseFields`).
-- Web: el contenido de cada pestaña del servidor lleva `key={s.id}`; todo formulario con
-  estado sucio registra `useTabGuard` (y `useBlocker`); los diálogos con `<form>` usan
+  `reconcile.ErrBusy` is neutral (“server busy or reserved”): wrap it with
+  `reconcile.Busy(reason)`; `rec.HeldReason(id)` gives the reservation's reason.
+- Space: whatever writes a lot on the node (backups, restores, import, migration)
+  requires estimate + `max(5 %, 256 MiB)` free and watches during the write.
+- Chained caps: `maxPayload` 4 MiB ↔ inventory 3 MiB ↔ agent `readLimit` 4 MiB ↔
+  spec 64 KiB ↔ `FilesReadResult` 2 MiB. If one changes, review the others.
+- Templates: `templateSpecSchema = {...baseFields}`; every new section travels in templates
+  unless excluded in `specToTemplate` (`dataPath` lives outside `baseFields`).
+- Web: the content of each server tab carries `key={s.id}`; every form with
+  dirty state registers `useTabGuard` (and `useBlocker`); dialogs with `<form>` use
   `dialogSubmit`.
-- Verificación completa: añade `buf breaking --against ".git#ref=main"` (funciona en
-  worktrees) y `go vet -tags integration ./...`.
-- Docker 29.7.2: tras un `start` fallido por el puerto, el siguiente arranca **sin publicar
-  puertos** (aunque se pare y se vuelva a arrancar). Por eso `startOrDiscard` (arrancar,
-  comprobar `Inspect.PortsMissing` y, si falla, borrar para recrear; nunca un `Adopted`) y el
-  fake lo reproduce. Todo `Start` nuevo de un servidor pasa por `startOrDiscard`.
-- mc-router con autoscale arranca y para contenedores por su cuenta e **ignora `Hold`**: lo que
-  reserve un servidor bajo demanda (restauración, copia en frío, bloqueo) lo aparca con
-  `rec.Park`. mc-router **no despierta contenedores que nunca arrancaron**: un bajo demanda
-  recién creado o recreado se arranca (él lo duerme); por eso no se migra uno bajo demanda
-  (Park + liberar lo arrancaría en el origen).
-- Router: hash propio en `mcsm.router_hash` (no toca `mcsm.spec_hash`) e imagen fijada por
-  digest (`router.ImageRef()`); subir de versión = tag + digest nuevos.
-- Logs de contenedores sin TTY (importados adoptados): Docker los multiplexa; `Moby.Logs` mira
-  `Config.Tty` y los separa con `stdcopy` (`demuxLogs`).
-- E2E con `docker:dind`: monta su tmpfs en `/tmp` y tapa los binds de rutas bajo `/tmp`; usa
-  `deploy/data` para el `DATA_ROOT` de los nodos dind.
-- Tras cada fusión, también `go vet -tags integration ./...` (los tests de integración no
-  compilan en `go vet` normal y ahí aparecen los duplicados).
-- Copias en caliente: `CreateRequest.Running` obligatorio (mismo ID y `StartedAt` del contenedor
-  al cerrar el tar y antes del `.json`); un fichero que cambia mientras se lee →
-  `ErrSourceChanged`; una copia fallida (también con `save-on` fallido) nunca deja fichero ni se
-  anuncia. Ventana residual conocida: un stop que empieza durante el tar con Minecraft aún
-  guardando en ambas comprobaciones (para servidores bajo demanda, preferir copias en frío).
-- Bucles de crash (§10): el motor del agente va envuelto (`crashloop.Engine`) y cada
-  Stop/Kill/Remove, y cada parada que el proxy deja hacer a mc-router, anota en
-  `crashloop.Intents` una intención que absorbe UN `die` de ese contenedor (3 min). Cuentan los
-  `die` con exit ≠ 0 no pedidos y sin reserva; >3 en 1 h → `CrashLoopStop` retiene (bucket
-  `crash_latch`, atado a la versión) hasta Power start/restart o versión nueva; `StartGen`
-  descarta paradas en cola tras un Arrancar o una versión nueva. El panel pone el deseado en
-  parado si el `ts` del `crash_loop` es posterior a `servers.desired_changed_at` (todo cambio de
-  `desired_state` actualiza esa columna).
-- `Event` (Envelope 24) es no solicitado (id = 0) y sale por la cola `App.events` (outbox): sin
-  conexión se pierde; lo importante queda también en `Observed.error`. Kinds en `agent.proto`;
-  el panel añade `token_rotated`. Envelope 24/120/121 y migraciones 080–082 ya están usados.
-- mc-router nunca recibe el socket de Docker: monta de solo lectura el DIRECTORIO
-  `<DATA_ROOT>/.mcsm-router/` y habla con el socket filtrado del agente (`dockerproxy`: solo
-  contenedores con `mc-router.host`, sin cuerpos, API ≥ 1.24, start/stop por `routerPolicy`) y
-  se reconecta solo si el agente se reinicia. Tocar binds/cmd del router cambia
-  `mcsm.router_hash` (se recrea una vez al actualizar).
-- Panel: escrituras bajo `/api/` con `Origin` ajeno → 403 (sin `Origin` pasan: agente, curl).
-  URL pública y rango de puertos salen de `app.settings` (`SettingsService`), nunca de
-  `config.publicUrl`/`config.gamePortRange`. Cambiar la contraseña borra todas las sesiones,
-  da cookie nueva y cierra sus WS con 4401 (la web usa `expectSessionChange` y
-  `holdUnauthorized` durante la mutación). Rotación de token: hash pendiente guardado antes de
-  enviar `RotateToken`, promovido en la primera conexión con él.
-- Hora del agente: las filas (jobs, eventos) se crean con la hora del PANEL; la del agente solo
-  en `started_at`/`finished_at`/`agentAt`, saneada con `lib/time.ts`.
-- save-on pendiente: reintento en segundo plano con `rec.TryHold` (nunca espera al lock), RCON
-  ≤ 5 s y backoff 30 s → 5 min.
-- `build` (plan 10): variable de itzg por tipo (`BUILD_ENV` en shared, `buildEnvKeys` en Go; Folia es
-  `FOLIABUILD`, sin guion bajo). Vacío no emite nada (hash intacto); con valor exige tipo con build y
-  versión concreta, y prohíbe su variable en `env` (fixture `build-cases.json`). La web no añade `build`
-  a specs antiguas que no lo tienen (sin diff fantasma).
-- Listas de versiones: `app.versions` (`VersionCatalog`, `api/src/versions/`) consulta las fuentes
-  oficiales con caché en memoria (listas 1 h, builds 15 min, stale si la fuente cae); los tests inyectan
-  `fetch` y nunca tocan la red. Fuente nueva = adaptador en `versions/sources.ts` + host en
-  `allowedSource`. Solo builds STABLE de Paper/Folia (los experimentales exigen `*_CHANNEL`).
-- CI y releases: `.github/workflows/ci.yml` (push a main, PR y `workflow_call`) y `release.yml` (al publicar una
-  Release; el tag debe ser `v<agent/VERSION>` o falla). Publica `ghcr.io/javilobo8/mcsm-{panel,agent}` para amd64 y
-  arm64 en runners nativos (push-by-digest + `imagetools create`). Actions fijadas por SHA con `# vX.Y.Z`; base de
-  imágenes multiarquitectura (un digest solo amd64 rompe arm64). La imagen del panel fija `MCSM_AGENT_IMAGE`
-  (build-arg `AGENT_IMAGE`) al agente de su versión; `config.agentImage` va en el `docker run` de «Añadir nodo».
-- Los compose de `deploy/` usan las imágenes de GHCR (`MCSM_VERSION`, vacío = latest); construir desde el código =
-  añadir `-f deploy/docker-compose.build.yml` (la E2E lo hace). Producción en esta máquina se actualiza con ese
-  override hasta que exista una release publicada.
-- Tests Go que arrancan el bucle de eventos: `runEventLoop(t, a)`, nunca `go a.eventLoop(ctx)` (debe salir antes del
-  `bg.Wait` de la limpieza de `newApp`, o `-race` salta). La CI corre en runners de 4 CPUs: un test que dependa de que
-  el planificador deje correr a otra goroutine falla; pruébalo con `GOMAXPROCS=1`.
-- El README («Despliegue») lleva copias literales de `deploy/docker-compose.yml`, `deploy/docker-compose.node.yml` y del
-  `docker run` de `dockerRunSnippet`: si cambian, actualiza el README (y sus `.env` de ejemplo).
+- Full verification: add `buf breaking --against ".git#ref=main"` (works in
+  worktrees) and `go vet -tags integration ./...`.
+- Docker 29.7.2: after a `start` that failed because of the port, the next one starts **without publishing
+  ports** (even if it is stopped and started again). Hence `startOrDiscard` (start,
+  check `Inspect.PortsMissing` and, if it fails, delete to recreate; never an `Adopted` one) and the
+  fake reproduces it. Every new `Start` of a server goes through `startOrDiscard`.
+- mc-router with autoscale starts and stops containers on its own and **ignores `Hold`**: whatever
+  reserves an on-demand server (restore, cold backup, lock) parks it with
+  `rec.Park`. mc-router **doesn't wake containers that never started**: a newly
+  created or recreated on-demand one is started (it puts it to sleep); that is why an on-demand one isn't migrated
+  (Park + release would start it on the source).
+- Router: own hash in `mcsm.router_hash` (doesn't touch `mcsm.spec_hash`) and image pinned by
+  digest (`router.ImageRef()`); bumping the version = new tag + digest.
+- Logs of containers without a TTY (adopted imports): Docker multiplexes them; `Moby.Logs` looks at
+  `Config.Tty` and separates them with `stdcopy` (`demuxLogs`).
+- E2E with `docker:dind`: it mounts its tmpfs on `/tmp` and hides binds of paths under `/tmp`; use
+  `deploy/data` for the dind nodes' `DATA_ROOT`.
+- After every merge, also `go vet -tags integration ./...` (integration tests don't
+  compile under plain `go vet` and duplicates show up there).
+- Hot backups: `CreateRequest.Running` mandatory (same container ID and `StartedAt`
+  when closing the tar and before the `.json`); a file that changes while being read →
+  `ErrSourceChanged`; a failed backup (also with a failed `save-on`) never leaves a file nor is
+  announced. Known residual window: a stop that begins during the tar with Minecraft still
+  saving in both checks (for on-demand servers, prefer cold backups).
+- Crash loops (§10): the agent's engine is wrapped (`crashloop.Engine`) and every
+  Stop/Kill/Remove, and every stop the proxy lets mc-router do, records in
+  `crashloop.Intents` an intent that absorbs ONE `die` of that container (3 min). Counted are the
+  `die` with exit ≠ 0 that were not requested and have no reservation; >3 in 1 h → `CrashLoopStop` latches (bucket
+  `crash_latch`, tied to the version) until Power start/restart or a new version; `StartGen`
+  discards queued stops after a Start or a new version. The panel sets the desired state to
+  stopped if the `crash_loop`'s `ts` is later than `servers.desired_changed_at` (every change of
+  `desired_state` updates that column).
+- `Event` (Envelope 24) is unsolicited (id = 0) and goes out through the `App.events` queue (outbox): without a
+  connection it is lost; the important part also stays in `Observed.error`. Kinds in `agent.proto`;
+  the panel adds `token_rotated`. Envelope 24/120/121 and migrations 080–083 are already used.
+- mc-router never receives the Docker socket: it mounts read-only the DIRECTORY
+  `<DATA_ROOT>/.mcsm-router/` and talks to the agent's filtered socket (`dockerproxy`: only
+  containers with `mc-router.host`, no bodies, API ≥ 1.24, start/stop by `routerPolicy`) and
+  reconnects on its own if the agent restarts. Touching the router's binds/cmd changes
+  `mcsm.router_hash` (it is recreated once on update).
+- Panel: writes under `/api/` with a foreign `Origin` → 403 (without `Origin` they pass: agent, curl).
+  Public URL and port range come from `app.settings` (`SettingsService`), never from
+  `config.publicUrl`/`config.gamePortRange`. Changing the password deletes all sessions,
+  issues a new cookie and closes their WS with 4401 (the web uses `expectSessionChange` and
+  `holdUnauthorized` during the mutation). Token rotation: pending hash stored before
+  sending `RotateToken`, promoted on the first connection with it.
+- Agent time: rows (jobs, events) are created with the PANEL's time; the agent's only
+  in `started_at`/`finished_at`/`agentAt`, sanitized with `lib/time.ts`.
+- Pending save-on: background retry with `rec.TryHold` (never waits for the lock), RCON
+  ≤ 5 s and backoff 30 s → 5 min.
+- `build` (plan 10): itzg variable per type (`BUILD_ENV` in shared, `buildEnvKeys` in Go; Folia is
+  `FOLIABUILD`, no underscore). Empty emits nothing (hash intact); with a value it requires a type with build and
+  a concrete version, and forbids its variable in `env` (fixture `build-cases.json`). The web doesn't add `build`
+  to old specs that don't have it (no phantom diff).
+- Version lists: `app.versions` (`VersionCatalog`, `api/src/versions/`) queries the official
+  sources with an in-memory cache (lists 1 h, builds 15 min, stale if the source goes down); tests inject
+  `fetch` and never touch the network. New source = adapter in `versions/sources.ts` + host in
+  `allowedSource`. Only STABLE builds of Paper/Folia (experimental ones require `*_CHANNEL`).
+- CI and releases: `.github/workflows/ci.yml` (push to main, PR and `workflow_call`) and `release.yml` (when publishing a
+  Release; the tag must be `v<agent/VERSION>` or it fails). Publishes `ghcr.io/javilobo8/mcsm-{panel,agent}` for amd64 and
+  arm64 on native runners (push-by-digest + `imagetools create`). Actions pinned by SHA with `# vX.Y.Z`; multi-arch
+  base images (an amd64-only digest breaks arm64). The panel image pins `MCSM_AGENT_IMAGE`
+  (build-arg `AGENT_IMAGE`) to the agent of its version; `config.agentImage` goes in the `docker run` from “Add node”.
+- The `deploy/` composes use the GHCR images (`MCSM_VERSION`, empty = latest); building from source =
+  add `-f deploy/docker-compose.build.yml` (the E2E does). Production on this machine is updated with that
+  override until a published release exists.
+- Go tests that start the event loop: `runEventLoop(t, a)`, never `go a.eventLoop(ctx)` (it must exit before the
+  `bg.Wait` of `newApp`'s cleanup, or `-race` trips). CI runs on 4-CPU runners: a test that depends on
+  the scheduler letting another goroutine run fails; try it with `GOMAXPROCS=1`.
+- The README (“Deployment”) carries literal copies of `deploy/docker-compose.yml`, `deploy/docker-compose.node.yml` and of the
+  `docker run` from `dockerRunSnippet`: if they change, update the README (and its example `.env` files).

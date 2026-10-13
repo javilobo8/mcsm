@@ -1,17 +1,17 @@
 import type { z } from "zod";
 
 /**
- * Selector de versiones (plan 10, spec docs/superpowers/specs/2026-10-13-selector-versiones-design.md):
- * tipos con lista de versiones, campo `build` de la spec y su variable de itzg, comparación de
- * versiones y Java mínima. Las reglas de `build` son espejo de agent/internal/spec/build.go; los casos
- * de proto/fixtures/build-cases.json se prueban en los dos lados.
+ * Version selector (plan 10, spec docs/superpowers/specs/2026-10-13-version-selector-design.md):
+ * types with a version list, the spec's `build` field and its itzg variable, version
+ * comparison and minimum Java. The `build` rules mirror agent/internal/spec/build.go; the cases
+ * in proto/fixtures/build-cases.json are tested on both sides.
  */
 
-/** Tipos con lista de versiones de Minecraft (los modpacks y los desconocidos van con texto libre). */
+/** Types with a Minecraft version list (modpacks and unknown ones use free text). */
 export const VERSION_LIST_TYPES = ["VANILLA", "PAPER", "FOLIA", "PURPUR", "SPIGOT", "FABRIC", "QUILT", "FORGE", "NEOFORGE"] as const;
 export type VersionListType = (typeof VERSION_LIST_TYPES)[number];
 
-/** Variable de itzg que genera `build` según el tipo; solo estos tipos admiten build. Folia: FOLIABUILD (scripts/start-deployFolia). */
+/** itzg variable that `build` generates by type; only these types allow a build. Folia: FOLIABUILD (scripts/start-deployFolia). */
 export const BUILD_ENV: Readonly<Record<string, string>> = {
   PAPER: "PAPER_BUILD", FOLIA: "FOLIABUILD", PURPUR: "PURPUR_BUILD",
   FABRIC: "FABRIC_LOADER_VERSION", QUILT: "QUILT_LOADER_VERSION",
@@ -19,31 +19,31 @@ export const BUILD_ENV: Readonly<Record<string, string>> = {
 };
 export const buildEnvFor = (type: string): string | undefined => (Object.hasOwn(BUILD_ENV, type) ? BUILD_ENV[type] : undefined);
 
-/** Build/loader: ASCII sin espacios ni barras, máx. 64. La versión que se pide a la API usa la misma gramática. */
+/** Build/loader: ASCII without spaces or slashes, max. 64. The version requested from the API uses the same grammar. */
 export const BUILD_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 export const VERSION_QUERY_RE = BUILD_RE;
 
-/** LATEST / SNAPSHOT (sin distinguir mayúsculas): itzg elige la versión al arrancar. */
+/** LATEST / SNAPSHOT (case-insensitive): itzg chooses the version on startup. */
 export const isFloatingVersion = (v: string): boolean => /^(latest|snapshot)$/iu.test(v);
 
-/** Estable = solo dígitos y puntos (1.21.11, 26.3). Pre-releases, rc y snapshots no lo son. */
+/** Stable = only digits and dots (1.21.11, 26.3). Pre-releases, rc and snapshots are not. */
 export const isStableVersion = (v: string): boolean => /^\d+(\.\d+)*$/.test(v);
 
 export const BUILD_MESSAGES = {
-  invalid: "Build inválido: letras, números y . _ + - (máx. 64; empieza por letra o número)",
-  type: (type: string) => `El tipo ${type} no admite fijar el build (solo Paper, Folia, Purpur, Fabric, Quilt, Forge y NeoForge)`,
-  floating: "Para fijar el build elige una versión concreta de Minecraft (no LATEST ni SNAPSHOT)",
-  env: (key: string) => `Quita la variable ${key} de las variables de entorno (Avanzado): la fija el campo Build`,
+  invalid: "Invalid build: letters, numbers and . _ + - (max. 64; starts with a letter or number)",
+  type: (type: string) => `The ${type} type does not support pinning the build (only Paper, Folia, Purpur, Fabric, Quilt, Forge and NeoForge)`,
+  floating: "To pin the build choose a specific Minecraft version (not LATEST or SNAPSHOT)",
+  env: (key: string) => `Remove the ${key} variable from the environment variables (Advanced): it is set by the Build field`,
 };
 
-/** Primer motivo por el que `build` no vale en esta spec (con la ruta del campo); null si vale o está vacío. */
+/** First reason `build` is not valid in this spec (with the field path); null if valid or empty. */
 export function buildError(s: { type: string; version: string; build: string; env: Record<string, string> }): { path: string[]; message: string } | null {
   if (s.build === "") return null;
   if (!BUILD_RE.test(s.build)) return { path: ["build"], message: BUILD_MESSAGES.invalid };
   const key = buildEnvFor(s.type);
   if (!key) return { path: ["build"], message: BUILD_MESSAGES.type(s.type) };
   if (isFloatingVersion(s.version)) return { path: ["build"], message: BUILD_MESSAGES.floating };
-  // El env libre gana sobre lo generado: con build fijado, su variable en env lo anularía en silencio.
+  // The free env wins over what is generated: with build set, its variable in env would silently override it.
   if (Object.hasOwn(s.env, key)) return { path: ["env", key], message: BUILD_MESSAGES.env(key) };
   return null;
 }
@@ -70,7 +70,7 @@ function compareTokens(a: string[], b: string[]): number {
   return 0;
 }
 
-/** Compara versiones: > 0 si `a` es más nueva (1.21.10 > 1.21.9; 26.1 > 1.21.11; una release > su pre-release). */
+/** Compares versions: > 0 if `a` is newer (1.21.10 > 1.21.9; 26.1 > 1.21.11; a release > its pre-release). */
 export function compareVersions(a: string, b: string): number {
   const [aBase, aPre] = splitPre(a);
   const [bBase, bPre] = splitPre(b);
@@ -83,9 +83,9 @@ export function compareVersions(a: string, b: string): number {
 }
 
 /**
- * Etiqueta de imagen itzg con la Java mínima que pide la versión de Minecraft; null si no se reconoce.
- * 26.x → 25; 1.20.5–1.21.x → 21; 1.17–1.20.4 → 17; anteriores → 8. Snapshots antiguas AAwSSl:
- * ≥ 24w14a → 21, ≥ 21w19a → 17. LATEST/SNAPSHOT → 25 (la última).
+ * itzg image tag with the minimum Java the Minecraft version asks for; null if not recognized.
+ * 26.x → 25; 1.20.5–1.21.x → 21; 1.17–1.20.4 → 17; earlier → 8. Old AAwSSl snapshots:
+ * ≥ 24w14a → 21, ≥ 21w19a → 17. LATEST/SNAPSHOT → 25 (the latest).
  */
 export function minJavaTag(version: string): "java8" | "java17" | "java21" | "java25" | null {
   const v = version.trim();
@@ -107,7 +107,7 @@ export function minJavaTag(version: string): "java8" | "java17" | "java21" | "ja
   return "java21";
 }
 
-/** Número de Java de una etiqueta itzg ("java21-graalvm" → 21); null si no empieza por javaNN. */
+/** Java number of an itzg tag ("java21-graalvm" → 21); null if it does not start with javaNN. */
 export function javaMajor(tag: string): number | null {
   const m = /^java(\d+)/.exec(tag);
   return m ? Number(m[1]) : null;

@@ -22,7 +22,7 @@ export const toNodeDto = (r: NodeRow): NodeDto => ({
   tokenRotationPending: !!r.pending_token_hash,
 });
 
-/** Error de clave foránea de SQLite (p. ej. borrar un nodo con servidores). */
+/** SQLite foreign key error (e.g. deleting a node that has servers). */
 export const isForeignKeyError = (e: unknown): boolean =>
   e instanceof Error && /FOREIGN KEY constraint failed/.test(e.message);
 
@@ -35,15 +35,15 @@ export class NodesRepo {
   get(id: string): NodeRow | null {
     return (this.db.prepare("SELECT * FROM nodes WHERE id = ?").get(id) as NodeRow | undefined) ?? null;
   }
-  /** Nodo por el hash de su token vigente o del pendiente de una rotación (spec §9). */
+  /** Node by the hash of its current token or of the pending one of a rotation (spec §9). */
   findByTokenHash(hash: string): NodeRow | null {
     return (this.db.prepare("SELECT * FROM nodes WHERE token_hash = ? OR pending_token_hash = ?").get(hash, hash) as NodeRow | undefined) ?? null;
   }
-  /** Guarda (o borra, con null) el hash del token nuevo de una rotación en curso. */
+  /** Stores (or deletes, with null) the hash of the new token of a rotation in progress. */
   setPendingToken(id: string, hash: string | null): void {
     this.db.prepare("UPDATE nodes SET pending_token_hash = ?, pending_token_at = ? WHERE id = ?").run(hash, hash ? nowIso() : null, id);
   }
-  /** El agente se conectó con el token pendiente: pasa a ser el del nodo y el anterior deja de valer. */
+  /** The agent connected with the pending token: it becomes the node's token and the previous one stops being valid. */
   promotePendingToken(id: string): boolean {
     return Number(this.db.prepare(
       "UPDATE nodes SET token_hash = pending_token_hash, pending_token_hash = NULL, pending_token_at = NULL WHERE id = ? AND pending_token_hash IS NOT NULL",
@@ -89,9 +89,9 @@ export class NodesRepo {
   }
 
   /**
-   * Canjea un token de alta y crea el nodo en una sola transacción: consumo atómico
-   * (UPDATE condicional con RETURNING) y, si la creación falla, el token no queda quemado.
-   * Devuelve null si el token es desconocido, caducado o ya usado.
+   * Redeems an enrollment token and creates the node in a single transaction: atomic consumption
+   * (conditional UPDATE with RETURNING) and, if creation fails, the token is not burned.
+   * Returns null if the token is unknown, expired or already used.
    */
   enrollNode(enrollToken: string, agentVersion?: string): { nodeId: string; nodeToken: string } | null {
     this.db.exec("BEGIN IMMEDIATE");

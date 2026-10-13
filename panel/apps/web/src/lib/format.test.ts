@@ -4,19 +4,19 @@ import { canPower, displayState } from "./format";
 const running = { state: "running", health: "healthy", error: "" };
 
 describe("displayState", () => {
-  it("muestra el último observed con el nodo conectado", () => {
-    expect(displayState(running, "running", true)).toEqual({ text: "En marcha", tone: "ok" });
+  it("shows the latest observed with the node online", () => {
+    expect(displayState(running, "running", true)).toEqual({ text: "Running", tone: "ok" });
   });
-  it("con el nodo desconectado oculta el observed obsoleto", () => {
-    expect(displayState(running, "running", false)).toEqual({ text: "Nodo desconectado", tone: "muted" });
+  it("with the node offline it hides the stale observed", () => {
+    expect(displayState(running, "running", false)).toEqual({ text: "Node offline", tone: "muted" });
   });
-  it("sin información del nodo (aún cargando) usa el observed", () => {
-    expect(displayState(running, "running", undefined).text).toBe("En marcha");
+  it("without node information (still loading) it uses the observed", () => {
+    expect(displayState(running, "running", undefined).text).toBe("Running");
   });
 });
 
 describe("canPower", () => {
-  it("solo habilita acciones con el nodo conectado", () => {
+  it("only enables actions with the node online", () => {
     expect(canPower(true)).toBe(true);
     expect(canPower(false)).toBe(false);
     expect(canPower(undefined)).toBe(true);

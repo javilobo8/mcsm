@@ -1,6 +1,6 @@
-# Requiere la red compartida: docker network create mcsm
-# Imágenes publicadas en GHCR; MCSM_VERSION (en .env) fija la versión, vacío = latest. Para construir desde el
-# código, añade -f deploy/docker-compose.build.yml.
+# Requires the shared network: docker network create mcsm
+# Images published on GHCR; MCSM_VERSION (in .env) pins the version, empty = latest. To build from
+# source, add -f deploy/docker-compose.build.yml.
 name: mcsm
 services:
   panel:
@@ -9,25 +9,25 @@ services:
     restart: unless-stopped
     ports: ["8080:8080"]
     environment:
-      # Vacío: el panel usa la dirección con la que lo abres en el navegador (Host con puerto).
+      # Empty: the panel uses the address you open it with in the browser (Host with port).
       PANEL_PUBLIC_URL: ${PANEL_PUBLIC_URL:-}
-      # Opcional: token de configuración inicial (vacío = el panel genera uno y lo escribe en su log).
+      # Optional: initial setup token (empty = the panel generates one and writes it to its log).
       PANEL_SETUP_TOKEN: ${PANEL_SETUP_TOKEN:-}
     volumes:
       - panel-data:/data
   agent:
     image: ghcr.io/javilobo8/mcsm-agent:${MCSM_VERSION:-latest}
-    # docker stop mata a los 10 s; al pararlo, el agente espera a la vez, hasta 25 s, a sus
-    # operaciones de archivos y a las copias en curso (save-on) antes de salir.
+    # docker stop kills after 10 s; on stop, the agent waits in parallel, up to 25 s, for its
+    # file operations and in-progress backups (save-on) before exiting.
     stop_grace_period: 30s
     restart: unless-stopped
     depends_on: [panel]
     environment:
       PANEL_URL: http://panel:8080
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
-      NODE_NAME: ${NODE_NAME:-principal}
+      NODE_NAME: ${NODE_NAME:-main}
       DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
-      # Opcional: tamaño máximo de una subida de archivo, en bytes (vacío = 4 GiB).
+      # Optional: maximum size of a file upload, in bytes (empty = 4 GiB).
       UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
       HOST_PROC: /host/proc
     volumes:

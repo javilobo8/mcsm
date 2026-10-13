@@ -24,7 +24,7 @@ func restoreReq(dataDir, backupsDir, name string, at time.Time) RestoreRequest {
 	return RestoreRequest{ServerID: "srv-1", Slug: "survival", Filename: name, DataDir: dataDir, BackupsDir: backupsDir, Now: func() time.Time { return at }}
 }
 
-// leftovers lista los directorios temporales .restoring-* que hayan quedado.
+// leftovers lists the .restoring-* temporary directories that remain.
 func leftovers(t *testing.T, dataDir string) []string {
 	t.Helper()
 	ents, _ := os.ReadDir(filepath.Dir(dataDir))
@@ -41,26 +41,26 @@ func TestRestoreSwapsAndKeepsPrevious(t *testing.T) {
 	dataDir, backupsDir := newWorld(t)
 	m := makeBackup(t, dataDir, backupsDir)
 	mustWrite(t, filepath.Join(dataDir, "world", "level.dat"), "LEVEL-2", 0o644)
-	mustWrite(t, filepath.Join(dataDir, "nuevo.txt"), "x", 0o644)
+	mustWrite(t, filepath.Join(dataDir, "new.txt"), "x", 0o644)
 	pre, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "LEVEL-1" || exists(filepath.Join(dataDir, "nuevo.txt")) {
-		t.Fatal("los datos no son los de la copia")
+	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "LEVEL-1" || exists(filepath.Join(dataDir, "new.txt")) {
+		t.Fatal("the data is not the backup's")
 	}
 	if pre.Filename != "data.pre-restore-20261012T050000.000Z" || pre.Trigger != TriggerPreRestore || pre.SizeBytes == 0 {
 		t.Fatalf("pre = %+v", pre)
 	}
 	prePath := filepath.Join(filepath.Dir(dataDir), pre.Filename)
-	if mustRead(t, filepath.Join(prePath, "world", "level.dat")) != "LEVEL-2" || !exists(filepath.Join(prePath, "nuevo.txt")) {
-		t.Fatal("los datos anteriores deben conservarse íntegros")
+	if mustRead(t, filepath.Join(prePath, "world", "level.dat")) != "LEVEL-2" || !exists(filepath.Join(prePath, "new.txt")) {
+		t.Fatal("the previous data must be kept intact")
 	}
 	if list, _ := ListPreRestore(dataDir); len(list) != 1 || list[0].SizeBytes != pre.SizeBytes {
 		t.Fatalf("ListPreRestore = %+v", list)
 	}
 	if l := leftovers(t, dataDir); len(l) != 0 {
-		t.Fatalf("restos: %v", l)
+		t.Fatalf("leftovers: %v", l)
 	}
 }
 
@@ -69,11 +69,11 @@ func TestRestoreTwiceKeepsBothPrevious(t *testing.T) {
 	m := makeBackup(t, dataDir, backupsDir)
 	for i, at := range []time.Time{t0.Add(time.Hour), t0.Add(2 * time.Hour)} {
 		if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, at)); err != nil {
-			t.Fatalf("restauración %d: %v", i, err)
+			t.Fatalf("restore %d: %v", i, err)
 		}
 	}
 	if list, _ := ListPreRestore(dataDir); len(list) != 2 {
-		t.Fatalf("nunca se borra un pre-restore anterior: %+v", list)
+		t.Fatalf("a previous pre-restore is never deleted: %+v", list)
 	}
 }
 
@@ -88,14 +88,14 @@ func TestRestoreCorruptBackupLeavesDataUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour)))
-	if err == nil || !strings.Contains(err.Error(), "dañada") {
+	if err == nil || !strings.Contains(err.Error(), "corrupted") {
 		t.Fatalf("err = %v", err)
 	}
 	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "LEVEL-2" {
-		t.Fatal("los datos actuales no deben tocarse")
+		t.Fatal("the current data must not be touched")
 	}
 	if list, _ := ListPreRestore(dataDir); len(list) != 0 || len(leftovers(t, dataDir)) != 0 {
-		t.Fatal("no deben quedar directorios pre-restore ni temporales")
+		t.Fatal("no pre-restore directories or temporaries must remain")
 	}
 }
 
@@ -103,7 +103,7 @@ func TestRestoreUnreadableArchiveLeavesDataUntouched(t *testing.T) {
 	dataDir, backupsDir := newWorld(t)
 	m := makeBackup(t, dataDir, backupsDir)
 	mustWrite(t, filepath.Join(dataDir, "world", "level.dat"), "LEVEL-2", 0o644)
-	if err := os.Remove(filepath.Join(backupsDir, m.Filename+MetaExt)); err != nil { // sin sha256 que verificar
+	if err := os.Remove(filepath.Join(backupsDir, m.Filename+MetaExt)); err != nil { // without a sha256 to verify
 		t.Fatal(err)
 	}
 	p := filepath.Join(backupsDir, m.Filename)
@@ -112,18 +112,18 @@ func TestRestoreUnreadableArchiveLeavesDataUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))); err == nil {
-		t.Fatal("una copia truncada debe fallar")
+		t.Fatal("a truncated backup must fail")
 	}
 	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "LEVEL-2" || len(leftovers(t, dataDir)) != 0 {
-		t.Fatal("los datos actuales no deben tocarse ni quedar temporales")
+		t.Fatal("the current data must not be touched nor temporaries remain")
 	}
 }
 
 func TestRestoreRejectsBadNames(t *testing.T) {
 	dataDir, backupsDir := newWorld(t)
-	for _, name := range []string{"../../etc/passwd", "otro-20261012T040000.000Z-3.tar.zst", "data.pre-restore-20261012T040000.000Z"} {
+	for _, name := range []string{"../../etc/passwd", "other-20261012T040000.000Z-3.tar.zst", "data.pre-restore-20261012T040000.000Z"} {
 		if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, name, t0)); err == nil {
-			t.Errorf("%q debe rechazarse", name)
+			t.Errorf("%q must be rejected", name)
 		}
 	}
 }
@@ -139,15 +139,15 @@ func TestRestoreWithoutPreviousData(t *testing.T) {
 		t.Fatalf("pre = %+v, %v", pre, err)
 	}
 	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "LEVEL-1" {
-		t.Fatal("datos no restaurados")
+		t.Fatal("data not restored")
 	}
 }
 
-// ── Más allá del brief: espacio libre, intercambio atómico ante fallos, cancelación ──
+// ── Beyond the brief: free space, atomic swap on failures, cancellation ──
 
-// TestMain deja el volcado a disco sustituido por defecto: syncfs real solo en
-// TestRestoreWithRealSyncfs. Los puntos de inyección son variables de paquete, así que
-// los tests de este paquete no usan t.Parallel.
+// TestMain leaves the flush to disk replaced by default: real syncfs only in
+// TestRestoreWithRealSyncfs. The injection points are package variables, so
+// this package's tests do not use t.Parallel.
 func TestMain(m *testing.M) {
 	syncFS = func(string) error { return nil }
 	os.Exit(m.Run())
@@ -174,22 +174,22 @@ func stubSync(t *testing.T, fn func(dir string) error) {
 	t.Cleanup(func() { syncFS = old })
 }
 
-// assertUntouched comprueba que una restauración fallida no cambió nada: data con LEVEL-2,
-// sin pre-restore y sin temporales.
+// assertUntouched checks that a failed restore changed nothing: data with LEVEL-2,
+// no pre-restore and no temporaries.
 func assertUntouched(t *testing.T, dataDir string) {
 	t.Helper()
 	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "LEVEL-2" {
-		t.Fatal("los datos actuales no deben tocarse")
+		t.Fatal("the current data must not be touched")
 	}
 	if list, _ := ListPreRestore(dataDir); len(list) != 0 {
-		t.Fatalf("no debe quedar pre-restore: %+v", list)
+		t.Fatalf("no pre-restore must remain: %+v", list)
 	}
 	if l := leftovers(t, dataDir); len(l) != 0 {
-		t.Fatalf("restos: %v", l)
+		t.Fatalf("leftovers: %v", l)
 	}
 }
 
-// changedWorld hace una copia y luego cambia level.dat a LEVEL-2 (los datos «actuales»).
+// changedWorld makes a backup and then changes level.dat to LEVEL-2 (the "current" data).
 func changedWorld(t *testing.T) (dataDir, backupsDir string, m Meta) {
 	t.Helper()
 	dataDir, backupsDir = newWorld(t)
@@ -218,10 +218,10 @@ func TestRequiredSpaceMargin(t *testing.T) {
 
 func TestFreeBytesUsesFragmentSize(t *testing.T) {
 	if got := freeBytes(10, 4096, 1<<20); got != 40960 {
-		t.Fatalf("con f_frsize = %d; f_bavail va en unidades de f_frsize", got)
+		t.Fatalf("with f_frsize = %d; f_bavail is in units of f_frsize", got)
 	}
 	if got := freeBytes(10, 0, 4096); got != 40960 {
-		t.Fatalf("sin f_frsize = %d; se usa f_bsize", got)
+		t.Fatalf("without f_frsize = %d; f_bsize is used", got)
 	}
 	if free, err := statfsFree(t.TempDir()); err != nil || free == 0 {
 		t.Fatalf("statfs real = %d, %v", free, err)
@@ -233,11 +233,11 @@ func TestRestoreNotEnoughSpaceLeavesDataUntouched(t *testing.T) {
 	var asked string
 	stubFreeSpace(t, func(dir string) (uint64, error) { asked = dir; return requiredSpace(m.DataBytes) - 1, nil })
 	_, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour)))
-	if err == nil || !strings.Contains(err.Error(), "espacio") || !strings.Contains(err.Error(), "margen") {
-		t.Fatalf("err = %v; debe explicar el espacio que falta y el margen", err)
+	if err == nil || !strings.Contains(err.Error(), "space") || !strings.Contains(err.Error(), "margin") {
+		t.Fatalf("err = %v; it must explain the missing space and the margin", err)
 	}
 	if asked != filepath.Dir(dataDir) {
-		t.Fatalf("espacio consultado en %q; debe ser donde se extrae (%q)", asked, filepath.Dir(dataDir))
+		t.Fatalf("space queried at %q; it must be where it is extracted (%q)", asked, filepath.Dir(dataDir))
 	}
 	assertUntouched(t, dataDir)
 }
@@ -247,7 +247,7 @@ func TestRestoreSpaceCheckUsesUncompressedSize(t *testing.T) {
 	m := makeBackup(t, dataDir, backupsDir)
 	stubFreeSpace(t, func(string) (uint64, error) { return requiredSpace(m.DataBytes), nil })
 	if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))); err != nil {
-		t.Fatalf("con el espacio justo debe restaurar: %v", err)
+		t.Fatalf("with just enough space it must restore: %v", err)
 	}
 }
 
@@ -257,8 +257,8 @@ func TestRestoreSpaceCheckWithoutMetaUsesArchiveSize(t *testing.T) {
 		t.Fatal(err)
 	}
 	stubFreeSpace(t, func(string) (uint64, error) { return requiredSpace(m.SizeBytes) - 1, nil })
-	if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))); err == nil || !strings.Contains(err.Error(), "espacio") {
-		t.Fatalf("sin .json el mínimo es el tamaño de la copia: err = %v", err)
+	if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))); err == nil || !strings.Contains(err.Error(), "space") {
+		t.Fatalf("without a .json the minimum is the backup's size: err = %v", err)
 	}
 	assertUntouched(t, dataDir)
 }
@@ -266,22 +266,22 @@ func TestRestoreSpaceCheckWithoutMetaUsesArchiveSize(t *testing.T) {
 func TestRestoreSpaceUnknownStillRestores(t *testing.T) {
 	dataDir, backupsDir := newWorld(t)
 	m := makeBackup(t, dataDir, backupsDir)
-	stubFreeSpace(t, func(string) (uint64, error) { return 0, errors.New("statfs: no soportado") })
+	stubFreeSpace(t, func(string) (uint64, error) { return 0, errors.New("statfs: not supported") })
 	var logs []string
 	req := restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))
 	req.Log = func(l string) { logs = append(logs, l) }
 	if _, err := Restore(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(logs, "\n"), "espacio libre") {
-		t.Fatalf("debe avisar de que no pudo comprobar el espacio: %v", logs)
+	if !strings.Contains(strings.Join(logs, "\n"), "free space") {
+		t.Fatalf("it must warn that it could not check the space: %v", logs)
 	}
 }
 
 func TestRestoreUnreadableMetaIsNotMissingSHA(t *testing.T) {
 	dataDir, backupsDir := newWorld(t)
 	m := makeBackup(t, dataDir, backupsDir)
-	if err := os.WriteFile(filepath.Join(backupsDir, m.Filename+MetaExt), []byte("{roto"), 0o640); err != nil {
+	if err := os.WriteFile(filepath.Join(backupsDir, m.Filename+MetaExt), []byte("{broken"), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	var logs []string
@@ -291,8 +291,8 @@ func TestRestoreUnreadableMetaIsNotMissingSHA(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := strings.Join(logs, "\n")
-	if !strings.Contains(all, "ilegible") || strings.Contains(all, "no tiene sha256") {
-		t.Fatalf("un .json ilegible no es una copia sin sha256: %v", logs)
+	if !strings.Contains(all, "unreadable") || strings.Contains(all, "has no sha256") {
+		t.Fatalf("an unreadable .json is not a backup without a sha256: %v", logs)
 	}
 }
 
@@ -300,12 +300,12 @@ func TestRestoreSwapFailureRestoresOriginalData(t *testing.T) {
 	dataDir, backupsDir, m := changedWorld(t)
 	stubRename(t, func(oldpath, newpath string) error {
 		if newpath == dataDir && strings.Contains(oldpath, restoringInfix) {
-			return errors.New("fallo simulado")
+			return errors.New("simulated failure")
 		}
 		return os.Rename(oldpath, newpath)
 	})
 	_, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour)))
-	if err == nil || !strings.Contains(err.Error(), "activar la copia") || errors.Is(err, ErrDataMissing) {
+	if err == nil || !strings.Contains(err.Error(), "activate the backup") || errors.Is(err, ErrDataMissing) {
 		t.Fatalf("err = %v", err)
 	}
 	assertUntouched(t, dataDir)
@@ -315,7 +315,7 @@ func TestRestoreRollbackFailureKeepsOriginalInPreRestore(t *testing.T) {
 	dataDir, backupsDir, m := changedWorld(t)
 	stubRename(t, func(oldpath, newpath string) error {
 		if newpath == dataDir {
-			return errors.New("fallo simulado")
+			return errors.New("simulated failure")
 		}
 		return os.Rename(oldpath, newpath)
 	})
@@ -323,32 +323,32 @@ func TestRestoreRollbackFailureKeepsOriginalInPreRestore(t *testing.T) {
 	_, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, at))
 	preName := PreRestoreName(dataDir, at)
 	if err == nil || !strings.Contains(err.Error(), preName) {
-		t.Fatalf("el error debe decir dónde quedaron los datos originales: %v", err)
+		t.Fatalf("the error must say where the original data was left: %v", err)
 	}
 	if !errors.Is(err, ErrDataMissing) || strings.Contains(err.Error(), "\n") {
-		t.Fatalf("err = %q; debe envolver ErrDataMissing (en una sola línea)", err)
+		t.Fatalf("err = %q; it must wrap ErrDataMissing (on a single line)", err)
 	}
 	if mustRead(t, filepath.Join(filepath.Dir(dataDir), preName, "world", "level.dat")) != "LEVEL-2" {
-		t.Fatal("los datos originales deben seguir íntegros en el pre-restore")
+		t.Fatal("the original data must remain intact in the pre-restore")
 	}
 }
 
 func TestRestoreRefusesToReplaceExistingPreRestore(t *testing.T) {
 	dataDir, backupsDir, m := changedWorld(t)
 	at := t0.Add(time.Hour)
-	// rename(2) sustituye en silencio un directorio vacío: no debe llegar a intentarse.
+	// rename(2) silently replaces an empty directory: it must not even be attempted.
 	existing := filepath.Join(filepath.Dir(dataDir), PreRestoreName(dataDir, at))
 	if err := os.Mkdir(existing, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, at)); err == nil {
-		t.Fatal("debe fallar si el pre-restore ya existe")
+		t.Fatal("it must fail if the pre-restore already exists")
 	}
 	if !exists(existing) {
-		t.Fatal("un pre-restore existente nunca se toca")
+		t.Fatal("an existing pre-restore is never touched")
 	}
 	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "LEVEL-2" || len(leftovers(t, dataDir)) != 0 {
-		t.Fatal("los datos actuales no deben tocarse ni quedar temporales")
+		t.Fatal("the current data must not be touched nor temporaries remain")
 	}
 }
 
@@ -362,13 +362,13 @@ func TestRestoreRejectsSymlinkedData(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))); err == nil {
-		t.Fatal("data como enlace simbólico debe rechazarse (renombrar el enlace no apartaría los datos)")
+		t.Fatal("data as a symbolic link must be rejected (renaming the link would not set the data aside)")
 	}
 	if fi, err := os.Lstat(dataDir); err != nil || fi.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("el enlace no debe tocarse")
+		t.Fatal("the link must not be touched")
 	}
 	if mustRead(t, filepath.Join(target, "world", "level.dat")) != "LEVEL-2" || len(leftovers(t, dataDir)) != 0 {
-		t.Fatal("los datos no deben tocarse ni quedar temporales")
+		t.Fatal("the data must not be touched nor temporaries remain")
 	}
 }
 
@@ -384,7 +384,7 @@ func TestRestoreRejectsNonRegularBackup(t *testing.T) {
 	}
 	for _, name := range []string{asDir, asLink} {
 		_, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, name, t0.Add(time.Hour)))
-		if err == nil || !strings.Contains(err.Error(), "no es un fichero normal") {
+		if err == nil || !strings.Contains(err.Error(), "is not a regular file") {
 			t.Errorf("%s: err = %v", name, err)
 		}
 	}
@@ -398,25 +398,25 @@ func TestRestoreLogsStagingCleanupFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := mustRead(t, p)
-	if err := os.WriteFile(p, []byte(data[:len(data)/2]), 0o640); err != nil { // la extracción fallará
+	if err := os.WriteFile(p, []byte(data[:len(data)/2]), 0o640); err != nil { // the extraction will fail
 		t.Fatal(err)
 	}
 	old := removeAll
-	removeAll = func(p string) error { _ = os.RemoveAll(p); return errors.New("fallo simulado") }
+	removeAll = func(p string) error { _ = os.RemoveAll(p); return errors.New("simulated failure") }
 	t.Cleanup(func() { removeAll = old })
 	var logs []string
 	req := restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))
 	req.Log = func(l string) { logs = append(logs, l) }
 	if _, err := Restore(context.Background(), req); err == nil {
-		t.Fatal("una copia truncada debe fallar")
+		t.Fatal("a truncated backup must fail")
 	}
-	if all := strings.Join(logs, "\n"); !strings.Contains(all, restoringInfix) || !strings.Contains(all, "fallo simulado") {
-		t.Fatalf("debe registrarse que no se pudo borrar el temporal: %v", logs)
+	if all := strings.Join(logs, "\n"); !strings.Contains(all, restoringInfix) || !strings.Contains(all, "simulated failure") {
+		t.Fatalf("it must be logged that the temporary could not be deleted: %v", logs)
 	}
 }
 
 func TestRestoreCancelledLeavesDataUntouched(t *testing.T) {
-	for _, at := range []uint32{10, 90} { // al empezar a extraer y al terminar de leer la copia
+	for _, at := range []uint32{10, 90} { // when starting to extract and when finishing reading the backup
 		t.Run(fmt.Sprint(at), func(t *testing.T) {
 			dataDir, backupsDir, m := changedWorld(t)
 			ctx, cancel := context.WithCancel(context.Background())
@@ -431,33 +431,33 @@ func TestRestoreCancelledLeavesDataUntouched(t *testing.T) {
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("err = %v", err)
 			}
-			if strings.Contains(err.Error(), "dañada") {
-				t.Fatalf("una cancelación no es una copia dañada: %v", err)
+			if strings.Contains(err.Error(), "corrupted") {
+				t.Fatalf("a cancellation is not a corrupted backup: %v", err)
 			}
 			assertUntouched(t, dataDir)
 		})
 	}
 }
 
-// Una cancelación con la copia ya extraída (p. ej. el agente se está cerrando) tampoco
-// llega a intercambiar nada.
+// A cancellation with the backup already extracted (e.g. the agent is shutting down) does not
+// get to swap anything either.
 func TestRestoreCancelledAfterExtractionLeavesDataUntouched(t *testing.T) {
 	dataDir, backupsDir, m := changedWorld(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var synced string
-	stubSync(t, func(dir string) error { synced = dir; cancel(); return nil }) // se vuelca a disco justo tras extraer
+	stubSync(t, func(dir string) error { synced = dir; cancel(); return nil }) // flushed to disk right after extracting
 	if _, err := Restore(ctx, restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v", err)
 	}
 	if !strings.Contains(synced, restoringInfix) {
-		t.Fatalf("syncfs sobre %q; debe ser el temporal extraído", synced)
+		t.Fatalf("syncfs on %q; it must be the extracted temporary", synced)
 	}
 	assertUntouched(t, dataDir)
 }
 
-// Un syncfs que no vuelve (FS colgado) no bloquea la restauración para siempre: al
-// cancelar se deja de esperar y no se intercambia nada.
+// A syncfs that does not return (hung FS) does not block the restore forever: on
+// cancel it stops waiting and nothing is swapped.
 func TestRestoreHungSyncIsAbandonedOnCancel(t *testing.T) {
 	dataDir, backupsDir, m := changedWorld(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -467,7 +467,7 @@ func TestRestoreHungSyncIsAbandonedOnCancel(t *testing.T) {
 	stubSync(t, func(string) error {
 		defer close(finished)
 		cancel()
-		<-release // colgado hasta que el test lo suelte
+		<-release // hung until the test releases it
 		return nil
 	})
 	if _, err := Restore(ctx, restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour))); !errors.Is(err, context.Canceled) {
@@ -475,14 +475,14 @@ func TestRestoreHungSyncIsAbandonedOnCancel(t *testing.T) {
 	}
 	assertUntouched(t, dataDir)
 	close(release)
-	<-finished // la goroutine abandonada termina en cuanto el sync vuelve
+	<-finished // the abandoned goroutine ends as soon as the sync returns
 }
 
 func TestRestoreSyncFailureDoesNotSwap(t *testing.T) {
 	dataDir, backupsDir, m := changedWorld(t)
-	stubSync(t, func(string) error { return errors.New("EIO simulado") })
+	stubSync(t, func(string) error { return errors.New("EIO simulated") })
 	_, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour)))
-	if err == nil || !strings.Contains(err.Error(), "EIO simulado") {
+	if err == nil || !strings.Contains(err.Error(), "EIO simulated") {
 		t.Fatalf("err = %v", err)
 	}
 	assertUntouched(t, dataDir)
@@ -496,7 +496,7 @@ func TestRestoreWithRealSyncfs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if mustRead(t, filepath.Join(dataDir, "world", "level.dat")) != "LEVEL-1" {
-		t.Fatal("datos no restaurados")
+		t.Fatal("data not restored")
 	}
 }
 
@@ -510,11 +510,11 @@ func TestRestoreProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(pcts) < 3 || pcts[0] != 2 || pcts[1] != 10 || pcts[len(pcts)-1] != 92 {
-		t.Fatalf("avance = %v; esperado 2 (verificar), 10–90 (extraer), 92 (apartar)", pcts)
+		t.Fatalf("progress = %v; expected 2 (verify), 10–90 (extract), 92 (set aside)", pcts)
 	}
 	for i := 1; i < len(pcts); i++ {
 		if pcts[i] < pcts[i-1] || pcts[i] > 92 {
-			t.Fatalf("avance fuera de orden o de rango: %v", pcts)
+			t.Fatalf("progress out of order or range: %v", pcts)
 		}
 	}
 }

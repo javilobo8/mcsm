@@ -20,7 +20,7 @@ beforeEach(async () => {
   cookie = `${c.name}=${c.value}`;
   const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } })).json().token;
   ({ nodeId, nodeToken } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas", agentVersion: "fake" } })).json());
-  serverId = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec, desiredState: "stopped" }).id;
+  serverId = app.servers.create({ nodeId, name: "One", slug: "one", spec, desiredState: "stopped" }).id;
 });
 afterEach(async () => { await app.close(); });
 
@@ -35,31 +35,31 @@ const get = (u: string) => app.inject({ method: "GET", url: u, headers: { cookie
 const post = (u: string, payload: object) => app.inject({ method: "POST", url: u, headers: { cookie }, payload });
 const files = () => `/api/servers/${serverId}/files`;
 
-describe("archivos: validación antes de tocar al agente", () => {
-  it("../../etc/passwd devuelve 400 aunque el nodo esté desconectado", async () => {
+describe("files: validation before touching the agent", () => {
+  it("../../etc/passwd returns 400 even if the node is offline", async () => {
     for (const u of [`${files()}?path=../../etc/passwd`, `${files()}/content?path=..%2F..%2Fetc%2Fpasswd`, `${files()}/stat?path=/a/../../b`]) {
       const res = await get(u);
       expect(res.statusCode).toBe(400);
-      expect(res.json().error).toMatch(/Ruta inválida/);
+      expect(res.json().error).toMatch(/Invalid path/);
     }
     expect((await post(`${files()}/rename`, { from: "/a", to: "../x" })).statusCode).toBe(400);
   });
 
-  it("sin sesión 401, servidor inexistente 404, nodo desconectado 409", async () => {
+  it("no session 401, nonexistent server 404, node offline 409", async () => {
     expect((await app.inject({ method: "GET", url: `${files()}?path=/` })).statusCode).toBe(401);
     expect((await get(`/api/servers/nope/files?path=/`)).statusCode).toBe(404);
     const res = await get(`${files()}?path=/`);
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toMatch(/desconectado/);
+    expect(res.json().error).toMatch(/offline/);
   });
 
-  it("borrar o renombrar la raíz es 400", async () => {
+  it("deleting or renaming the root is 400", async () => {
     await online();
     expect((await app.inject({ method: "DELETE", url: `${files()}?path=/`, headers: { cookie } })).statusCode).toBe(400);
     expect((await post(`${files()}/rename`, { from: "/", to: "/x" })).statusCode).toBe(400);
   });
 
-  it("escribir más de 2 MiB es 413 sin llegar al agente", async () => {
+  it("writing more than 2 MiB is 413 without reaching the agent", async () => {
     await online();
     const res = await post(`${files()}/content`, { path: "/a.txt", content: "a".repeat(2 * 1024 * 1024 + 1) });
     expect(res.statusCode).toBe(413);
@@ -67,8 +67,8 @@ describe("archivos: validación antes de tocar al agente", () => {
   });
 });
 
-describe("archivos: operaciones inline con el agente", () => {
-  it("lista con la ruta normalizada y convierte las entradas", async () => {
+describe("files: inline operations with the agent", () => {
+  it("lists with the normalized path and converts the entries", async () => {
     const agent = await online();
     const pending = get(`${files()}?path=mods//`);
     const req = await agent.waitFor("filesList");
@@ -82,7 +82,7 @@ describe("archivos: operaciones inline con el agente", () => {
     expect(res.json()).toEqual({ path: "/mods", truncated: false, entries: [{ name: "lithium.jar", dir: false, symlink: false, size: 1234, modifiedAt: 1700000000000, mode: 0o644 }] });
   });
 
-  it("lee texto UTF-8 y rechaza binarios con 415", async () => {
+  it("reads UTF-8 text and rejects binaries with 415", async () => {
     const agent = await online();
     let pending = get(`${files()}/content?path=/server.properties`);
     let req = await agent.waitFor("filesRead");
@@ -99,22 +99,22 @@ describe("archivos: operaciones inline con el agente", () => {
     expect(res.statusCode).toBe(415);
   });
 
-  it("traduce los códigos del agente a HTTP conservando su mensaje", async () => {
+  it("translates the agent's codes to HTTP keeping its message", async () => {
     const agent = await online();
     const cases: [string, number][] = [["path_outside", 400], ["not_found", 404], ["too_large", 413], ["exists", 409], ["io_error", 502]];
     for (const [code, status] of cases) {
       const pending = get(`${files()}/content?path=/x`);
       const req = await agent.waitFor("filesRead");
-      agent.send({ id: req.id, body: { case: "error", value: { code, message: `mensaje ${code}` } } });
+      agent.send({ id: req.id, body: { case: "error", value: { code, message: `message ${code}` } } });
       const res = await pending;
       expect(res.statusCode).toBe(status);
-      expect(res.json().error).toBe(`mensaje ${code}`);
+      expect(res.json().error).toBe(`message ${code}`);
     }
   });
 
-  it("guarda, crea carpeta, renombra y borra con Ack", async () => {
+  it("saves, creates a folder, renames and deletes with Ack", async () => {
     const agent = await online();
-    // en serie: waitFor descarta los mensajes de otro tipo
+    // in series: waitFor discards messages of another type
     const ops: [() => Promise<{ statusCode: number }>, "filesWrite" | "filesMkdir" | "filesRename" | "filesDelete"][] = [
       [() => post(`${files()}/content`, { path: "server.properties", content: "motd=adiós\n" }), "filesWrite"],
       [() => post(`${files()}/mkdir`, { path: "/plugins" }), "filesMkdir"],
@@ -135,10 +135,10 @@ describe("archivos: operaciones inline con el agente", () => {
   });
 });
 
-describe("archivos: plazos de las peticiones al agente", () => {
+describe("files: deadlines of the requests to the agent", () => {
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it("borrar pide al agente con un plazo de 5 min: una carpeta grande en un disco lento tarda", async () => {
+  it("delete asks the agent with a 5 min deadline: a big folder on a slow disk takes a while", async () => {
     const agent = await online();
     const request = vi.spyOn(AgentConn.prototype, "request");
     const pending = app.inject({ method: "DELETE", url: `${files()}?path=/world`, headers: { cookie } });
@@ -148,7 +148,7 @@ describe("archivos: plazos de las peticiones al agente", () => {
     expect(request).toHaveBeenCalledWith(expect.objectContaining({ case: "filesDelete" }), 5 * 60_000);
   });
 
-  it("el resto sigue con 30 s (renombrar es un rename(2): no depende del tamaño)", async () => {
+  it("the rest stay at 30 s (rename is a rename(2): it does not depend on size)", async () => {
     const agent = await online();
     const request = vi.spyOn(AgentConn.prototype, "request");
     const pending = post(`${files()}/rename`, { from: "/a", to: "/b" });
@@ -160,7 +160,7 @@ describe("archivos: plazos de las peticiones al agente", () => {
 });
 
 describe("isResponseCase", () => {
-  it("ack, error y cualquier *Result resuelven peticiones; lo demás no", () => {
+  it("ack, error and any *Result resolve requests; nothing else does", () => {
     for (const c of ["ack", "error", "commandResult", "filesListResult"]) expect(isResponseCase(c)).toBe(true);
     for (const c of ["serverObserved", "hello", "logLine", undefined]) expect(isResponseCase(c)).toBe(false);
   });

@@ -15,12 +15,12 @@ const READ = new Set(["GET", "HEAD", "OPTIONS"]);
 const MIGRATION_ROUTE = "/api/servers/:id/migration";
 
 /**
- * Qué protege la guarda en una petición. Decide por la ruta enrutada (`req.routeOptions.url`), como el guard de
- * sesión, nunca por la URL cruda. Pura.
- * - Cualquier método no GET bajo /api/servers/:id (salvo las rutas de la migración): el servidor.
- * - Crear servidores (POST /api/servers, /api/templates/:id/servers con `nodeId` en el cuerpo, y cualquier
- *   POST /api/nodes/:id/…, como la importación del Plan 6): el nodo.
- * - DELETE /api/nodes/:id: el nodo.
+ * What the guard protects in a request. It decides by the routed route (`req.routeOptions.url`), like the session
+ * guard, never by the raw URL. Pure.
+ * - Any non-GET method under /api/servers/:id (except the migration routes): the server.
+ * - Creating servers (POST /api/servers, /api/templates/:id/servers with `nodeId` in the body, and any
+ *   POST /api/nodes/:id/…, such as the Plan 6 import): the node.
+ * - DELETE /api/nodes/:id: the node.
  */
 export function guardSubject(method: string, route: string | undefined, params: unknown, body: unknown): GuardSubject {
   if (!route || READ.has(method)) return null;
@@ -41,20 +41,20 @@ function blockError(app: FastifyInstance, s: NonNullable<GuardSubject>): HttpErr
   if (s.kind === "server") {
     const m = app.migrations.blockingServer(s.serverId);
     if (!m) return null;
-    const name = app.servers.get(s.serverId)?.name ?? "El servidor";
+    const name = app.servers.get(s.serverId)?.name ?? "The server";
     return new HttpError(409, m.phase === "running"
-      ? `«${name}» se está migrando a otro nodo: espera a que termine (pestaña Migrar)`
-      : `Se está deshaciendo una migración fallida de «${name}»: espera a que termine (pestaña Migrar)`);
+      ? `“${name}” is being migrated to another node: wait for it to finish (Migrate tab)`
+      : `A failed migration of “${name}” is being rolled back: wait for it to finish (Migrate tab)`);
   }
   const m = s.kind === "create" ? app.migrations.blockingNodeCreate(s.nodeId) : app.migrations.blockingNodeDelete(s.nodeId);
   if (!m) return null;
-  return new HttpError(409, `El nodo «${app.nodes.get(s.nodeId)?.name ?? s.nodeId}» participa en una migración en curso: espera a que termine (Jobs)`);
+  return new HttpError(409, `Node “${app.nodes.get(s.nodeId)?.name ?? s.nodeId}” is part of a migration in progress: wait for it to finish (Jobs)`);
 }
 
 /**
- * Decora `app.migrations` y añade la guarda de migraciones: un hook `preHandler` raíz que responde 409 a lo que
- * cambiaría un servidor o un nodo con una migración abierta. Se registra ANTES de las rutas: Fastify fija los hooks
- * de cada contexto al registrarlo, así que un hook raíz añadido después no llegaría a ellas.
+ * Decorates `app.migrations` and adds the migration guard: a root `preHandler` hook that responds 409 to whatever
+ * would change a server or a node with an open migration. It is registered BEFORE the routes: Fastify fixes the hooks
+ * of each context at registration, so a root hook added later would not reach them.
  */
 export const migrationGuard = fp(async function migrationGuard(app: FastifyInstance) {
   app.decorate("migrations", new MigrationsRepo(app.db));
@@ -63,8 +63,8 @@ export const migrationGuard = fp(async function migrationGuard(app: FastifyInsta
     if (!s) return;
     const err = blockError(app, s);
     if (!err) return;
-    // Una subida (PUT …/files/upload) llega como stream: se drena (acotado) para que el navegador reciba el 409 en
-    // JSON y no un corte de red; si queda demasiado, la respuesta cierra la conexión (como hace la ruta de Archivos).
+    // An upload (PUT …/files/upload) arrives as a stream: it is drained (bounded) so the browser receives the 409 as
+    // JSON and not a network cut; if too much remains, the response closes the connection (as the Files route does).
     const body = req.body as Readable | undefined;
     if (body && typeof body.pipe === "function" && !(await drain(body))) reply.header("connection", "close");
     throw err;

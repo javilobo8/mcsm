@@ -7,11 +7,11 @@ import { prepareDataDir, restrictDbFiles } from "./data-dir.js";
 
 const mode = (p: string) => statSync(p).mode & 0o777;
 
-describe("permisos del directorio de datos (L9)", () => {
+describe("data directory permissions (L9)", () => {
   let base: string;
   afterEach(() => rmSync(base, { recursive: true, force: true }));
 
-  it("crea el directorio con 0700 y corrige uno existente más abierto", () => {
+  it("creates the directory with 0700 and fixes an existing, more open one", () => {
     base = mkdtempSync(join(tmpdir(), "mcsm-perm-"));
     const nuevo = join(base, "nuevo", "data");
     expect(prepareDataDir(nuevo)).toEqual([]);
@@ -23,7 +23,7 @@ describe("permisos del directorio de datos (L9)", () => {
     expect(mode(viejo)).toBe(0o700);
   });
 
-  it("deja panel.db y sus -wal/-shm en 0600", () => {
+  it("leaves panel.db and its -wal/-shm at 0600", () => {
     base = mkdtempSync(join(tmpdir(), "mcsm-perm-"));
     const dbPath = join(base, "panel.db");
     const db = openDb(dbPath);
@@ -33,7 +33,7 @@ describe("permisos del directorio de datos (L9)", () => {
     db.close();
   });
 
-  it("ignora los ficheros que aún no existen", () => {
+  it("ignores files that do not exist yet", () => {
     base = mkdtempSync(join(tmpdir(), "mcsm-perm-"));
     expect(restrictDbFiles(join(base, "no-existe.db"))).toEqual([]);
   });

@@ -34,33 +34,33 @@ import { importRoutes } from "./import/routes.js";
 import { migrationGuard } from "./migration/guard.js";
 import { migrationRoutes } from "./migration/routes.js";
 
-/** `logger`: true en producción; los tests pueden pasar opciones de pino (p. ej. un `stream` para capturar los logs). */
+/** `logger`: true in production; tests may pass pino options (e.g. a `stream` to capture the logs). */
 export interface AppOptions {
   db: Db;
   logger?: FastifyServerOptions["logger"];
   config?: Partial<Config>;
-  /** plan-10: catálogo de versiones (los tests inyectan uno con fetch falso; nunca tocan la red). */
+  /** plan-10: version catalog (tests inject one with a fake fetch; they never touch the network). */
   versions?: VersionCatalog;
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const cfg: Config = { ...config, ...opts.config };
   const app = Fastify({ logger: opts.logger ?? false });
-  // Antes de registrar nada: los plugins heredan el manejador (formato { error }, 5xx genéricos).
+  // Before registering anything: plugins inherit the handler ({ error } format, generic 5xx).
   app.setErrorHandler(errorHandler(app));
-  securityHeaders(app); // plan-9 (L10): antes de registrar nada, para que lo hereden todas las rutas
+  securityHeaders(app); // plan-9 (L10): before registering anything, so every route inherits it
   app.decorate("db", opts.db);
   app.decorate("config", cfg);
   app.decorate("nodes", new NodesRepo(opts.db));
 
   app.get("/api/health", async () => ({ ok: true }));
 
-  // Antes que el guard de sesión: su hook onRequest debe correr primero para que un 401 en el
-  // upgrade (/ws, /agent/ws) cierre el socket en vez de dejarlo colgado.
+  // Before the session guard: its onRequest hook must run first so that a 401 on the
+  // upgrade (/ws, /agent/ws) closes the socket instead of leaving it hanging.
   await app.register(websocket, { options: { maxPayload: 4 * 1024 * 1024 } });
   await app.register(authPlugin);
   await app.register(authRoutes);
-  await app.register(migrationGuard); // plan-7 (fuera de ancla): guarda de migraciones ANTES de las rutas que protege
+  await app.register(migrationGuard); // plan-7 (outside anchor): migration guard BEFORE the routes it protects
   await app.register(nodeRoutes);
   app.decorate("events", new EventEmitter());
   app.decorate("agents", new AgentHub({ log: app.log }));
@@ -94,21 +94,21 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(settingsRoutes);
   // ── plan-10 ──
   app.decorate("versions", opts.versions ?? new VersionCatalog({
-    onError: (url, err) => app.log.warn({ url, err }, "no se pudo consultar una fuente de versiones"),
+    onError: (url, err) => app.log.warn({ url, err }, "could not query a version source"),
   }));
   await app.register(versionRoutes);
   if (cfg.webDist) {
     await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
-    // El notFoundHandler no pasa por el guard de sesión (no hay ruta enrutada): solo debe servir
-    // index.html, nunca datos, y solo para navegaciones GET/HEAD fuera de /api, /agent y /ws.
+    // The notFoundHandler does not go through the session guard (there is no routed route): it must only serve
+    // index.html, never data, and only for GET/HEAD navigations outside /api, /agent and /ws.
     app.setNotFoundHandler((req, reply) => {
       let path = req.url.split("?")[0] ?? "";
-      try { path = decodeURIComponent(path); } catch { /* path malformado: se evalua tal cual */ }
+      try { path = decodeURIComponent(path); } catch { /* malformed path: evaluated as is */ }
       path = path.toLowerCase();
       const reserved = ["/api", "/agent", "/ws"].some((p) => path === p || path.startsWith(`${p}/`));
       const missingAsset = path.startsWith("/assets/");
       if (reserved || missingAsset || (req.method !== "GET" && req.method !== "HEAD")) {
-        return reply.code(404).send({ error: "No encontrado" });
+        return reply.code(404).send({ error: "Not found" });
       }
       return reply.sendFile("index.html");
     });

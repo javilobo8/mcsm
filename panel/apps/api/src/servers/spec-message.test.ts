@@ -10,16 +10,16 @@ const sent = (m: ServerSpec) => JSON.parse(new TextDecoder().decode(m.specJson))
 const cf = row({ type: "AUTO_CURSEFORGE", modpack: { platform: "AUTO_CURSEFORGE", slugOrUrl: "all-the-mods-10" } });
 
 describe("toServerSpecMessage", () => {
-  it("la key es un parámetro obligatorio: null = no configurada; solo viaja en specs de CurseForge", () => {
+  it("the key is a required parameter: null = not configured; it only travels in CurseForge specs", () => {
     expect(sent(toServerSpecMessage(cf, "K3y"))).toHaveProperty("curseforgeApiKey", "K3y");
     expect(sent(toServerSpecMessage(cf, null))).not.toHaveProperty("curseforgeApiKey");
     expect(sent(toServerSpecMessage(row({ type: "PAPER" }), "K3y"))).not.toHaveProperty("curseforgeApiKey");
   });
-  it("olvidar la key no compila (un emisor sin key haría alternar el hash con SyncSpecs y recrearía el contenedor)", () => {
-    // @ts-expect-error: falta la key de CurseForge
+  it("forgetting the key does not compile (a sender without a key would make the hash alternate with SyncSpecs and recreate the container)", () => {
+    // @ts-expect-error: the CurseForge key is missing
     expect(sent(toServerSpecMessage(cf))).not.toHaveProperty("curseforgeApiKey");
   });
-  it("un importado lleva adopt con el contenedor original y la versión de la adopción; los demás no", () => {
+  it("an imported server carries adopt with the original container and the adoption version; the others do not", () => {
     const from = { containerId: "c".repeat(64), containerName: "viejo", specVersion: 1, importedAt: "", composeProject: "", composeService: "" };
     const imported = row({ type: "PAPER", dataPath: "/home/lobo/mc" }, { imported_from: JSON.stringify(from) });
     expect(sent(toServerSpecMessage(imported, null))).toMatchObject({ adopt: { containerId: "c".repeat(64), version: 1 }, dataPath: "/home/lobo/mc" });

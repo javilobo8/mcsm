@@ -16,7 +16,7 @@ import (
 	"mcsm/agent/internal/spec"
 )
 
-// runAlpine ejecuta un comando como root en alpine con dir montado en /w y espera a que termine.
+// runAlpine runs a command as root in alpine with dir mounted at /w and waits for it to finish.
 func runAlpine(t *testing.T, m *Moby, name, dir string, cmd ...string) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -41,9 +41,9 @@ func runAlpine(t *testing.T, m *Moby, name, dir string, cmd ...string) {
 	}
 }
 
-// El HostConfig endurecido de BuildContainer (CapDrop ALL + CapAdd mínimo,
-// no-new-privileges, pids y memoria) arranca itzg y llega a healthy con un directorio de
-// datos creado por root, como lo crea el agente. Lento: descarga el servidor vanilla.
+// BuildContainer's hardened HostConfig (CapDrop ALL + minimal CapAdd,
+// no-new-privileges, pids and memory) starts itzg and reaches healthy with a data
+// directory created by root, as the agent creates it. Slow: it downloads the vanilla server.
 func TestItzgHardenedReachesHealthy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
@@ -64,8 +64,8 @@ func TestItzgHardenedReachesHealthy(t *testing.T) {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Directorio de datos propiedad de root (el agente corre como root); al final se
-	// borra también como root, porque itzg lo deja propiedad de uid 1000.
+	// Data directory owned by root (the agent runs as root); at the end it is
+	// also deleted as root, because itzg leaves it owned by uid 1000.
 	runAlpine(t, m, "mcsm-test-itzg-prep", root, "mkdir", "-p", "/w/test-itzg/data")
 	defer runAlpine(t, m, "mcsm-test-itzg-clean", root, "rm", "-rf", "/w/test-itzg")
 
@@ -78,7 +78,7 @@ func TestItzgHardenedReachesHealthy(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.Config.Labels["mcsm.test"] = "true"
-	b.HostConfig.PortBindings = network.PortMap{} // sin publicar: no choca con nada del host
+	b.HostConfig.PortBindings = network.PortMap{} // not published: does not clash with anything on the host
 	if old, err := m.ListManaged(ctx); err == nil {
 		for _, c := range old {
 			if c.Name == b.Name {
@@ -105,11 +105,11 @@ func TestItzgHardenedReachesHealthy(t *testing.T) {
 			break
 		}
 		if !ins.Running {
-			t.Fatalf("el contenedor se paró (exit %d) antes de estar healthy", ins.ExitCode)
+			t.Fatalf("the container stopped (exit %d) before being healthy", ins.ExitCode)
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("sin healthy a tiempo (estado %s/%s)", ins.State, ins.Health)
+			t.Fatalf("not healthy in time (state %s/%s)", ins.State, ins.Health)
 		case <-tick.C:
 		}
 	}
@@ -117,6 +117,6 @@ func TestItzgHardenedReachesHealthy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ins, _ := m.Inspect(ctx, id); ins == nil || ins.ExitCode != 0 {
-		t.Fatalf("parada limpia esperada: %+v", ins)
+		t.Fatalf("clean stop expected: %+v", ins)
 	}
 }

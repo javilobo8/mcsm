@@ -7,15 +7,15 @@ const dto = (over: Partial<SettingsDto> = {}): SettingsDto => ({
   defaultGamePortRange: { from: 25565, to: 25600 }, curseforge: { configured: false, valid: true }, ...over,
 });
 
-describe("ajustes en la web", () => {
-  it("contraseña: actual obligatoria, mínimo 8 y repetida igual", () => {
-    expect(passwordFormError({ current: "", next: "nueva-larga", repeat: "nueva-larga" })).toMatch(/actual/);
-    expect(passwordFormError({ current: "x", next: "corta", repeat: "corta" })).toMatch(/8/);
-    expect(passwordFormError({ current: "x", next: "nueva-larga", repeat: "otra-larga" })).toMatch(/no coinciden/);
-    expect(passwordFormError({ current: "x", next: "nueva-larga", repeat: "nueva-larga" })).toBeNull();
+describe("settings in the web", () => {
+  it("password: current required, minimum 8 and repeated the same", () => {
+    expect(passwordFormError({ current: "", next: "new-long", repeat: "new-long" })).toMatch(/current/);
+    expect(passwordFormError({ current: "x", next: "short", repeat: "short" })).toMatch(/8/);
+    expect(passwordFormError({ current: "x", next: "new-long", repeat: "other-long" })).toMatch(/do not match/);
+    expect(passwordFormError({ current: "x", next: "new-long", repeat: "new-long" })).toBeNull();
   });
 
-  it("rango de puertos desde el formulario", () => {
+  it("port range from the form", () => {
     expect(portRangeForm({ from: 26600, to: 26620 })).toEqual({ from: "26600", to: "26620" });
     expect(parsePortRange({ from: " 26600", to: "26620 " })).toEqual({ ok: true, value: { from: 26600, to: 26620 } });
     for (const bad of [{ from: "", to: "1" }, { from: "a", to: "2000" }, { from: "30000", to: "29000" }, { from: "80", to: "90" }]) {
@@ -23,20 +23,20 @@ describe("ajustes en la web", () => {
     }
   });
 
-  it("URL pública", () => {
+  it("public URL", () => {
     expect(parsePublicUrl("http://192.168.1.10:8080/")).toEqual({ ok: true, value: "http://192.168.1.10:8080" });
     expect(parsePublicUrl("")).toEqual({ ok: true, value: "" });
-    expect(parsePublicUrl("http://x/ruta").ok).toBe(false);
+    expect(parsePublicUrl("http://x/path").ok).toBe(false);
   });
 
-  it("de dónde sale la URL que se usa", () => {
-    expect(publicUrlNote(dto())).toMatch(/dirección con la que abres el panel/);
+  it("where the URL in use comes from", () => {
+    expect(publicUrlNote(dto())).toMatch(/address you use to open the panel/);
     expect(publicUrlNote(dto({ publicUrl: "http://env:8080", publicUrlSource: "env", envPublicUrl: "http://env:8080" }))).toMatch(/PANEL_PUBLIC_URL/);
-    expect(publicUrlNote(dto({ publicUrl: "http://a:8080", publicUrlSource: "settings" }))).toMatch(/Guardada aquí/);
+    expect(publicUrlNote(dto({ publicUrl: "http://a:8080", publicUrlSource: "settings" }))).toMatch(/Saved here/);
   });
 
-  it("aviso al salir con cambios", () => {
+  it("warning when leaving with changes", () => {
     expect(settingsLeaveWarning(false)).toBeNull();
-    expect(settingsLeaveWarning(true)?.title).toBe("Ajustes sin guardar");
+    expect(settingsLeaveWarning(true)?.title).toBe("Unsaved settings");
   });
 });

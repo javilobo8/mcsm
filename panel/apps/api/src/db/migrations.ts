@@ -56,9 +56,9 @@ CREATE INDEX servers_node_idx ON servers(node_id);
   },
   // ── plan-2 ──
   {
-    // Una fila por servidor/nodo y ventana de 10 s. La clave primaria es el índice
-    // (scope, scope_id, ts) de la spec y hace idempotente la ingesta (INSERT OR REPLACE).
-    // Sin `id` UUID (desviación consciente de §4): ~60k filas por servidor y semana.
+    // One row per server/node and 10 s window. The primary key is the spec's (scope, scope_id, ts)
+    // index and makes ingestion idempotent (INSERT OR REPLACE).
+    // No UUID `id` (conscious deviation from §4): ~60k rows per server per week.
     name: "010_metric_samples",
     sql: `
 CREATE TABLE metric_samples (
@@ -81,14 +81,14 @@ CREATE TABLE metric_samples (
 `,
   },
   {
-    // La purga horaria (DELETE ... WHERE ts < ?) no filtra por scope: sin este índice recorre toda la tabla.
+    // The hourly purge (DELETE ... WHERE ts < ?) does not filter by scope: without this index it scans the whole table.
     name: "011_metric_samples_ts",
     sql: `CREATE INDEX metric_samples_ts ON metric_samples (ts);`,
   },
   // ── plan-3 ──
   {
-    // CF_API_KEY pasa a ser reservada: la key que alguien hubiera puesto en el env libre de un
-    // servidor se mueve a Ajustes (si no había ya una) y se quita de la spec (versión +1).
+    // CF_API_KEY becomes reserved: a key someone may have put in a server's free env
+    // is moved to Settings (if there was not one already) and removed from the spec (version +1).
     name: "020_cf_api_key_env_to_settings",
     sql: `
 INSERT OR IGNORE INTO settings (key, value)
@@ -159,21 +159,21 @@ CREATE INDEX backups_server_idx ON backups(server_id, started_at);
   // ── plan-5 ──
   // ── plan-6 ──
   {
-    // Origen de un servidor importado (spec §4 imported_from): contenedor original, versión de la
-    // adopción y proyecto/servicio de Docker Compose. JSON; NULL en los creados por el panel.
+    // Origin of an imported server (spec §4 imported_from): original container, adoption
+    // version and Docker Compose project/service. JSON; NULL for those created by the panel.
     name: "050_servers_imported_from",
     sql: `ALTER TABLE servers ADD COLUMN imported_from TEXT;`,
   },
   // ── plan-7 ──
   {
-    // Migraciones entre nodos (spec §7). Las abiertas (running, rolling_back, committed) protegen al
-    // servidor en SyncSpecs y bloquean acciones; borrar un nodo borra las suyas (escapatoria si no vuelve).
+    // Migrations between nodes (spec §7). Open ones (running, rolling_back, committed) protect the
+    // server in SyncSpecs and block actions; deleting a node deletes its own (escape hatch if it never comes back).
     name: "060_migrations",
     sql: `
 CREATE TABLE migrations (
   id TEXT PRIMARY KEY,
-  -- Sin clave foránea a servers a propósito: tras el commit el servidor puede borrarse y la retirada del origen
-  -- (o la limpieza del destino) sigue pendiente y debe salir igual.
+  -- No foreign key to servers on purpose: after the commit the server can be deleted and the removal of the source
+  -- (or the cleanup of the target) is still pending and must go through anyway.
   server_id TEXT NOT NULL,
   source_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   target_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
@@ -199,8 +199,8 @@ CREATE INDEX migrations_phase_idx ON migrations(phase);
 `,
   },
   {
-    // target_confirm_pending: tras el commit falta MigrateConfirm en el destino (su marcador queda «committed»).
-    // pending_error: último fallo de lo pendiente (deshacer, confirmar, retirar) o por qué se dejó de reintentar.
+    // target_confirm_pending: after the commit MigrateConfirm is still missing on the target (its marker stays “committed”).
+    // pending_error: last failure of what is pending (undo, confirm, remove) or why retrying stopped.
     name: "061_migrations_pending",
     sql: `
 ALTER TABLE migrations ADD COLUMN target_confirm_pending INTEGER NOT NULL DEFAULT 0;
@@ -209,8 +209,8 @@ ALTER TABLE migrations ADD COLUMN pending_error TEXT;
   },
   // ── plan-8 ──
   {
-    // mc-router por nodo (spec §4 router_deployments): spec = RouterDeploymentSpec (shared/router.ts),
-    // observed = último RouterObserved del agente. Sin fila = el panel nunca lo configuró.
+    // mc-router per node (spec §4 router_deployments): spec = RouterDeploymentSpec (shared/router.ts),
+    // observed = last RouterObserved from the agent. No row = the panel never configured it.
     name: "070_router_deployments",
     sql: `
 CREATE TABLE router_deployments (
@@ -224,8 +224,8 @@ CREATE TABLE router_deployments (
   },
   // ── plan-9 ──
   {
-    // Incidencias de los agentes (Event, spec §5.3) y del panel. server_id sin clave foránea a propósito: el historial
-    // sobrevive al servidor (server_name guarda su nombre de entonces). Borrar un nodo borra los suyos.
+    // Agent (Event, spec §5.3) and panel events. server_id has no foreign key on purpose: the history
+    // outlives the server (server_name keeps its name at the time). Deleting a node deletes its own.
     name: "080_events",
     sql: `
 CREATE TABLE events (
@@ -244,7 +244,7 @@ CREATE INDEX events_server_idx ON events(server_id, created_at);
 `,
   },
   {
-    // Rotación del token de nodo (spec §9): el hash nuevo vale junto al vigente hasta que el agente conecta con él.
+    // Node token rotation (spec §9): the new hash is valid alongside the current one until the agent connects with it.
     name: "081_nodes_pending_token",
     sql: `
 ALTER TABLE nodes ADD COLUMN pending_token_hash TEXT;
@@ -253,8 +253,25 @@ CREATE UNIQUE INDEX nodes_pending_token_idx ON nodes(pending_token_hash) WHERE p
 `,
   },
   {
-    // Cuándo cambió por última vez el estado deseado: un crash_loop atrasado no debe deshacer un «Arrancar» posterior.
+    // When the desired state last changed: a late crash_loop must not undo a later “Start”.
     name: "082_servers_desired_changed_at",
     sql: `ALTER TABLE servers ADD COLUMN desired_changed_at TEXT;`,
+  },
+  {
+    // The UI was translated to English: pending_error starts with the pending item's label (PENDING_LABEL in
+    // migration/service.ts) and may carry the "not retried" mark; rewrite the Spanish ones saved before.
+    name: "083_migrations_pending_english",
+    sql: `
+UPDATE migrations SET pending_error = 'Clean up the target: ' || substr(pending_error, length('Limpiar el destino: ') + 1)
+  WHERE pending_error LIKE 'Limpiar el destino: %';
+UPDATE migrations SET pending_error = 'Start the source again: ' || substr(pending_error, length('Volver a arrancar el origen: ') + 1)
+  WHERE pending_error LIKE 'Volver a arrancar el origen: %';
+UPDATE migrations SET pending_error = 'Confirm on the target: ' || substr(pending_error, length('Confirmar en el destino: ') + 1)
+  WHERE pending_error LIKE 'Confirmar en el destino: %';
+UPDATE migrations SET pending_error = 'Remove the source: ' || substr(pending_error, length('Retirar el origen: ') + 1)
+  WHERE pending_error LIKE 'Retirar el origen: %';
+UPDATE migrations SET pending_error = replace(pending_error, '; no se reintenta: ', '; not retried: ')
+  WHERE pending_error LIKE '%; no se reintenta: %';
+`,
   },
 ];

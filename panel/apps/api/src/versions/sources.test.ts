@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { SOURCES, UpstreamError, allowedSource, forgeBuildId, neoforgeMcVersion, type Get, type GetOptions } from "./sources.js";
 
-/** `get` falso: devuelve el documento de cada URL y apunta qué se pidió. */
+/** Fake `get`: returns each URL's document and records what was requested. */
 function fakeGet(docs: Record<string, unknown>) {
   const asked: ({ url: string } & GetOptions)[] = [];
   const get: Get = async (url, schema, opts = {}) => {
     asked.push({ url, ...opts });
-    if (!Object.hasOwn(docs, url)) throw new Error(`URL inesperada: ${url}`);
-    // Como el catálogo: valida con el esquema del adaptador y una forma ajena es UpstreamError.
+    if (!Object.hasOwn(docs, url)) throw new Error(`unexpected URL: ${url}`);
+    // Like the catalog: validates with the adapter's schema and a foreign shape is UpstreamError.
     const r = schema.safeParse(docs[url]);
-    if (!r.success) throw new UpstreamError(null, `respuesta inesperada de ${url}`);
+    if (!r.success) throw new UpstreamError(null, `unexpected response from ${url}`);
     return r.data;
   };
   return { get, asked };
@@ -23,7 +23,7 @@ const FORGE_PROMOS = "https://files.minecraftforge.net/net/minecraftforge/forge/
 const NEOFORGE = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge";
 
 describe("Vanilla (Mojang)", () => {
-  it("releases y snapshots en el orden de la fuente; sin old_alpha/old_beta", async () => {
+  it("releases and snapshots in the source's order; without old_alpha/old_beta", async () => {
     const { get } = fakeGet({ [MOJANG]: {
       latest: { release: "26.3", snapshot: "26.4-snapshot-3" },
       versions: [
@@ -39,7 +39,7 @@ describe("Vanilla (Mojang)", () => {
 });
 
 describe("Paper y Folia (Fill v3)", () => {
-  it("aplana las familias y ordena de más nueva a más antigua", async () => {
+  it("flattens the families and sorts from newest to oldest", async () => {
     const { get } = fakeGet({ [`${FILL}/paper`]: {
       project: { id: "paper", name: "Paper" },
       versions: { "26.3": ["26.3", "26.3-rc-3"], "1.21": ["1.21.11", "1.21.11-rc3", "1.21.10", "1.21"], "1.20": ["1.20.6", "1.20.1"] },
@@ -49,7 +49,7 @@ describe("Paper y Folia (Fill v3)", () => {
       { id: "1.21.10", stable: true }, { id: "1.21", stable: true }, { id: "1.20.6", stable: true }, { id: "1.20.1", stable: true },
     ]);
   });
-  it("builds: solo STABLE, con la caché de builds", async () => {
+  it("builds: only STABLE, with the builds cache", async () => {
     const url = `${FILL}/paper/versions/1.20.1/builds`;
     const { get, asked } = fakeGet({ [url]: [
       { id: 177, time: "2026-10-01T00:00:00Z", channel: "BETA", commits: [], downloads: {} },
@@ -61,23 +61,23 @@ describe("Paper y Folia (Fill v3)", () => {
     ]);
     expect(asked).toEqual([{ url, ttl: "builds" }]);
   });
-  it("Folia usa su proyecto", async () => {
+  it("Folia uses its project", async () => {
     const { get } = fakeGet({ [`${FILL}/folia`]: { project: { id: "folia" }, versions: { "1.21": ["1.21.11"] } } });
     expect(await SOURCES.FOLIA.versions(get)).toEqual([{ id: "1.21.11", stable: true }]);
   });
-  it("la versión se codifica al construir la URL", async () => {
+  it("the version is encoded when building the URL", async () => {
     const { get, asked } = fakeGet({ [`${FILL}/paper/versions/1.21%2B1/builds`]: [] });
     await SOURCES.PAPER.builds!(get, "1.21+1");
     expect(asked[0]!.url).toBe(`${FILL}/paper/versions/1.21%2B1/builds`);
   });
-  it("una respuesta con otra forma es UpstreamError (no un 500)", async () => {
-    const { get } = fakeGet({ [`${FILL}/paper`]: "<html>mantenimiento</html>" });
+  it("a response with another shape is UpstreamError (not a 500)", async () => {
+    const { get } = fakeGet({ [`${FILL}/paper`]: "<html>maintenance</html>" });
     await expect(SOURCES.PAPER.versions(get)).rejects.toBeInstanceOf(UpstreamError);
   });
 });
 
 describe("Purpur", () => {
-  it("versiones y builds de más nueva a más antigua", async () => {
+  it("versions and builds from newest to oldest", async () => {
     const { get } = fakeGet({
       [PURPUR]: { project: "purpur", metadata: { current: "26.2" }, versions: ["1.14.1", "1.21.11", "26.1.2", "26.2"] },
       [`${PURPUR}/26.2`]: { project: "purpur", version: "26.2", builds: { latest: "2633", all: ["2593", "2600", "2633"] } },
@@ -89,8 +89,8 @@ describe("Purpur", () => {
   });
 });
 
-describe("Spigot (índice de BuildTools)", () => {
-  it("solo nombres de versión, sin repetidos ni builds sueltos", async () => {
+describe("Spigot (BuildTools index)", () => {
+  it("only version names, without repeats or loose builds", async () => {
     const html = `<html><head><title>Index of /versions/</title></head><body><pre>
 <a href="latest.json">latest.json</a>    15-Sep-2026 15:15   534
 <a href="1.8.json">1.8.json</a>   16-Apr-2015 22:00   479
@@ -107,7 +107,7 @@ describe("Spigot (índice de BuildTools)", () => {
 });
 
 describe("Fabric y Quilt", () => {
-  it("Fabric: versiones y loaders con su marca de estable", async () => {
+  it("Fabric: versions and loaders with their stable flag", async () => {
     const { get } = fakeGet({
       "https://meta.fabricmc.net/v2/versions/game": [{ version: "26.4-snapshot-3", stable: false }, { version: "26.3", stable: true }],
       "https://meta.fabricmc.net/v2/versions/loader/26.3": [
@@ -120,7 +120,7 @@ describe("Fabric y Quilt", () => {
       { id: "0.19.5", stable: true, recommended: false }, { id: "0.19.4", stable: false, recommended: false },
     ]);
   });
-  it("Quilt: los loaders llegan desordenados; beta = con sufijo", async () => {
+  it("Quilt: loaders arrive unordered; beta = with a suffix", async () => {
     const { get } = fakeGet({
       "https://meta.quiltmc.org/v3/versions/loader/26.3": [
         { loader: { version: "0.20.0-beta.9" } }, { loader: { version: "0.24.0" } }, { loader: { version: "0.20.0-beta.10" } },
@@ -142,12 +142,12 @@ describe("Forge", () => {
     },
     [FORGE_PROMOS]: { homepage: "https://files.minecraftforge.net/net/minecraftforge/forge/", promos: { "1.20.1-latest": "47.4.27", "1.20.1-recommended": "47.4.0" } },
   };
-  it("versiones de MC = claves del metadata", async () => {
+  it("MC versions = metadata keys", async () => {
     expect(await SOURCES.FORGE.versions(fakeGet(docs).get)).toEqual([
       { id: "26.3", stable: true }, { id: "1.20.1", stable: true }, { id: "1.7.10", stable: true }, { id: "1.7.10_pre4", stable: false },
     ]);
   });
-  it("builds sin el prefijo de la versión, con la recomendada marcada", async () => {
+  it("builds without the version prefix, with the recommended one marked", async () => {
     expect(await SOURCES.FORGE.builds!(fakeGet(docs).get, "1.20.1")).toEqual([
       { id: "47.4.27", stable: true, recommended: false }, { id: "47.4.26", stable: true, recommended: false }, { id: "47.4.0", stable: true, recommended: true },
     ]);
@@ -160,11 +160,11 @@ describe("NeoForge", () => {
   const docs = { [NEOFORGE]: { isSnapshot: false, versions: [
     "0.25w14craftmine.3-beta", "20.2.3-beta", "20.4.237", "21.0.167", "21.1.77", "21.1.228", "26.1.0.0-alpha", "26.1.2.5", "26.3.0.75-beta", "26.3.0.76",
   ] } };
-  it("versión de MC deducida", () => {
+  it("deduced MC version", () => {
     expect(["26.3.0.76", "26.1.2.5", "21.0.167", "21.1.77", "20.2.3-beta", "0.25w14craftmine.3-beta", "19.1.2", "26.1"].map(neoforgeMcVersion))
       .toEqual(["26.3", "26.1.2", "1.21", "1.21.1", "1.20.2", null, null, null]);
   });
-  it("versiones únicas y builds filtrados por versión", async () => {
+  it("unique versions and builds filtered by version", async () => {
     expect((await SOURCES.NEOFORGE.versions(fakeGet(docs).get)).map((v) => v.id)).toEqual(["26.3", "26.1.2", "26.1", "1.21.1", "1.21", "1.20.4", "1.20.2"]);
     expect(await SOURCES.NEOFORGE.builds!(fakeGet(docs).get, "1.21.1")).toEqual([
       { id: "21.1.228", stable: true, recommended: false }, { id: "21.1.77", stable: true, recommended: false },
@@ -176,11 +176,11 @@ describe("NeoForge", () => {
 });
 
 describe("allowedSource", () => {
-  it("solo HTTPS y solo los hosts de las fuentes", () => {
+  it("only HTTPS and only the sources' hosts", () => {
     expect(allowedSource(`${PURPUR}/26.2`)).toBe(true);
     expect(allowedSource(FORGE_PROMOS)).toBe(true);
     expect(allowedSource("http://api.purpurmc.org/v2/purpur")).toBe(false);
     expect(allowedSource("https://evil.example/v2/purpur")).toBe(false);
-    expect(allowedSource("no es una url")).toBe(false);
+    expect(allowedSource("not a url")).toBe(false);
   });
 });

@@ -7,32 +7,32 @@ const spec = (game: number, extra: { host: number; container: number; proto: "tc
 const range = { from: 25565, to: 25570 };
 
 describe("proposeTarget", () => {
-  it("conserva slug y puerto si están libres en el destino", () => {
+  it("keeps slug and port if they are free on the target", () => {
     expect(proposeTarget({ slug: "survival", spec: spec(25570), targetServers: [], range }))
       .toEqual({ ok: true, slug: "survival", port: 25570, portChanged: false });
   });
-  it("puerto ocupado: el primero libre del rango que no sea un puerto extra del propio servidor", () => {
+  it("port taken: the first free one in the range that is not one of the server's own extra ports", () => {
     const p = proposeTarget({
       slug: "survival", spec: spec(25565, [{ host: 25566, container: 19132, proto: "udp" }]),
-      targetServers: [{ slug: "otro", spec: spec(25565) }], range,
+      targetServers: [{ slug: "other", spec: spec(25565) }], range,
     });
     expect(p).toEqual({ ok: true, slug: "survival", port: 25567, portChanged: true });
   });
-  it("slug reservado (origen con la retirada pendiente): también se evita", () => {
+  it("reserved slug (source with the removal pending): it is avoided too", () => {
     const p = proposeTarget({ slug: "survival", spec: spec(25570), targetServers: [], reservedSlugs: ["survival"], range });
     expect(p).toMatchObject({ ok: true, slug: "survival-2", port: 25570, portChanged: false });
   });
-  it("slug ocupado: sufijo -2", () => {
+  it("taken slug: suffix -2", () => {
     const p = proposeTarget({ slug: "survival", spec: spec(25570), targetServers: [{ slug: "survival", spec: spec(25565) }], range });
     expect(p).toMatchObject({ ok: true, slug: "survival-2", port: 25570 });
   });
-  it("puerto pedido: se usa si está libre (aunque esté fuera del rango) y si no, error", () => {
+  it("requested port: used if free (even if outside the range) and otherwise, error", () => {
     expect(proposeTarget({ slug: "s", spec: spec(25565), targetServers: [], range, requestedPort: 30000 }))
       .toEqual({ ok: true, slug: "s", port: 30000, portChanged: true });
     const p = proposeTarget({ slug: "s", spec: spec(25565), targetServers: [{ slug: "o", spec: spec(25568) }], range, requestedPort: 25568 });
-    expect(p).toEqual({ ok: false, error: "El puerto 25568 ya está en uso en el nodo destino" });
+    expect(p).toEqual({ ok: false, error: "Port 25568 is already in use on the target node" });
   });
-  it("un puerto extra que choca en el destino no se cambia solo: error", () => {
+  it("an extra port that clashes on the target is not changed on its own: error", () => {
     const p = proposeTarget({
       slug: "s", spec: spec(25565, [{ host: 19132, container: 19132, proto: "udp", label: "Geyser" }]),
       targetServers: [{ slug: "o", spec: spec(25566, [{ host: 19132, container: 19132, proto: "udp" }]) }], range,
@@ -40,36 +40,36 @@ describe("proposeTarget", () => {
     expect(p.ok).toBe(false);
     if (!p.ok) expect(p.error).toMatch(/19132 \(Geyser\)/);
   });
-  it("plan-8: el puerto del router (mc-router) del destino no se conserva, ni se reparte, ni se puede pedir", () => {
+  it("plan-8: the target's router (mc-router) port is neither kept, nor assigned, nor can it be requested", () => {
     expect(proposeTarget({ slug: "s", spec: spec(25565), targetServers: [], range, routerPort: 25565 }))
       .toEqual({ ok: true, slug: "s", port: 25566, portChanged: true });
     expect(proposeTarget({ slug: "s", spec: spec(25570), targetServers: [{ slug: "o", spec: spec(25570) }], range, routerPort: 25565 }))
       .toEqual({ ok: true, slug: "s", port: 25566, portChanged: true });
     expect(proposeTarget({ slug: "s", spec: spec(25570), targetServers: [], range, routerPort: 25580, requestedPort: 25580 }))
-      .toEqual({ ok: false, error: "El puerto 25580 lo usa el router (mc-router) del nodo destino" });
+      .toEqual({ ok: false, error: "Port 25580 is used by the target node's router (mc-router)" });
     const p = proposeTarget({ slug: "s", spec: spec(25570, [{ host: 25580, container: 8100, proto: "tcp", label: "Mapa" }]), targetServers: [], range, routerPort: 25580 });
-    expect(p).toEqual({ ok: false, error: "El puerto extra 25580 (Mapa) lo usa el router (mc-router) del nodo destino: cámbialo antes de migrar" });
-    // Sin router (null), nada cambia.
+    expect(p).toEqual({ ok: false, error: "Extra port 25580 (Mapa) is used by the target node's router (mc-router): change it before migrating" });
+    // Without a router (null), nothing changes.
     expect(proposeTarget({ slug: "s", spec: spec(25565), targetServers: [], range, routerPort: null }))
       .toEqual({ ok: true, slug: "s", port: 25565, portChanged: false });
   });
-  it("sin puertos libres en el rango: error", () => {
+  it("no free ports in the range: error", () => {
     const full = [25565, 25566, 25567, 25568, 25569, 25570].map((g, i) => ({ slug: `o${i}`, spec: spec(g) }));
     expect(proposeTarget({ slug: "s", spec: spec(25565), targetServers: full, range }).ok).toBe(false);
   });
 });
 
-describe("utilidades", () => {
-  it("uniqueSlugAmong respeta los 40 caracteres", () => {
+describe("utilities", () => {
+  it("uniqueSlugAmong respects the 40 characters", () => {
     expect(uniqueSlugAmong("a", new Set(["a", "a-2"]))).toBe("a-3");
     const long = "x".repeat(40);
     expect(uniqueSlugAmong(long, new Set([long]))).toBe(`${"x".repeat(38)}-2`);
   });
-  it("retargetFilename cambia solo el slug", () => {
+  it("retargetFilename changes only the slug", () => {
     expect(retargetFilename("survival-20261012T040000.000Z-3.tar.zst", "survival", "survival-2")).toBe("survival-2-20261012T040000.000Z-3.tar.zst");
-    expect(() => retargetFilename("otro-20261012T040000.000Z-3.tar.zst", "survival", "x")).toThrow();
+    expect(() => retargetFilename("other-20261012T040000.000Z-3.tar.zst", "survival", "x")).toThrow();
   });
-  it("requiredSpace: el mayor de 5 % y 256 MiB de margen", () => {
+  it("requiredSpace: the greater of 5 % and a 256 MiB margin", () => {
     expect(requiredSpace(0)).toBe(256 * 1024 * 1024);
     expect(requiredSpace(100 * 1024 ** 3)).toBe(105 * 1024 ** 3);
   });

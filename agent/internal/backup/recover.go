@@ -10,34 +10,34 @@ import (
 	"strings"
 )
 
-// Recovery es lo que hizo RecoverInterrupted.
+// Recovery is what RecoverInterrupted did.
 type Recovery struct {
-	Removed    []string // restos borrados (rutas)
-	RolledBack string   // pre-restore devuelto a data (nombre), o "" si ninguno
-	Warnings   []string // restos que no se pudieron borrar o leer (no impiden arrancar)
+	Removed    []string // leftovers deleted (paths)
+	RolledBack string   // pre-restore returned to data (name), or "" if none
+	Warnings   []string // leftovers that could not be deleted or read (they do not prevent starting)
 }
 
-// RecoverInterrupted deja coherente el disco de un servidor tras un cierre o un crash del
-// agente a mitad de una copia o una restauración. Se llama al arrancar, antes de reconciliar
-// (o con el servidor reservado), cuando no hay ninguna copia ni restauración en curso:
+// RecoverInterrupted leaves a server's disk coherent after an agent shutdown or crash
+// midway through a backup or a restore. It is called at startup, before reconciling
+// (or with the server reserved), when no backup or restore is in progress:
 //
-//   - Borra en backupsDir las copias a medias (<copia>.partial, <copia>.json.partial) y los
-//     .json huérfanos sin su .tar.zst, y junto a data los .json.partial de los pre-restore.
-//   - Si data no existe y hay pre-restores, el único sin .json, si es además el más reciente,
-//     vuelve a data con un renombrado. Restore escribe ese .json después del intercambio, así
-//     que sin él el intercambio no terminó (crash entre los dos renombrados, o
-//     ErrDataMissing): son los datos originales, y sin ellos Docker crearía un data vacío al
-//     arrancar el contenedor y el servidor generaría un mundo nuevo. Se vuelve a los datos
-//     originales y no a la copia extraída porque el job queda FAILED («interrumpido»). En
-//     cualquier otro caso (solo restauraciones completadas, varios sin .json, o el que no lo
-//     tiene no es el más reciente) la elección es dudosa: no se mueve nada y el error
-//     envuelve ErrDataMissing para que el servidor no arranque con un mundo vacío.
-//   - Con data en su sitio, borra los temporales de extracción data.restoring-*. Sin data se
-//     dejan: pueden ser lo único que quede.
+//   - In backupsDir it deletes half-done backups (<backup>.partial, <backup>.json.partial) and
+//     orphan .json files without their .tar.zst, and next to data the .json.partial files of the pre-restores.
+//   - If data does not exist and there are pre-restores, the only one without a .json, if it is also the most recent,
+//     goes back to data with a rename. Restore writes that .json after the swap, so
+//     without it the swap did not finish (crash between the two renames, or
+//     ErrDataMissing): it is the original data, and without it Docker would create an empty data when
+//     starting the container and the server would generate a new world. It goes back to the original
+//     data and not to the extracted backup because the job ends up FAILED ("interrupted"). In
+//     any other case (only completed restores, several without a .json, or the one without it
+//     is not the most recent) the choice is doubtful: nothing is moved and the error
+//     wraps ErrDataMissing so that the server does not start with an empty world.
+//   - With data in place, it deletes the data.restoring-* extraction temporaries. Without data they
+//     are left: they may be all that remains.
 //
-// Solo toca nombres que siguen las convenciones de este paquete. Si data no existe y no se
-// devolvió (dudoso o el renombrado falló), el error envuelve ErrDataMissing: el servidor no
-// debe arrancarse. Sin data ni pre-restores (servidor nuevo) no hay error.
+// It only touches names that follow this package's conventions. If data does not exist and was not
+// returned (doubtful or the rename failed), the error wraps ErrDataMissing: the server must
+// not be started. Without data or pre-restores (new server) there is no error.
 func RecoverInterrupted(backupsDir, dataDir, slug string) (Recovery, error) {
 	var rec Recovery
 	rec.removeFiles(backupsDir, func(name string) bool { return backupLeftover(backupsDir, slug, name) })
@@ -45,7 +45,7 @@ func RecoverInterrupted(backupsDir, dataDir, slug string) (Recovery, error) {
 	parent := filepath.Dir(dataDir)
 	ents, err := os.ReadDir(parent)
 	if errors.Is(err, fs.ErrNotExist) {
-		return rec, nil // servidor sin directorio todavía
+		return rec, nil // server without a directory yet
 	}
 	if err != nil {
 		rec.warn("leer " + parent + ": " + err.Error())
@@ -67,31 +67,31 @@ func RecoverInterrupted(backupsDir, dataDir, slug string) (Recovery, error) {
 
 	cur, err := currentData(dataDir)
 	if err != nil {
-		rec.warn(err.Error()) // data existe y no es un directorio: no se toca nada más
+		rec.warn(err.Error()) // data exists and is not a directory: nothing else is touched
 		return rec, nil
 	}
 	if cur == nil {
 		if len(pres) == 0 {
-			return rec, nil // servidor nuevo: la reconciliación crea data
+			return rec, nil // new server: the reconciliation creates data
 		}
-		sort.Strings(pres) // la marca de tiempo ordena por fecha
+		sort.Strings(pres) // the timestamp sorts by date
 		newest := pres[len(pres)-1]
-		var unfinished []string // sin .json: intercambios que no terminaron
+		var unfinished []string // without .json: swaps that did not finish
 		for _, name := range pres {
 			if _, err := os.Lstat(filepath.Join(parent, name+MetaExt)); errors.Is(err, fs.ErrNotExist) {
 				unfinished = append(unfinished, name)
 			}
 		}
 		if len(unfinished) != 1 || unfinished[0] != newest {
-			// Restauraciones completadas (data borrado después) o elección dudosa (varios sin
-			// .json, o el que no lo tiene no es el más reciente: un reloj que retrocedió). No se
-			// arranca un mundo vacío ni se elige a ciegas: decide el administrador (m9).
-			return rec, fmt.Errorf("%w: falta %s y junto a él hay datos de antes de una restauración (%s); no se sabe cuáles devolver, mueve los buenos a %s",
+			// Completed restores (data deleted afterwards) or a doubtful choice (several without a
+			// .json, or the one without it is not the most recent: a clock that went backwards). An
+			// empty world is not started nor is a blind choice made: the administrator decides (m9).
+			return rec, fmt.Errorf("%w: %s is missing and next to it there is data from before a restore (%s); it is not known which to return, move the good ones to %s",
 				ErrDataMissing, dataDir, strings.Join(pres, ", "), filepath.Base(dataDir))
 		}
 		prePath := filepath.Join(parent, newest)
 		if err := rename(prePath, dataDir); err != nil {
-			return rec, fmt.Errorf("%w: falta %s tras una restauración interrumpida y no se pudieron devolver los datos originales desde %s: %v",
+			return rec, fmt.Errorf("%w: %s is missing after an interrupted restore and the original data could not be returned from %s: %v",
 				ErrDataMissing, dataDir, prePath, err)
 		}
 		_ = syncDir(parent)
@@ -103,8 +103,8 @@ func RecoverInterrupted(backupsDir, dataDir, slug string) (Recovery, error) {
 	return rec, nil
 }
 
-// backupLeftover indica si name, en backupsDir, es un resto de una copia de slug: un
-// .partial de una copia o de su .json, o un .json sin su .tar.zst.
+// backupLeftover reports whether name, in backupsDir, is a leftover of one of slug's backups: a
+// .partial of a backup or of its .json, or a .json without its .tar.zst.
 func backupLeftover(backupsDir, slug, name string) bool {
 	if base, ok := strings.CutSuffix(name, partialExt); ok {
 		archive, _ := strings.CutSuffix(base, MetaExt)
@@ -117,13 +117,13 @@ func backupLeftover(backupsDir, slug, name string) bool {
 	return false
 }
 
-// preRestoreMetaPartial indica si name es el temporal del .json de un pre-restore de dataDir.
+// preRestoreMetaPartial reports whether name is the temporary of a dataDir pre-restore's .json.
 func preRestoreMetaPartial(dataDir, name string) bool {
 	pre, ok := strings.CutSuffix(name, MetaExt+partialExt)
 	return ok && ValidPreRestoreName(dataDir, pre)
 }
 
-// removeFiles borra los ficheros normales de dir que cumplen match.
+// removeFiles deletes the regular files in dir that satisfy match.
 func (r *Recovery) removeFiles(dir string, match func(name string) bool) {
 	ents, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -148,7 +148,7 @@ func (r *Recovery) remove(p string, recursive bool) {
 		err = os.Remove(p)
 	}
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		r.warn("no se pudo borrar " + p + ": " + err.Error())
+		r.warn("could not delete " + p + ": " + err.Error())
 		return
 	}
 	r.Removed = append(r.Removed, p)

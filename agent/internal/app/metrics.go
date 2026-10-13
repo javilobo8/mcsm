@@ -9,20 +9,20 @@ import (
 	"mcsm/agent/internal/stats"
 )
 
-// dialRcon abre una sesión RCON persistente para el sondeo de TPS.
+// dialRcon opens a persistent RCON session for the TPS probe.
 func dialRcon(ctx context.Context, host string, port uint16, password string) (stats.Rcon, error) {
 	c, err := mc.DialRcon(ctx, host, port, password)
 	if err != nil {
-		return nil, err // nunca un *RconConn nil dentro de la interfaz
+		return nil, err // never a nil *RconConn inside the interface
 	}
 	return c, nil
 }
 
-// newSampler construye el muestreador de métricas (spec §6.4) sobre el store, Docker
-// y el ping de estado de la App. Host, reloj y RCON se inyectan para los tests.
+// newSampler builds the metrics sampler (spec §6.4) over the store, Docker
+// and the App's status ping. Host, clock and RCON are injected for tests.
 func (a *App) newSampler(host stats.HostReader, clock stats.Clock, dial stats.DialRcon) *stats.Sampler {
 	return stats.New(stats.Options{
-		Containers: serverContainers{a}, // plan-6: también los importados aún adoptados
+		Containers: serverContainers{a}, // plan-6: also the imported servers still adopted
 		Host:       host,
 		DataRoot:   a.cfg.DataRoot,
 		Status: func(ctx context.Context, h string, p uint16) *mcsmv1.McStatus {
@@ -46,7 +46,7 @@ func (a *App) newSampler(host stats.HostReader, clock stats.Clock, dial stats.Di
 	})
 }
 
-// runMetrics muestrea y envía un MetricBatch cada 10 s hasta que ctx termina.
+// runMetrics samples and sends a MetricBatch every 10 s until ctx ends.
 func (a *App) runMetrics(ctx context.Context) {
 	a.newSampler(stats.GopsutilHost{}, stats.RealClock, dialRcon).Run(ctx)
 }

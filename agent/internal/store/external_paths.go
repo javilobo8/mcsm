@@ -6,16 +6,16 @@ import (
 	"go.etcd.io/bbolt"
 )
 
-// bExternalPaths guarda, por servidor, la carpeta de datos fuera de DATA_ROOT (dataPath) que el agente
-// verificó al adoptar su contenedor: era el bind real de /data de un contenedor itzg (plan-6, H1). El
-// reconciliador solo monta un dataPath si coincide con el registrado para ese id, así que un panel
-// comprometido no puede montar /root ni ninguna otra carpeta del host en un contenedor. El registro
-// nunca se borra: solo identifica la carpeta verificada para ese id (los ids no se reutilizan) y, si
-// el panel vuelve a enviar el servidor (copia de su BD restaurada), lo vuelve a poder crear. El bucket
-// se crea al primer uso (no toca la lista de buckets de Open).
+// bExternalPaths stores, per server, the data folder outside DATA_ROOT (dataPath) that the agent
+// verified when adopting its container: it was the real /data bind of an itzg container (plan-6, H1). The
+// reconciler only mounts a dataPath if it matches the one registered for that id, so a
+// compromised panel cannot mount /root or any other host folder into a container. The record
+// is never deleted: it only identifies the folder verified for that id (ids are not reused) and, if
+// the panel sends the server again (a restored copy of its DB), it makes it possible to create it again. The bucket
+// is created on first use (it does not touch Open's bucket list).
 var bExternalPaths = []byte("external_paths")
 
-// putExternalPath registra path para serverID dentro de una transacción de escritura ("" = nada).
+// putExternalPath registers path for serverID inside a write transaction ("" = nothing).
 func putExternalPath(tx *bbolt.Tx, serverID, path string) error {
 	if path == "" {
 		return nil
@@ -27,15 +27,15 @@ func putExternalPath(tx *bbolt.Tx, serverID, path string) error {
 	return b.Put([]byte(serverID), []byte(path))
 }
 
-// PutExternalPath registra la carpeta externa verificada de serverID.
+// PutExternalPath registers serverID's verified external folder.
 func (s *Store) PutExternalPath(serverID, path string) error {
 	if serverID == "" || path == "" {
-		return errors.New("store: carpeta externa sin servidor o sin ruta")
+		return errors.New("store: external folder without server or path")
 	}
 	return s.db.Update(func(tx *bbolt.Tx) error { return putExternalPath(tx, serverID, path) })
 }
 
-// ExternalPath devuelve la carpeta externa verificada de serverID, o "" si no hay.
+// ExternalPath returns serverID's verified external folder, or "" if there is none.
 func (s *Store) ExternalPath(serverID string) (string, error) {
 	var out string
 	err := s.db.View(func(tx *bbolt.Tx) error {

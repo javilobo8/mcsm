@@ -2,14 +2,14 @@ import { z } from "zod";
 import { compareVersions, isStableVersion, type BuildEntry, type VersionEntry, type VersionListType } from "@mcsm/shared";
 
 /**
- * Fuentes oficiales de versiones (spec 2026-10-13-selector-versiones-design.md §2). Cada adaptador pide
- * sus documentos con `get` (el VersionCatalog pone caché, plazo y topes) y los normaliza a listas de
- * más nueva a más antigua. Una respuesta con forma inesperada lanza UpstreamError (→ 502 o lista
- * guardada), nunca un 500.
+ * Official version sources (spec 2026-10-13-version-selector-design.md §2). Each adapter requests
+ * its documents with `get` (the VersionCatalog adds cache, deadline and caps) and normalizes them into lists from
+ * newest to oldest. A response with an unexpected shape throws UpstreamError (→ 502 or stored
+ * list), never a 500.
  */
 
 export class UpstreamError extends Error {
-  /** `status`: HTTP de la fuente, o null (red, plazo, tamaño, forma inesperada). */
+  /** `status`: HTTP of the source, or null (network, deadline, size, unexpected shape). */
   constructor(public readonly status: number | null, message: string, options?: ErrorOptions) {
     super(message, options);
     this.name = "UpstreamError";
@@ -18,14 +18,14 @@ export class UpstreamError extends Error {
 
 export interface GetOptions { kind?: "json" | "text"; ttl?: "list" | "builds" }
 /**
- * `get` valida el documento con `schema` ANTES de guardarlo en la caché: una respuesta con otra forma es
- * un fallo de la fuente (se sirve lo guardado con `stale`). Cada URL tiene exactamente un esquema, porque
- * la caché guarda el documento ya validado.
+ * `get` validates the document with `schema` BEFORE storing it in the cache: a response with another shape is
+ * a failure of the source (what is stored is served with `stale`). Each URL has exactly one schema, because
+ * the cache stores the already validated document.
  */
 export type Get = <T>(url: string, schema: z.ZodType<T>, opts?: GetOptions) => Promise<T>;
 
 export interface Source {
-  /** Nombre para los mensajes ("No se pudo consultar la lista de versiones de Paper"). */
+  /** Name for the messages ("Could not query the version list of Paper"). */
   label: string;
   versions(get: Get): Promise<VersionEntry[]>;
   builds?(get: Get, version: string): Promise<BuildEntry[]>;
@@ -43,7 +43,7 @@ const NEOFORGE = "https://maven.neoforged.net/api/maven/versions/releases/net/ne
 
 const HOSTS = new Set([MOJANG, FILL, PURPUR, SPIGOT, FABRIC, QUILT, FORGE_META, NEOFORGE].map((u) => new URL(u).host));
 
-/** Solo HTTPS y solo los hosts de las fuentes (el catálogo lo comprueba antes de cada descarga). */
+/** Only HTTPS and only the sources' hosts (the catalog checks it before each download). */
 export function allowedSource(url: string): boolean {
   try {
     const u = new URL(url);
@@ -62,8 +62,8 @@ const build = (id: string, stable = true, recommended = false): BuildEntry => ({
 const metaGame = z.array(z.object({ version: z.string(), stable: z.boolean() }));
 const versionsDoc = z.object({ versions: z.array(z.string()) });
 
-// Mojang, Fabric y Quilt ya vienen de más nueva a más antigua y mezclan snapshots con nombres que
-// compareVersions no ordena (25w14a): se respeta su orden.
+// Mojang, Fabric and Quilt already come from newest to oldest and mix snapshots with names that
+// compareVersions does not order (25w14a): their order is respected.
 const vanilla: Source = {
   label: "Minecraft",
   async versions(get) {
@@ -81,7 +81,7 @@ function fill(project: "paper" | "folia", label: string): Source {
     },
     async builds(get, version) {
       const doc = await get(`${FILL}/${project}/versions/${enc(version)}/builds`, z.array(z.object({ id: z.number().int(), channel: z.string() })), { ttl: "builds" });
-      // Solo STABLE: un build experimental exigiría PAPER_CHANNEL/FOLIA_CHANNEL=experimental.
+      // Only STABLE: an experimental build would require PAPER_CHANNEL/FOLIA_CHANNEL=experimental.
       return doc.filter((b) => b.channel === "STABLE").sort((a, b) => b.id - a.id).map((b) => build(String(b.id)));
     },
   };
@@ -102,7 +102,7 @@ const spigot: Source = {
   label: "Spigot",
   async versions(get) {
     const html = await get(SPIGOT, z.string(), { kind: "text" });
-    // Índice de BuildTools: <versión>.json; los números sueltos (3000.json) son builds internos.
+    // BuildTools index: <version>.json; loose numbers (3000.json) are internal builds.
     return asVersions([...html.matchAll(/href="(\d+\.\d+(?:\.\d+)?)\.json"/g)].map((m) => m[1]!));
   },
 };
@@ -129,7 +129,7 @@ const quilt: Source = {
   },
 };
 
-/** "1.20.1-47.4.27" → "47.4.27"; las antiguas ("1.7.10-10.13.4.1614-1.7.10") repiten la versión al final. */
+/** "1.20.1-47.4.27" → "47.4.27"; the old ones ("1.7.10-10.13.4.1614-1.7.10") repeat the version at the end. */
 export function forgeBuildId(full: string, mc: string): string {
   let id = full.startsWith(`${mc}-`) ? full.slice(mc.length + 1) : full;
   if (id.endsWith(`-${mc}`)) id = id.slice(0, -(mc.length + 1));
@@ -152,8 +152,8 @@ const forge: Source = {
 };
 
 /**
- * Versión de Minecraft de una de NeoForge (parte antes del primer "-"): mayor ≥ 26 → 26.3.0.76 = 26.3,
- * 26.1.2.5 = 26.1.2; mayor 20–25 → 21.0.167 = 1.21, 21.1.77 = 1.21.1. Otras formas → null.
+ * Minecraft version of a NeoForge one (part before the first "-"): major ≥ 26 → 26.3.0.76 = 26.3,
+ * 26.1.2.5 = 26.1.2; major 20–25 → 21.0.167 = 1.21, 21.1.77 = 1.21.1. Other shapes → null.
  */
 export function neoforgeMcVersion(v: string): string | null {
   const p = (v.split("-")[0] ?? "").split(".");

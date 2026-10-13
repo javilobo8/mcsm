@@ -17,19 +17,19 @@ export function PowerButtons({ server, size = "sm", nodeOnline }: { server: Serv
   });
   const allowed = canPower(nodeOnline);
   const off = m.isPending || !allowed;
-  const t = (label: string) => (allowed ? label : "Nodo desconectado");
+  const t = (label: string) => (allowed ? label : "Node offline");
   const running = server.observed?.state === "running";
-  const err = m.error instanceof ApiError ? m.error.message : m.error ? "Error inesperado" : null;
+  const err = m.error instanceof ApiError ? m.error.message : m.error ? "Unexpected error" : null;
   const kill = () => {
-    if (confirm(`¿Matar el proceso de "${server.name}" sin guardar? Puede corromper el mundo.`)) m.mutate("kill");
+    if (confirm(`Kill the process of "${server.name}" without saving? It can corrupt the world.`)) m.mutate("kill");
   };
   return (
     <div className="flex items-center gap-1">
-      {!allowed && <span className="sr-only">Nodo desconectado: acciones no disponibles</span>}
-      {!running && <Button size={size} variant="secondary" disabled={off} onClick={() => m.mutate("start")} title={t("Arrancar")} aria-label={`Arrancar ${server.name}`}><Play className="size-4" /></Button>}
-      {running && <Button size={size} variant="secondary" disabled={off} onClick={() => m.mutate("stop")} title={t("Parar")} aria-label={`Parar ${server.name}`}><Square className="size-4" /></Button>}
-      {running && <Button size={size} variant="ghost" disabled={off} onClick={() => m.mutate("restart")} title={t("Reiniciar")} aria-label={`Reiniciar ${server.name}`}><RotateCcw className="size-4" /></Button>}
-      {running && <Button size={size} variant="ghost" disabled={off} onClick={kill} title={t("Matar")} aria-label={`Matar ${server.name}`}><Skull className="size-4" /></Button>}
+      {!allowed && <span className="sr-only">Node offline: actions not available</span>}
+      {!running && <Button size={size} variant="secondary" disabled={off} onClick={() => m.mutate("start")} title={t("Start")} aria-label={`Start ${server.name}`}><Play className="size-4" /></Button>}
+      {running && <Button size={size} variant="secondary" disabled={off} onClick={() => m.mutate("stop")} title={t("Stop")} aria-label={`Stop ${server.name}`}><Square className="size-4" /></Button>}
+      {running && <Button size={size} variant="ghost" disabled={off} onClick={() => m.mutate("restart")} title={t("Restart")} aria-label={`Restart ${server.name}`}><RotateCcw className="size-4" /></Button>}
+      {running && <Button size={size} variant="ghost" disabled={off} onClick={kill} title={t("Kill")} aria-label={`Kill ${server.name}`}><Skull className="size-4" /></Button>}
       {err && <span role="alert" className="max-w-48 text-xs text-red-400">{err}</span>}
     </div>
   );

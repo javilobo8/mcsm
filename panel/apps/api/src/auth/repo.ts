@@ -11,7 +11,7 @@ export class AuthRepo {
   setSetting(key: string, value: string): void {
     this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
   }
-  /** Inserta solo si la clave no existe. Devuelve true si la fila se insertó. */
+  /** Inserts only if the key does not exist. Returns true if the row was inserted. */
   setSettingIfAbsent(key: string, value: string): boolean {
     const r = this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING").run(key, value);
     return r.changes === 1;
@@ -25,7 +25,7 @@ export class AuthRepo {
     const row = this.db.prepare("SELECT expires_at FROM sessions WHERE id = ?").get(id) as { expires_at: string } | undefined;
     return !!row && row.expires_at > nowIso();
   }
-  /** Cierra todas las sesiones (cambio de contraseña). */
+  /** Closes all sessions (password change). */
   deleteAllSessions(): void {
     this.db.prepare("DELETE FROM sessions").run();
   }

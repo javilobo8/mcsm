@@ -14,9 +14,9 @@ func TestLogSecretsComeFromTheStoredSpec(t *testing.T) {
 	}
 	got := a.logSecrets("a")
 	if len(got) != 2 || got[0] != "abcdefgh" || got[1] != "$2a$10$clave" {
-		t.Fatalf("secretos = %v", got)
+		t.Fatalf("secrets = %v", got)
 	}
-	if a.logSecrets("desconocido") != nil {
-		t.Fatal("sin spec no hay secretos")
+	if a.logSecrets("unknown") != nil {
+		t.Fatal("without a spec there are no secrets")
 	}
 }

@@ -10,17 +10,17 @@ import { NetworkSection } from "./network-section";
 import { ResourcesSection } from "./resources-section";
 import { AdvancedSection } from "./advanced-section";
 
-/** Errores de campo vigentes: id del campo -> mensaje. Vacío = el formulario se puede guardar/aplicar. */
+/** Current field errors: field id -> message. Empty = the form can be saved/applied. */
 export type SpecFormErrors = Readonly<Record<string, string>>;
 
 const TABS = [
   { value: "general", label: "General" },
-  { value: "version", label: "Versión y mods" },
-  { value: "properties", label: "Propiedades" },
-  { value: "players", label: "Jugadores" },
-  { value: "network", label: "Red" },
-  { value: "resources", label: "Recursos" },
-  { value: "advanced", label: "Avanzado" },
+  { value: "version", label: "Version and mods" },
+  { value: "properties", label: "Properties" },
+  { value: "players", label: "Players" },
+  { value: "network", label: "Network" },
+  { value: "resources", label: "Resources" },
+  { value: "advanced", label: "Advanced" },
 ] as const;
 type TabValue = (typeof TABS)[number]["value"];
 
@@ -33,25 +33,25 @@ const FIELD_TABS: readonly [RegExp, TabValue][] = [
   [/^sf-env/, "advanced"],
 ];
 
-/** Pestaña a la que pertenece un campo por su id; lo desconocido es de «General» (lo pinta quien usa el formulario). */
+/** Tab a field belongs to by its id; anything unknown belongs to “General” (rendered by whoever uses the form). */
 export function tabOfField(field: string): TabValue {
   return FIELD_TABS.find(([re]) => re.test(field))?.[1] ?? "general";
 }
 
-/** Nombre visible de la sección de un campo (para decir dónde está el error). */
+/** Visible name of a field's section (to say where the error is). */
 export function sectionOfField(field: string): string {
   const v = tabOfField(field);
   return TABS.find((t) => t.value === v)!.label;
 }
 
 /**
- * Formulario de spec por secciones (spec §8). Controlado: `value` + `onChange`. Lo usan la
- * pestaña Configuración (mode "server") y el editor de plantillas (mode "template", sin Red).
- * La sección Backups es del Plan 4 y vive en su propia pestaña.
- * `general` es el contenido propio de quien lo usa (nombre, descripción, RCON…).
- * `onError` recibe el mapa AGREGADO de errores de todas las secciones cada vez que cambia: quien lo usa
- * debe bloquear guardar/aplicar mientras no esté vacío. El propio formulario resume cuántos y dónde.
- * `routerHidden` (plan-8): sustituye la sección del router de la pestaña Red por ese texto (la importación).
+ * Spec form by sections (spec §8). Controlled: `value` + `onChange`. Used by the
+ * Configuration tab (mode "server") and the template editor (mode "template", without Network).
+ * The Backups section belongs to Plan 4 and lives in its own tab.
+ * `general` is the content specific to whoever uses it (name, description, RCON…).
+ * `onError` receives the AGGREGATED error map of all sections every time it changes: whoever uses it
+ * must block saving/applying while it is not empty. The form itself summarizes how many and where.
+ * `routerHidden` (plan-8): replaces the router section of the Network tab with that text (import).
  */
 export function SpecForm({ value, onChange, onError, mode, general, routerHidden }: {
   value: EditableSpec; onChange: (s: EditableSpec) => void; onError: (errors: SpecFormErrors) => void; mode: "server" | "template"; general: React.ReactNode;
@@ -59,11 +59,11 @@ export function SpecForm({ value, onChange, onError, mode, general, routerHidden
 }) {
   const [errors, setErrors] = useState<SpecFormErrors>({});
   const [tab, setTab] = useState<TabValue>("general");
-  // Estable: las secciones lo usan como dependencia de efectos.
+  // Stable: the sections use it as an effect dependency.
   const report = useCallback<ReportError>((field, message) => {
     setErrors((prev) => applyError(prev, field, message));
   }, []);
-  // Doble seguro: tras cada render, fuera los errores de campos que ya no están en el DOM.
+  // Double safety: after every render, drop the errors of fields that are no longer in the DOM.
   useEffect(() => { setErrors((prev) => pruneErrors(prev, (f) => document.getElementById(f) !== null)); });
   const notify = useRef(onError);
   notify.current = onError;
@@ -80,7 +80,7 @@ export function SpecForm({ value, onChange, onError, mode, general, routerHidden
       {entries.length > 0 && (
         <div role="alert" data-testid="spec-form-errors" className="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
           <p className="font-medium">
-            {entries.length === 1 ? "Hay 1 error" : `Hay ${entries.length} errores`} que impiden guardar o aplicar:
+            {entries.length === 1 ? "There is 1 error" : `There are ${entries.length} errors`} that prevent saving or applying:
           </p>
           <ul className="mt-1 list-inside list-disc">
             {where.map((t) => (
@@ -97,11 +97,11 @@ export function SpecForm({ value, onChange, onError, mode, general, routerHidden
         {TABS.filter((t) => t.value !== "network" || mode === "server").map((t) => (
           <TabsTrigger key={t.value} value={t.value}>
             {t.label}
-            {perTab.has(t.value) && <span className="ml-1 text-red-400" aria-label={`${perTab.get(t.value)} con error`}>({perTab.get(t.value)})</span>}
+            {perTab.has(t.value) && <span className="ml-1 text-red-400" aria-label={`${perTab.get(t.value)} with errors`}>({perTab.get(t.value)})</span>}
           </TabsTrigger>
         ))}
       </TabsList>
-      {/* forceMount: los campos guardan su texto local; desmontarlos al cambiar de pestaña lo perdería. */}
+      {/* forceMount: the fields keep their local text; unmounting them when switching tabs would lose it. */}
       <TabsContent forceMount value="general" className="data-[state=inactive]:hidden">{general}</TabsContent>
       <TabsContent forceMount value="version" className="data-[state=inactive]:hidden"><VersionSection spec={value} onChange={onChange} onError={report} /></TabsContent>
       <TabsContent forceMount value="properties" className="data-[state=inactive]:hidden"><PropertiesSection {...props} /></TabsContent>

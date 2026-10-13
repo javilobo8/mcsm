@@ -2,8 +2,8 @@ import type { FastifyInstance } from "fastify";
 import type { VersionCatalog } from "./catalog.js";
 
 /**
- * Listas de versiones de Minecraft y de builds/loaders por tipo (plan 10). Las sirve el panel porque la
- * CSP (connect-src 'self') no deja al navegador consultar las fuentes. Pasan por el guard de sesión.
+ * Lists of Minecraft versions and of builds/loaders per type (plan 10). Served by the panel because the
+ * CSP (connect-src 'self') does not let the browser query the sources. They go through the session guard.
  */
 export async function versionRoutes(app: FastifyInstance) {
   app.get<{ Params: { type: string } }>("/api/versions/:type", async (req) => app.versions.versions(req.params.type));

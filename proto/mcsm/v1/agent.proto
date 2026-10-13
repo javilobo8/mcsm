@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package mcsm.v1;
 
-// Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
-// petición y su respuesta; `stream_id` agrupa los frames de un stream.
+// Envelope is the only type that travels over the WebSocket. `id` identifies a
+// request and its response; `stream_id` groups the frames of a stream.
 message Envelope {
   uint64 id = 1;
   uint64 stream_id = 2;
@@ -63,7 +63,7 @@ message Envelope {
     RouterRemove router_remove = 111;
     RouterObserved router_observed = 112;
     // ── plan-9 ──
-    // Campo 24: reservado desde el Plan 1 para Event (arreglos transversales).
+    // Field 24: reserved since Plan 1 for Event (cross-cutting fixes).
     Event event = 24;
     StreamDropped stream_dropped = 120;
     RotateToken rotate_token = 121;
@@ -83,8 +83,8 @@ message Hello {
   string docker_version = 2;
   HostInfo host = 3;
   map<string, uint64> spec_versions = 4;
-  // Estado deseado que el agente tiene guardado por servidor. El panel reenvía en
-  // SyncSpecs las specs cuya versión o estado deseado difieren de los suyos.
+  // Desired state the agent has stored per server. The panel resends in
+  // SyncSpecs the specs whose version or desired state differ from its own.
   map<string, DesiredState> desired_states = 5;
 }
 
@@ -142,7 +142,7 @@ message CommandResult {
   string output = 1;
 }
 
-// Respuesta: Ack con envelope.stream_id = envelope.id de la petición.
+// Response: Ack with envelope.stream_id = the request's envelope.id.
 message SubscribeLogs {
   string server_id = 1;
   uint32 tail = 2;
@@ -185,33 +185,33 @@ message ServerObserved {
 
 message Ack {}
 
-// Respuesta de error a una petición (mismo id). Catálogo de `code`, con su traducción a
-// HTTP en el panel (agentErrorToHttp en panel/apps/api/src/lib/http.ts). Constantes:
-// agent/internal/errcode (Go) y panel/apps/api/src/agents/error-codes.ts (TS); un código
-// nuevo se añade en los tres sitios. Un código desconocido para el panel es 502.
-//   invalid_spec     spec inválida (server_id o slug)                  400
-//   invalid_request  petición mal formada                              400
-//   unknown_server   el nodo no conoce ese servidor                    404
-//   not_found        recurso inexistente (fichero, copia…)            404
-//   busy             servidor ocupado o reservado (el mensaje da el motivo)  409
-//   exists           ya existe                                         409
-//   unsupported      el agente no entiende el cuerpo: desactualizado   409
-//   too_large        demasiado grande                                  413
-//   invalid_path     ruta con «..», caracteres de control o fichero no regular   400
-//   path_outside     la ruta resuelta sale de /data del servidor        400
-//   root             operación no permitida sobre la raíz               400
-//   is_dir           era un fichero y es una carpeta                    400
-//   not_dir          era una carpeta y es un fichero                    400
-//   transfer_failed  subida/descarga fallida                            502
-//   io_error         error de E/S del host                              502
-//   external_data    los datos del servidor están fuera de DATA_ROOT (dataPath):  409
-//                    sin copias de seguridad ni archivos (Plan 6)
-//   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
-//                    del agente o de Docker (spec §10)
-//   backup_failed    fallo de una copia, restauración o borrado de copias  502
-// Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
+// Error response to a request (same id). Catalog of `code`, with its translation to
+// HTTP in the panel (agentErrorToHttp in panel/apps/api/src/lib/http.ts). Constants:
+// agent/internal/errcode (Go) and panel/apps/api/src/agents/error-codes.ts (TS); a new
+// code is added in all three places. A code unknown to the panel is 502.
+//   invalid_spec     invalid spec (server_id or slug)                  400
+//   invalid_request  malformed request                                 400
+//   unknown_server   the node does not know that server                404
+//   not_found        nonexistent resource (file, backup…)             404
+//   busy             server busy or reserved (the message gives the reason)  409
+//   exists           already exists                                    409
+//   unsupported      the agent does not understand the body: outdated  409
+//   too_large        too large                                         413
+//   invalid_path     path with "..", control characters or a non-regular file   400
+//   path_outside     the resolved path leaves the server's /data        400
+//   root             operation not allowed on the root                  400
+//   is_dir           it was a file and is a folder                      400
+//   not_dir          it was a folder and is a file                      400
+//   transfer_failed  upload/download failed                             502
+//   io_error         host I/O error                                     502
+//   external_data    the server's data is outside DATA_ROOT (dataPath):  409
+//                    no backups or files (Plan 6)
+//   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 with the text
+//                    from the agent or Docker (spec §10)
+//   backup_failed    a backup, restore or backup deletion failed        502
+// Only in the panel (local AgentError, never sent): disconnected and syncing (409),
 // timeout (504), protocol (502).
-// El agente nunca responde a un Ack o un Error recibidos.
+// The agent never replies to a received Ack or Error.
 message Error {
   string code = 1;
   string message = 2;
@@ -219,50 +219,50 @@ message Error {
 
 // ── plan-2 ──
 
-// MetricBatch agrupa las métricas de un ciclo de muestreo (cada 10 s, spec §6.4).
-// Agente → panel, no solicitado (Envelope.id = 0). Solo lleva servidores cuyo
-// contenedor está en marcha.
+// MetricBatch groups the metrics of one sampling cycle (every 10 s, spec §6.4).
+// Agent → panel, unsolicited (Envelope.id = 0). It only carries servers whose
+// container is running.
 message MetricBatch {
-  // Epoch en segundos, redondeado hacia abajo a múltiplo de 10.
+  // Epoch in seconds, rounded down to a multiple of 10.
   int64 ts_unix = 1;
-  // Ausente mientras no haya dos lecturas de CPU del host.
+  // Absent until there are two host CPU readings.
   HostMetricSample host = 2;
   repeated ServerMetricSample servers = 3;
 }
 
 message HostMetricSample {
-  // 0–100 sobre todas las CPU del host.
+  // 0–100 over all the host's CPUs.
   double cpu_pct = 1;
-  // Total menos disponible.
+  // Total minus available.
   uint64 mem_used_bytes = 2;
   uint64 mem_total_bytes = 3;
-  // Sistema de ficheros que contiene DATA_ROOT.
+  // Filesystem containing DATA_ROOT.
   uint64 disk_used_bytes = 4;
   uint64 disk_total_bytes = 5;
 }
 
 message ServerMetricSample {
   string server_id = 1;
-  // 100 = un núcleo completo (mismo criterio que `docker stats`).
+  // 100 = one full core (same criterion as `docker stats`).
   double cpu_pct = 2;
-  // Uso sin la caché de páginas inactiva.
+  // Usage without the inactive page cache.
   uint64 mem_bytes = 3;
   uint64 mem_limit_bytes = 4;
-  // Acumulados desde que arrancó el contenedor (todas las interfaces).
+  // Accumulated since the container started (all interfaces).
   uint64 net_rx_bytes = 5;
   uint64 net_tx_bytes = 6;
-  // El Server List Ping respondió; si es false, players_* y ping_ms no significan nada.
+  // The Server List Ping responded; if false, players_* and ping_ms mean nothing.
   bool mc_online = 7;
   uint32 players_online = 8;
   uint32 players_max = 9;
   uint32 ping_ms = 10;
-  // Solo PAPER/PURPUR: TPS del último minuto, medido en los últimos 45 s.
+  // PAPER/PURPUR only: TPS of the last minute, measured over the last 45 s.
   optional double tps = 11;
 }
 // ── plan-3 ──
 // ── plan-4 ──
 
-// Copias de seguridad (spec §6.5) y jobs largos del agente (spec §5.3–5.4).
+// Backups (spec §6.5) and the agent's long jobs (spec §5.3–5.4).
 
 enum BackupTrigger {
   BACKUP_TRIGGER_UNSPECIFIED = 0;
@@ -279,60 +279,60 @@ enum JobStatus {
   JOB_STATUS_FAILED = 3;
 }
 
-// BackupInfo describe una copia en el disco del nodo. `filename` es el .tar.zst de
-// <DATA_ROOT>/<slug>/backups/ o, con trigger PRE_RESTORE, el directorio
-// data.pre-restore-<ts> que se conserva junto a data/.
+// BackupInfo describes a backup on the node's disk. `filename` is the .tar.zst in
+// <DATA_ROOT>/<slug>/backups/ or, with trigger PRE_RESTORE, the
+// data.pre-restore-<ts> directory kept next to data/.
 message BackupInfo {
   string server_id = 1;
   string filename = 2;
   uint64 size_bytes = 3;
-  string sha256 = 4; // vacío en los directorios pre-restore
+  string sha256 = 4; // empty for pre-restore directories
   uint64 spec_version = 5;
   BackupTrigger trigger = 6;
   int64 started_unix_ms = 7;
   int64 finished_unix_ms = 8;
 }
 
-// Panel → agente. Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error
-// (code busy | unknown_server | invalid_request | backup_failed). Un job_id repetido
-// no se ejecuta dos veces: el agente reenvía su estado guardado.
+// Panel → agent. Response: Ack (accepted; progress arrives via JobProgress) or Error
+// (code busy | unknown_server | invalid_request | backup_failed). A repeated job_id
+// is not run twice: the agent resends its stored state.
 message BackupNow {
   string server_id = 1;
   string job_id = 2;
-  BackupTrigger trigger = 3; // MANUAL si no se indica; PRE_MIGRATION lo usará el Plan 7
+  BackupTrigger trigger = 3; // MANUAL if not given; PRE_MIGRATION will be used by Plan 7
 }
 
-// Panel → agente. Restaura una copia .tar.zst por nombre (el agente no conoce los ids
-// del panel). Respuesta: Ack o Error, como BackupNow.
+// Panel → agent. Restores a .tar.zst backup by name (the agent does not know the panel's
+// ids). Response: Ack or Error, like BackupNow.
 message BackupRestore {
   string server_id = 1;
   string filename = 2;
   string job_id = 3;
 }
 
-// Panel → agente. Borra una copia o un directorio pre-restore. Respuesta: Ack o Error.
+// Panel → agent. Deletes a backup or a pre-restore directory. Response: Ack or Error.
 message BackupDelete {
   string server_id = 1;
   string filename = 2;
 }
 
-// Panel → agente. Respuesta: Ack y un BackupInventory no solicitado (id 0), que puede llegar
-// antes o después del Ack. server_id vacío = todos los servidores del nodo.
+// Panel → agent. Response: Ack and an unsolicited BackupInventory (id 0), which may arrive
+// before or after the Ack. Empty server_id = all the node's servers.
 message BackupList {
   string server_id = 1;
 }
 
-// Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
-// son los servidores cuyo listado está completo. El agente lo envía en orden con BackupCreated
-// y BackupDeleted (un cambio que el listado no vio llega después), por una cola que no está
-// ligada a la sesión: puede llegar en la sesión siguiente, tras su Hello.
+// Agent → panel (id 0), after each BackupList and, unprompted, every 10 min. `server_ids`
+// are the servers whose listing is complete. The agent sends it in order with BackupCreated
+// and BackupDeleted (a change the listing did not see arrives afterwards), through a queue that is not
+// tied to the session: it may arrive in the next session, after its Hello.
 //
-// `request_id` es el id del BackupList al que contesta, o 0 si es el periódico. Solo un
-// inventario que contesta al último BackupList de la sesión vigente permite al panel la vía
-// negativa: marcar como borradas las copias de `server_ids` que no aparezcan en `backups` y
-// dar por perdidos los jobs abiertos que no aparezcan en `jobs` (en ambos casos, solo lo que
-// ya conocía antes de pedirlo). Cualquier otro (periódico o de una petición anterior) solo
-// aplica lo positivo: altas de copias y estados de jobs.
+// `request_id` is the id of the BackupList it answers, or 0 if it is the periodic one. Only an
+// inventory that answers the current session's last BackupList lets the panel take the
+// negative path: mark as deleted the backups of `server_ids` that do not appear in `backups` and
+// consider lost the open jobs that do not appear in `jobs` (in both cases, only what it
+// already knew before asking). Any other (periodic or from an earlier request) only
+// applies the positive: new backups and job states.
 message BackupInventory {
   repeated string server_ids = 1;
   repeated BackupInfo backups = 2;
@@ -340,21 +340,21 @@ message BackupInventory {
   uint64 request_id = 4;
 }
 
-// Agente → panel (id 0): copia nueva (manual, programada o datos pre-restore).
+// Agent → panel (id 0): new backup (manual, scheduled or pre-restore data).
 message BackupCreated {
   BackupInfo backup = 1;
-  string job_id = 2; // vacío en las pre-restore
+  string job_id = 2; // empty for pre-restore ones
 }
 
-// Agente → panel (id 0): copia borrada en el nodo, por la poda (reason "poda") o porque la
-// pidió el panel con BackupDelete (reason "borrada").
+// Agent → panel (id 0): backup deleted on the node, by pruning (reason "pruned") or because the
+// panel asked for it with BackupDelete (reason "deleted").
 message BackupDeleted {
   string server_id = 1;
   string filename = 2;
   string reason = 3;
 }
 
-// Agente → panel (id 0): avance de un job. log_chunk trae solo las líneas nuevas.
+// Agent → panel (id 0): progress of a job. log_chunk carries only the new lines.
 message JobProgress {
   string job_id = 1;
   string server_id = 2;
@@ -366,7 +366,7 @@ message JobProgress {
   int64 ts_unix_ms = 8;
 }
 
-// Estado completo de un job guardado en el agente (inventario tras reconectar).
+// Full state of a job stored in the agent (inventory after reconnecting).
 message JobRecord {
   string job_id = 1;
   string server_id = 2;
@@ -379,14 +379,14 @@ message JobRecord {
   int64 finished_unix_ms = 9;
 }
 // ── plan-5 ──
-// Archivos de un servidor (spec §5.3, §6.6). Las rutas son relativas a /data del
-// servidor, con "/" como separador ("/" es la raíz); el agente rechaza ".." y
-// caracteres de control. Respuestas: los *Result, Ack o Error{code, message} con
+// A server's files (spec §5.3, §6.6). Paths are relative to the server's /data,
+// with "/" as the separator ("/" is the root); the agent rejects ".." and
+// control characters. Responses: the *Result messages, Ack or Error{code, message} with
 // code ∈ invalid_path|path_outside|unknown_server|not_found|exists|is_dir|not_dir|
-// too_large|root|transfer_failed|io_error|busy|unsupported. busy: el nodo ya tiene 4
-// transferencias en curso o se está cerrando o, solo en las que escriben (Write, Mkdir,
-// Rename, Delete, Upload), el servidor está reservado (copia, restauración o bloqueado sin
-// data); el mensaje dice el motivo. unsupported: Files* que este agente no conoce.
+// too_large|root|transfer_failed|io_error|busy|unsupported. busy: the node already has 4
+// transfers in progress or is shutting down or, only for those that write (Write, Mkdir,
+// Rename, Delete, Upload), the server is reserved (backup, restore or locked without
+// data); the message gives the reason. unsupported: Files* messages this agent does not know.
 
 message FileEntry {
   string name = 1;
@@ -394,7 +394,7 @@ message FileEntry {
   bool symlink = 3;
   uint64 size = 4;
   int64 mod_time_unix_ms = 5;
-  uint32 mode = 6; // bits de permisos (0o755…)
+  uint32 mode = 6; // permission bits (0o755…)
 }
 
 message FilesList {
@@ -403,8 +403,8 @@ message FilesList {
 }
 
 message FilesListResult {
-  repeated FileEntry entries = 1; // carpetas primero, luego por nombre
-  bool truncated = 2; // la carpeta tiene más entradas de las devueltas
+  repeated FileEntry entries = 1; // folders first, then by name
+  bool truncated = 2; // the folder has more entries than returned
 }
 
 message FilesStat {
@@ -416,7 +416,7 @@ message FilesStatResult {
   FileEntry entry = 1;
 }
 
-// Lectura inline: como máximo 2 MiB (o max_bytes si es menor); si no, too_large.
+// Inline read: at most 2 MiB (or max_bytes if smaller); otherwise, too_large.
 message FilesRead {
   string server_id = 1;
   string path = 2;
@@ -428,7 +428,7 @@ message FilesReadResult {
   uint64 size = 2;
 }
 
-// Escritura inline atómica (temporal + rename), como máximo 2 MiB. Respuesta: Ack.
+// Atomic inline write (temporary + rename), at most 2 MiB. Response: Ack.
 message FilesWrite {
   string server_id = 1;
   string path = 2;
@@ -440,29 +440,29 @@ message FilesMkdir {
   string path = 2;
 }
 
-// No sobrescribe: si `to` existe responde exists.
+// Does not overwrite: if `to` exists it responds exists.
 message FilesRename {
   string server_id = 1;
   string from = 2;
   string to = 3;
 }
 
-// Una carpeta se borra con todo su contenido; un enlace se borra a sí mismo.
+// A folder is deleted with all its contents; a link deletes itself.
 message FilesDelete {
   string server_id = 1;
   string path = 2;
 }
 
-// El agente sube el fichero con PUT /agent/transfer/{transfer_id} y responde Ack
-// cuando el panel lo ha recibido entero.
+// The agent uploads the file with PUT /agent/transfer/{transfer_id} and responds Ack
+// when the panel has received all of it.
 message FilesDownload {
   string server_id = 1;
   string path = 2;
   string transfer_id = 3;
 }
 
-// El agente descarga el contenido con GET /agent/transfer/{transfer_id}, lo escribe
-// de forma atómica y responde Ack. size = -1 si el panel no conoce el tamaño.
+// The agent downloads the content with GET /agent/transfer/{transfer_id}, writes it
+// atomically and responds Ack. size = -1 if the panel does not know the size.
 message FilesUpload {
   string server_id = 1;
   string path = 2;
@@ -470,190 +470,190 @@ message FilesUpload {
   int64 size = 4;
 }
 // ── plan-6 ──
-// Importación de contenedores existentes (spec §6.7).
+// Import of existing containers (spec §6.7).
 
-// Panel → agente. Lista los contenedores cuya imagen es itzg/minecraft-server, sin la etiqueta
-// mcsm.managed y que este agente no haya adoptado ya. Respuesta: ImportScanResult, o Error.
+// Panel → agent. Lists the containers whose image is itzg/minecraft-server, without the
+// mcsm.managed label and that this agent has not already adopted. Response: ImportScanResult, or Error.
 message ImportScan {}
 
 message ImportScanResult {
   repeated ImportCandidate candidates = 1;
-  // DATA_ROOT del agente: el panel decide con él si los datos de un candidato están en
-  // <DATA_ROOT>/<slug>/data o necesitan dataPath.
+  // The agent's DATA_ROOT: the panel uses it to decide whether a candidate's data is in
+  // <DATA_ROOT>/<slug>/data or needs dataPath.
   string data_root = 2;
 }
 
-// Inspect reducido de un contenedor importable. `env` lleva solo lo que fijó el usuario (sin las
-// variables idénticas al ENV de la imagen) e INCLUYE secretos (RCON_PASSWORD, CF_API_KEY): el
-// panel no los reenvía al navegador ni los registra.
+// Reduced inspect of an importable container. `env` carries only what the user set (without the
+// variables identical to the image's ENV) and INCLUDES secrets (RCON_PASSWORD, CF_API_KEY): the
+// panel neither forwards them to the browser nor logs them.
 message ImportCandidate {
-  string container_id = 1; // id completo
-  string name = 2; // sin "/" inicial
-  string image = 3; // Config.Image tal cual (itzg/minecraft-server:java21)
+  string container_id = 1; // full id
+  string name = 2; // without the leading "/"
+  string image = 3; // Config.Image as is (itzg/minecraft-server:java21)
   string state = 4; // created|running|restarting|exited|paused|dead
   map<string, string> env = 5;
-  repeated ImportPort ports = 6; // publicaciones configuradas (HostConfig.PortBindings)
+  repeated ImportPort ports = 6; // configured publications (HostConfig.PortBindings)
   repeated ImportMount mounts = 7;
   string restart_policy = 8; // no|always|unless-stopped|on-failure ("" = no)
-  int64 memory_limit_bytes = 9; // 0 = sin límite
-  int64 nano_cpus = 10; // 0 = sin límite
-  string network_mode = 11; // bridge|host|none|container:<id>|<red de usuario>
+  int64 memory_limit_bytes = 9; // 0 = no limit
+  int64 nano_cpus = 10; // 0 = no limit
+  string network_mode = 11; // bridge|host|none|container:<id>|<user network>
   repeated string networks = 12;
-  map<string, string> labels = 13; // solo com.docker.compose.project y com.docker.compose.service
-  string user = 14; // Config.User (--user): "" = el de la imagen; "uid[:gid]" o un nombre
+  map<string, string> labels = 13; // only com.docker.compose.project and com.docker.compose.service
+  string user = 14; // Config.User (--user): "" = the image's; "uid[:gid]" or a name
 }
 
 message ImportPort {
   uint32 container_port = 1;
   string proto = 2; // tcp|udp
-  string host_ip = 3; // "" = todas las interfaces
-  uint32 host_port = 4; // 0 = efímero
+  string host_ip = 3; // "" = all interfaces
+  uint32 host_port = 4; // 0 = ephemeral
 }
 
 message ImportMount {
   string type = 1; // bind|volume|tmpfs…
-  string source = 2; // ruta del host (bind) o del volumen
+  string source = 2; // host path (bind) or volume's
   string destination = 3;
   bool read_write = 4;
-  string name = 5; // nombre del volumen
+  string name = 5; // volume name
 }
 
-// Panel → agente. Adopta un contenedor sin recrearlo. server.spec_json lleva "adopt":
-// {"containerId", "version"} (lo añade el panel). El agente comprueba que el contenedor existe,
-// no es de MC Server Manager, usa la imagen itzg y monta en /data la carpeta de la spec; lo
-// conecta a su red con el alias mcsm-<slug> y guarda spec y adopción. Respuesta: Ack, o Error con
-// not_found (no existe), exists (gestionado o adoptado por otro servidor), invalid_request (no es
-// itzg, red host/none/container o /data distinto), invalid_spec o apply_failed (Docker).
+// Panel → agent. Adopts a container without recreating it. server.spec_json carries "adopt":
+// {"containerId", "version"} (added by the panel). The agent checks that the container exists,
+// is not an MC Server Manager one, uses the itzg image and mounts the spec's folder at /data; it
+// connects it to its network with the alias mcsm-<slug> and stores the spec and the adoption. Response: Ack, or Error with
+// not_found (does not exist), exists (managed or adopted by another server), invalid_request (not
+// itzg, host/none/container network or a different /data), invalid_spec or apply_failed (Docker).
 message ImportAdopt {
   ServerSpec server = 1;
 }
 // ── plan-7 ──
-// Migración entre nodos (spec §7 MigrationService). La orquesta el panel; el agente ejecuta
-// pasos idempotentes sobre su disco y su Docker. Origen: BackupPush y MigrateRetire. Destino:
-// MigrateReceive y MigrateAbort.
+// Migration between nodes (spec §7 MigrationService). The panel orchestrates it; the agent runs
+// idempotent steps on its disk and its Docker. Source: BackupPush and MigrateRetire. Target:
+// MigrateReceive and MigrateAbort.
 
-// Panel → agente (origen). Sube una copia .tar.zst de <slug>/backups/ al panel con
-// PUT /agent/transfer/{transfer_id}. Respuesta: BackupPushResult cuando el panel la ha recibido
-// entera, o Error (unknown_server | invalid_request | busy | transfer_failed | backup_failed: la
-// copia no existe o no tiene sha256 en su .json, que se lee primero | not_found: el .json existe
-// pero el .tar.zst no).
+// Panel → agent (source). Uploads a .tar.zst backup from <slug>/backups/ to the panel with
+// PUT /agent/transfer/{transfer_id}. Response: BackupPushResult when the panel has received
+// all of it, or Error (unknown_server | invalid_request | busy | transfer_failed | backup_failed: the
+// backup does not exist or has no sha256 in its .json, which is read first | not_found: the .json exists
+// but the .tar.zst does not).
 message BackupPush {
   string server_id = 1;
   string filename = 2;
   string transfer_id = 3;
 }
 
-// Metadatos de la copia enviada, de su .json: el panel compara tamaño y sha256 con lo que ha
-// recibido y con el BackupCreated del job.
+// Metadata of the backup sent, from its .json: the panel compares size and sha256 with what it has
+// received and with the job's BackupCreated.
 message BackupPushResult {
   uint64 size_bytes = 1;
   string sha256 = 2;
-  uint64 data_bytes = 3; // contenido sin comprimir; 0 si la copia no lo anotó
+  uint64 data_bytes = 3; // uncompressed content; 0 if the backup did not record it
 }
 
-// Panel → agente (destino). Job (type "migrate_in"): descarga la copia con
-// GET /agent/transfer/{transfer_id} a <DATA_ROOT>/<slug>/backups/<filename>, comprueba que
-// llegan size_bytes bytes con ese sha256 y la restaura como <DATA_ROOT>/<slug>/data.
-// <DATA_ROOT>/<slug> no puede existir: lo crea con el marcador .mcsm-migration (contiene
-// migration_id) y, si algo falla, lo borra entero. El servidor no puede estar en este nodo.
-// Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error (invalid_request | exists |
-// busy | too_large: no cabe con el margen). Un job_id repetido reenvía su estado.
+// Panel → agent (target). Job (type "migrate_in"): downloads the backup with
+// GET /agent/transfer/{transfer_id} to <DATA_ROOT>/<slug>/backups/<filename>, checks that
+// size_bytes bytes arrive with that sha256 and restores it as <DATA_ROOT>/<slug>/data.
+// <DATA_ROOT>/<slug> must not exist: it creates it with the .mcsm-migration marker (it contains
+// migration_id) and, if anything fails, deletes it entirely. The server must not be on this node.
+// Response: Ack (accepted; progress arrives via JobProgress) or Error (invalid_request | exists |
+// busy | too_large: it does not fit with the margin). A repeated job_id resends its state.
 message MigrateReceive {
   string server_id = 1;
-  string slug = 2; // slug en el destino
+  string slug = 2; // slug on the target
   string job_id = 3;
   string migration_id = 4;
   string transfer_id = 5;
-  string filename = 6; // <slug>-<ts>-<versión>.tar.zst, con el slug del destino
+  string filename = 6; // <slug>-<ts>-<version>.tar.zst, with the target's slug
   uint64 size_bytes = 7;
   string sha256 = 8;
-  uint64 data_bytes = 9; // 0 = desconocido (se reserva el tamaño comprimido)
+  uint64 data_bytes = 9; // 0 = unknown (the compressed size is reserved)
 }
 
-// Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
-// olvida la spec del servidor (si la tiene) y borra su contenedor y, ya sin él, borra
-// <DATA_ROOT>/<slug> solo si lleva el marcador de migration_id sin confirmar y ningún otro
-// servidor del nodo usa ese slug. El marcador se lee ANTES de tocar la spec: si el servidor está
-// en este nodo y <slug> no lleva el marcador sin confirmar de esta migración (p. ej. ya llegó
-// MigrateConfirm), no toca nada. Idempotente. Respuesta: Ack o Error (busy: hay una recepción en
-// curso o el contenedor aún no se pudo borrar; el panel reintenta. invalid_request: otro slug,
-// otro servidor lo usa, o el servidor de este nodo no es una copia sin confirmar de esta migración).
+// Panel → agent (target). Undoes what an unconfirmed migration left on this node:
+// forgets the server's spec (if it has one) and deletes its container and, once that is gone, deletes
+// <DATA_ROOT>/<slug> only if it carries the unconfirmed migration_id marker and no other
+// server on the node uses that slug. The marker is read BEFORE touching the spec: if the server is
+// on this node and <slug> does not carry this migration's unconfirmed marker (e.g. MigrateConfirm
+// already arrived), it touches nothing. Idempotent. Response: Ack or Error (busy: a receive is in
+// progress or the container could not be deleted yet; the panel retries. invalid_request: another slug,
+// another server uses it, or this node's server is not an unconfirmed copy of this migration).
 message MigrateAbort {
   string server_id = 1;
   string slug = 2;
   string migration_id = 3;
 }
 
-// Panel → agente (origen), tras confirmar la migración. Comprueba que la spec guardada es la
-// versión source_version (la que se migró: un servidor que volvió después a este nodo trae otra),
-// marca <slug> con .mcsm-retiring (migration_id), para el contenedor si sigue en marcha, olvida la
-// spec y borra el contenedor y, solo entonces, aparta <DATA_ROOT>/<slug> (datos y copias) a
-// <DATA_ROOT>/<slug>.migrated-<ts> o, con delete_data, lo borra. Un reintento sin spec solo toca un
-// <slug> con el .mcsm-retiring de esta migración. Idempotente. Respuesta: Ack o Error
-// (invalid_request: otro slug, otra versión, otro servidor del nodo usa ese slug o <slug> no es el
-// de esta retirada (p. ej. una recepción en curso: marcador de migración sin confirmar); busy:
-// reintentar, p. ej. el contenedor aún no se pudo borrar).
+// Panel → agent (source), after confirming the migration. Checks that the stored spec is
+// version source_version (the one that was migrated: a server that later came back to this node has another),
+// marks <slug> with .mcsm-retiring (migration_id), stops the container if it is still running, forgets the
+// spec and deletes the container and, only then, sets <DATA_ROOT>/<slug> (data and backups) aside to
+// <DATA_ROOT>/<slug>.migrated-<ts> or, with delete_data, deletes it. A retry without a spec only touches a
+// <slug> with this migration's .mcsm-retiring. Idempotent. Response: Ack or Error
+// (invalid_request: another slug, another version, another server on the node uses that slug or <slug> is not the
+// one of this retirement (e.g. a receive in progress: unconfirmed migration marker); busy:
+// retry, e.g. the container could not be deleted yet).
 message MigrateRetire {
   string server_id = 1;
   string slug = 2;
   string migration_id = 3;
   bool delete_data = 4;
-  uint64 source_version = 5; // versión de la spec en el origen al empezar la migración
+  uint64 source_version = 5; // spec version on the source when the migration started
 }
 
-// Panel → agente (destino), tras confirmar la migración (y reintentado hasta el Ack). Reescribe
-// el marcador <DATA_ROOT>/<slug>/.mcsm-migration de migration_id como «committed <migration_id>»:
-// desde entonces ningún MigrateAbort (p. ej. de un panel restaurado desde una foto anterior al
-// commit) borra el servidor. Idempotente. Respuesta: Ack (también si ya estaba confirmado o no
-// hay marcador) o Error (invalid_request: otro slug, o el marcador es de otra migración; busy).
+// Panel → agent (target), after confirming the migration (and retried until the Ack). Rewrites
+// the <DATA_ROOT>/<slug>/.mcsm-migration marker of migration_id as “committed <migration_id>”:
+// from then on no MigrateAbort (e.g. from a panel restored from a snapshot prior to the
+// commit) deletes the server. Idempotent. Response: Ack (also if it was already confirmed or there
+// is no marker) or Error (invalid_request: another slug, or the marker is from another migration; busy).
 message MigrateConfirm {
   string server_id = 1;
   string slug = 2;
   string migration_id = 3;
 }
 // ── plan-8 ──
-// mc-router por nodo (spec §4 router_deployments, §5.3 RouterApply/RouterRemove). El agente mantiene
-// un contenedor `mcsm-router` (itzg/mc-router con -in-docker) en la red de los servidores, que enruta
-// por el hostname del handshake a los contenedores con la etiqueta mc-router.host. El panel es la
-// verdad: tras cada SyncSpecs le reenvía RouterApply o RouterRemove si tiene configuración del nodo.
+// Per-node mc-router (spec §4 router_deployments, §5.3 RouterApply/RouterRemove). The agent maintains
+// an `mcsm-router` container (itzg/mc-router with -in-docker) on the servers' network, which routes
+// by the handshake hostname to the containers with the mc-router.host label. The panel is the
+// source of truth: after each SyncSpecs it resends RouterApply or RouterRemove if the node has a configuration.
 
-// Configuración del router de un nodo.
+// Configuration of a node's router.
 message RouterSpec {
-  uint32 host_port = 1; // puerto TCP del host (1-65535); dentro del contenedor siempre es 25565
-  bool autoscale = 2; // mc-router arranca al entrar un jugador y para tras autoscale_down_after_minutes sin jugadores
+  uint32 host_port = 1; // host TCP port (1-65535); inside the container it is always 25565
+  bool autoscale = 2; // mc-router starts when a player joins and stops after autoscale_down_after_minutes without players
   uint32 autoscale_down_after_minutes = 3; // 1-1440; 0 = 10
-  // Con autoscale, solo estos jugadores (nombre de perfil o UUID) despiertan un servidor dormido o
-  // cancelan su parada (-auto-scale-allow-deny de mc-router). Vacío = cualquiera. Máx. 1000.
+  // With autoscale, only these players (profile name or UUID) wake up a sleeping server or
+  // cancel its stop (mc-router's -auto-scale-allow-deny). Empty = anyone. Max. 1000.
   repeated string autoscale_allow_players = 4;
 }
 
-// Panel → agente. Guarda la spec (sobrevive a reinicios del agente) y reconcilia el contenedor en
-// segundo plano. Respuesta: Ack (guardada; el resultado llega por RouterObserved) o Error
-// (invalid_request: spec ausente o fuera de rango).
+// Panel → agent. Stores the spec (survives agent restarts) and reconciles the container in the
+// background. Response: Ack (stored; the result arrives via RouterObserved) or Error
+// (invalid_request: spec missing or out of range).
 message RouterApply {
   RouterSpec spec = 1;
 }
 
-// Panel → agente. Borra la spec guardada y, en segundo plano, el contenedor del router. Idempotente.
-// Respuesta: Ack, o Error (io_error) si no se pudo borrar del store del agente.
+// Panel → agent. Deletes the stored spec and, in the background, the router container. Idempotent.
+// Response: Ack, or Error (io_error) if it could not be deleted from the agent's store.
 message RouterRemove {}
 
-// Agente → panel, no solicitado (id = 0): estado del router tras cada reconciliación (al recibir
-// RouterApply/RouterRemove, cada 30 s y con los eventos de Docker de su contenedor).
+// Agent → panel, unsolicited (id = 0): router state after each reconciliation (on receiving
+// RouterApply/RouterRemove, every 30 s and with the Docker events of its container).
 message RouterObserved {
-  bool configured = 1; // el agente tiene una spec de router guardada
+  bool configured = 1; // the agent has a stored router spec
   string state = 2; // missing|created|running|restarting|exited|dead|paused
   string container_id = 3;
-  string image = 4; // imagen del contenedor, p. ej. itzg/mc-router:1.47.1
-  uint32 host_port = 5; // puerto de la spec aplicada (0 sin spec)
+  string image = 4; // container image, e.g. itzg/mc-router:1.47.1
+  uint32 host_port = 5; // port of the applied spec (0 without a spec)
   bool autoscale = 6;
-  string error = 7; // error de la última reconciliación ("" si fue bien)
+  string error = 7; // error of the last reconciliation ("" if it went well)
   int64 ts_unix_ms = 8;
-  RouterSpec spec = 9; // spec guardada en el agente (ausente sin spec): la web compara con la del panel
+  RouterSpec spec = 9; // spec stored in the agent (absent without a spec): the web compares it with the panel's
 }
 // ── plan-9 ──
 
-// Pruebas de interfaz y pulido (spec §5.2, §5.3, §9, §10).
+// UI tests and polish (spec §5.2, §5.3, §9, §10).
 
 enum EventLevel {
   EVENT_LEVEL_UNSPECIFIED = 0;
@@ -662,34 +662,34 @@ enum EventLevel {
   EVENT_LEVEL_ERROR = 3;
 }
 
-// Agente → panel, no solicitado (id = 0): incidencia de un servidor o del nodo. Sale por una cola propia del
-// agente que nunca bloquea a quien la emite; sin conexión se pierde (lo que importa, p. ej. un servidor parado
-// por bucle de crash, también se ve en Observed.error). kind:
-//   crash              el servidor se cerró con código ≠ 0 sin que nadie lo pidiera
-//   oom                Docker lo mató por falta de memoria
-//   crash_loop         más de 3 crashes en una hora: el agente lo ha parado y no lo arranca hasta un Power
-//                      start/restart o una versión nueva de la spec (el panel pone el deseado en parado)
-//   crash_loop_failed  bucle de crash, pero no se pudo parar (el mensaje dice por qué)
-//   drift              el contenedor no coincidía con la spec ya aplicada y se ha recreado
-//   save_on_pending    el guardado automático pudo quedar desactivado (save-on falló); el agente lo reintenta
-//   save_on_resumed    save-on volvió a funcionar
+// Agent → panel, unsolicited (id = 0): event of a server or the node. It goes out through a queue of the
+// agent's own that never blocks whoever emits it; without a connection it is lost (what matters, e.g. a server stopped
+// by crash loop, also shows in Observed.error). kind:
+//   crash              the server exited with code ≠ 0 without anyone asking for it
+//   oom                Docker killed it for lack of memory
+//   crash_loop         more than 3 crashes in an hour: the agent has stopped it and will not start it until a Power
+//                      start/restart or a new spec version (the panel sets the desired state to stopped)
+//   crash_loop_failed  crash loop, but it could not be stopped (the message says why)
+//   drift              the container did not match the already applied spec and has been recreated
+//   save_on_pending    autosave may have been left disabled (save-on failed); the agent retries
+//   save_on_resumed    save-on works again
 message Event {
   EventLevel level = 1;
-  string server_id = 2; // vacío = incidencia del nodo
+  string server_id = 2; // empty = node event
   string kind = 3;
-  string message = 4; // en castellano, para mostrarlo tal cual
+  string message = 4; // in English, to be shown as is
   int64 ts_unix_ms = 5;
 }
 
-// Agente → panel, en un stream de logs (stream_id del SubscribeLogs): el agente descartó `count` líneas nuevas
-// de ese stream porque no se leían a tiempo (spec §5.2). El panel avisa a los navegadores con log_dropped.
+// Agent → panel, on a log stream (the SubscribeLogs stream_id): the agent dropped `count` new lines
+// of that stream because they were not read in time (spec §5.2). The panel notifies browsers with log_dropped.
 message StreamDropped {
   uint64 count = 1;
 }
 
-// Panel → agente: token permanente nuevo del nodo (spec §9). El agente lo guarda y responde Ack; después cierra
-// la sesión y vuelve a conectar con él. Error: invalid_request (formato) | io_error (no se pudo guardar). Un
-// agente anterior al Plan 9 responde unsupported y conserva el token que tenía.
+// Panel → agent: the node's new permanent token (spec §9). The agent stores it and responds Ack; then it closes
+// the session and reconnects with it. Error: invalid_request (format) | io_error (could not be stored). An
+// agent older than Plan 9 responds unsupported and keeps the token it had.
 message RotateToken {
-  string token = 1; // 32 bytes aleatorios en base64url sin relleno (43 caracteres)
+  string token = 1; // 32 random bytes in unpadded base64url (43 characters)
 }

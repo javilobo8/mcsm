@@ -77,9 +77,9 @@ export function Console({ serverId, nodeOnline }: { serverId: string; nodeOnline
     try {
       const { output } = await api.post<{ output: string }>(apiPath`/api/servers/${serverId}/command`, { command: c });
       setCmd("");
-      for (const l of (output.trim() ? output.replace(/\n+$/, "") : "(sin salida)").split("\n")) dispatch({ kind: "line", text: l, line: "out" });
+      for (const l of (output.trim() ? output.replace(/\n+$/, "") : "(no output)").split("\n")) dispatch({ kind: "line", text: l, line: "out" });
     } catch (e) {
-      dispatch({ kind: "line", text: `✗ ${e instanceof ApiError ? e.message : "Error inesperado al enviar el comando"}`, line: "sys" });
+      dispatch({ kind: "line", text: `✗ ${e instanceof ApiError ? e.message : "Unexpected error sending the command"}`, line: "sys" });
     } finally {
       setSending(false);
     }
@@ -98,19 +98,19 @@ export function Console({ serverId, nodeOnline }: { serverId: string; nodeOnline
   return (
     <div className="flex h-[70vh] flex-col rounded-md border border-zinc-800 bg-black font-mono text-xs" data-testid="console">
       <div className="flex items-center gap-2 border-b border-zinc-800 p-2">
-        <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filtrar líneas…" aria-label="Filtrar líneas de la consola" className="h-8 max-w-xs font-mono text-xs" />
-        <span className="text-zinc-500">{filter ? `${shown.length} de ${state.lines.length}` : `${state.lines.length} líneas`}</span>
-        {!following && <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={resume}><ArrowDown className="size-3.5" /> Ir al final</Button>}
+        <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter lines…" aria-label="Filter console lines" className="h-8 max-w-xs font-mono text-xs" />
+        <span className="text-zinc-500">{filter ? `${shown.length} of ${state.lines.length}` : `${state.lines.length} lines`}</span>
+        {!following && <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={resume}><ArrowDown className="size-3.5" /> Jump to end</Button>}
       </div>
-      <div ref={scroller} onScroll={onScroll} className="flex-1 overflow-auto p-3" role="log" aria-live="off" aria-label="Registro del servidor" tabIndex={0}>
-        {state.lines.length === 0 && <p className="text-zinc-600">Sin salida todavía…</p>}
+      <div ref={scroller} onScroll={onScroll} className="flex-1 overflow-auto p-3" role="log" aria-live="off" aria-label="Server log" tabIndex={0}>
+        {state.lines.length === 0 && <p className="text-zinc-600">No output yet…</p>}
         {shown.map((l) => <Row key={l.id} time={l.time} text={l.text} kind={l.kind} />)}
       </div>
       <div className="border-t border-zinc-800 p-2">
         <Input
           value={cmd} onChange={(e) => { setCmd(e.target.value); setHIdx(-1); }} onKeyDown={onKey}
-          disabled={nodeOnline === false || sending} aria-label={sending ? "Comando (enviando…)" : "Comando"}
-          placeholder={nodeOnline === false ? "Nodo desconectado" : sending ? "Enviando…" : "Comando (sin /): list, say hola, whitelist add Lobo…  (↑/↓ historial)"}
+          disabled={nodeOnline === false || sending} aria-label={sending ? "Command (sending…)" : "Command"}
+          placeholder={nodeOnline === false ? "Node offline" : sending ? "Sending…" : "Command (without /): list, say hello, whitelist add Lobo…  (↑/↓ history)"}
           className="font-mono" autoComplete="off" spellCheck={false}
         />
       </div>

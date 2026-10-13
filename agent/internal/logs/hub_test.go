@@ -13,7 +13,7 @@ import (
 	"mcsm/agent/internal/docker"
 )
 
-const hangGuard = 10 * time.Second // solo evita colgar la suite: holgado para máquinas cargadas
+const hangGuard = 10 * time.Second // only prevents hanging the suite: generous for loaded machines
 
 func newFakeWithContainer(t *testing.T) (*docker.Fake, string) {
 	f := docker.NewFake()
@@ -29,11 +29,11 @@ func recv(t *testing.T, ch <-chan Line) Line {
 	select {
 	case l, ok := <-ch:
 		if !ok {
-			t.Fatal("canal cerrado")
+			t.Fatal("channel closed")
 		}
 		return l
 	case <-time.After(hangGuard):
-		t.Fatal("timeout esperando línea")
+		t.Fatal("timeout waiting for line")
 	}
 	return Line{}
 }
@@ -62,19 +62,19 @@ func TestReplayAndSharedFollower(t *testing.T) {
 	h := NewHub(eng)
 	ch1, unsub1, _ := h.Subscribe("a", id, 100)
 	defer unsub1()
-	f.WriteLog(id, "2026-10-12T10:00:00Z uno\n2026-10-12T10:00:01Z dos\n")
+	f.WriteLog(id, "2026-10-12T10:00:00Z one\n2026-10-12T10:00:01Z two\n")
 	recv(t, ch1)
 	recv(t, ch1)
 	ch2, unsub2, _ := h.Subscribe("a", id, 100)
 	defer unsub2()
-	if got := recv(t, ch2).Text; got != "uno" {
+	if got := recv(t, ch2).Text; got != "one" {
 		t.Fatalf("replay[0] = %q", got)
 	}
-	if got := recv(t, ch2).Text; got != "dos" {
+	if got := recv(t, ch2).Text; got != "two" {
 		t.Fatalf("replay[1] = %q", got)
 	}
 	if calls := eng.logsCalls.Load(); calls != 1 {
-		t.Fatalf("debe compartir un único follower; Logs llamado %d veces", calls)
+		t.Fatalf("must share a single follower; Logs called %d times", calls)
 	}
 }
 
@@ -89,13 +89,13 @@ func TestGraceClosesFollower(t *testing.T) {
 	select {
 	case <-fired:
 	case <-time.After(hangGuard):
-		t.Fatal("el temporizador de gracia no disparó")
+		t.Fatal("the grace timer did not fire")
 	}
 	h.mu.Lock()
 	_, alive := h.followers["a"]
 	h.mu.Unlock()
 	if alive {
-		t.Fatal("el follower debe cerrarse pasado el periodo de gracia")
+		t.Fatal("the follower must close after the grace period")
 	}
 }
 
@@ -108,10 +108,10 @@ func TestResetClosesSubscribers(t *testing.T) {
 	select {
 	case _, ok := <-ch:
 		if ok {
-			t.Fatal("esperaba canal cerrado")
+			t.Fatal("expected closed channel")
 		}
 	case <-time.After(hangGuard):
-		t.Fatal("el canal debería cerrarse tras Reset")
+		t.Fatal("the channel should close after Reset")
 	}
 }
 
@@ -123,13 +123,13 @@ func TestContainerIDChangeReopens(t *testing.T) {
 	defer unsub1()
 	ch2, unsub2, _ := h.Subscribe("a", id2, 10)
 	defer unsub2()
-	f.WriteLog(id2, "2026-10-12T10:00:00Z nuevo\n")
-	if got := recv(t, ch2).Text; got != "nuevo" {
+	f.WriteLog(id2, "2026-10-12T10:00:00Z new\n")
+	if got := recv(t, ch2).Text; got != "new" {
 		t.Fatalf("got %q", got)
 	}
 }
 
-// countEngine cuenta las llamadas a Logs sin leer f.Calls (que no tiene lock accesible).
+// countEngine counts the calls to Logs without reading f.Calls (which has no accessible lock).
 type countEngine struct {
 	docker.Engine
 	logsCalls atomic.Int32
@@ -146,7 +146,7 @@ func TestGraceRaceSubscribeBeforeDrop(t *testing.T) {
 	h.SetGrace(time.Nanosecond)
 	_, unsub, _ := h.Subscribe("a", id, 10)
 	subCh := make(chan *Subscription, 1)
-	h.graceHook = func() { // el temporizador ya disparó: un Subscribe entra en la ventana
+	h.graceHook = func() { // the timer already fired: a Subscribe enters the window
 		s, err := h.SubscribeSub("a", id, 10)
 		if err != nil {
 			t.Error(err)
@@ -160,16 +160,16 @@ func TestGraceRaceSubscribeBeforeDrop(t *testing.T) {
 	select {
 	case sub = <-subCh:
 	case <-time.After(hangGuard):
-		t.Fatal("el hook no se ejecutó")
+		t.Fatal("the hook did not run")
 	}
-	select { // dropIfIdle ya decidió (con la suscripción nueva, no cierra nada)
+	select { // dropIfIdle already decided (with the new subscription, it closes nothing)
 	case <-dropped:
 	case <-time.After(hangGuard):
-		t.Fatal("dropIfIdle no terminó")
+		t.Fatal("dropIfIdle did not finish")
 	}
 	f.WriteLog(id, "2026-10-12T10:00:00Z vivo\n")
 	if got := recv(t, sub.Lines).Text; got != "vivo" {
-		t.Fatalf("la suscripción debe seguir viva y recibir; got %q", got)
+		t.Fatalf("the subscription must stay alive and receive; got %q", got)
 	}
 }
 
@@ -185,7 +185,7 @@ func TestSubscribeNeverReturnsClosedFollower(t *testing.T) {
 		select {
 		case _, ok := <-s.Lines:
 			if !ok {
-				t.Fatalf("iteración %d: canal cerrado nada más suscribirse", i)
+				t.Fatalf("iteration %d: channel closed right after subscribing", i)
 			}
 		default:
 		}
@@ -201,15 +201,15 @@ func TestLongLineTruncatedAndFollowerSurvives(t *testing.T) {
 	go f.WriteLog(id, "2026-10-12T10:00:00Z "+strings.Repeat("x", 2*1024*1024)+"\n2026-10-12T10:00:01Z normal\n")
 	l := recv(t, ch)
 	if !strings.HasSuffix(l.Text, truncMarker) || len(l.Text) > maxLineBytes+len(truncMarker) {
-		t.Fatalf("línea larga no truncada: len=%d", len(l.Text))
+		t.Fatalf("long line not truncated: len=%d", len(l.Text))
 	}
 	if got := recv(t, ch).Text; got != "normal" {
 		t.Fatalf("got %q", got)
 	}
 }
 
-// Una línea de log ocupa como mucho 64 KiB (más el marcador): con el ring de 500 líneas
-// un contenedor no puede hacer que el agente retenga cientos de MiB (M1 de la auditoría).
+// A log line takes at most 64 KiB (plus the marker): with the 500-line ring
+// a container cannot make the agent retain hundreds of MiB (M1 of the audit).
 func TestLineCappedAt64KiB(t *testing.T) {
 	f, id := newFakeWithContainer(t)
 	h := NewHub(f)
@@ -218,7 +218,7 @@ func TestLineCappedAt64KiB(t *testing.T) {
 	go f.WriteLog(id, "2026-10-12T10:00:00Z "+strings.Repeat("y", 100*1024)+"\n")
 	l := recv(t, ch)
 	if !strings.HasSuffix(l.Text, truncMarker) || len(l.Text) > 64*1024+len(truncMarker) {
-		t.Fatalf("una línea de 100 KiB debe truncarse a 64 KiB: len=%d", len(l.Text))
+		t.Fatalf("a 100 KiB line must be truncated to 64 KiB: len=%d", len(l.Text))
 	}
 }
 
@@ -258,9 +258,9 @@ func TestSlowSubscriberCountsDropsAndDoesNotBlock(t *testing.T) {
 		defer close(done)
 		for i := 0; i < n; i++ {
 			f.WriteLog(id, "2026-10-12T10:00:00Z l\n")
-			// Relevo con el lector: sin él, si el planificador no deja correr al test (GOMAXPROCS=1, CI
-			// cargada), el búfer del rápido también se llena y descarta. Si publish se bloqueara con el
-			// lento, recv vencería igual.
+			// Hand-off with the reader: without it, if the scheduler does not let the test run (GOMAXPROCS=1, loaded
+			// CI), the fast one's buffer also fills up and drops. If publish blocked on the
+			// slow one, recv would time out anyway.
 			select {
 			case <-read:
 			case <-time.After(hangGuard):
@@ -268,7 +268,7 @@ func TestSlowSubscriberCountsDropsAndDoesNotBlock(t *testing.T) {
 			}
 		}
 	}()
-	for i := 0; i < n; i++ { // el rápido recibe todo aunque el lento no lea
+	for i := 0; i < n; i++ { // the fast one receives everything even if the slow one does not read
 		recv(t, fast)
 		select {
 		case read <- struct{}{}:
@@ -276,12 +276,12 @@ func TestSlowSubscriberCountsDropsAndDoesNotBlock(t *testing.T) {
 		}
 	}
 	<-done
-	// publish reparte a los suscriptores en orden de mapa con f.mu tomado: el
-	// rápido puede recibir la última línea antes de que se cuente el descarte
-	// del lento. Close toma f.mu, así que espera a ese publish y fija la cuenta.
+	// publish distributes to subscribers in map order with f.mu held: the
+	// fast one may receive the last line before the slow one's drop
+	// is counted. Close takes f.mu, so it waits for that publish and fixes the count.
 	slow.Close()
 	if got := slow.Dropped(); got != 50 {
-		t.Fatalf("Dropped = %d, quería 50", got)
+		t.Fatalf("Dropped = %d, wanted 50", got)
 	}
 }
 
@@ -295,10 +295,10 @@ func TestEOFClosesChannelsAndDoubleUnsub(t *testing.T) {
 	select {
 	case _, ok := <-ch:
 		if ok {
-			t.Fatal("esperaba cierre")
+			t.Fatal("expected close")
 		}
 	case <-time.After(hangGuard):
-		t.Fatal("EOF debe cerrar el canal")
+		t.Fatal("EOF must close the channel")
 	}
 	unsub()
 	unsub()
@@ -311,27 +311,27 @@ func TestSecretsAreRedactedBeforeTheRing(t *testing.T) {
 		if serverID != "a" {
 			return nil
 		}
-		return []string{"abcdefgh", "corto", "", "CF$2a$10$clave"}
+		return []string{"abcdefgh", "short", "", "CF$2a$10$key"}
 	})
 	ch, unsub, err := h.Subscribe("a", id, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer unsub()
-	f.WriteLog(id, "2026-10-12T10:00:00Z rcon=abcdefgh key=CF$2a$10$clave corto abcdefgh\n")
-	want := "rcon=[oculto] key=[oculto] corto [oculto]"
+	f.WriteLog(id, "2026-10-12T10:00:00Z rcon=abcdefgh key=CF$2a$10$key short abcdefgh\n")
+	want := "rcon=[hidden] key=[hidden] short [hidden]"
 	if got := recv(t, ch).Text; got != want {
 		t.Fatalf("got %q", got)
 	}
-	ch2, unsub2, _ := h.Subscribe("a", id, 10) // el replay sale del anillo, ya limpio
+	ch2, unsub2, _ := h.Subscribe("a", id, 10) // the replay comes from the ring, already clean
 	defer unsub2()
 	if got := recv(t, ch2).Text; got != want {
 		t.Fatalf("replay %q", got)
 	}
 }
 
-// Un secreto que contiene a otro se oculta entero (los largos primero), y uno cortado al truncar una línea larga no
-// deja su principio a la vista.
+// A secret that contains another is hidden whole (longest first), and one cut off when truncating a long line does not
+// leave its beginning visible.
 func TestSecretsOverlappingAndTruncated(t *testing.T) {
 	f, id := newFakeWithContainer(t)
 	h := NewHub(f)
@@ -341,16 +341,16 @@ func TestSecretsOverlappingAndTruncated(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unsub()
-	f.WriteLog(id, "2026-10-12T10:00:00Z pw=abcdefghXYZ12345 y abcdefgh\n")
-	if got := recv(t, ch).Text; got != "pw=[oculto] y [oculto]" {
-		t.Fatalf("solapados: %q", got)
+	f.WriteLog(id, "2026-10-12T10:00:00Z pw=abcdefghXYZ12345 and abcdefgh\n")
+	if got := recv(t, ch).Text; got != "pw=[hidden] and [hidden]" {
+		t.Fatalf("overlapping: %q", got)
 	}
-	// La línea se trunca en maxLineBytes justo a mitad del secreto largo.
+	// The line is truncated at maxLineBytes right in the middle of the long secret.
 	ts := "2026-10-12T10:00:01Z "
 	pad := strings.Repeat("x", maxLineBytes-len(ts)-5)
-	f.WriteLog(id, ts+pad+"abcdefghXYZ12345 resto\n")
+	f.WriteLog(id, ts+pad+"abcdefghXYZ12345 rest\n")
 	got := recv(t, ch).Text
 	if !strings.HasSuffix(got, redacted+truncMarker) || strings.Contains(got, "abcde") {
-		t.Fatalf("truncada: …%q", got[len(got)-40:])
+		t.Fatalf("truncated: …%q", got[len(got)-40:])
 	}
 }

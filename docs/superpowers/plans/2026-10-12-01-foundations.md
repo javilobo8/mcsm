@@ -1,63 +1,63 @@
-# MC Server Manager — Plan 1: Fundamentos
+# MC Server Manager — Plan 1: Fundamentals
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Panel web + agente Go funcionando de extremo a extremo: alta de nodo por token, crear/editar/arrancar/parar/borrar servidores itzg desde la web, ver estado y jugadores, logs en vivo y consola RCON.
+**Goal:** Web panel + Go agent working end to end: node enrollment by token, create/edit/start/stop/delete itzg servers from the web, see status and players, live logs and RCON console.
 
-**Architecture:** Monorepo con `agent/` (Go, reconciliador sobre el socket Docker, conexión WebSocket saliente) y `panel/` (Fastify + `node:sqlite` como fuente de verdad, web React). El protocolo panel↔agente se define en Protobuf (`proto/`) y se genera con `buf` para Go y TypeScript. Cada servidor tiene una *spec* JSON versionada; el agente la convierte en un contenedor determinista y la reconcilia.
+**Architecture:** Monorepo with `agent/` (Go, reconciler over the Docker socket, outbound WebSocket connection) and `panel/` (Fastify + `node:sqlite` as the source of truth, React web). The panel↔agent protocol is defined in Protobuf (`proto/`) and generated with `buf` for Go and TypeScript. Each server has a versioned JSON *spec*; the agent turns it into a deterministic container and reconciles it.
 
 **Tech Stack:** Go 1.27.2, `github.com/moby/moby/client` v0.6, `github.com/coder/websocket`, `go.etcd.io/bbolt`, `github.com/mcstatus-io/mcutil/v4`; Node 26, pnpm 12, Fastify 5, `@fastify/websocket`, `node:sqlite`, zod 4, `@bufbuild/protobuf` 2; React 19, Vite 8, Tailwind 4, shadcn/ui, TanStack Router + Query; buf 1.73.
 
-**Spec:** `docs/superpowers/specs/2026-10-12-mc-server-manager-design.md` (secciones 3, 4, 5, 6.1–6.3, 7, 8, 9, 10, 12 y 14; el resto queda para los planes siguientes, ver `docs/superpowers/plans/README.md`).
+**Spec:** `docs/superpowers/specs/2026-10-12-mc-server-manager-design.md` (sections 3, 4, 5, 6.1–6.3, 7, 8, 9, 10, 12 and 14; the rest is left for the following plans, see `docs/superpowers/plans/README.md`).
 
 ## Global Constraints
 
-- Toolchain fijada en `mise.toml`: `go = "1.27.2"`, `buf = "1.73.0"`. Node 26.x y pnpm 12.x globales. Ejecuta siempre `eval "$(mise env)"` (o usa los shims de mise) antes de `go`/`buf`.
-- Módulo Go: `mcsm/agent`. Código generado en `agent/gen/mcsm/v1` (paquete `mcsmv1`) y `panel/packages/proto-ts/src/gen`. **El código generado se commitea.**
-- Etiquetas Docker reservadas: `mcsm.managed`, `mcsm.server_id`, `mcsm.slug`, `mcsm.spec_version`, `mcsm.spec_hash`. Nombre de contenedor: `mcsm-<slug>`. Slug: `^[a-z0-9][a-z0-9-]{0,39}$`.
-- Red Docker de usuario: `mcsm` (env `MCSM_NETWORK`). Puerto interno de juego 25565, RCON interno 25575 (nunca publicado).
-- Directorio de datos de un servidor en el nodo: `<DATA_ROOT>/<slug>/data`, montado en `/data`. `DATA_ROOT` por defecto `/srv/minecraft` y se monta en el agente con la **misma ruta** dentro y fuera.
-- Variables de entorno reservadas que la spec no puede sobreescribir vía `env`: `EULA`, `TYPE`, `VERSION`, `MEMORY`, `ENABLE_RCON`, `RCON_PASSWORD`, `RCON_PORT`, `SERVER_PORT`, `CUSTOM_SERVER_PROPERTIES`.
-- Contenedores con `Tty: true`, `OpenStdin: true`. Parada limpia con timeout 60 s.
-- Panel: un solo usuario; contraseña con `scrypt` de `node:crypto`; cookie `mcsm_session` firmada, `HttpOnly`, `SameSite=Strict`; sesiones 30 días. Tokens de nodo y de alta: 32 bytes aleatorios en base64url, SHA-256 hex en BD. Tokens de alta caducan a los 15 min y son de un solo uso.
-- Rango de puertos de juego por nodo por defecto: 25565–25600.
-- Mensajes de la UI y de error en castellano. Identificadores de código en inglés.
-- Commits pequeños con Conventional Commits (`feat:`, `test:`, `chore:`, `docs:`) y la línea `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+- Toolchain pinned in `mise.toml`: `go = "1.27.2"`, `buf = "1.73.0"`. Node 26.x and pnpm 12.x global. Always run `eval "$(mise env)"` (or use the mise shims) before `go`/`buf`.
+- Go module: `mcsm/agent`. Generated code in `agent/gen/mcsm/v1` (package `mcsmv1`) and `panel/packages/proto-ts/src/gen`. **The generated code is committed.**
+- Reserved Docker labels: `mcsm.managed`, `mcsm.server_id`, `mcsm.slug`, `mcsm.spec_version`, `mcsm.spec_hash`. Container name: `mcsm-<slug>`. Slug: `^[a-z0-9][a-z0-9-]{0,39}$`.
+- User-defined Docker network: `mcsm` (env `MCSM_NETWORK`). Internal game port 25565, internal RCON 25575 (never published).
+- Data directory of a server on the node: `<DATA_ROOT>/<slug>/data`, mounted at `/data`. `DATA_ROOT` defaults to `/srv/minecraft` and is mounted in the agent at the **same path** inside and outside.
+- Reserved environment variables that the spec cannot override via `env`: `EULA`, `TYPE`, `VERSION`, `MEMORY`, `ENABLE_RCON`, `RCON_PASSWORD`, `RCON_PORT`, `SERVER_PORT`, `CUSTOM_SERVER_PROPERTIES`.
+- Containers with `Tty: true`, `OpenStdin: true`. Clean stop with a 60 s timeout.
+- Panel: a single user; password with `scrypt` from `node:crypto`; signed `mcsm_session` cookie, `HttpOnly`, `SameSite=Strict`; sessions last 30 days. Node and enrollment tokens: 32 random bytes in base64url, SHA-256 hex in the DB. Enrollment tokens expire after 15 min and are single-use.
+- Default game port range per node: 25565–25600.
+- UI and error messages in Spanish. Code identifiers in English.
+- Small commits with Conventional Commits (`feat:`, `test:`, `chore:`, `docs:`) and the line `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
 ## Review Focus
 
-1. **Nombre de servidor con espacios, mayúsculas o acentos** ("Supervivencia 2024 ñ") → el slug debe ser `supervivencia-2024-n`, nunca una petición rechazada por el agente. Test en Task 14 (`slugify`) y Task 2 (el agente rechaza slugs inválidos).
-2. **Puerto ocupado por un contenedor no gestionado** (tu compose actual) → el asignador no lo sabe; Docker falla al crear y el error debe aparecer en `observed.error` y en la tarjeta del servidor, no desaparecer. Test en Task 6 (fallo de `Create` → `Observed.Error` y reintento con backoff) y Task 14 (asignador evita puertos de otros servidores del nodo).
-3. **Reconexión del agente con una consola abierta** → el navegador recibe `{type:"stream_closed"}` y se resuscribe al volver el nodo; sin líneas duplicadas ni consola congelada. Test en Task 15.
-4. **`env` libre intentando pisar `RCON_PASSWORD` o `TYPE`** → rechazado en validación (panel y agente), porque rompería la consola o el tipo declarado. Test en Task 2 (Go y zod).
-5. **`memLimit` menor que `memory`** (JVM 4G con límite 2G) → el contenedor moriría por OOM en bucle; se rechaza en validación. Test en Task 2.
+1. **Server name with spaces, uppercase or accents** ("Supervivencia 2024 ñ") → the slug must be `supervivencia-2024-n`, never a request rejected by the agent. Test in Task 14 (`slugify`) and Task 2 (the agent rejects invalid slugs).
+2. **Port held by an unmanaged container** (your current compose) → the allocator does not know about it; Docker fails on create and the error must appear in `observed.error` and on the server card, not disappear. Test in Task 6 (`Create` failure → `Observed.Error` and retry with backoff) and Task 14 (allocator avoids ports of other servers on the node).
+3. **Agent reconnection with an open console** → the browser receives `{type:"stream_closed"}` and resubscribes when the node comes back; no duplicated lines and no frozen console. Test in Task 15.
+4. **Free `env` trying to overwrite `RCON_PASSWORD` or `TYPE`** → rejected in validation (panel and agent), because it would break the console or the declared type. Test in Task 2 (Go and zod).
+5. **`memLimit` lower than `memory`** (JVM 4G with a 2G limit) → the container would be killed by OOM in a loop; rejected in validation. Test in Task 2.
 
 ---
 
-## Estructura de archivos
+## File structure
 
 ```
-mise.toml                         (ya existe)
+mise.toml                         (already exists)
 .gitignore
-package.json                      raíz pnpm (scripts gen/typecheck/test)
+package.json                      pnpm root (gen/typecheck/test scripts)
 pnpm-workspace.yaml
 buf.yaml / buf.gen.yaml
-proto/mcsm/v1/agent.proto         protocolo
-proto/fixtures/spec-example.json  fixture compartida Go/TS
+proto/mcsm/v1/agent.proto         protocol
+proto/fixtures/spec-example.json  shared Go/TS fixture
 
 agent/go.mod
 agent/cmd/agent/main.go
-agent/gen/mcsm/v1/agent.pb.go     generado
-agent/internal/spec/spec.go       Spec + validación + BuildContainer
+agent/gen/mcsm/v1/agent.pb.go     generated
+agent/internal/spec/spec.go       Spec + validation + BuildContainer
 agent/internal/store/store.go     bbolt
-agent/internal/docker/engine.go   interfaz Engine + tipos
-agent/internal/docker/moby.go     implementación real
-agent/internal/docker/fake.go     fake para tests
+agent/internal/docker/engine.go   Engine interface + types
+agent/internal/docker/moby.go     real implementation
+agent/internal/docker/fake.go     fake for tests
 agent/internal/mc/mc.go           Status (SLP) + Rcon
 agent/internal/reconcile/reconciler.go
 agent/internal/logs/hub.go
-agent/internal/conn/client.go     WebSocket cliente + reconexión
-agent/internal/conn/enroll.go     alta HTTP
+agent/internal/conn/client.go     WebSocket client + reconnection
+agent/internal/conn/enroll.go     HTTP enrollment
 agent/internal/app/app.go         wiring + Handler
 agent/internal/app/config.go
 agent/Dockerfile
@@ -76,27 +76,27 @@ panel/apps/api/src/nodes/{repo.ts,routes.ts,nodes.test.ts}
 panel/apps/api/src/agents/{hub.ts,service.ts,routes.ts,agents.test.ts}
 panel/apps/api/src/servers/{repo.ts,service.ts,routes.ts,servers.test.ts}
 panel/apps/api/src/realtime/{hub.ts,routes.ts,realtime.test.ts}
-panel/apps/api/test/fake-agent.ts  agente falso en TS para tests
+panel/apps/api/test/fake-agent.ts  fake agent in TS for tests
 panel/apps/web/...                 Vite + React
 
 deploy/panel.Dockerfile
-deploy/docker-compose.yml          panel + agente local (producción casera)
-deploy/docker-compose.node.yml     solo agente (nodos adicionales)
-deploy/docker-compose.dev.yml      agente en Docker contra panel en el host
+deploy/docker-compose.yml          panel + local agent (home production)
+deploy/docker-compose.node.yml     agent only (additional nodes)
+deploy/docker-compose.dev.yml      agent in Docker against the panel on the host
 README.md
 ```
 
 ---
 
-### Task 1: Esqueleto del monorepo y protocolo
+### Task 1: Monorepo skeleton and protocol
 
 **Files:**
 - Create: `.gitignore`, `package.json`, `pnpm-workspace.yaml`, `buf.yaml`, `buf.gen.yaml`, `proto/mcsm/v1/agent.proto`, `agent/go.mod`, `agent/cmd/agent/main.go`, `panel/tsconfig.base.json`, `panel/packages/proto-ts/{package.json,tsconfig.json,src/index.ts}`
 
 **Interfaces:**
-- Produces: paquete Go `mcsmv1 "mcsm/agent/gen/mcsm/v1"` y paquete npm `@mcsm/proto` con los tipos `Envelope`, `Hello`, `HelloAck`, `ServerSpec`, `SyncSpecs`, `ApplySpec`, `RemoveServer`, `PowerAction`, `PowerActionType`, `SendCommand`, `CommandResult`, `SubscribeLogs`, `LogLine`, `StreamClose`, `McStatus`, `Observed`, `ServerObserved`, `Ack`, `Error`, `DesiredState`, `HostInfo`.
+- Produces: Go package `mcsmv1 "mcsm/agent/gen/mcsm/v1"` and npm package `@mcsm/proto` with the types `Envelope`, `Hello`, `HelloAck`, `ServerSpec`, `SyncSpecs`, `ApplySpec`, `RemoveServer`, `PowerAction`, `PowerActionType`, `SendCommand`, `CommandResult`, `SubscribeLogs`, `LogLine`, `StreamClose`, `McStatus`, `Observed`, `ServerObserved`, `Ack`, `Error`, `DesiredState`, `HostInfo`.
 
-- [ ] **Step 1: Ficheros raíz**
+- [ ] **Step 1: Root files**
 
 `.gitignore`:
 ```
@@ -166,7 +166,7 @@ plugins:
     opt: target=ts
 ```
 
-- [ ] **Step 2: Protocolo**
+- [ ] **Step 2: Protocol**
 
 `proto/mcsm/v1/agent.proto`:
 ```proto
@@ -174,8 +174,8 @@ syntax = "proto3";
 
 package mcsm.v1;
 
-// Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
-// petición y su respuesta; `stream_id` agrupa los frames de un stream.
+// Envelope is the only type that travels over the WebSocket. `id` identifies a
+// request and its response; `stream_id` groups the frames of a stream.
 message Envelope {
   uint64 id = 1;
   uint64 stream_id = 2;
@@ -266,7 +266,7 @@ message CommandResult {
   string output = 1;
 }
 
-// Respuesta: Ack con envelope.stream_id = envelope.id de la petición.
+// Response: Ack with envelope.stream_id = envelope.id of the request.
 message SubscribeLogs {
   string server_id = 1;
   uint32 tail = 2;
@@ -315,7 +315,7 @@ message Error {
 }
 ```
 
-- [ ] **Step 3: Módulo Go y main mínimo**
+- [ ] **Step 3: Go module and minimal main**
 
 `agent/go.mod`:
 ```
@@ -324,7 +324,7 @@ module mcsm/agent
 go 1.27.2
 ```
 
-`agent/cmd/agent/main.go` (provisional; Task 9 lo sustituye):
+`agent/cmd/agent/main.go` (provisional; Task 9 replaces it):
 ```go
 package main
 
@@ -339,7 +339,7 @@ func main() {
 }
 ```
 
-- [ ] **Step 4: Paquete TS del protocolo**
+- [ ] **Step 4: TS protocol package**
 
 `panel/tsconfig.base.json`:
 ```json
@@ -384,7 +384,7 @@ func main() {
 export * from "./gen/mcsm/v1/agent_pb.js";
 ```
 
-- [ ] **Step 5: Generar y compilar**
+- [ ] **Step 5: Generate and compile**
 
 ```bash
 cd /home/lobo/dev/mc-server-manager && eval "$(mise env)"
@@ -393,28 +393,28 @@ ls agent/gen/mcsm/v1/agent.pb.go panel/packages/proto-ts/src/gen/mcsm/v1/agent_p
 cd agent && go mod tidy && go build ./... && go run ./cmd/agent
 cd .. && pnpm install && pnpm --filter @mcsm/proto typecheck
 ```
-Expected: `buf lint` sin salida; `go run` imprime `mcsm-agent mcsm.v1.Hello`; typecheck sin errores.
+Expected: `buf lint` with no output; `go run` prints `mcsm-agent mcsm.v1.Hello`; typecheck without errors.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "chore: esqueleto del monorepo y protocolo protobuf v1
+git add -A && git commit -m "chore: monorepo skeleton and protobuf v1 protocol
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 2: Spec de servidor (Go y TS) y construcción determinista del contenedor
+### Task 2: Server spec (Go and TS) and deterministic container build
 
 **Files:**
 - Create: `agent/internal/spec/spec.go`, `agent/internal/spec/spec_test.go`, `proto/fixtures/spec-example.json`, `panel/packages/shared/{package.json,tsconfig.json,vitest.config.ts,src/index.ts,src/spec.ts,src/spec.test.ts}`
 
 **Interfaces:**
-- Produces (Go): `spec.Spec`, `spec.Parse([]byte) (Spec, error)`, `(Spec).Validate() error`, `spec.Meta{ServerID, Slug string; Version uint64}`, `spec.Build{Name string; Config *container.Config; HostConfig *container.HostConfig; Networking *network.NetworkingConfig; DataDir, Hash string}`, `spec.BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, error)`, `spec.ContainerName(slug string) string`, constantes `LabelManaged`, `LabelServerID`, `LabelSlug`, `LabelVersion`, `LabelHash`, `GamePort=25565`, `RconPort=25575`, `ReservedEnv`.
+- Produces (Go): `spec.Spec`, `spec.Parse([]byte) (Spec, error)`, `(Spec).Validate() error`, `spec.Meta{ServerID, Slug string; Version uint64}`, `spec.Build{Name string; Config *container.Config; HostConfig *container.HostConfig; Networking *network.NetworkingConfig; DataDir, Hash string}`, `spec.BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, error)`, `spec.ContainerName(slug string) string`, constants `LabelManaged`, `LabelServerID`, `LabelSlug`, `LabelVersion`, `LabelHash`, `GamePort=25565`, `RconPort=25575`, `ReservedEnv`.
 - Produces (TS, `@mcsm/shared`): `specSchema`, `specInputSchema`, `type Spec`, `type SpecInput`, `RESERVED_ENV`, `defaultSpecInput()`.
 
-- [ ] **Step 1: Fixture compartida**
+- [ ] **Step 1: Shared fixture**
 
 `proto/fixtures/spec-example.json`:
 ```json
@@ -432,7 +432,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 }
 ```
 
-- [ ] **Step 2: Test Go (falla)**
+- [ ] **Step 2: Go test (fails)**
 
 `agent/internal/spec/spec_test.go`:
 ```go
@@ -476,7 +476,7 @@ func TestBuildContainerBasics(t *testing.T) {
 		t.Errorf("image = %q", b.Config.Image)
 	}
 	if !b.Config.Tty || !b.Config.OpenStdin {
-		t.Error("tty/openstdin deben ser true")
+		t.Error("tty/openstdin must be true")
 	}
 	if got := b.HostConfig.Binds; len(got) != 1 || got[0] != "/srv/minecraft/survival/data:/data" {
 		t.Errorf("binds = %v", got)
@@ -486,7 +486,7 @@ func TestBuildContainerBasics(t *testing.T) {
 		t.Errorf("labels = %v", b.Config.Labels)
 	}
 	if _, ok := b.Networking.EndpointsConfig["mcsm"]; !ok {
-		t.Error("falta la red mcsm")
+		t.Error("mcsm network missing")
 	}
 	if b.HostConfig.RestartPolicy.Name != "unless-stopped" {
 		t.Errorf("restart = %q", b.HostConfig.RestartPolicy.Name)
@@ -522,7 +522,7 @@ func TestBuildContainerEnv(t *testing.T) {
 	}
 	for i := 1; i < len(b.Config.Env); i++ {
 		if b.Config.Env[i-1] > b.Config.Env[i] {
-			t.Fatalf("env no está ordenado: %v", b.Config.Env)
+			t.Fatalf("env is not sorted: %v", b.Config.Env)
 		}
 	}
 }
@@ -543,7 +543,7 @@ func TestBuildContainerPorts(t *testing.T) {
 		t.Errorf("bindings = %v", seen)
 	}
 	if _, ok := b.HostConfig.PortBindings[mustPort("25575/tcp")]; ok {
-		t.Error("RCON no debe publicarse")
+		t.Error("RCON must not be published")
 	}
 }
 
@@ -552,19 +552,19 @@ func TestHashStability(t *testing.T) {
 	a, _ := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	b, _ := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	if a.Hash != b.Hash {
-		t.Error("el hash debe ser determinista")
+		t.Error("the hash must be deterministic")
 	}
 	m2 := meta
 	m2.Version = 99
 	c, _ := BuildContainer(m2, s, "/srv/minecraft", "mcsm")
 	if c.Hash != a.Hash {
-		t.Error("cambiar solo la versión no debe cambiar el hash")
+		t.Error("changing only the version must not change the hash")
 	}
 	s.Memory = "6G"
 	s.Resources.MemLimit = "7G"
 	d, _ := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	if d.Hash == a.Hash {
-		t.Error("cambiar la memoria debe cambiar el hash")
+		t.Error("changing the memory must change the hash")
 	}
 }
 
@@ -575,15 +575,15 @@ func TestValidation(t *testing.T) {
 		mut  func(*Spec, *Meta)
 		want string
 	}{
-		{"slug inválido", func(_ *Spec, m *Meta) { m.Slug = "Mi Server" }, "slug"},
-		{"env reservada", func(s *Spec, _ *Meta) { s.Env["RCON_PASSWORD"] = "x" }, "reservada"},
-		{"env TYPE reservada", func(s *Spec, _ *Meta) { s.Env["TYPE"] = "FORGE" }, "reservada"},
-		{"memoria inválida", func(s *Spec, _ *Meta) { s.Memory = "muchos" }, "memory"},
-		{"memLimit menor que memory", func(s *Spec, _ *Meta) { s.Resources.MemLimit = "2G" }, "memLimit"},
-		{"puerto fuera de rango", func(s *Spec, _ *Meta) { s.Ports.Game = 70000 }, "puerto"},
-		{"proto inválido", func(s *Spec, _ *Meta) { s.Ports.Extra[0].Proto = "icmp" }, "proto"},
-		{"rcon vacío", func(s *Spec, _ *Meta) { s.RconPassword = "" }, "rconPassword"},
-		{"restart inválido", func(s *Spec, _ *Meta) { s.RestartPolicy = "siempre" }, "restartPolicy"},
+		{"invalid slug", func(_ *Spec, m *Meta) { m.Slug = "Mi Server" }, "slug"},
+		{"reserved env", func(s *Spec, _ *Meta) { s.Env["RCON_PASSWORD"] = "x" }, "reserved"},
+		{"reserved env TYPE", func(s *Spec, _ *Meta) { s.Env["TYPE"] = "FORGE" }, "reserved"},
+		{"invalid memory", func(s *Spec, _ *Meta) { s.Memory = "muchos" }, "memory"},
+		{"memLimit lower than memory", func(s *Spec, _ *Meta) { s.Resources.MemLimit = "2G" }, "memLimit"},
+		{"port out of range", func(s *Spec, _ *Meta) { s.Ports.Game = 70000 }, "port"},
+		{"invalid proto", func(s *Spec, _ *Meta) { s.Ports.Extra[0].Proto = "icmp" }, "proto"},
+		{"empty rcon", func(s *Spec, _ *Meta) { s.RconPassword = "" }, "rconPassword"},
+		{"invalid restart", func(s *Spec, _ *Meta) { s.RestartPolicy = "siempre" }, "restartPolicy"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -597,7 +597,7 @@ func TestValidation(t *testing.T) {
 			tc.mut(&s, &m)
 			_, err := BuildContainer(m, s, "/srv/minecraft", "mcsm")
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err = %v, want que contenga %q", err, tc.want)
+				t.Fatalf("err = %v, want it to contain %q", err, tc.want)
 			}
 		})
 	}
@@ -616,27 +616,27 @@ func TestDefaults(t *testing.T) {
 		t.Errorf("image = %q", b.Config.Image)
 	}
 	if b.HostConfig.RestartPolicy.Name != "unless-stopped" {
-		t.Errorf("restart por defecto = %q", b.HostConfig.RestartPolicy.Name)
+		t.Errorf("default restart = %q", b.HostConfig.RestartPolicy.Name)
 	}
 	if b.HostConfig.Resources.Memory != 0 {
-		t.Error("sin memLimit no debe haber límite")
+		t.Error("without memLimit there must be no limit")
 	}
 }
 ```
 
-- [ ] **Step 3: Ejecutar (debe fallar)**
+- [ ] **Step 3: Run (must fail)**
 
 ```bash
 cd agent && go test ./internal/spec/
 ```
 Expected: FAIL, "undefined: Parse" etc.
 
-- [ ] **Step 4: Implementación**
+- [ ] **Step 4: Implementation**
 
 `agent/internal/spec/spec.go`:
 ```go
-// Package spec define la especificación de un servidor y su traducción
-// determinista a una configuración de contenedor Docker.
+// Package spec defines a server's specification and its deterministic
+// translation to a Docker container configuration.
 package spec
 
 import (
@@ -667,7 +667,7 @@ const (
 	RconPort = 25575
 )
 
-// ReservedEnv son variables que genera el agente y que `env` no puede pisar.
+// ReservedEnv are the variables the agent generates and that `env` cannot override.
 var ReservedEnv = map[string]bool{
 	"EULA": true, "TYPE": true, "VERSION": true, "MEMORY": true, "ENABLE_RCON": true,
 	"RCON_PASSWORD": true, "RCON_PORT": true, "SERVER_PORT": true, "CUSTOM_SERVER_PROPERTIES": true,
@@ -731,54 +731,54 @@ type Build struct {
 func Parse(b []byte) (Spec, error) {
 	var s Spec
 	if err := json.Unmarshal(b, &s); err != nil {
-		return Spec{}, fmt.Errorf("spec JSON inválido: %w", err)
+		return Spec{}, fmt.Errorf("invalid spec JSON: %w", err)
 	}
 	return s, s.Validate()
 }
 
 func (s Spec) Validate() error {
 	if s.Type == "" {
-		return fmt.Errorf("spec: type es obligatorio")
+		return fmt.Errorf("spec: type is required")
 	}
 	if s.Version == "" {
-		return fmt.Errorf("spec: version es obligatoria")
+		return fmt.Errorf("spec: version is required")
 	}
 	memBytes, err := units.RAMInBytes(s.Memory)
 	if err != nil || memBytes <= 0 {
-		return fmt.Errorf("spec: memory inválida %q", s.Memory)
+		return fmt.Errorf("spec: invalid memory %q", s.Memory)
 	}
 	if s.Resources.MemLimit != "" {
 		lim, err := units.RAMInBytes(s.Resources.MemLimit)
 		if err != nil || lim <= 0 {
-			return fmt.Errorf("spec: memLimit inválido %q", s.Resources.MemLimit)
+			return fmt.Errorf("spec: invalid memLimit %q", s.Resources.MemLimit)
 		}
 		if lim < memBytes {
-			return fmt.Errorf("spec: memLimit (%s) no puede ser menor que memory (%s)", s.Resources.MemLimit, s.Memory)
+			return fmt.Errorf("spec: memLimit (%s) cannot be lower than memory (%s)", s.Resources.MemLimit, s.Memory)
 		}
 	}
 	if s.Resources.Cpus < 0 {
-		return fmt.Errorf("spec: cpus no puede ser negativo")
+		return fmt.Errorf("spec: cpus cannot be negative")
 	}
 	if !validPort(s.Ports.Game) {
-		return fmt.Errorf("spec: puerto de juego fuera de rango: %d", s.Ports.Game)
+		return fmt.Errorf("spec: game port out of range: %d", s.Ports.Game)
 	}
 	for _, pm := range s.Ports.Extra {
 		if !validPort(pm.Host) || !validPort(pm.Container) {
-			return fmt.Errorf("spec: puerto extra fuera de rango: %+v", pm)
+			return fmt.Errorf("spec: extra port out of range: %+v", pm)
 		}
 		if pm.Proto != "tcp" && pm.Proto != "udp" {
-			return fmt.Errorf("spec: proto inválido %q (tcp|udp)", pm.Proto)
+			return fmt.Errorf("spec: invalid proto %q (tcp|udp)", pm.Proto)
 		}
 	}
 	if len(s.RconPassword) < 8 {
-		return fmt.Errorf("spec: rconPassword debe tener al menos 8 caracteres")
+		return fmt.Errorf("spec: rconPassword must have at least 8 characters")
 	}
 	if _, ok := restartPolicies[s.RestartPolicy]; !ok {
-		return fmt.Errorf("spec: restartPolicy inválida %q", s.RestartPolicy)
+		return fmt.Errorf("spec: invalid restartPolicy %q", s.RestartPolicy)
 	}
 	for k := range s.Env {
 		if ReservedEnv[k] {
-			return fmt.Errorf("spec: la variable %s es reservada y no puede sobreescribirse", k)
+			return fmt.Errorf("spec: the variable %s is reserved and cannot be overridden", k)
 		}
 	}
 	return nil
@@ -788,11 +788,11 @@ func validPort(p int) bool { return p >= 1 && p <= 65535 }
 
 func ContainerName(slug string) string { return "mcsm-" + slug }
 
-// BuildContainer traduce la spec a una configuración de contenedor. Es una
-// función pura: misma entrada, misma salida, mismo Hash.
+// BuildContainer translates the spec into a container configuration. It is a
+// pure function: same input, same output, same Hash.
 func BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, error) {
 	if !slugRe.MatchString(meta.Slug) {
-		return nil, fmt.Errorf("slug inválido %q", meta.Slug)
+		return nil, fmt.Errorf("invalid slug %q", meta.Slug)
 	}
 	if err := s.Validate(); err != nil {
 		return nil, err
@@ -894,14 +894,14 @@ func hashOf(name string, cfg *container.Config, host *container.HostConfig) stri
 func mustPort(s string) network.Port { return network.MustParsePort(s) }
 ```
 
-- [ ] **Step 5: Ejecutar (debe pasar)**
+- [ ] **Step 5: Run (must pass)**
 
 ```bash
 cd agent && go get github.com/moby/moby/api@v1.56.1 github.com/moby/moby/client@v0.6.2 github.com/docker/go-units@v0.5.0 && go mod tidy && go test ./internal/spec/ -v
 ```
-Expected: PASS en todos los subtests. Si `container.RestartPolicyOnFailure` u otra constante no existe con ese nombre, consulta `go doc github.com/moby/moby/api/types/container.RestartPolicyMode` y ajusta.
+Expected: PASS in all subtests. If `container.RestartPolicyOnFailure` or another constant does not exist under that name, check `go doc github.com/moby/moby/api/types/container.RestartPolicyMode` and adjust.
 
-- [ ] **Step 6: Paquete TS `@mcsm/shared` — test (falla)**
+- [ ] **Step 6: TS package `@mcsm/shared` — test (fails)**
 
 `panel/packages/shared/package.json`:
 ```json
@@ -935,26 +935,26 @@ import { specSchema, specInputSchema, defaultSpecInput } from "./spec.js";
 const fixture = JSON.parse(readFileSync(new URL("../../../../proto/fixtures/spec-example.json", import.meta.url), "utf8"));
 
 describe("specSchema", () => {
-  it("acepta la fixture compartida sin cambios", () => {
+  it("accepts the shared fixture unchanged", () => {
     const parsed = specSchema.parse(fixture);
     expect(parsed).toEqual(fixture);
   });
-  it("rechaza env reservadas", () => {
-    expect(() => specSchema.parse({ ...fixture, env: { RCON_PASSWORD: "x" } })).toThrow(/reservada/);
+  it("rejects reserved env", () => {
+    expect(() => specSchema.parse({ ...fixture, env: { RCON_PASSWORD: "x" } })).toThrow(/reserved/);
   });
-  it("rechaza memLimit menor que memory", () => {
+  it("rejects memLimit lower than memory", () => {
     expect(() => specSchema.parse({ ...fixture, resources: { cpus: 0, memLimit: "2G" } })).toThrow(/memLimit/);
   });
-  it("rechaza memoria con formato raro", () => {
+  it("rejects oddly formatted memory", () => {
     expect(() => specSchema.parse({ ...fixture, memory: "4 gigas" })).toThrow();
   });
-  it("rechaza rconPassword corta", () => {
+  it("rejects a short rconPassword", () => {
     expect(() => specSchema.parse({ ...fixture, rconPassword: "abc" })).toThrow();
   });
 });
 
 describe("specInputSchema", () => {
-  it("rellena defaults y no exige rconPassword ni puerto", () => {
+  it("fills in defaults and does not require rconPassword or port", () => {
     const parsed = specInputSchema.parse({ type: "VANILLA", version: "LATEST" });
     expect(parsed.memory).toBe("2G");
     expect(parsed.imageTag).toBe("java21");
@@ -963,13 +963,13 @@ describe("specInputSchema", () => {
     expect(parsed.restartPolicy).toBe("unless-stopped");
     expect(parsed.resources).toEqual({ cpus: 0, memLimit: "" });
   });
-  it("defaultSpecInput valida", () => {
+  it("defaultSpecInput is valid", () => {
     expect(() => specInputSchema.parse(defaultSpecInput())).not.toThrow();
   });
 });
 ```
 
-- [ ] **Step 7: Implementación zod**
+- [ ] **Step 7: zod implementation**
 
 `panel/packages/shared/src/spec.ts`:
 ```ts
@@ -979,7 +979,7 @@ export const RESERVED_ENV = new Set([
   "EULA", "TYPE", "VERSION", "MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "RCON_PORT", "SERVER_PORT", "CUSTOM_SERVER_PROPERTIES",
 ]);
 
-const memory = z.string().regex(/^\d+[MmGg]$/, "Formato de memoria inválido (ej. 4G, 512M)");
+const memory = z.string().regex(/^\d+[MmGg]$/, "Invalid memory format (e.g. 4G, 512M)");
 const port = z.number().int().min(1).max(65535);
 
 export function memoryToBytes(m: string): number {
@@ -995,9 +995,9 @@ export const portMappingSchema = z.object({
 });
 
 const envSchema = z
-  .record(z.string().regex(/^[A-Z][A-Z0-9_]*$/, "Nombre de variable inválido"), z.string())
+  .record(z.string().regex(/^[A-Z][A-Z0-9_]*$/, "Invalid variable name"), z.string())
   .refine((env) => !Object.keys(env).some((k) => RESERVED_ENV.has(k)), {
-    message: "Contiene una variable reservada (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES)",
+    message: "Contains a reserved variable (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES)",
   });
 
 const resourcesSchema = z.object({
@@ -1018,11 +1018,11 @@ const baseFields = {
 
 function memLimitCheck(s: { memory: string; resources: { memLimit: string } }, ctx: z.RefinementCtx) {
   if (s.resources.memLimit && memoryToBytes(s.resources.memLimit) < memoryToBytes(s.memory)) {
-    ctx.addIssue({ code: "custom", path: ["resources", "memLimit"], message: "memLimit no puede ser menor que memory" });
+    ctx.addIssue({ code: "custom", path: ["resources", "memLimit"], message: "memLimit cannot be lower than memory" });
   }
 }
 
-/** Spec completa, tal y como se persiste y se envía al agente. */
+/** Full spec, as persisted and sent to the agent. */
 export const specSchema = z
   .object({
     ...baseFields,
@@ -1031,7 +1031,7 @@ export const specSchema = z
   })
   .superRefine(memLimitCheck);
 
-/** Lo que envía la UI al crear/editar: el panel añade puerto y rconPassword. */
+/** What the UI sends on create/edit: the panel adds port and rconPassword. */
 export const specInputSchema = z
   .object({
     ...baseFields,
@@ -1052,32 +1052,32 @@ export function defaultSpecInput(): SpecInput {
 export * from "./spec.js";
 ```
 
-- [ ] **Step 8: Ejecutar**
+- [ ] **Step 8: Run**
 
 ```bash
 pnpm install && pnpm --filter @mcsm/shared test && pnpm --filter @mcsm/shared typecheck
 ```
-Expected: 7 tests PASS. Si zod 4 no expone `.prefault`, sustituye por `.default(() => resourcesSchema.parse({}))`.
+Expected: 7 tests PASS. If zod 4 does not expose `.prefault`, replace it with `.default(() => resourcesSchema.parse({}))`.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add -A && git commit -m "feat(spec): spec de servidor validada en Go y TS con construcción determinista del contenedor
+git add -A && git commit -m "feat(spec): server spec validated in Go and TS with deterministic container build
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 3: Store local del agente (bbolt)
+### Task 3: Agent local store (bbolt)
 
 **Files:**
 - Create: `agent/internal/store/store.go`, `agent/internal/store/store_test.go`
 
 **Interfaces:**
-- Produces: `store.Open(path string) (*Store, error)`, `(*Store).Close() error`, `store.Credentials{NodeID, Token string}`, `(*Store).Credentials() (*Credentials, error)` (nil, nil si no hay), `(*Store).SaveCredentials(Credentials) error`, `(*Store).PutSpec(*mcsmv1.ServerSpec) error`, `(*Store).GetSpec(id string) (*mcsmv1.ServerSpec, error)` (nil, nil si no existe), `(*Store).ListSpecs() ([]*mcsmv1.ServerSpec, error)`, `(*Store).DeleteSpec(id string) error`, `(*Store).SpecVersions() (map[string]uint64, error)`, `(*Store).SetApplied(id string, v uint64) error`, `(*Store).Applied(id string) (uint64, error)`.
+- Produces: `store.Open(path string) (*Store, error)`, `(*Store).Close() error`, `store.Credentials{NodeID, Token string}`, `(*Store).Credentials() (*Credentials, error)` (nil, nil if none), `(*Store).SaveCredentials(Credentials) error`, `(*Store).PutSpec(*mcsmv1.ServerSpec) error`, `(*Store).GetSpec(id string) (*mcsmv1.ServerSpec, error)` (nil, nil if it does not exist), `(*Store).ListSpecs() ([]*mcsmv1.ServerSpec, error)`, `(*Store).DeleteSpec(id string) error`, `(*Store).SpecVersions() (map[string]uint64, error)`, `(*Store).SetApplied(id string, v uint64) error`, `(*Store).Applied(id string) (uint64, error)`.
 
-- [ ] **Step 1: Test (falla)**
+- [ ] **Step 1: Test (fails)**
 
 `agent/internal/store/store_test.go`:
 ```go
@@ -1104,7 +1104,7 @@ func TestCredentials(t *testing.T) {
 	s := open(t)
 	c, err := s.Credentials()
 	if err != nil || c != nil {
-		t.Fatalf("esperaba nil,nil; got %v,%v", c, err)
+		t.Fatalf("expected nil,nil; got %v,%v", c, err)
 	}
 	if err := s.SaveCredentials(Credentials{NodeID: "n1", Token: "tok"}); err != nil {
 		t.Fatal(err)
@@ -1118,7 +1118,7 @@ func TestCredentials(t *testing.T) {
 func TestSpecs(t *testing.T) {
 	s := open(t)
 	if sp, _ := s.GetSpec("missing"); sp != nil {
-		t.Fatal("GetSpec de id inexistente debe devolver nil")
+		t.Fatal("GetSpec for a nonexistent id must return nil")
 	}
 	a := &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(`{"x":1}`)}
 	b := &mcsmv1.ServerSpec{ServerId: "b", Slug: "beta", Version: 5}
@@ -1152,25 +1152,25 @@ func TestSpecs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sp, _ := s.GetSpec("a"); sp != nil {
-		t.Fatal("a debería haberse borrado")
+		t.Fatal("a should have been deleted")
 	}
 	if v, _ := s.Applied("a"); v != 0 {
-		t.Fatal("DeleteSpec debe borrar también applied")
+		t.Fatal("DeleteSpec must also delete applied")
 	}
 }
 ```
 
-- [ ] **Step 2: Ejecutar (falla)**
+- [ ] **Step 2: Run (fails)**
 
 ```bash
 cd agent && go test ./internal/store/
 ```
 
-- [ ] **Step 3: Implementación**
+- [ ] **Step 3: Implementation**
 
 `agent/internal/store/store.go`:
 ```go
-// Package store persiste credenciales, specs y versiones aplicadas en bbolt.
+// Package store persists credentials, specs and applied versions in bbolt.
 package store
 
 import (
@@ -1204,7 +1204,7 @@ type Credentials struct {
 func Open(path string) (*Store, error) {
 	db, err := bbolt.Open(path, 0o600, &bbolt.Options{Timeout: time.Second})
 	if err != nil {
-		return nil, fmt.Errorf("store: abrir %s: %w", path, err)
+		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	err = db.Update(func(tx *bbolt.Tx) error {
 		for _, b := range [][]byte{bMeta, bSpecs, bApplied} {
@@ -1239,7 +1239,7 @@ func (s *Store) Credentials() (*Credentials, error) {
 
 func (s *Store) SaveCredentials(c Credentials) error {
 	if c.NodeID == "" || c.Token == "" {
-		return errors.New("store: credenciales vacías")
+		return errors.New("store: empty credentials")
 	}
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bMeta)
@@ -1252,7 +1252,7 @@ func (s *Store) SaveCredentials(c Credentials) error {
 
 func (s *Store) PutSpec(sp *mcsmv1.ServerSpec) error {
 	if sp.GetServerId() == "" {
-		return errors.New("store: spec sin server_id")
+		return errors.New("store: spec without server_id")
 	}
 	raw, err := proto.Marshal(sp)
 	if err != nil {
@@ -1337,7 +1337,7 @@ func (s *Store) Applied(id string) (uint64, error) {
 }
 ```
 
-- [ ] **Step 4: Ejecutar**
+- [ ] **Step 4: Run**
 
 ```bash
 cd agent && go get go.etcd.io/bbolt@v1.5.0 && go mod tidy && go test ./internal/store/ -v
@@ -1347,14 +1347,14 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat(agent): store bbolt de credenciales, specs y versiones aplicadas
+git add -A && git commit -m "feat(agent): bbolt store for credentials, specs and applied versions
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 4: Motor Docker (interfaz, implementación moby, fake)
+### Task 4: Docker engine (interface, moby implementation, fake)
 
 **Files:**
 - Create: `agent/internal/docker/engine.go`, `agent/internal/docker/moby.go`, `agent/internal/docker/fake.go`, `agent/internal/docker/fake_test.go`, `agent/internal/docker/moby_integration_test.go`
@@ -1365,7 +1365,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 type Container struct { ID, Name, State string; Labels map[string]string }
 type Inspect struct { ID, Name, State string; Running bool; Health string; ExitCode int; StartedAt time.Time; Labels map[string]string }
 type Event struct { Action, ContainerID string; Labels map[string]string }
-var ErrNotFound = errors.New("docker: no encontrado")
+var ErrNotFound = errors.New("docker: not found")
 type Engine interface {
 	Version(ctx context.Context) (string, error)
 	EnsureNetwork(ctx context.Context, name string) error
@@ -1381,14 +1381,14 @@ type Engine interface {
 	Events(ctx context.Context) (<-chan Event, <-chan error)
 }
 func NewMoby() (*Moby, error)
-func NewFake() *Fake   // + campos públicos para inspección en tests
+func NewFake() *Fake   // + public fields for inspection in tests
 ```
 
-- [ ] **Step 1: Interfaz**
+- [ ] **Step 1: Interface**
 
 `agent/internal/docker/engine.go`:
 ```go
-// Package docker aísla el SDK de Docker tras una interfaz pequeña y testeable.
+// Package docker isolates the Docker SDK behind a small, testable interface.
 package docker
 
 import (
@@ -1401,7 +1401,7 @@ import (
 	"github.com/moby/moby/api/types/network"
 )
 
-var ErrNotFound = errors.New("docker: no encontrado")
+var ErrNotFound = errors.New("docker: not found")
 
 type Container struct {
 	ID     string
@@ -1438,15 +1438,15 @@ type Engine interface {
 	Stop(ctx context.Context, id string, timeout time.Duration) error
 	Kill(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
-	// Logs sigue la salida del contenedor (follow) empezando por las últimas `tail` líneas,
-	// con timestamps RFC3339Nano al inicio de cada línea.
+	// Logs follows the container output (follow) starting from the last `tail` lines,
+	// with RFC3339Nano timestamps at the start of each line.
 	Logs(ctx context.Context, id string, tail int) (io.ReadCloser, error)
-	// Events emite eventos de contenedores con la etiqueta mcsm.managed=true hasta que ctx termina.
+	// Events emits events for containers labeled mcsm.managed=true until ctx ends.
 	Events(ctx context.Context) (<-chan Event, <-chan error)
 }
 ```
 
-- [ ] **Step 2: Test del fake (falla)**
+- [ ] **Step 2: Fake test (fails)**
 
 `agent/internal/docker/fake_test.go`:
 ```go
@@ -1491,7 +1491,7 @@ func TestFakeLifecycle(t *testing.T) {
 	}
 	ins, _ = f.Inspect(ctx, id)
 	if ins.Running || ins.State != "exited" {
-		t.Fatalf("inspect tras stop = %+v", ins)
+		t.Fatalf("inspect after stop = %+v", ins)
 	}
 	if err := f.Remove(ctx, id); err != nil {
 		t.Fatal(err)
@@ -1507,16 +1507,16 @@ func TestFakeLifecycle(t *testing.T) {
 func TestFakeCreateErrorAndNameConflict(t *testing.T) {
 	ctx := context.Background()
 	f := NewFake()
-	f.CreateErr = errors.New("puerto ocupado")
+	f.CreateErr = errors.New("port already in use")
 	if _, err := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	f.CreateErr = nil
 	if _, err := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil); err == nil {
-		t.Fatal("nombre duplicado debe fallar")
+		t.Fatal("duplicate name must fail")
 	}
 }
 
@@ -1537,7 +1537,7 @@ func TestFakeLogsAndEvents(t *testing.T) {
 	}
 	rc.Close()
 	if _, err := io.ReadAll(rc); err == nil {
-		// cerrado: el siguiente Read devuelve error o EOF; cualquiera vale
+		// closed: the next Read returns an error or EOF; either is fine
 	}
 	evs, _ := f.Events(ctx)
 	go f.EmitEvent(Event{Action: "die", ContainerID: id, Labels: map[string]string{"mcsm.server_id": "a"}})
@@ -1547,7 +1547,7 @@ func TestFakeLogsAndEvents(t *testing.T) {
 			t.Fatalf("ev = %+v", ev)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("sin evento")
+		t.Fatal("no event")
 	}
 }
 ```
@@ -1569,8 +1569,7 @@ import (
 	"github.com/moby/moby/api/types/network"
 )
 
-// Fake es un Engine en memoria para tests. Los campos exportados permiten
-// inspeccionar llamadas e inyectar fallos.
+// Fake is an in-memory Engine for tests. The exported fields allow inspecting calls and injecting failures.
 type Fake struct {
 	mu         sync.Mutex
 	seq        int
@@ -1661,7 +1660,7 @@ func (f *Fake) Create(_ context.Context, name string, cfg *container.Config, hos
 	}
 	for _, c := range f.Containers {
 		if c.Name == name {
-			return "", fmt.Errorf("conflict: el nombre %q ya está en uso", name)
+			return "", fmt.Errorf("conflict: the name %q is already in use", name)
 		}
 	}
 	f.seq++
@@ -1736,7 +1735,7 @@ func (f *Fake) Logs(_ context.Context, id string, tail int) (io.ReadCloser, erro
 	return r, nil
 }
 
-// WriteLog empuja una línea a todos los lectores de Logs del contenedor.
+// WriteLog pushes a line to all Logs readers of the container.
 func (f *Fake) WriteLog(id, line string) {
 	f.mu.Lock()
 	ws := append([]*io.PipeWriter(nil), f.logPipes[id]...)
@@ -1766,7 +1765,7 @@ func (f *Fake) Events(ctx context.Context) (<-chan Event, <-chan error) {
 	return ch, errs
 }
 
-// EmitEvent entrega un evento a todos los suscriptores de Events.
+// EmitEvent delivers an event to all Events subscribers.
 func (f *Fake) EmitEvent(ev Event) {
 	f.mu.Lock()
 	chans := append([]chan Event(nil), f.events...)
@@ -1776,7 +1775,7 @@ func (f *Fake) EmitEvent(ev Event) {
 	}
 }
 
-// SetHealth permite a los tests simular el healthcheck.
+// SetHealth lets tests simulate the healthcheck.
 func (f *Fake) SetHealth(id, health string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -1786,14 +1785,14 @@ func (f *Fake) SetHealth(id, health string) {
 }
 ```
 
-- [ ] **Step 4: Ejecutar tests del fake**
+- [ ] **Step 4: Run the fake tests**
 
 ```bash
 cd agent && go test ./internal/docker/ -run Fake -v
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Implementación real**
+- [ ] **Step 5: Real implementation**
 
 `agent/internal/docker/moby.go`:
 ```go
@@ -1813,13 +1812,13 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// Moby implementa Engine sobre github.com/moby/moby/client.
+// Moby implements Engine on top of github.com/moby/moby/client.
 type Moby struct{ cli *client.Client }
 
 func NewMoby() (*Moby, error) {
 	cli, err := client.New(client.FromEnv)
 	if err != nil {
-		return nil, fmt.Errorf("docker: crear cliente: %w", err)
+		return nil, fmt.Errorf("docker: create client: %w", err)
 	}
 	return &Moby{cli: cli}, nil
 }
@@ -1974,7 +1973,7 @@ func notFound(err error) error {
 }
 ```
 
-- [ ] **Step 6: Test de integración (etiqueta `integration`, Docker real)**
+- [ ] **Step 6: Integration test (`integration` tag, real Docker)**
 
 `agent/internal/docker/moby_integration_test.go`:
 ```go
@@ -2018,7 +2017,7 @@ func TestMobyLifecycle(t *testing.T) {
 		}
 	}
 	id, err := m.Create(ctx, name,
-		&container.Config{Image: "alpine:3.22", Cmd: []string{"sh", "-c", "echo hola; sleep 300"}, Tty: true, Labels: map[string]string{"mcsm.managed": "true", "mcsm.server_id": "int"}},
+		&container.Config{Image: "alpine:3.22", Cmd: []string{"sh", "-c", "echo hello; sleep 300"}, Tty: true, Labels: map[string]string{"mcsm.managed": "true", "mcsm.server_id": "int"}},
 		&container.HostConfig{},
 		&network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{"mcsm-test": {}}})
 	if err != nil {
@@ -2038,8 +2037,8 @@ func TestMobyLifecycle(t *testing.T) {
 	}
 	line, _ := bufio.NewReader(rc).ReadString('\n')
 	rc.Close()
-	if !strings.Contains(line, "hola") || !strings.Contains(line, "T") {
-		t.Fatalf("log sin timestamp o sin contenido: %q", line)
+	if !strings.Contains(line, "hello") || !strings.Contains(line, "T") {
+		t.Fatalf("log without timestamp or content: %q", line)
 	}
 	list, _ := m.ListManaged(ctx)
 	found := false
@@ -2047,14 +2046,14 @@ func TestMobyLifecycle(t *testing.T) {
 		found = found || c.ID == id
 	}
 	if !found {
-		t.Fatal("ListManaged no devuelve el contenedor")
+		t.Fatal("ListManaged does not return the container")
 	}
 	if err := m.Stop(ctx, id, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	ins, _ = m.Inspect(ctx, id)
 	if ins.Running {
-		t.Fatal("debería estar parado")
+		t.Fatal("should be stopped")
 	}
 	if err := m.Remove(ctx, id); err != nil {
 		t.Fatal(err)
@@ -2065,32 +2064,32 @@ func TestMobyLifecycle(t *testing.T) {
 }
 ```
 
-- [ ] **Step 7: Ejecutar**
+- [ ] **Step 7: Run**
 
 ```bash
 cd agent && go get github.com/containerd/errdefs@v1.0.0 && go mod tidy && go vet ./... && go test ./internal/docker/ && go test -tags integration ./internal/docker/ -run TestMobyLifecycle -v
 ```
-Expected: ambos PASS. Si `ContainerStopOptions.Timeout` no es `*int`, mira `go doc github.com/moby/moby/client.ContainerStopOptions` y ajusta el tipo.
+Expected: both PASS. If `ContainerStopOptions.Timeout` is not `*int`, check `go doc github.com/moby/moby/client.ContainerStopOptions` and adjust the type.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add -A && git commit -m "feat(agent): motor Docker con interfaz Engine, implementación moby y fake para tests
+git add -A && git commit -m "feat(agent): Docker engine with Engine interface, moby implementation and fake for tests
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 5: Ping de estado y RCON
+### Task 5: Status ping and RCON
 
 **Files:**
 - Create: `agent/internal/mc/mc.go`, `agent/internal/mc/mc_test.go`
 
 **Interfaces:**
-- Produces: `mc.Status(ctx context.Context, host string, port uint16) *mcsmv1.McStatus` (nunca falla: si no responde, `Online=false`), `mc.Rcon(ctx context.Context, host string, port uint16, password, command string) (string, error)`, `type mc.StatusFunc = func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus`.
+- Produces: `mc.Status(ctx context.Context, host string, port uint16) *mcsmv1.McStatus` (never fails: if it does not respond, `Online=false`), `mc.Rcon(ctx context.Context, host string, port uint16, password, command string) (string, error)`, `type mc.StatusFunc = func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus`.
 
-- [ ] **Step 1: Test con servidor RCON falso (falla)**
+- [ ] **Step 1: Test with a fake RCON server (fails)**
 
 `agent/internal/mc/mc_test.go`:
 ```go
@@ -2106,8 +2105,8 @@ import (
 	"time"
 )
 
-// fakeRcon implementa lo justo del protocolo Source RCON:
-// paquete = int32 longitud, int32 id, int32 tipo, cuerpo\0, \0
+// fakeRcon implements the minimum of the Source RCON protocol:
+// packet = int32 length, int32 id, int32 type, body\0, \0
 func fakeRcon(t *testing.T, password string) (host string, port uint16) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -2180,7 +2179,7 @@ func TestRcon(t *testing.T) {
 		t.Fatalf("out = %q", out)
 	}
 	if _, err := Rcon(ctx, host, port, "wrong", "list"); err == nil {
-		t.Fatal("contraseña incorrecta debe fallar")
+		t.Fatal("wrong password must fail")
 	}
 }
 
@@ -2188,21 +2187,21 @@ func TestStatusOffline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	start := time.Now()
-	st := Status(ctx, "127.0.0.1", 1) // nadie escucha
+	st := Status(ctx, "127.0.0.1", 1) // nobody is listening
 	if st.Online {
-		t.Fatal("debería estar offline")
+		t.Fatal("should be offline")
 	}
 	if time.Since(start) > 4*time.Second {
-		t.Fatal("el ping no debe tardar más que su timeout")
+		t.Fatal("the ping must not take longer than its timeout")
 	}
 }
 ```
 
-- [ ] **Step 2: Implementación**
+- [ ] **Step 2: Implementation**
 
 `agent/internal/mc/mc.go`:
 ```go
-// Package mc habla con el servidor de Minecraft: ping de estado y RCON.
+// Package mc talks to the Minecraft server: status ping and RCON.
 package mc
 
 import (
@@ -2221,8 +2220,7 @@ const statusTimeout = 3 * time.Second
 
 type StatusFunc = func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus
 
-// Status hace un Server List Ping. Nunca devuelve error: un servidor que no
-// responde se reporta como Online=false.
+// Status performs a Server List Ping. It never returns an error: a server that does not respond is reported as Online=false.
 func Status(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 	ctx, cancel := context.WithTimeout(ctx, statusTimeout)
 	defer cancel()
@@ -2244,11 +2242,11 @@ func Status(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 	return out
 }
 
-// Rcon ejecuta un comando y devuelve la salida.
+// Rcon runs a command and returns its output.
 func Rcon(ctx context.Context, host string, port uint16, password, command string) (string, error) {
 	c, err := rcon.Dial(host, port, options.RCON{Timeout: 5 * time.Second})
 	if err != nil {
-		return "", fmt.Errorf("rcon: conectar: %w", err)
+		return "", fmt.Errorf("rcon: connect: %w", err)
 	}
 	defer c.Close()
 	if err := c.Login(password); err != nil {
@@ -2256,31 +2254,31 @@ func Rcon(ctx context.Context, host string, port uint16, password, command strin
 	}
 	out, err := c.Execute(ctx, command)
 	if err != nil {
-		return "", fmt.Errorf("rcon: ejecutar: %w", err)
+		return "", fmt.Errorf("rcon: execute: %w", err)
 	}
 	return out, nil
 }
 ```
-Nota: comprueba con `go doc github.com/mcstatus-io/mcutil/v4/response.Players` si `Online`/`Max` son punteros o enteros, y con `go doc .../options.StatusModern` el nombre del campo de timeout; ajusta las cuatro líneas afectadas.
+Note: check with `go doc github.com/mcstatus-io/mcutil/v4/response.Players` whether `Online`/`Max` are pointers or integers, and with `go doc .../options.StatusModern` the name of the timeout field; adjust the four affected lines.
 
-- [ ] **Step 3: Ejecutar**
+- [ ] **Step 3: Run**
 
 ```bash
 cd agent && go get github.com/mcstatus-io/mcutil/v4@v4.3.1 && go mod tidy && go test ./internal/mc/ -v
 ```
-Expected: PASS (dos tests).
+Expected: PASS (two tests).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add -A && git commit -m "feat(agent): ping de estado y cliente RCON
+git add -A && git commit -m "feat(agent): status ping and RCON client
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 6: Reconciliador
+### Task 6: Reconciler
 
 **Files:**
 - Create: `agent/internal/reconcile/reconciler.go`, `agent/internal/reconcile/reconciler_test.go`
@@ -2297,12 +2295,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, serverID string) error
 func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData bool) error
 func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.PowerActionType) error
 func (r *Reconciler) Observe(ctx context.Context, serverID string) *mcsmv1.Observed
-func (r *Reconciler) ContainerID(ctx context.Context, serverID string) string   // "" si no existe
+func (r *Reconciler) ContainerID(ctx context.Context, serverID string) string   // "" if it does not exist
 const StopTimeout = 60 * time.Second
 ```
-Semántica: `Reconcile` serializa por servidor (un mutex por id). Tras un fallo, `ReconcileAll` no reintenta ese servidor hasta `retryAt` (backoff 30 s · 2^n, máx. 5 min). `Power` actualiza `DesiredState` en el store antes de actuar. `Observe` siempre invoca al `Observer`.
+Semantics: `Reconcile` serializes per server (one mutex per id). After a failure, `ReconcileAll` does not retry that server until `retryAt` (backoff 30 s · 2^n, max. 5 min). `Power` updates `DesiredState` in the store before acting. `Observe` always invokes the `Observer`.
 
-- [ ] **Step 1: Test (falla)**
+- [ ] **Step 1: Test (fails)**
 
 `agent/internal/reconcile/reconciler_test.go`:
 ```go
@@ -2386,7 +2384,7 @@ func TestCreateAndStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "alpha", "data")); err != nil {
-		t.Fatal("debe crear el directorio de datos")
+		t.Fatal("must create the data directory")
 	}
 	if fake.Pulled[0] != "itzg/minecraft-server:java21" {
 		t.Fatalf("pulled = %v", fake.Pulled)
@@ -2406,7 +2404,7 @@ func TestCreateStopped(t *testing.T) {
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
 	_ = r.Reconcile(context.Background(), "a")
 	if calls(fake, "Start") != 0 {
-		t.Fatal("no debe arrancar un servidor deseado parado")
+		t.Fatal("must not start a server whose desired state is stopped")
 	}
 	if rec.get("a").State != "created" {
 		t.Fatalf("obs = %+v", rec.get("a"))
@@ -2418,10 +2416,10 @@ func TestNoopWhenUnchanged(t *testing.T) {
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	_ = r.Reconcile(context.Background(), "a")
 	before := len(fake.Calls)
-	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON) // misma spec, otra versión
+	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON) // same spec, different version
 	_ = r.Reconcile(context.Background(), "a")
 	if calls(fake, "Create") != 1 || calls(fake, "Remove") != 0 {
-		t.Fatalf("no debería recrear; calls tras la 1ª: %v", fake.Calls[before:])
+		t.Fatalf("should not recreate; calls after the 1st: %v", fake.Calls[before:])
 	}
 	if v, _ := st.Applied("a"); v != 2 {
 		t.Fatalf("applied = %d, want 2", v)
@@ -2439,7 +2437,7 @@ func TestRecreateWhenSpecChanges(t *testing.T) {
 	}
 	joined := strings.Join(fake.Calls, ";")
 	if !strings.Contains(joined, "Stop fake0001 1m0s;Remove fake0001;EnsureImage itzg/minecraft-server:java21;Create mcsm-alpha;Start fake0002") {
-		t.Fatalf("secuencia inesperada: %v", fake.Calls)
+		t.Fatalf("unexpected sequence: %v", fake.Calls)
 	}
 }
 
@@ -2448,11 +2446,11 @@ func TestStartWhenStoppedButDesiredRunning(t *testing.T) {
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	_ = r.Reconcile(context.Background(), "a")
 	id := r.ContainerID(context.Background(), "a")
-	_ = fake.Stop(context.Background(), id, time.Second) // alguien lo paró a mano
+	_ = fake.Stop(context.Background(), id, time.Second) // someone stopped it by hand
 	_ = r.Reconcile(context.Background(), "a")
 	ins, _ := fake.Inspect(context.Background(), id)
 	if !ins.Running {
-		t.Fatal("debe volver a arrancarlo")
+		t.Fatal("must start it again")
 	}
 }
 
@@ -2461,21 +2459,21 @@ func TestErrorIsObservedAndRetriedWithBackoff(t *testing.T) {
 	fake.CreateErr = errors.New("driver failed programming external connectivity: port is already allocated")
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	if err := r.Reconcile(context.Background(), "a"); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	if !strings.Contains(rec.get("a").Error, "already allocated") || rec.get("a").State != "missing" {
 		t.Fatalf("obs = %+v", rec.get("a"))
 	}
 	n := calls(fake, "Create")
-	r.ReconcileAll(context.Background()) // dentro del backoff: no reintenta
+	r.ReconcileAll(context.Background()) // within the backoff: no retry
 	if calls(fake, "Create") != n {
-		t.Fatal("no debe reintentar antes de retryAt")
+		t.Fatal("must not retry before retryAt")
 	}
 	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) }
 	fake.CreateErr = nil
 	r.ReconcileAll(context.Background())
 	if calls(fake, "Create") != n+1 || rec.get("a").Error != "" || rec.get("a").State != "running" {
-		t.Fatalf("tras el backoff debe reintentar y limpiar el error: %+v calls=%v", rec.get("a"), fake.Calls)
+		t.Fatalf("after the backoff it must retry and clear the error: %+v calls=%v", rec.get("a"), fake.Calls)
 	}
 }
 
@@ -2487,16 +2485,16 @@ func TestRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
-		t.Fatal("debe borrar el contenedor")
+		t.Fatal("must delete the container")
 	}
 	if _, err := os.Stat(filepath.Join(root, "alpha")); err != nil {
-		t.Fatal("sin deleteData el directorio se conserva")
+		t.Fatal("without deleteData the directory is kept")
 	}
 	put(t, st, "b", "beta", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
 	_ = r.Reconcile(context.Background(), "b")
 	_ = r.Remove(context.Background(), "b", true)
 	if _, err := os.Stat(filepath.Join(root, "beta")); !os.IsNotExist(err) {
-		t.Fatal("con deleteData el directorio se borra")
+		t.Fatal("with deleteData the directory is deleted")
 	}
 }
 
@@ -2509,9 +2507,9 @@ func TestPowerUpdatesDesiredState(t *testing.T) {
 	}
 	sp, _ := st.GetSpec("a")
 	if sp.DesiredState != mcsmv1.DesiredState_DESIRED_STATE_STOPPED {
-		t.Fatal("STOP debe persistir desired=stopped")
+		t.Fatal("STOP must persist desired=stopped")
 	}
-	_ = r.Reconcile(context.Background(), "a") // no debe volver a arrancarlo
+	_ = r.Reconcile(context.Background(), "a") // must not start it again
 	if rec.get("a").State != "exited" {
 		t.Fatalf("obs = %+v", rec.get("a"))
 	}
@@ -2534,17 +2532,17 @@ func TestObserveMissingSpec(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Ejecutar (falla)**
+- [ ] **Step 2: Run (fails)**
 
 ```bash
 cd agent && go test ./internal/reconcile/
 ```
 
-- [ ] **Step 3: Implementación**
+- [ ] **Step 3: Implementation**
 
 `agent/internal/reconcile/reconciler.go`:
 ```go
-// Package reconcile mantiene los contenedores Docker iguales a las specs del store.
+// Package reconcile keeps the Docker containers equal to the specs in the store.
 package reconcile
 
 import (
@@ -2612,11 +2610,11 @@ func (r *Reconciler) lock(id string) func() {
 	return m.Unlock
 }
 
-// ReconcileAll recorre todas las specs, saltando las que están en backoff.
+// ReconcileAll walks all specs, skipping those in backoff.
 func (r *Reconciler) ReconcileAll(ctx context.Context) {
 	specs, err := r.st.ListSpecs()
 	if err != nil {
-		r.log.Error("listar specs", "err", err)
+		r.log.Error("list specs", "err", err)
 		return
 	}
 	for _, sp := range specs {
@@ -2627,12 +2625,12 @@ func (r *Reconciler) ReconcileAll(ctx context.Context) {
 			continue
 		}
 		if err := r.Reconcile(ctx, sp.ServerId); err != nil {
-			r.log.Warn("reconciliar", "server", sp.Slug, "err", err)
+			r.log.Warn("reconcile", "server", sp.Slug, "err", err)
 		}
 	}
 }
 
-// Reconcile aplica la spec de un servidor y siempre publica el estado observado.
+// Reconcile applies a server's spec and always publishes the observed state.
 func (r *Reconciler) Reconcile(ctx context.Context, serverID string) (err error) {
 	unlock := r.lock(serverID)
 	defer unlock()
@@ -2669,44 +2667,44 @@ func (r *Reconciler) Reconcile(ctx context.Context, serverID string) (err error)
 		return err
 	}
 	if existing != nil && existing.Labels[spec.LabelHash] != build.Hash {
-		r.log.Info("spec cambiada, recreando contenedor", "server", sp.Slug)
+		r.log.Info("spec changed, recreating container", "server", sp.Slug)
 		if existing.State == "running" || existing.State == "restarting" || existing.State == "paused" {
 			if err := r.eng.Stop(ctx, existing.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-				return fmt.Errorf("parar: %w", err)
+				return fmt.Errorf("stop: %w", err)
 			}
 		}
 		if err := r.eng.Remove(ctx, existing.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			return fmt.Errorf("eliminar: %w", err)
+			return fmt.Errorf("remove: %w", err)
 		}
 		existing = nil
 	}
 	if existing == nil {
 		if err := os.MkdirAll(build.DataDir, 0o755); err != nil {
-			return fmt.Errorf("crear directorio de datos: %w", err)
+			return fmt.Errorf("create data directory: %w", err)
 		}
 		if err := r.eng.EnsureImage(ctx, build.Config.Image); err != nil {
 			return err
 		}
 		id, err := r.eng.Create(ctx, build.Name, build.Config, build.HostConfig, build.Networking)
 		if err != nil {
-			return fmt.Errorf("crear contenedor: %w", err)
+			return fmt.Errorf("create container: %w", err)
 		}
 		existing = &docker.Container{ID: id, Name: build.Name, State: "created", Labels: build.Config.Labels}
 	}
 	switch {
 	case wantRunning && existing.State != "running" && existing.State != "restarting":
 		if err := r.eng.Start(ctx, existing.ID); err != nil {
-			return fmt.Errorf("arrancar: %w", err)
+			return fmt.Errorf("start: %w", err)
 		}
 	case !wantRunning && (existing.State == "running" || existing.State == "restarting" || existing.State == "paused"):
 		if err := r.eng.Stop(ctx, existing.ID, StopTimeout); err != nil {
-			return fmt.Errorf("parar: %w", err)
+			return fmt.Errorf("stop: %w", err)
 		}
 	}
 	return r.st.SetApplied(serverID, sp.Version)
 }
 
-// Remove para y borra el contenedor; con deleteData borra también <dataRoot>/<slug>.
+// Remove stops and deletes the container; with deleteData it also deletes <dataRoot>/<slug>.
 func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData bool) error {
 	unlock := r.lock(serverID)
 	defer unlock()
@@ -2732,7 +2730,7 @@ func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData boo
 		}
 		if slug != "" {
 			if err := os.RemoveAll(filepath.Join(r.dataRoot, slug)); err != nil {
-				return fmt.Errorf("borrar datos: %w", err)
+				return fmt.Errorf("delete data: %w", err)
 			}
 		}
 	}
@@ -2740,7 +2738,7 @@ func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData boo
 	return nil
 }
 
-// Power actualiza el estado deseado en el store y ejecuta la acción.
+// Power updates the desired state in the store and runs the action.
 func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.PowerActionType) (err error) {
 	unlock := r.lock(serverID)
 	defer unlock()
@@ -2756,7 +2754,7 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 		return err
 	}
 	if sp == nil {
-		return fmt.Errorf("servidor %s desconocido", serverID)
+		return fmt.Errorf("unknown server %s", serverID)
 	}
 	desired := sp.DesiredState
 	switch action {
@@ -2765,7 +2763,7 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP, mcsmv1.PowerActionType_POWER_ACTION_TYPE_KILL:
 		desired = mcsmv1.DesiredState_DESIRED_STATE_STOPPED
 	default:
-		return fmt.Errorf("acción desconocida %v", action)
+		return fmt.Errorf("unknown action %v", action)
 	}
 	if desired != sp.DesiredState {
 		sp.DesiredState = desired
@@ -2778,7 +2776,7 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 		return err
 	}
 	if c == nil {
-		return fmt.Errorf("el contenedor no existe todavía; aplica la spec primero")
+		return fmt.Errorf("the container does not exist yet; apply the spec first")
 	}
 	switch action {
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_START:
@@ -2804,7 +2802,7 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	return nil
 }
 
-// Observe calcula el estado real y lo publica.
+// Observe computes the actual state and publishes it.
 func (r *Reconciler) Observe(ctx context.Context, serverID string) *mcsmv1.Observed {
 	unlock := r.lock(serverID)
 	obs := r.observeLocked(ctx, serverID)
@@ -2856,7 +2854,7 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 func (r *Reconciler) find(ctx context.Context, serverID string) (*docker.Container, error) {
 	list, err := r.eng.ListManaged(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("listar contenedores: %w", err)
+		return nil, fmt.Errorf("list containers: %w", err)
 	}
 	for i := range list {
 		if list[i].Labels[spec.LabelServerID] == serverID {
@@ -2886,24 +2884,24 @@ func (r *Reconciler) clearFailure(id string) {
 }
 ```
 
-- [ ] **Step 4: Ejecutar**
+- [ ] **Step 4: Run**
 
 ```bash
 cd agent && go vet ./... && go test ./internal/reconcile/ -v
 ```
-Expected: 9 tests PASS. Los nombres de los `Calls` del fake deben coincidir exactamente con la secuencia esperada en `TestRecreateWhenSpecChanges`.
+Expected: 9 tests PASS. The `Calls` names of the fake must match exactly the sequence expected in `TestRecreateWhenSpecChanges`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat(agent): reconciliador de specs contra Docker con backoff y acciones de power
+git add -A && git commit -m "feat(agent): spec reconciler against Docker with backoff and power actions
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 7: Hub de logs
+### Task 7: Logs hub
 
 **Files:**
 - Create: `agent/internal/logs/hub.go`, `agent/internal/logs/hub_test.go`
@@ -2916,12 +2914,12 @@ type Line struct { TS time.Time; Text string }
 type Hub struct { ... }
 func NewHub(eng docker.Engine) *Hub
 func (h *Hub) Subscribe(serverID, containerID string, tail int) (<-chan Line, func(), error)
-func (h *Hub) Reset(serverID string)       // cierra el follower (p. ej. contenedor recreado)
-func (h *Hub) SetGrace(d time.Duration)    // por defecto 30 s
+func (h *Hub) Reset(serverID string)       // closes the follower (e.g. container recreated)
+func (h *Hub) SetGrace(d time.Duration)    // default 30 s
 ```
-El canal devuelto se cierra cuando el follower muere (EOF del stream, `Reset`, contenedor borrado). El suscriptor nuevo recibe primero el buffer circular (hasta 500 líneas) y luego las nuevas. Si el `containerID` cambia respecto al follower actual, el follower viejo se cierra y se abre uno nuevo.
+The returned channel is closed when the follower dies (stream EOF, `Reset`, container deleted). A new subscriber first receives the ring buffer (up to 500 lines) and then the new ones. If the `containerID` changes with respect to the current follower, the old follower is closed and a new one is opened.
 
-- [ ] **Step 1: Test (falla)**
+- [ ] **Step 1: Test (fails)**
 
 `agent/internal/logs/hub_test.go`:
 ```go
@@ -2951,11 +2949,11 @@ func recv(t *testing.T, ch <-chan Line) Line {
 	select {
 	case l, ok := <-ch:
 		if !ok {
-			t.Fatal("canal cerrado")
+			t.Fatal("closed channel")
 		}
 		return l
 	case <-time.After(2 * time.Second):
-		t.Fatal("timeout esperando línea")
+		t.Fatal("timeout waiting for line")
 	}
 	return Line{}
 }
@@ -2985,15 +2983,15 @@ func TestReplayAndSharedFollower(t *testing.T) {
 	ch1, unsub1, _ := h.Subscribe("a", id, 100)
 	defer unsub1()
 	time.Sleep(20 * time.Millisecond)
-	f.WriteLog(id, "2026-10-12T10:00:00Z uno\n2026-10-12T10:00:01Z dos\n")
+	f.WriteLog(id, "2026-10-12T10:00:00Z one\n2026-10-12T10:00:01Z two\n")
 	recv(t, ch1)
 	recv(t, ch1)
 	ch2, unsub2, _ := h.Subscribe("a", id, 100)
 	defer unsub2()
-	if got := recv(t, ch2).Text; got != "uno" {
+	if got := recv(t, ch2).Text; got != "one" {
 		t.Fatalf("replay[0] = %q", got)
 	}
-	if got := recv(t, ch2).Text; got != "dos" {
+	if got := recv(t, ch2).Text; got != "two" {
 		t.Fatalf("replay[1] = %q", got)
 	}
 	calls := 0
@@ -3003,7 +3001,7 @@ func TestReplayAndSharedFollower(t *testing.T) {
 		}
 	}
 	if calls != 1 {
-		t.Fatalf("debe compartir un único follower; Logs llamado %d veces", calls)
+		t.Fatalf("must share a single follower; Logs called %d times", calls)
 	}
 }
 
@@ -3018,7 +3016,7 @@ func TestGraceClosesFollower(t *testing.T) {
 	_, alive := h.followers["a"]
 	h.mu.Unlock()
 	if alive {
-		t.Fatal("el follower debe cerrarse pasado el periodo de gracia")
+		t.Fatal("the follower must close after the grace period")
 	}
 }
 
@@ -3031,10 +3029,10 @@ func TestResetClosesSubscribers(t *testing.T) {
 	select {
 	case _, ok := <-ch:
 		if ok {
-			t.Fatal("esperaba canal cerrado")
+			t.Fatal("expected closed channel")
 		}
 	case <-time.After(time.Second):
-		t.Fatal("el canal debería cerrarse tras Reset")
+		t.Fatal("the channel should close after Reset")
 	}
 }
 
@@ -3047,18 +3045,18 @@ func TestContainerIDChangeReopens(t *testing.T) {
 	ch2, unsub2, _ := h.Subscribe("a", id2, 10)
 	defer unsub2()
 	time.Sleep(20 * time.Millisecond)
-	f.WriteLog(id2, "2026-10-12T10:00:00Z nuevo\n")
-	if got := recv(t, ch2).Text; got != "nuevo" {
+	f.WriteLog(id2, "2026-10-12T10:00:00Z new\n")
+	if got := recv(t, ch2).Text; got != "new" {
 		t.Fatalf("got %q", got)
 	}
 }
 ```
 
-- [ ] **Step 2: Implementación**
+- [ ] **Step 2: Implementation**
 
 `agent/internal/logs/hub.go`:
 ```go
-// Package logs sigue los logs de los contenedores y los reparte a suscriptores.
+// Package logs follows container logs and fans them out to subscribers.
 package logs
 
 import (
@@ -3205,7 +3203,7 @@ func (f *follower) publish(l Line) {
 	for _, ch := range f.subs {
 		select {
 		case ch <- l:
-		default: // suscriptor lento: se descarta la línea para no bloquear al resto
+		default: // slow subscriber: drop the line so as not to block the others
 		}
 	}
 }
@@ -3224,8 +3222,8 @@ func (f *follower) close() {
 	}
 }
 
-// parseLine separa el timestamp RFC3339Nano que añade Docker ("2026-...Z texto").
-// Las líneas de TTY pueden traer \r al final; se elimina.
+// parseLine splits the RFC3339Nano timestamp Docker adds ("2026-...Z text").
+// TTY lines may end with \r; it is removed.
 func parseLine(raw string) Line {
 	raw = strings.TrimRight(raw, "\r")
 	ts, rest, ok := strings.Cut(raw, " ")
@@ -3238,24 +3236,24 @@ func parseLine(raw string) Line {
 }
 ```
 
-- [ ] **Step 3: Ejecutar**
+- [ ] **Step 3: Run**
 
 ```bash
 cd agent && go vet ./... && go test ./internal/logs/ -race -v
 ```
-Expected: 5 tests PASS sin carreras.
+Expected: 5 tests PASS with no races.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add -A && git commit -m "feat(agent): hub de logs con follower compartido, buffer circular y periodo de gracia
+git add -A && git commit -m "feat(agent): logs hub with shared follower, ring buffer and grace period
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 8: Conexión al panel (alta HTTP + WebSocket con reconexión)
+### Task 8: Panel connection (HTTP enrollment + WebSocket with reconnection)
 
 **Files:**
 - Create: `agent/internal/conn/enroll.go`, `agent/internal/conn/client.go`, `agent/internal/conn/conn_test.go`
@@ -3270,14 +3268,14 @@ type Handler interface { Handle(ctx context.Context, env *mcsmv1.Envelope, send 
 type HelloFunc func(ctx context.Context) *mcsmv1.Hello
 type Options struct { PanelURL, Token string; Hello HelloFunc; Handler Handler; OnDisconnect func(); Log *slog.Logger }
 func NewClient(o Options) *Client
-func (c *Client) Run(ctx context.Context)          // bucle de reconexión hasta ctx.Done()
-func (c *Client) Send(ctx context.Context, env *mcsmv1.Envelope) error  // ErrNotConnected si no hay sesión
+func (c *Client) Run(ctx context.Context)          // reconnection loop until ctx.Done()
+func (c *Client) Send(ctx context.Context, env *mcsmv1.Envelope) error  // ErrNotConnected if there is no session
 func (c *Client) Connected() bool
-var ErrNotConnected = errors.New("conn: sin conexión con el panel")
+var ErrNotConnected = errors.New("conn: not connected to the panel")
 ```
-Protocolo: `GET <panel>/agent/ws` con `Authorization: Bearer <token>`; el primer mensaje enviado es `Envelope{id:1, hello}`. Mensajes binarios protobuf. Ping cada 15 s; límite de lectura 4 MiB. Backoff 1 s → 30 s con jitter ±20 %.
+Protocol: `GET <panel>/agent/ws` with `Authorization: Bearer <token>`; the first message sent is `Envelope{id:1, hello}`. Binary protobuf messages. Ping every 15 s; read limit 4 MiB. Backoff 1 s → 30 s with ±20 % jitter.
 
-- [ ] **Step 1: Test (falla)**
+- [ ] **Step 1: Test (fails)**
 
 `agent/internal/conn/conn_test.go`:
 ```go
@@ -3302,7 +3300,7 @@ import (
 func TestEnroll(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/agent/enroll" || r.Method != http.MethodPost {
-			t.Errorf("ruta %s %s", r.Method, r.URL.Path)
+			t.Errorf("path %s %s", r.Method, r.URL.Path)
 		}
 		var body map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -3318,7 +3316,7 @@ func TestEnroll(t *testing.T) {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
 	if _, err := Enroll(context.Background(), srv.URL, "BAD", "nas", "0.1.0"); err == nil {
-		t.Fatal("token inválido debe fallar")
+		t.Fatal("invalid token must fail")
 	}
 }
 
@@ -3336,8 +3334,8 @@ func (h *captureHandler) Handle(_ context.Context, env *mcsmv1.Envelope, send fu
 	}
 }
 
-// fakePanel acepta WebSockets, verifica el token, lee el Hello y deja
-// que el test dirija la conversación.
+// fakePanel accepts WebSockets, checks the token, reads the Hello and lets
+// the test drive the conversation.
 type fakePanel struct {
 	t        *testing.T
 	srv      *httptest.Server
@@ -3388,17 +3386,17 @@ func TestClientHelloDispatchAndReconnect(t *testing.T) {
 	select {
 	case hello = <-fp.gotHello:
 	case <-time.After(3 * time.Second):
-		t.Fatal("sin Hello")
+		t.Fatal("no Hello")
 	}
 	if hello.AgentVersion != "0.1.0" || hello.SpecVersions["a"] != 3 {
 		t.Fatalf("hello = %+v", hello)
 	}
 	ws := <-fp.ws
 	if !c.Connected() {
-		t.Fatal("debería estar conectado")
+		t.Fatal("should be connected")
 	}
 
-	// panel → agente: PowerAction; el handler responde Ack con el mismo id
+	// panel → agent: PowerAction; the handler replies with an Ack with the same id
 	req := &mcsmv1.Envelope{Id: 42, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a"}}}
 	raw, _ := proto.Marshal(req)
 	if err := ws.Write(ctx, websocket.MessageBinary, raw); err != nil {
@@ -3416,12 +3414,12 @@ func TestClientHelloDispatchAndReconnect(t *testing.T) {
 		t.Fatalf("resp = %+v", resp)
 	}
 
-	// el panel cierra: el agente debe reconectar y volver a saludar
-	ws.Close(websocket.StatusGoingAway, "reinicio")
+	// the panel closes: the agent must reconnect and greet again
+	ws.Close(websocket.StatusGoingAway, "restart")
 	select {
 	case <-fp.gotHello:
 	case <-time.After(3 * time.Second):
-		t.Fatal("no reconectó")
+		t.Fatal("did not reconnect")
 	}
 	if atomic.LoadInt32(&fp.conns) < 2 {
 		t.Fatalf("conns = %d", fp.conns)
@@ -3436,11 +3434,11 @@ func TestSendWithoutConnection(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Implementación de alta**
+- [ ] **Step 2: Enrollment implementation**
 
 `agent/internal/conn/enroll.go`:
 ```go
-// Package conn gestiona la comunicación saliente del agente con el panel.
+// Package conn manages the agent's outbound communication with the panel.
 package conn
 
 import (
@@ -3459,7 +3457,7 @@ type EnrollResult struct {
 	NodeToken string `json:"nodeToken"`
 }
 
-// Enroll canjea un token de alta de un solo uso por credenciales permanentes.
+// Enroll exchanges a single-use enrollment token for permanent credentials.
 func Enroll(ctx context.Context, panelURL, enrollToken, nameHint, agentVersion string) (*EnrollResult, error) {
 	body, _ := json.Marshal(map[string]string{"enrollToken": enrollToken, "nameHint": nameHint, "agentVersion": agentVersion})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(panelURL, "/")+"/agent/enroll", bytes.NewReader(body))
@@ -3474,20 +3472,20 @@ func Enroll(ctx context.Context, panelURL, enrollToken, nameHint, agentVersion s
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("enroll: el panel respondió %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+		return nil, fmt.Errorf("enroll: the panel responded %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 	var out EnrollResult
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("enroll: respuesta inválida: %w", err)
+		return nil, fmt.Errorf("enroll: invalid response: %w", err)
 	}
 	if out.NodeID == "" || out.NodeToken == "" {
-		return nil, fmt.Errorf("enroll: respuesta incompleta")
+		return nil, fmt.Errorf("enroll: incomplete response")
 	}
 	return &out, nil
 }
 ```
 
-- [ ] **Step 3: Implementación del cliente WebSocket**
+- [ ] **Step 3: WebSocket client implementation**
 
 `agent/internal/conn/client.go`:
 ```go
@@ -3510,7 +3508,7 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 )
 
-var ErrNotConnected = errors.New("conn: sin conexión con el panel")
+var ErrNotConnected = errors.New("conn: not connected to the panel")
 
 type Handler interface {
 	Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv1.Envelope) error)
@@ -3563,7 +3561,7 @@ func (c *Client) Send(ctx context.Context, env *mcsmv1.Envelope) error {
 	return ws.Write(wctx, websocket.MessageBinary, raw)
 }
 
-// Run mantiene la sesión viva hasta que ctx termina.
+// Run keeps the session alive until ctx ends.
 func (c *Client) Run(ctx context.Context) {
 	wait := c.backoffMin
 	for {
@@ -3572,7 +3570,7 @@ func (c *Client) Run(ctx context.Context) {
 			return
 		}
 		if err != nil {
-			c.log.Warn("sesión terminada", "err", err, "reintento_en", wait)
+			c.log.Warn("session ended", "err", err, "retry_in", wait)
 		}
 		jitter := time.Duration(rand.Int64N(int64(wait)/5+1)) - wait/10
 		select {
@@ -3628,7 +3626,7 @@ func (c *Client) session(ctx context.Context) error {
 	if err := c.Send(sctx, &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_Hello{Hello: c.opts.Hello(sctx)}}); err != nil {
 		return err
 	}
-	c.log.Info("conectado al panel", "url", c.opts.PanelURL)
+	c.log.Info("connected to the panel", "url", c.opts.PanelURL)
 
 	go func() {
 		t := time.NewTicker(15 * time.Second)
@@ -3642,7 +3640,7 @@ func (c *Client) session(ctx context.Context) error {
 				err := ws.Ping(pctx)
 				pc()
 				if err != nil {
-					c.log.Warn("ping fallido", "err", err)
+					c.log.Warn("ping failed", "err", err)
 					ws.Close(websocket.StatusGoingAway, "ping timeout")
 					return
 				}
@@ -3660,7 +3658,7 @@ func (c *Client) session(ctx context.Context) error {
 		}
 		env := &mcsmv1.Envelope{}
 		if err := proto.Unmarshal(data, env); err != nil {
-			c.log.Warn("mensaje inválido", "err", err)
+			c.log.Warn("invalid message", "err", err)
 			continue
 		}
 		go c.opts.Handler.Handle(sctx, env, func(e *mcsmv1.Envelope) error { return c.Send(sctx, e) })
@@ -3668,7 +3666,7 @@ func (c *Client) session(ctx context.Context) error {
 }
 ```
 
-- [ ] **Step 4: Ejecutar**
+- [ ] **Step 4: Run**
 
 ```bash
 cd agent && go get github.com/coder/websocket@v1.8.15 && go mod tidy && go vet ./... && go test ./internal/conn/ -race -v
@@ -3678,36 +3676,36 @@ Expected: 3 tests PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat(agent): alta por token y cliente WebSocket con reconexión y ping
+git add -A && git commit -m "feat(agent): enrollment by token and WebSocket client with reconnection and ping
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 9: Aplicación del agente, `main` y Dockerfile
+### Task 9: Agent application, `main` and Dockerfile
 
 **Files:**
 - Create: `agent/internal/app/config.go`, `agent/internal/app/app.go`, `agent/internal/app/app_test.go`, `agent/Dockerfile`, `agent/.dockerignore`
 - Modify: `agent/cmd/agent/main.go`
 
 **Interfaces:**
-- Consumes: todo lo anterior.
-- Produces: `app.Config`, `app.LoadConfig() (Config, error)`, `app.Run(ctx, cfg Config, log *slog.Logger) error`, `app.New(cfg, st, eng, log) *App` (para tests), `(*App).Handle(...)` implementa `conn.Handler`.
+- Consumes: everything above.
+- Produces: `app.Config`, `app.LoadConfig() (Config, error)`, `app.Run(ctx, cfg Config, log *slog.Logger) error`, `app.New(cfg, st, eng, log) *App` (for tests), `(*App).Handle(...)` implements `conn.Handler`.
 
-Comportamiento de `Handle`:
-| Mensaje | Acción | Respuesta |
+`Handle` behavior:
+| Message | Action | Response |
 |---|---|---|
 | `HelloAck` | log | — |
-| `SyncSpecs` | `PutSpec` de cada uno; `Remove(id,false)+DeleteSpec` de `removed_ids`; `ReconcileAll` | `Ack` |
-| `ApplySpec` | `PutSpec`; `Reconcile` | `Ack` o `Error{code:"apply_failed"}` |
-| `RemoveServer` | `Remove(id, delete_data)`; `DeleteSpec`; `hub.Reset` | `Ack` o `Error` |
-| `PowerAction` | `Power` | `Ack` o `Error{code:"power_failed"}` |
-| `SendCommand` | `mc.Rcon(mcsm-<slug>, 25575, pw, cmd)` | `CommandResult` o `Error{code:"rcon_failed"}` |
-| `SubscribeLogs` | abre stream (stream_id = id) | `Ack{stream_id}` y luego `LogLine{stream_id}`… |
-| `StreamClose` | cancela el stream | — |
+| `SyncSpecs` | `PutSpec` for each one; `Remove(id,false)+DeleteSpec` for each of `removed_ids`; `ReconcileAll` | `Ack` |
+| `ApplySpec` | `PutSpec`; `Reconcile` | `Ack` or `Error{code:"apply_failed"}` |
+| `RemoveServer` | `Remove(id, delete_data)`; `DeleteSpec`; `hub.Reset` | `Ack` or `Error` |
+| `PowerAction` | `Power` | `Ack` or `Error{code:"power_failed"}` |
+| `SendCommand` | `mc.Rcon(mcsm-<slug>, 25575, pw, cmd)` | `CommandResult` or `Error{code:"rcon_failed"}` |
+| `SubscribeLogs` | opens stream (stream_id = id) | `Ack{stream_id}` and then `LogLine{stream_id}`… |
+| `StreamClose` | cancels the stream | — |
 
-Bucles de fondo: eventos Docker → `Observe` del servidor afectado (y `hub.Reset` en `destroy`); ticker 10 s → `Observe` de todos; ticker 30 s → `ReconcileAll`. Al desconectar, se cancelan todos los streams.
+Background loops: Docker events → `Observe` of the affected server (and `hub.Reset` on `destroy`); 10 s ticker → `Observe` of all; 30 s ticker → `ReconcileAll`. On disconnect, all streams are cancelled.
 
 - [ ] **Step 1: Config**
 
@@ -3749,13 +3747,13 @@ func LoadConfig(version string) (Config, error) {
 		Version:     version,
 	}
 	if cfg.PanelURL == "" {
-		return cfg, errors.New("PANEL_URL es obligatoria")
+		return cfg, errors.New("PANEL_URL is required")
 	}
 	return cfg, nil
 }
 ```
 
-- [ ] **Step 2: Test del handler (falla)**
+- [ ] **Step 2: Handler test (fails)**
 
 `agent/internal/app/app_test.go`:
 ```go
@@ -3798,7 +3796,7 @@ func (s *sink) next(t *testing.T) *mcsmv1.Envelope {
 	case e := <-s.ch:
 		return e
 	case <-time.After(3 * time.Second):
-		t.Fatal("sin respuesta")
+		t.Fatal("no response")
 		return nil
 	}
 }
@@ -3841,12 +3839,12 @@ func TestSyncSpecsAndObserved(t *testing.T) {
 		t.Fatalf("observed=%v ack=%v", sawObserved, sawAck)
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 1 {
-		t.Fatal("debe haber creado el contenedor")
+		t.Fatal("must have created the container")
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil {
-		t.Fatal("la spec debe quedar en el store")
+		t.Fatal("the spec must remain in the store")
 	}
-	// removed_ids borra contenedor y spec
+	// removed_ids deletes container and spec
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 8, Body: &mcsmv1.Envelope_SyncSpecs{SyncSpecs: &mcsmv1.SyncSpecs{RemovedIds: []string{"a"}}}}, s.send)
 	for {
 		e := s.next(t)
@@ -3855,10 +3853,10 @@ func TestSyncSpecsAndObserved(t *testing.T) {
 		}
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
-		t.Fatal("debe haber borrado el contenedor")
+		t.Fatal("must have deleted the container")
 	}
 	if sp, _ := st.GetSpec("a"); sp != nil {
-		t.Fatal("la spec debe borrarse")
+		t.Fatal("the spec must be deleted")
 	}
 }
 
@@ -3911,7 +3909,7 @@ func TestSubscribeLogsStream(t *testing.T) {
 	_, open := a.streams[5]
 	a.mu.Unlock()
 	if open {
-		t.Fatal("StreamClose debe cancelar el stream")
+		t.Fatal("StreamClose must cancel the stream")
 	}
 }
 
@@ -3925,11 +3923,11 @@ func TestHelloCarriesVersions(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: Implementación**
+- [ ] **Step 3: Implementation**
 
 `agent/internal/app/app.go`:
 ```go
-// Package app conecta todas las piezas del agente.
+// Package app wires all the agent's pieces together.
 package app
 
 import (
@@ -3979,7 +3977,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	return a
 }
 
-// Run es el punto de entrada del binario.
+// Run is the binary's entry point.
 func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	if err := os.MkdirAll(cfg.AgentData, 0o700); err != nil {
 		return err
@@ -3994,10 +3992,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return err
 	}
 	if _, err := eng.Version(ctx); err != nil {
-		return fmt.Errorf("no se puede hablar con Docker (¿está montado /var/run/docker.sock?): %w", err)
+		return fmt.Errorf("cannot talk to Docker (is /var/run/docker.sock mounted?): %w", err)
 	}
 	if err := eng.EnsureNetwork(ctx, cfg.Network); err != nil {
-		return fmt.Errorf("crear red %s: %w", cfg.Network, err)
+		return fmt.Errorf("create network %s: %w", cfg.Network, err)
 	}
 
 	creds, err := st.Credentials()
@@ -4006,9 +4004,9 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	}
 	if creds == nil {
 		if cfg.EnrollToken == "" {
-			return fmt.Errorf("este agente no está dado de alta: define ENROLL_TOKEN (se genera en Nodos → Añadir nodo)")
+			return fmt.Errorf("this agent is not enrolled: set ENROLL_TOKEN (it is generated in Nodes → Add node)")
 		}
-		log.Info("dando de alta el nodo en el panel", "panel", cfg.PanelURL)
+		log.Info("enrolling the node in the panel", "panel", cfg.PanelURL)
 		res, err := conn.Enroll(ctx, cfg.PanelURL, cfg.EnrollToken, cfg.NameHint, cfg.Version)
 		if err != nil {
 			return err
@@ -4017,7 +4015,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		if err := st.SaveCredentials(*creds); err != nil {
 			return err
 		}
-		log.Info("nodo dado de alta", "node_id", res.NodeID)
+		log.Info("node enrolled", "node_id", res.NodeID)
 	}
 
 	a := New(cfg, st, eng, log)
@@ -4059,21 +4057,21 @@ func errMsg(id uint64, code string, err error) *mcsmv1.Envelope {
 	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_Error{Error: &mcsmv1.Error{Code: code, Message: err.Error()}}}
 }
 
-// Handle implementa conn.Handler.
+// Handle implements conn.Handler.
 func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv1.Envelope) error) {
 	switch b := env.Body.(type) {
 	case *mcsmv1.Envelope_HelloAck:
-		a.log.Info("panel confirmó la sesión", "node_id", b.HelloAck.NodeId)
+		a.log.Info("panel confirmed the session", "node_id", b.HelloAck.NodeId)
 
 	case *mcsmv1.Envelope_SyncSpecs:
 		for _, sp := range b.SyncSpecs.Servers {
 			if err := a.st.PutSpec(sp); err != nil {
-				a.log.Error("guardar spec", "err", err)
+				a.log.Error("save spec", "err", err)
 			}
 		}
 		for _, id := range b.SyncSpecs.RemovedIds {
 			if err := a.rec.Remove(ctx, id, false); err != nil {
-				a.log.Warn("eliminar servidor retirado", "id", id, "err", err)
+				a.log.Warn("remove retired server", "id", id, "err", err)
 			}
 			_ = a.st.DeleteSpec(id)
 			a.hub.Reset(id)
@@ -4112,7 +4110,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	case *mcsmv1.Envelope_SendCommand:
 		sp, err := a.st.GetSpec(b.SendCommand.ServerId)
 		if err != nil || sp == nil {
-			_ = send(errMsg(env.Id, "unknown_server", fmt.Errorf("servidor desconocido")))
+			_ = send(errMsg(env.Id, "unknown_server", fmt.Errorf("unknown server")))
 			return
 		}
 		parsed, err := spec.Parse(sp.SpecJson)
@@ -4141,7 +4139,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		a.mu.Unlock()
 
 	default:
-		a.log.Warn("mensaje no soportado", "type", fmt.Sprintf("%T", env.Body))
+		a.log.Warn("unsupported message", "type", fmt.Sprintf("%T", env.Body))
 	}
 }
 
@@ -4181,7 +4179,7 @@ func (a *App) startLogStream(parent context.Context, streamID uint64, req *mcsmv
 					continue
 				}
 			}
-			tail = 0 // tras una reconexión al contenedor no repetimos el histórico
+			tail = 0 // after reconnecting to the container we do not repeat the history
 			for {
 				select {
 				case <-ctx.Done():
@@ -4225,7 +4223,7 @@ func (a *App) eventLoop(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case err := <-errs:
-				a.log.Warn("stream de eventos Docker cortado", "err", err)
+				a.log.Warn("Docker event stream cut", "err", err)
 				break loop
 			case ev, ok := <-events:
 				if !ok {
@@ -4294,25 +4292,25 @@ func main() {
 	slog.SetDefault(log)
 	cfg, err := app.LoadConfig(version)
 	if err != nil {
-		log.Error("configuración inválida", "err", err)
+		log.Error("invalid configuration", "err", err)
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	log.Info("mcsm-agent arrancando", "version", version, "panel", cfg.PanelURL, "data_root", cfg.DataRoot)
+	log.Info("mcsm-agent starting", "version", version, "panel", cfg.PanelURL, "data_root", cfg.DataRoot)
 	if err := app.Run(ctx, cfg, log); err != nil {
-		log.Error("el agente terminó con error", "err", err)
+		log.Error("the agent ended with an error", "err", err)
 		os.Exit(1)
 	}
 }
 ```
 
-- [ ] **Step 4: Ejecutar tests**
+- [ ] **Step 4: Run tests**
 
 ```bash
 cd agent && go get github.com/shirou/gopsutil/v4@v4.26.9 && go mod tidy && go vet ./... && go test ./... -race
 ```
-Expected: todos los paquetes PASS.
+Expected: all packages PASS.
 
 - [ ] **Step 5: Dockerfile**
 
@@ -4343,27 +4341,27 @@ ENTRYPOINT ["mcsm-agent"]
 ```bash
 cd agent && docker build -t mcsm-agent:dev --build-arg VERSION=dev . && docker run --rm mcsm-agent:dev; echo "exit=$?"
 ```
-Expected: la imagen se construye; al ejecutar sin `PANEL_URL` sale con código 2 y el mensaje "PANEL_URL es obligatoria".
+Expected: the image builds; running it without `PANEL_URL` exits with code 2 and the message "PANEL_URL is required".
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat(agent): aplicación completa del agente con handler, bucles de observación y Dockerfile
+git add -A && git commit -m "feat(agent): complete agent application with handler, observation loops and Dockerfile
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 10: Panel API — esqueleto, configuración y base de datos
+### Task 10: Panel API — skeleton, configuration and database
 
 **Files:**
 - Create: `panel/apps/api/{package.json,tsconfig.json,vitest.config.ts}`, `panel/apps/api/src/{config.ts,app.ts,main.ts}`, `panel/apps/api/src/lib/{ids.ts,time.ts,tokens.ts}`, `panel/apps/api/src/db/{db.ts,migrations.ts,db.test.ts}`
 
 **Interfaces:**
-- Produces: `openDb(path: string): Db` (`Db = DatabaseSync` de `node:sqlite`, con migraciones aplicadas), `migrate(db)`, `newId(): string` (UUID v7), `nowIso(): string`, `randomToken(): string`, `hashToken(t: string): string`, `buildApp(opts: { db: Db; logger?: boolean }): Promise<FastifyInstance>` (las tasks siguientes añaden rutas dentro de `buildApp`).
+- Produces: `openDb(path: string): Db` (`Db = DatabaseSync` from `node:sqlite`, with migrations applied), `migrate(db)`, `newId(): string` (UUID v7), `nowIso(): string`, `randomToken(): string`, `hashToken(t: string): string`, `buildApp(opts: { db: Db; logger?: boolean }): Promise<FastifyInstance>` (the following tasks add routes inside `buildApp`).
 
-- [ ] **Step 1: Paquete**
+- [ ] **Step 1: Package**
 
 `panel/apps/api/package.json`:
 ```json
@@ -4410,7 +4408,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({ test: { include: ["src/**/*.test.ts"], testTimeout: 15000, pool: "forks" } });
 ```
 
-- [ ] **Step 2: Utilidades**
+- [ ] **Step 2: Utilities**
 
 `panel/apps/api/src/lib/ids.ts`:
 ```ts
@@ -4433,7 +4431,7 @@ export function safeEqualHex(a: string, b: string): boolean {
 }
 ```
 
-- [ ] **Step 3: Test de BD (falla)**
+- [ ] **Step 3: DB test (fails)**
 
 `panel/apps/api/src/db/db.test.ts`:
 ```ts
@@ -4441,7 +4439,7 @@ import { describe, expect, it } from "vitest";
 import { openDb, migrate } from "./db.js";
 
 describe("db", () => {
-  it("aplica las migraciones y es idempotente", () => {
+  it("applies the migrations and is idempotent", () => {
     const db = openDb(":memory:");
     migrate(db);
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map((r: any) => r.name);
@@ -4451,7 +4449,7 @@ describe("db", () => {
     const applied = db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get() as { n: number };
     expect(applied.n).toBeGreaterThan(0);
   });
-  it("activa foreign keys", () => {
+  it("enables foreign keys", () => {
     const db = openDb(":memory:");
     expect(() =>
       db.prepare("INSERT INTO servers (id,node_id,name,slug,spec,created_at,updated_at) VALUES ('s','no-node','n','n','{}','t','t')").run(),
@@ -4460,7 +4458,7 @@ describe("db", () => {
 });
 ```
 
-- [ ] **Step 4: Implementación**
+- [ ] **Step 4: Implementation**
 
 `panel/apps/api/src/db/migrations.ts`:
 ```ts
@@ -4566,7 +4564,7 @@ export const config = {
 export type Config = typeof config;
 ```
 
-`panel/apps/api/src/app.ts` (base; las tasks 11–15 añaden registros donde se indica):
+`panel/apps/api/src/app.ts` (base; tasks 11–15 add registrations where indicated):
 ```ts
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Db } from "./db/db.js";
@@ -4587,7 +4585,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // Task 13: app.decorate("agents", new AgentHub()); await app.register(agentRoutes);
   // Task 14: await app.register(serverRoutes);
   // Task 15: await app.register(realtimeRoutes);
-  // Task 19: estáticos de la web si cfg.webDist
+  // Task 19: web static files if cfg.webDist
   return app;
 }
 
@@ -4611,36 +4609,36 @@ mkdirSync(config.dataDir, { recursive: true });
 const db = openDb(join(config.dataDir, "panel.db"));
 const app = await buildApp({ db, logger: true });
 await app.listen({ host: config.host, port: config.port });
-app.log.info(`panel escuchando en http://${config.host}:${config.port}`);
+app.log.info(`panel listening at http://${config.host}:${config.port}`);
 ```
 
-- [ ] **Step 5: Ejecutar**
+- [ ] **Step 5: Run**
 
 ```bash
 pnpm install && pnpm --filter @mcsm/api test && pnpm --filter @mcsm/api typecheck
 ```
-Expected: 2 tests PASS, sin errores de tipos. Si `node:sqlite` emite un aviso experimental en consola, ignóralo (en Node 26 es estable).
+Expected: 2 tests PASS, no type errors. If `node:sqlite` prints an experimental warning to the console, ignore it (on Node 26 it is stable).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat(api): esqueleto Fastify, configuración y SQLite con migraciones
+git add -A && git commit -m "feat(api): Fastify skeleton, configuration and SQLite with migrations
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 11: Autenticación (contraseña única y sesión por cookie)
+### Task 11: Authentication (single password and cookie session)
 
 **Files:**
 - Create: `panel/apps/api/src/auth/{password.ts,repo.ts,plugin.ts,routes.ts,auth.test.ts}`
 - Modify: `panel/apps/api/src/app.ts`
 
 **Interfaces:**
-- Produces: `hashPassword(p): Promise<string>`, `verifyPassword(p, hash): Promise<boolean>`; `AuthRepo` con `getSetting/setSetting`, `createSession()`, `getSession(id)`, `deleteSession(id)`, `purgeExpired()`; plugin `authPlugin` que decora `request.sessionId` y protege `/api/*` y `/ws` (excepto `/api/health`, `/api/auth/status`, `/api/auth/setup`, `/api/auth/login`); rutas `GET /api/auth/status`, `POST /api/auth/setup`, `POST /api/auth/login`, `POST /api/auth/logout`. Nombre de la cookie: `mcsm_session`. Clave de settings: `admin_password_hash`, `session_secret`.
+- Produces: `hashPassword(p): Promise<string>`, `verifyPassword(p, hash): Promise<boolean>`; `AuthRepo` with `getSetting/setSetting`, `createSession()`, `getSession(id)`, `deleteSession(id)`, `purgeExpired()`; plugin `authPlugin` that decorates `request.sessionId` and protects `/api/*` and `/ws` (except `/api/health`, `/api/auth/status`, `/api/auth/setup`, `/api/auth/login`); routes `GET /api/auth/status`, `POST /api/auth/setup`, `POST /api/auth/login`, `POST /api/auth/logout`. Cookie name: `mcsm_session`. Settings keys: `admin_password_hash`, `session_secret`.
 
-- [ ] **Step 1: Test (falla)**
+- [ ] **Step 1: Test (fails)**
 
 `panel/apps/api/src/auth/auth.test.ts`:
 ```ts
@@ -4659,7 +4657,7 @@ const cookieOf = (res: { cookies: { name: string; value: string }[] }) => {
 };
 
 describe("auth", () => {
-  it("sin contraseña configurada, status lo indica y setup crea sesión", async () => {
+  it("without a configured password, status says so and setup creates a session", async () => {
     let res = await app.inject({ method: "GET", url: "/api/auth/status" });
     expect(res.json()).toEqual({ configured: false, authenticated: false });
     res = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
@@ -4672,11 +4670,11 @@ describe("auth", () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it("login correcto e incorrecto, logout y rutas protegidas", async () => {
+  it("correct and incorrect login, logout and protected routes", async () => {
     await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
     let res = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "nope" } });
     expect(res.statusCode).toBe(401);
-    res = await app.inject({ method: "POST", url: "/api/auth/logout" }); // protegida y ya existente en esta task
+    res = await app.inject({ method: "POST", url: "/api/auth/logout" }); // protected and already existing in this task
     expect(res.statusCode).toBe(401);
     res = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
     expect(res.statusCode).toBe(200);
@@ -4689,15 +4687,15 @@ describe("auth", () => {
     expect(res.json().authenticated).toBe(false);
   });
 
-  it("rechaza contraseñas cortas en setup", async () => {
+  it("rejects short passwords in setup", async () => {
     const res = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "1234" } });
     expect(res.statusCode).toBe(400);
   });
 });
 ```
-(Se usa `/api/auth/logout` como ruta protegida porque ya existe en esta task; `/api/nodes` llega en la Task 12.)
+(`/api/auth/logout` is used as the protected route because it already exists in this task; `/api/nodes` arrives in Task 12.)
 
-- [ ] **Step 2: Implementación**
+- [ ] **Step 2: Implementation**
 
 `panel/apps/api/src/auth/password.ts`:
 ```ts
@@ -4788,7 +4786,7 @@ async function plugin(app: FastifyInstance) {
     }
     const protectedPath = (path.startsWith("/api/") && !PUBLIC.has(path)) || path === "/ws";
     if (protectedPath && !req.sessionId) {
-      return reply.code(401).send({ error: "No autenticado" });
+      return reply.code(401).send({ error: "Not authenticated" });
     }
   });
 }
@@ -4809,7 +4807,7 @@ import { z } from "zod";
 import { hashPassword, verifyPassword } from "./password.js";
 import { SESSION_COOKIE } from "./plugin.js";
 
-const passwordBody = z.object({ password: z.string().min(8, "Mínimo 8 caracteres").max(200) });
+const passwordBody = z.object({ password: z.string().min(8, "Minimum 8 characters").max(200) });
 
 export async function authRoutes(app: FastifyInstance) {
   await app.register(rateLimit, { global: false });
@@ -4825,9 +4823,9 @@ export async function authRoutes(app: FastifyInstance) {
   }));
 
   app.post("/api/auth/setup", async (req, reply) => {
-    if (app.auth.getSetting("admin_password_hash")) return reply.code(409).send({ error: "La contraseña ya está configurada" });
+    if (app.auth.getSetting("admin_password_hash")) return reply.code(409).send({ error: "The password is already configured" });
     const parsed = passwordBody.safeParse(req.body);
-    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Datos inválidos" });
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid data" });
     app.auth.setSetting("admin_password_hash", await hashPassword(parsed.data.password));
     setCookie(reply, app.auth.createSession(app.config.sessionTtlSeconds));
     return { ok: true };
@@ -4837,7 +4835,7 @@ export async function authRoutes(app: FastifyInstance) {
     const parsed = passwordBody.safeParse(req.body);
     const stored = app.auth.getSetting("admin_password_hash");
     if (!parsed.success || !stored || !(await verifyPassword(parsed.data.password, stored))) {
-      return reply.code(401).send({ error: "Contraseña incorrecta" });
+      return reply.code(401).send({ error: "Wrong password" });
     }
     app.auth.purgeExpired();
     setCookie(reply, app.auth.createSession(app.config.sessionTtlSeconds));
@@ -4852,41 +4850,41 @@ export async function authRoutes(app: FastifyInstance) {
 }
 ```
 
-En `app.ts`, sustituye el comentario de la Task 11 por:
+In `app.ts`, replace the Task 11 comment with:
 ```ts
   await app.register(authPlugin);
   await app.register(authRoutes);
 ```
-con los imports `import { authPlugin } from "./auth/plugin.js"; import { authRoutes } from "./auth/routes.js";`. Añade `fastify-plugin` a `dependencies` (`"fastify-plugin": "^5.1.0"`).
+with the imports `import { authPlugin } from "./auth/plugin.js"; import { authRoutes } from "./auth/routes.js";`. Add `fastify-plugin` to `dependencies` (`"fastify-plugin": "^5.1.0"`).
 
-- [ ] **Step 3: Ejecutar**
+- [ ] **Step 3: Run**
 
 ```bash
 pnpm install && pnpm --filter @mcsm/api test && pnpm --filter @mcsm/api typecheck
 ```
-Expected: tests de auth y db PASS.
+Expected: auth and db tests PASS.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add -A && git commit -m "feat(api): autenticación con contraseña única, sesiones y cookie firmada
+git add -A && git commit -m "feat(api): single-password authentication, sessions and signed cookie
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 12: Nodos y alta de agentes
+### Task 12: Nodes and agent enrollment
 
 **Files:**
 - Create: `panel/apps/api/src/nodes/{repo.ts,routes.ts,nodes.test.ts}`
 - Modify: `panel/apps/api/src/app.ts`
 
 **Interfaces:**
-- Produces: `NodeRow { id, name, data_root, status, agent_version, docker_version, host_info, last_seen_at, created_at }`, `NodesRepo` con `list()`, `get(id)`, `findByTokenHash(hash)`, `create({name, tokenHash, dataRoot})`, `rename(id, name)`, `setDataRoot(id, dataRoot)`, `setStatus(id, status, extra?)`, `touch(id)`, `delete(id)`, `createEnrollmentToken(nameHint, ttl)`, `consumeEnrollmentToken(tokenPlain)`; rutas `GET /api/nodes`, `PATCH /api/nodes/:id`, `DELETE /api/nodes/:id`, `POST /api/nodes/enrollment-tokens`, `POST /agent/enroll` (sin sesión; devuelve `{nodeId, nodeToken}`).
-- `toNodeDto(row)`: `{ id, name, dataRoot, status, agentVersion, dockerVersion, hostInfo (objeto o null), lastSeenAt, createdAt }`.
+- Produces: `NodeRow { id, name, data_root, status, agent_version, docker_version, host_info, last_seen_at, created_at }`, `NodesRepo` with `list()`, `get(id)`, `findByTokenHash(hash)`, `create({name, tokenHash, dataRoot})`, `rename(id, name)`, `setDataRoot(id, dataRoot)`, `setStatus(id, status, extra?)`, `touch(id)`, `delete(id)`, `createEnrollmentToken(nameHint, ttl)`, `consumeEnrollmentToken(tokenPlain)`; routes `GET /api/nodes`, `PATCH /api/nodes/:id`, `DELETE /api/nodes/:id`, `POST /api/nodes/enrollment-tokens`, `POST /agent/enroll` (no session; returns `{nodeId, nodeToken}`).
+- `toNodeDto(row)`: `{ id, name, dataRoot, status, agentVersion, dockerVersion, hostInfo (object or null), lastSeenAt, createdAt }`.
 
-- [ ] **Step 1: Test (falla)**
+- [ ] **Step 1: Test (fails)**
 
 `panel/apps/api/src/nodes/nodes.test.ts`:
 ```ts
@@ -4907,8 +4905,8 @@ beforeEach(async () => {
 });
 afterEach(async () => { await app.close(); });
 
-describe("nodos y alta", () => {
-  it("genera token de alta con docker run y lo canjea una sola vez", async () => {
+describe("nodes and enrollment", () => {
+  it("generates an enrollment token with docker run and redeems it only once", async () => {
     let res = await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } });
     expect(res.statusCode).toBe(200);
     const { token, dockerRun, expiresAt } = res.json();
@@ -4934,7 +4932,7 @@ describe("nodos y alta", () => {
     expect(nodes[0].tokenHash).toBeUndefined();
   });
 
-  it("desambigua nombres repetidos y rechaza tokens inventados", async () => {
+  it("disambiguates repeated names and rejects invented tokens", async () => {
     for (const expected of ["nas", "nas-2"]) {
       const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } })).json().token;
       const res = await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas", agentVersion: "x" } });
@@ -4946,7 +4944,7 @@ describe("nodos y alta", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("renombra, cambia data_root y borra", async () => {
+  it("renames, changes data_root and deletes", async () => {
     const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "a" } })).json().token;
     const { nodeId } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "a", agentVersion: "x" } })).json();
     let res = await app.inject({ method: "PATCH", url: `/api/nodes/${nodeId}`, headers: { cookie }, payload: { name: "salon", dataRoot: "/mnt/mc" } });
@@ -4960,7 +4958,7 @@ describe("nodos y alta", () => {
 });
 ```
 
-- [ ] **Step 2: Implementación**
+- [ ] **Step 2: Implementation**
 
 `panel/apps/api/src/nodes/repo.ts`:
 ```ts
@@ -5035,7 +5033,7 @@ export class NodesRepo {
       .run(newId(), hashToken(token), nameHint, expiresAt);
     return { token, expiresAt };
   }
-  /** Devuelve el name_hint si el token es válido, lo marca usado; null si no. */
+  /** Returns the name_hint if the token is valid and marks it as used; null otherwise. */
   consumeEnrollmentToken(token: string): string | null {
     const row = this.db.prepare("SELECT id, name_hint, expires_at, used_at FROM enrollment_tokens WHERE token_hash = ?")
       .get(hashToken(token)) as { id: string; name_hint: string; expires_at: string; used_at: string | null } | undefined;
@@ -5053,7 +5051,7 @@ import { z } from "zod";
 import { NodesRepo, toNodeDto } from "./repo.js";
 import { hashToken, randomToken } from "../lib/tokens.js";
 
-const nameSchema = z.string().trim().min(1).max(40).regex(/^[\p{L}\p{N} _.-]+$/u, "Nombre inválido");
+const nameSchema = z.string().trim().min(1).max(40).regex(/^[\p{L}\p{N} _.-]+$/u, "Invalid name");
 
 export function dockerRunSnippet(publicUrl: string, token: string, dataRoot = "/srv/minecraft"): string {
   return [
@@ -5078,7 +5076,7 @@ export async function nodeRoutes(app: FastifyInstance) {
   app.get("/api/nodes", async () => repo.list().map(toNodeDto));
 
   app.post("/api/nodes/enrollment-tokens", async (req, reply) => {
-    const body = z.object({ nameHint: nameSchema.default("nodo"), dataRoot: z.string().startsWith("/").default("/srv/minecraft") }).safeParse(req.body ?? {});
+    const body = z.object({ nameHint: nameSchema.default("node"), dataRoot: z.string().startsWith("/").default("/srv/minecraft") }).safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message });
     const publicUrl = app.config.publicUrl || `http://${req.hostname}`;
     const { token, expiresAt } = repo.createEnrollmentToken(body.data.nameHint, app.config.enrollTtlSeconds);
@@ -5087,11 +5085,11 @@ export async function nodeRoutes(app: FastifyInstance) {
 
   app.patch<{ Params: { id: string } }>("/api/nodes/:id", async (req, reply) => {
     const node = repo.get(req.params.id);
-    if (!node) return reply.code(404).send({ error: "Nodo no encontrado" });
+    if (!node) return reply.code(404).send({ error: "Node not found" });
     const body = z.object({ name: nameSchema.optional(), dataRoot: z.string().startsWith("/").optional() }).safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message });
     if (body.data.name && body.data.name !== node.name) {
-      if (repo.nameExists(body.data.name)) return reply.code(409).send({ error: "Ya existe un nodo con ese nombre" });
+      if (repo.nameExists(body.data.name)) return reply.code(409).send({ error: "A node with that name already exists" });
       repo.rename(node.id, body.data.name);
     }
     if (body.data.dataRoot) repo.setDataRoot(node.id, body.data.dataRoot);
@@ -5100,27 +5098,27 @@ export async function nodeRoutes(app: FastifyInstance) {
 
   app.delete<{ Params: { id: string } }>("/api/nodes/:id", async (req, reply) => {
     const node = repo.get(req.params.id);
-    if (!node) return reply.code(404).send({ error: "Nodo no encontrado" });
+    if (!node) return reply.code(404).send({ error: "Node not found" });
     try {
       repo.delete(node.id);
     } catch (e) {
-      return reply.code(409).send({ error: "El nodo tiene servidores; bórralos o mígralos antes" });
+      return reply.code(409).send({ error: "The node has servers; delete or migrate them first" });
     }
     return reply.code(204).send();
   });
 
-  // Sin sesión: lo llama el agente con el token de alta.
+  // No session: the agent calls this with the enrollment token.
   app.post("/agent/enroll", async (req, reply) => {
     const body = z.object({ enrollToken: z.string().min(10), nameHint: z.string().optional(), agentVersion: z.string().optional() }).safeParse(req.body);
-    if (!body.success) return reply.code(400).send({ error: "Petición inválida" });
+    if (!body.success) return reply.code(400).send({ error: "Invalid request" });
     const hint = repo.consumeEnrollmentToken(body.data.enrollToken);
-    if (hint === null) return reply.code(401).send({ error: "Token de alta inválido, caducado o ya usado" });
+    if (hint === null) return reply.code(401).send({ error: "Invalid, expired or already used enrollment token" });
     let name = hint;
     for (let i = 2; repo.nameExists(name); i++) name = `${hint}-${i}`;
     const nodeToken = randomToken();
     const node = repo.create({ name, tokenHash: hashToken(nodeToken) });
     if (body.data.agentVersion) repo.setStatus(node.id, "offline", { agentVersion: body.data.agentVersion });
-    req.log.info({ nodeId: node.id, name }, "nodo dado de alta");
+    req.log.info({ nodeId: node.id, name }, "node enrolled");
     return { nodeId: node.id, nodeToken };
   });
 }
@@ -5130,9 +5128,9 @@ declare module "fastify" {
 }
 ```
 
-En `app.ts`: `await app.register(nodeRoutes);` con su import.
+In `app.ts`: `await app.register(nodeRoutes);` with its import.
 
-- [ ] **Step 3: Ejecutar**
+- [ ] **Step 3: Run**
 
 ```bash
 pnpm --filter @mcsm/api test && pnpm --filter @mcsm/api typecheck
@@ -5142,49 +5140,49 @@ Expected: PASS.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add -A && git commit -m "feat(api): nodos, tokens de alta y endpoint de enroll para agentes
+git add -A && git commit -m "feat(api): nodes, enrollment tokens and agent enroll endpoint
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 13: Hub de agentes (WebSocket `/agent/ws`, Hello → SyncSpecs, estado observado)
+### Task 13: Agent hub (WebSocket `/agent/ws`, Hello → SyncSpecs, observed state)
 
 **Files:**
-- Create: `panel/apps/api/src/agents/{hub.ts,service.ts,routes.ts,agents.test.ts}`, `panel/apps/api/src/servers/repo.ts` (solo el repositorio; el servicio y rutas van en la Task 14), `panel/apps/api/test/fake-agent.ts`
+- Create: `panel/apps/api/src/agents/{hub.ts,service.ts,routes.ts,agents.test.ts}`, `panel/apps/api/src/servers/repo.ts` (repository only; the service and routes go in Task 14), `panel/apps/api/test/fake-agent.ts`
 - Modify: `panel/apps/api/src/app.ts`
 
 **Interfaces:**
 - Produces:
 ```ts
 // hub.ts
-type Body = NonNullable<MessageInit<Envelope>["body"]>;   // oneof como inicializador: { case, value } con objetos planos
+type Body = NonNullable<MessageInit<Envelope>["body"]>;   // oneof as an initializer: { case, value } with plain objects
 class AgentConn {
   readonly nodeId: string;
   send(body: Body, opts?: { id?: bigint; streamId?: bigint }): bigint;
-  request(body: Body, timeoutMs = 30_000): Promise<Envelope>;   // rechaza con AgentError si llega Error o timeout
+  request(body: Body, timeoutMs = 30_000): Promise<Envelope>;   // rejects with AgentError if an Error arrives or on timeout
   openStream(body: Body, onFrame: (env: Envelope) => void, onClose: (reason: string) => void): Promise<{ streamId: bigint; close(): void }>;
 }
 class AgentError extends Error { code: string }
 class AgentHub extends EventEmitter {
-  attach(nodeId: string, socket: WebSocket): AgentConn;   // emite "attached"(nodeId)
-  detach(nodeId: string): void;                           // emite "detached"(nodeId)
+  attach(nodeId: string, socket: WebSocket): AgentConn;   // emits "attached"(nodeId)
+  detach(nodeId: string): void;                           // emits "detached"(nodeId)
   get(nodeId: string): AgentConn | undefined;
   isOnline(nodeId: string): boolean;
-  // emite "message"(nodeId: string, env: Envelope) para mensajes sin petición pendiente
+  // emits "message"(nodeId: string, env: Envelope) for messages without a pending request
 }
 // service.ts
-class AgentService { constructor(app); start(): void }   // maneja hello/serverObserved; emite "observed"(serverId, observedDto) y "node"(nodeDto) en app.events
+class AgentService { constructor(app); start(): void }   // handles hello/serverObserved; emits "observed"(serverId, observedDto) and "node"(nodeDto) in app.events
 // servers/repo.ts
 interface ServerRow { id, node_id, name, slug, spec, spec_version, desired_state, observed, observed_spec_version, observed_at, created_at, updated_at }
 class ServersRepo { list(nodeId?), get(id), getBySlug(nodeId, slug), create(...), updateSpec(id, spec, name?), setDesiredState(id, state), updateObserved(id, observedJson, appliedVersion), delete(id), usedGamePorts(nodeId) }
 toServerSpecMessage(row): ServerSpec   // proto
 toServerDto(row, { includeSecrets }): ServerDto
 ```
-- `app.events`: un `EventEmitter` decorado en `buildApp` para eventos internos (`observed`, `node`).
+- `app.events`: an `EventEmitter` decorated in `buildApp` for internal events (`observed`, `node`).
 
-- [ ] **Step 1: Repositorio de servidores**
+- [ ] **Step 1: Server repository**
 
 `panel/apps/api/src/servers/repo.ts`:
 ```ts
@@ -5255,7 +5253,7 @@ export class ServersRepo {
       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`).run(id, input.nodeId, input.name, input.slug, JSON.stringify(input.spec), input.desiredState, now, now);
     return this.get(id)!;
   }
-  /** Guarda la spec nueva, incrementa la versión. */
+  /** Stores the new spec and increments the version. */
   updateSpec(id: string, spec: Spec, name?: string): ServerRow {
     this.db.prepare(`UPDATE servers SET spec = ?, spec_version = spec_version + 1, name = COALESCE(?, name), updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(spec), name ?? null, nowIso(), id);
@@ -5284,7 +5282,7 @@ export class ServersRepo {
 }
 ```
 
-- [ ] **Step 2: Agente falso para tests**
+- [ ] **Step 2: Fake agent for tests**
 
 `panel/apps/api/test/fake-agent.ts`:
 ```ts
@@ -5292,7 +5290,7 @@ import WebSocket from "ws";
 import { create, fromBinary, toBinary, type MessageInit } from "@bufbuild/protobuf";
 import { EnvelopeSchema, HelloSchema, type Envelope, type Hello } from "@mcsm/proto";
 
-/** Agente mínimo en TS: se conecta, saluda y deja que el test lea/escriba envelopes. */
+/** Minimal agent in TS: connects, greets and lets the test read/write envelopes. */
 export class FakeAgent {
   private ws!: WebSocket;
   private queue: Envelope[] = [];
@@ -5325,19 +5323,19 @@ export class FakeAgent {
     const q = this.queue.shift();
     if (q) return Promise.resolve(q);
     return new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("fake agent: sin mensaje")), timeoutMs);
+      const t = setTimeout(() => reject(new Error("fake agent: no message")), timeoutMs);
       this.waiters.push((e) => { clearTimeout(t); resolve(e); });
     });
   }
 
-  /** Espera hasta recibir un envelope cuyo body.case coincida. */
+  /** Waits until an envelope whose body.case matches arrives. */
   async waitFor(c: NonNullable<Envelope["body"]["case"]>, timeoutMs = 3000): Promise<Envelope> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const e = await this.next(deadline - Date.now());
       if (e.body.case === c) return e;
     }
-    throw new Error(`fake agent: no llegó ${c}`);
+    throw new Error(`fake agent: did not receive ${c}`);
   }
 
   ack(id: bigint, streamId?: bigint): void {
@@ -5348,7 +5346,7 @@ export class FakeAgent {
 }
 ```
 
-- [ ] **Step 3: Test (falla)**
+- [ ] **Step 3: Test (fails)**
 
 `panel/apps/api/src/agents/agents.test.ts`:
 ```ts
@@ -5383,16 +5381,16 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); });
 
 describe("agent hub", () => {
-  it("rechaza tokens inválidos", async () => {
+  it("rejects invalid tokens", async () => {
     const agent = new FakeAgent(url, "nope");
     await expect(agent.connect()).rejects.toThrow(/401/);
   });
 
-  it("Hello → HelloAck + SyncSpecs con lo que falta, y marca el nodo online/offline", async () => {
+  it("Hello → HelloAck + SyncSpecs with what is missing, and marks the node online/offline", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
     const s2 = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
-    app.servers.updateSpec(s2.id, { ...baseSpec, ports: { game: 25567, extra: [] } }); // s2 pasa a versión 2
+    app.servers.updateSpec(s2.id, { ...baseSpec, ports: { game: 25567, extra: [] } }); // s2 moves to version 2
 
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s2.id]: 2n, "zombie-id": 1n } });
@@ -5401,7 +5399,7 @@ describe("agent hub", () => {
 
     const sync = await agent.waitFor("syncSpecs");
     if (sync.body.case !== "syncSpecs") throw new Error();
-    expect(sync.body.value.servers.map((s) => s.serverId)).toEqual([s1.id]); // s2 ya está al día
+    expect(sync.body.value.servers.map((s) => s.serverId)).toEqual([s1.id]); // s2 is already up to date
     expect(sync.body.value.removedIds).toEqual(["zombie-id"]);
     expect(sync.body.value.servers[0]!.slug).toBe("uno");
     expect(sync.body.value.servers[0]!.version).toBe(1n);
@@ -5419,7 +5417,7 @@ describe("agent hub", () => {
     expect(node.status).toBe("offline");
   });
 
-  it("ServerObserved actualiza la BD y emite evento", async () => {
+  it("ServerObserved updates the DB and emits an event", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
     const agent = new FakeAgent(url, nodeToken);
@@ -5438,7 +5436,7 @@ describe("agent hub", () => {
     expect(JSON.parse(row.observed!).mc.playersOnline).toBe(2);
   });
 
-  it("request() resuelve con la respuesta del mismo id y falla con Error", async () => {
+  it("request() resolves with the response with the same id and fails with Error", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
@@ -5451,13 +5449,13 @@ describe("agent hub", () => {
     expect((await p).body.case).toBe("ack");
     const p2 = conn.request({ case: "sendCommand", value: { serverId: "x", command: "list" } }, 2000);
     const req2 = await agent.waitFor("sendCommand");
-    agent.send({ id: req2.id, body: { case: "error", value: { code: "rcon_failed", message: "sin conexión" } } });
-    await expect(p2).rejects.toMatchObject({ code: "rcon_failed", message: "sin conexión" });
+    agent.send({ id: req2.id, body: { case: "error", value: { code: "rcon_failed", message: "no connection" } } });
+    await expect(p2).rejects.toMatchObject({ code: "rcon_failed", message: "no connection" });
   });
 });
 ```
 
-- [ ] **Step 4: Implementación del hub**
+- [ ] **Step 4: Hub implementation**
 
 `panel/apps/api/src/agents/hub.ts`:
 ```ts
@@ -5466,7 +5464,7 @@ import type { WebSocket } from "ws";
 import { create, fromBinary, toBinary, type MessageInit } from "@bufbuild/protobuf";
 import { EnvelopeSchema, type Envelope } from "@mcsm/proto";
 
-/** Cuerpo del envelope en forma de inicializador: admite objetos planos sin $typeName. */
+/** Envelope body as an initializer: accepts plain objects without $typeName. */
 export type Body = NonNullable<MessageInit<Envelope>["body"]>;
 
 export class AgentError extends Error {
@@ -5477,14 +5475,14 @@ interface Pending { resolve: (e: Envelope) => void; reject: (e: Error) => void; 
 interface Stream { onFrame: (e: Envelope) => void; onClose: (reason: string) => void }
 
 export class AgentConn {
-  private nextId = 2n; // 1 lo usa el Hello del agente
+  private nextId = 2n; // 1 is used by the agent's Hello
   private pending = new Map<bigint, Pending>();
   private streams = new Map<bigint, Stream>();
 
   constructor(readonly nodeId: string, private socket: WebSocket, private hub: AgentHub) {
     socket.on("message", (data: Buffer) => this.handle(data));
-    socket.on("close", () => this.dispose("conexión cerrada"));
-    socket.on("error", () => this.dispose("error de socket"));
+    socket.on("close", () => this.dispose("connection closed"));
+    socket.on("error", () => this.dispose("socket error"));
   }
 
   send(body: Body, opts: { id?: bigint; streamId?: bigint } = {}): bigint {
@@ -5499,7 +5497,7 @@ export class AgentConn {
       const id = this.send(body);
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new AgentError("timeout", "El agente no respondió a tiempo"));
+        reject(new AgentError("timeout", "The agent did not respond in time"));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
     });
@@ -5508,14 +5506,14 @@ export class AgentConn {
   async openStream(body: Body, onFrame: (e: Envelope) => void, onClose: (reason: string) => void): Promise<{ streamId: bigint; close(): void }> {
     const ack = await this.request(body);
     const streamId = ack.streamId;
-    if (streamId === 0n) throw new AgentError("protocol", "El agente no devolvió stream_id");
+    if (streamId === 0n) throw new AgentError("protocol", "The agent did not return stream_id");
     this.streams.set(streamId, { onFrame, onClose });
     return {
       streamId,
       close: () => {
         if (!this.streams.delete(streamId)) return;
         if (this.socket.readyState === this.socket.OPEN) {
-          this.send({ case: "streamClose", value: { reason: "cerrado por el panel" } }, { streamId });
+          this.send({ case: "streamClose", value: { reason: "closed by the panel" } }, { streamId });
         }
       },
     };
@@ -5553,7 +5551,7 @@ export class AgentConn {
   private dispose(reason: string) {
     for (const [id, p] of this.pending) {
       clearTimeout(p.timer);
-      p.reject(new AgentError("disconnected", "El nodo se desconectó"));
+      p.reject(new AgentError("disconnected", "The node disconnected"));
       this.pending.delete(id);
     }
     for (const [id, s] of this.streams) {
@@ -5570,7 +5568,7 @@ export class AgentHub extends EventEmitter {
   private conns = new Map<string, AgentConn>();
 
   attach(nodeId: string, socket: WebSocket): AgentConn {
-    this.conns.get(nodeId)?.terminate(); // una sola sesión por nodo
+    this.conns.get(nodeId)?.terminate(); // a single session per node
     const conn = new AgentConn(nodeId, socket, this);
     this.conns.set(nodeId, conn);
     this.emit("attached", nodeId);
@@ -5579,7 +5577,7 @@ export class AgentHub extends EventEmitter {
 
   detach(nodeId: string, conn?: AgentConn) {
     const current = this.conns.get(nodeId);
-    if (conn && current !== conn) return; // ya fue reemplazada por una sesión nueva
+    if (conn && current !== conn) return; // already replaced by a new session
     this.conns.delete(nodeId);
     this.emit("detached", nodeId);
   }
@@ -5589,7 +5587,7 @@ export class AgentHub extends EventEmitter {
 }
 ```
 
-- [ ] **Step 5: Servicio y rutas**
+- [ ] **Step 5: Service and routes**
 
 `panel/apps/api/src/agents/service.ts`:
 ```ts
@@ -5649,7 +5647,7 @@ export class AgentService {
         return;
       }
       default:
-        this.app.log.warn({ nodeId, type: env.body.case }, "mensaje de agente no esperado");
+        this.app.log.warn({ nodeId, type: env.body.case }, "unexpected agent message");
     }
   }
 
@@ -5671,9 +5669,9 @@ export class AgentService {
     const removedIds = [...known].filter((id) => !rows.some((r) => r.id === id));
     try {
       await conn.request({ case: "syncSpecs", value: { servers, removedIds } }, 120_000);
-      this.app.log.info({ nodeId, sent: servers.length, removed: removedIds.length }, "specs sincronizadas");
+      this.app.log.info({ nodeId, sent: servers.length, removed: removedIds.length }, "specs synced");
     } catch (e) {
-      this.app.log.warn({ nodeId, err: e }, "SyncSpecs sin confirmación");
+      this.app.log.warn({ nodeId, err: e }, "SyncSpecs without confirmation");
     }
   }
 }
@@ -5693,27 +5691,27 @@ export async function agentRoutes(app: FastifyInstance) {
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
     const node = token ? app.nodes.findByTokenHash(hashToken(token)) : null;
     if (!node) {
-      socket.close(4401, "token inválido");
+      socket.close(4401, "invalid token");
       return;
     }
-    req.log.info({ nodeId: node.id, name: node.name }, "agente conectado");
+    req.log.info({ nodeId: node.id, name: node.name }, "agent connected");
     app.agents.attach(node.id, socket);
   });
 }
 ```
 
-Nota: `@fastify/websocket` completa el handshake antes de ejecutar el handler, así que un token inválido se traduce en cierre con código 4401, no en HTTP 401. Para que el agente Go y el fake reciban un 401 HTTP real, añade este hook en la misma función, antes de `app.get`:
+Note: `@fastify/websocket` completes the handshake before running the handler, so an invalid token becomes a close with code 4401, not an HTTP 401. So that the Go agent and the fake receive a real HTTP 401, add this hook in the same function, before `app.get`:
 ```ts
   app.addHook("onRequest", async (req, reply) => {
     if (req.url !== "/agent/ws") return;
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-    if (!token || !app.nodes.findByTokenHash(hashToken(token))) return reply.code(401).send({ error: "token inválido" });
+    if (!token || !app.nodes.findByTokenHash(hashToken(token))) return reply.code(401).send({ error: "invalid token" });
   });
 ```
-(El hook `onRequest` sí corre antes del upgrade.)
+(The `onRequest` hook does run before the upgrade.)
 
-En `app.ts`, sustituye el comentario de la Task 13 por:
+In `app.ts`, replace the Task 13 comment with:
 ```ts
   app.decorate("events", new EventEmitter());
   app.decorate("agents", new AgentHub());
@@ -5722,32 +5720,32 @@ En `app.ts`, sustituye el comentario de la Task 13 por:
   new AgentService(app).start();
   app.addHook("onReady", async () => app.nodes.markAllOffline());
 ```
-con imports de `node:events`, `./agents/hub.js`, `./agents/routes.js`, `./agents/service.js`, `./servers/repo.js`, y amplía la declaración de módulo:
+with imports from `node:events`, `./agents/hub.js`, `./agents/routes.js`, `./agents/service.js` and `./servers/repo.js`, and extend the module declaration:
 ```ts
 declare module "fastify" {
   interface FastifyInstance { db: Db; config: Config; events: EventEmitter; agents: AgentHub; servers: ServersRepo }
 }
 ```
-El hook de auth (Task 11) ya deja pasar `/agent/*` porque solo protege `/api/*` y `/ws`.
+The auth hook (Task 11) already lets `/agent/*` through because it only protects `/api/*` and `/ws`.
 
-- [ ] **Step 6: Ejecutar**
+- [ ] **Step 6: Run**
 
 ```bash
 pnpm --filter @mcsm/api test && pnpm --filter @mcsm/api typecheck
 ```
-Expected: 4 tests nuevos PASS. Si el fake no recibe HTTP 401 sino un cierre 4401, revisa que el hook `onRequest` esté registrado en el mismo contexto de plugin que la ruta.
+Expected: 4 new tests PASS. If the fake receives a 4401 close instead of HTTP 401, check that the `onRequest` hook is registered in the same plugin context as the route.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add -A && git commit -m "feat(api): hub de agentes por WebSocket con Hello/SyncSpecs, peticiones y estado observado
+git add -A && git commit -m "feat(api): WebSocket agent hub with Hello/SyncSpecs, requests and observed state
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 14: Servidores (CRUD, puertos, power, consola)
+### Task 14: Servers (CRUD, ports, power, console)
 
 **Files:**
 - Create: `panel/packages/shared/src/slug.ts`, `panel/packages/shared/src/slug.test.ts`, `panel/apps/api/src/servers/{service.ts,routes.ts,servers.test.ts}`
@@ -5755,9 +5753,9 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Produces (`@mcsm/shared`): `slugify(name: string): string`, `serverCreateSchema`, `serverPatchSchema`, `powerActionSchema`, `type ServerCreateInput`.
-- Produces (api): `ServersService` con `create(input)`, `patch(id, input)`, `power(id, action)`, `command(id, command)`, `remove(id, deleteData)`, `allocatePort(nodeId)`; errores `HttpError(status, message)`; rutas `GET /api/servers`, `POST /api/servers`, `GET /api/servers/:id`, `PATCH /api/servers/:id`, `DELETE /api/servers/:id?deleteData=true`, `POST /api/servers/:id/power`, `POST /api/servers/:id/command`.
+- Produces (api): `ServersService` with `create(input)`, `patch(id, input)`, `power(id, action)`, `command(id, command)`, `remove(id, deleteData)`, `allocatePort(nodeId)`; errors `HttpError(status, message)`; routes `GET /api/servers`, `POST /api/servers`, `GET /api/servers/:id`, `PATCH /api/servers/:id`, `DELETE /api/servers/:id?deleteData=true`, `POST /api/servers/:id/power`, `POST /api/servers/:id/command`.
 
-- [ ] **Step 1: slugify (test y código)**
+- [ ] **Step 1: slugify (test and code)**
 
 `panel/packages/shared/src/slug.test.ts`:
 ```ts
@@ -5765,15 +5763,15 @@ import { describe, expect, it } from "vitest";
 import { slugify } from "./slug.js";
 
 describe("slugify", () => {
-  it("normaliza acentos, espacios y mayúsculas", () => {
+  it("normalizes accents, spaces and uppercase", () => {
     expect(slugify("Supervivencia 2024 ñ")).toBe("supervivencia-2024-n");
     expect(slugify("  Creativo__Él & Ella  ")).toBe("creativo-el-ella");
   });
-  it("recorta a 40 y nunca empieza por guion", () => {
+  it("truncates to 40 and never starts with a hyphen", () => {
     expect(slugify("-" + "a".repeat(60))).toHaveLength(40);
     expect(slugify("---x")).toBe("x");
   });
-  it("devuelve 'server' si no queda nada", () => {
+  it("returns 'server' if nothing is left", () => {
     expect(slugify("!!!")).toBe("server");
   });
 });
@@ -5792,7 +5790,7 @@ export function slugify(name: string): string {
   return s || "server";
 }
 ```
-Añade a `panel/packages/shared/src/spec.ts` (al final):
+Add to the end of `panel/packages/shared/src/spec.ts`:
 ```ts
 export const serverCreateSchema = z.object({
   nodeId: z.string().min(1),
@@ -5810,9 +5808,9 @@ export const serverPatchSchema = z.object({
 export const powerActionSchema = z.object({ action: z.enum(["start", "stop", "restart", "kill"]) });
 export type PowerActionName = z.infer<typeof powerActionSchema>["action"];
 ```
-y `export * from "./slug.js";` en `index.ts`. Ejecuta `pnpm --filter @mcsm/shared test` → PASS.
+and `export * from "./slug.js";` in `index.ts`. Run `pnpm --filter @mcsm/shared test` → PASS.
 
-- [ ] **Step 2: Test de servidores (falla)**
+- [ ] **Step 2: Servers test (fails)**
 
 `panel/apps/api/src/servers/servers.test.ts`:
 ```ts
@@ -5839,8 +5837,8 @@ afterEach(async () => { await app.close(); });
 
 const post = (u: string, payload: unknown) => app.inject({ method: "POST", url: u, headers: { cookie }, payload });
 
-describe("servidores", () => {
-  it("crea con slug, puerto y rconPassword generados; oculta el secreto en listados", async () => {
+describe("servers", () => {
+  it("creates with generated slug, port and rconPassword; hides the secret in listings", async () => {
     let res = await post("/api/servers", { nodeId, name: "Supervivencia 2024 ñ", spec: { type: "PAPER", version: "1.21.4", memory: "4G" } });
     expect(res.statusCode).toBe(201);
     const s1 = res.json();
@@ -5857,23 +5855,23 @@ describe("servidores", () => {
     expect(res.json().spec.rconPassword).toHaveLength(43);
   });
 
-  it("rechaza slug duplicado y puerto ocupado en el mismo nodo", async () => {
+  it("rejects duplicate slug and port in use on the same node", async () => {
     await post("/api/servers", { nodeId, name: "Uno", slug: "uno", spec: { ports: { game: 25570 } } });
     let res = await post("/api/servers", { nodeId, name: "Otro", slug: "uno" });
     expect(res.statusCode).toBe(409);
     res = await post("/api/servers", { nodeId, name: "Dos", spec: { ports: { game: 25570 } } });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toMatch(/puerto/i);
+    expect(res.json().error).toMatch(/port/i);
   });
 
-  it("valida la spec (env reservada, memLimit)", async () => {
+  it("validates the spec (reserved env, memLimit)", async () => {
     let res = await post("/api/servers", { nodeId, name: "X", spec: { env: { TYPE: "FORGE" } } });
     expect(res.statusCode).toBe(400);
     res = await post("/api/servers", { nodeId, name: "X", spec: { memory: "4G", resources: { cpus: 0, memLimit: "2G" } } });
     expect(res.statusCode).toBe(400);
   });
 
-  it("con el nodo offline: crear funciona, power y command devuelven 409", async () => {
+  it("with the node offline: create works, power and command return 409", async () => {
     const s = (await post("/api/servers", { nodeId, name: "Uno" })).json();
     let res = await post(`/api/servers/${s.id}/power`, { action: "start" });
     expect(res.statusCode).toBe(409);
@@ -5881,7 +5879,7 @@ describe("servidores", () => {
     expect(res.statusCode).toBe(409);
   });
 
-  it("con el nodo online: crear, editar, power y command llegan al agente", async () => {
+  it("with the node online: create, edit, power and command reach the agent", async () => {
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
     await agent.waitFor("helloAck");
@@ -5928,7 +5926,7 @@ describe("servidores", () => {
 });
 ```
 
-- [ ] **Step 3: Servicio**
+- [ ] **Step 3: Service**
 
 `panel/apps/api/src/servers/service.ts`:
 ```ts
@@ -5953,19 +5951,19 @@ export class ServersService {
 
   private requireNode(nodeId: string) {
     const node = this.app.nodes.get(nodeId);
-    if (!node) throw new HttpError(404, "Nodo no encontrado");
+    if (!node) throw new HttpError(404, "Node not found");
     return node;
   }
 
   private requireServer(id: string): ServerRow {
     const row = this.app.servers.get(id);
-    if (!row) throw new HttpError(404, "Servidor no encontrado");
+    if (!row) throw new HttpError(404, "Server not found");
     return row;
   }
 
   private onlineConn(nodeId: string) {
     const conn = this.app.agents.get(nodeId);
-    if (!conn) throw new HttpError(409, "El nodo está desconectado");
+    if (!conn) throw new HttpError(409, "The node is offline");
     return conn;
   }
 
@@ -5973,7 +5971,7 @@ export class ServersService {
     const used = this.app.servers.usedGamePorts(nodeId);
     const { from, to } = this.app.config.gamePortRange;
     for (let p = from; p <= to; p++) if (!used.has(p) && !exclude.has(p)) return p;
-    throw new HttpError(409, `No quedan puertos libres entre ${from} y ${to} en este nodo`);
+    throw new HttpError(409, `No free ports left between ${from} and ${to} on this node`);
   }
 
   private checkPorts(nodeId: string, spec: Spec, selfId?: string) {
@@ -5985,32 +5983,32 @@ export class ServersService {
       for (const e of s.ports.extra) used.add(e.host);
     }
     const mine = [spec.ports.game, ...spec.ports.extra.map((e) => e.host)];
-    for (const p of mine) if (used.has(p)) throw new HttpError(409, `El puerto ${p} ya lo usa otro servidor de este nodo`);
-    if (new Set(mine).size !== mine.length) throw new HttpError(400, "La spec repite un puerto");
+    for (const p of mine) if (used.has(p)) throw new HttpError(409, `Port ${p} is already used by another server on this node`);
+    if (new Set(mine).size !== mine.length) throw new HttpError(400, "The spec repeats a port");
   }
 
   private completeSpec(nodeId: string, input: SpecInput, previous?: Spec): Spec {
     const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId);
     const candidate = { ...input, ports: { game, extra: input.ports.extra }, rconPassword: previous?.rconPassword ?? randomToken() };
     const parsed = specSchema.safeParse(candidate);
-    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Spec inválida");
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues[0]?.message ?? "Invalid spec");
     return parsed.data;
   }
 
   private async push(row: ServerRow): Promise<void> {
     const conn = this.app.agents.get(row.node_id);
-    if (!conn) return; // se entregará en el próximo SyncSpecs
+    if (!conn) return; // it will be delivered in the next SyncSpecs
     try {
       await conn.request({ case: "applySpec", value: { server: toServerSpecMessage(row) } }, 120_000);
     } catch (e) {
-      this.app.log.warn({ serverId: row.id, err: e }, "ApplySpec sin éxito; el agente lo reintentará");
+      this.app.log.warn({ serverId: row.id, err: e }, "ApplySpec unsuccessful; the agent will retry");
     }
   }
 
   async create(input: ServerCreateInput) {
     this.requireNode(input.nodeId);
     const slug = input.slug ?? slugify(input.name);
-    if (this.app.servers.getBySlug(input.nodeId, slug)) throw new HttpError(409, `Ya existe un servidor con slug "${slug}" en este nodo`);
+    if (this.app.servers.getBySlug(input.nodeId, slug)) throw new HttpError(409, `A server with slug "${slug}" already exists on this node`);
     const spec = this.completeSpec(input.nodeId, input.spec);
     this.checkPorts(input.nodeId, spec);
     const row = this.app.servers.create({ nodeId: input.nodeId, name: input.name, slug, spec, desiredState: input.desiredState });
@@ -6039,7 +6037,7 @@ export class ServersService {
     try {
       await conn.request({ case: "powerAction", value: { serverId: id, action: POWER[action] } }, 90_000);
     } catch (e) {
-      throw new HttpError(502, e instanceof AgentError ? e.message : "Fallo al ejecutar la acción");
+      throw new HttpError(502, e instanceof AgentError ? e.message : "Failed to run the action");
     }
     return toServerDto(this.app.servers.get(id)!);
   }
@@ -6051,7 +6049,7 @@ export class ServersService {
       const res = await conn.request({ case: "sendCommand", value: { serverId: id, command } }, 20_000);
       return { output: res.body.case === "commandResult" ? res.body.value.output : "" };
     } catch (e) {
-      throw new HttpError(502, e instanceof AgentError ? e.message : "Fallo al enviar el comando");
+      throw new HttpError(502, e instanceof AgentError ? e.message : "Failed to send the command");
     }
   }
 
@@ -6062,17 +6060,17 @@ export class ServersService {
       try {
         await conn.request({ case: "removeServer", value: { serverId: id, deleteData } }, 120_000);
       } catch (e) {
-        throw new HttpError(502, e instanceof AgentError ? e.message : "El agente no pudo eliminar el servidor");
+        throw new HttpError(502, e instanceof AgentError ? e.message : "The agent could not delete the server");
       }
     } else if (deleteData) {
-      throw new HttpError(409, "El nodo está desconectado: no se pueden borrar los datos ahora. Borra sin datos o espera a que vuelva.");
+      throw new HttpError(409, "The node is offline: the data cannot be deleted now. Delete without data or wait for it to come back.");
     }
     this.app.servers.delete(id);
   }
 }
 ```
 
-- [ ] **Step 4: Rutas**
+- [ ] **Step 4: Routes**
 
 `panel/apps/api/src/servers/routes.ts`:
 ```ts
@@ -6088,16 +6086,16 @@ export async function serverRoutes(app: FastifyInstance) {
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof HttpError) return reply.code(err.status).send({ error: err.message });
-    if (err instanceof z.ZodError) return reply.code(400).send({ error: err.issues[0]?.message ?? "Datos inválidos" });
+    if (err instanceof z.ZodError) return reply.code(400).send({ error: err.issues[0]?.message ?? "Invalid data" });
     app.log.error(err);
-    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Error interno" });
+    return reply.code(err.statusCode ?? 500).send({ error: err.message ?? "Internal error" });
   });
 
   app.get("/api/servers", async () => app.servers.list().map((r) => toServerDto(r)));
 
   app.get<{ Params: { id: string } }>("/api/servers/:id", async (req) => {
     const row = app.servers.get(req.params.id);
-    if (!row) throw new HttpError(404, "Servidor no encontrado");
+    if (!row) throw new HttpError(404, "Server not found");
     return toServerDto(row, { includeSecrets: true });
   });
 
@@ -6125,38 +6123,38 @@ declare module "fastify" {
   interface FastifyInstance { serversService: ServersService }
 }
 ```
-En `app.ts`: `await app.register(serverRoutes);`. El `setErrorHandler` debe quedar a nivel de app (regístralo en `buildApp` tras los plugins, no dentro del plugin encapsulado; si Fastify lo encapsula, mueve la función a `app.ts`).
+In `app.ts`: `await app.register(serverRoutes);`. The `setErrorHandler` must be at app level (register it in `buildApp` after the plugins, not inside the encapsulated plugin; if Fastify encapsulates it, move the function to `app.ts`).
 
-- [ ] **Step 5: Ejecutar**
+- [ ] **Step 5: Run**
 
 ```bash
 pnpm --filter @mcsm/shared test && pnpm --filter @mcsm/api test && pnpm -r typecheck
 ```
-Expected: todo PASS.
+Expected: all PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat(api): CRUD de servidores con asignación de puertos, power y consola vía agente
+git add -A && git commit -m "feat(api): server CRUD with port allocation, power and console via the agent
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 15: Tiempo real hacia el navegador (`/ws`): estado, nodos y logs
+### Task 15: Real time to the browser (`/ws`): state, nodes and logs
 
 **Files:**
 - Create: `panel/apps/api/src/realtime/{hub.ts,routes.ts,realtime.test.ts}`
 - Modify: `panel/apps/api/src/app.ts`
 
 **Interfaces:**
-- Protocolo navegador ↔ panel (JSON):
-  - cliente → `{type:"subscribe", topic}` / `{type:"unsubscribe", topic}`; topics: `"servers"`, `"nodes"`, `"server:<id>:logs"`.
+- Browser ↔ panel protocol (JSON):
+  - client → `{type:"subscribe", topic}` / `{type:"unsubscribe", topic}`; topics: `"servers"`, `"nodes"`, `"server:<id>:logs"`.
   - panel → `{type:"observed", serverId, observed, observedAt}`, `{type:"node", node}`, `{type:"log", serverId, ts, line}`, `{type:"stream_closed", serverId, reason}`, `{type:"error", message}`.
-- Produces: `BrowserHub` con `add(socket)`, `publish(topic, msg)`, y `LogRelay` interno con refcount por servidor que abre/cierra el stream del agente.
+- Produces: `BrowserHub` with `add(socket)`, `publish(topic, msg)`, and an internal `LogRelay` with a per-server refcount that opens/closes the agent's stream.
 
-- [ ] **Step 1: Test (falla)**
+- [ ] **Step 1: Test (fails)**
 
 `panel/apps/api/src/realtime/realtime.test.ts`:
 ```ts
@@ -6188,18 +6186,18 @@ function browser(withCookie = true): Promise<{ ws: WebSocket; next: () => Promis
     const ws = new WebSocket(url.replace("http", "ws") + "/ws", { headers: withCookie ? { cookie } : {} });
     const queue: any[] = []; const waiters: ((m: any) => void)[] = [];
     ws.on("message", (d) => { const m = JSON.parse(d.toString()); const w = waiters.shift(); w ? w(m) : queue.push(m); });
-    ws.on("open", () => resolve({ ws, next: () => queue.length ? Promise.resolve(queue.shift()) : new Promise((r, rj) => { const t = setTimeout(() => rj(new Error("sin mensaje")), 3000); waiters.push((m) => { clearTimeout(t); r(m); }); }) }));
+    ws.on("open", () => resolve({ ws, next: () => queue.length ? Promise.resolve(queue.shift()) : new Promise((r, rj) => { const t = setTimeout(() => rj(new Error("no message")), 3000); waiters.push((m) => { clearTimeout(t); r(m); }); }) }));
     ws.on("unexpected-response", (_r, res) => reject(new Error(`HTTP ${res.statusCode}`)));
     ws.on("error", reject);
   });
 }
 
 describe("realtime", () => {
-  it("exige sesión", async () => {
+  it("requires a session", async () => {
     await expect(browser(false)).rejects.toThrow(/401/);
   });
 
-  it("reenvía estado observado y cambios de nodo", async () => {
+  it("forwards observed state and node changes", async () => {
     const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
     const b = await browser();
     b.ws.send(JSON.stringify({ type: "subscribe", topic: "servers" }));
@@ -6210,12 +6208,12 @@ describe("realtime", () => {
     expect(nodeMsg).toMatchObject({ type: "node", node: { id: nodeId, status: "online" } });
     agent.send({ body: { case: "serverObserved", value: create(ServerObservedSchema, { serverId: s.id, observed: create(ObservedSchema, { state: "running", appliedVersion: 1n }) }) } });
     let obs: any;
-    do { obs = await b.next(); } while (obs.type !== "observed"); // puede llegar un segundo evento "node" tras el Hello
+    do { obs = await b.next(); } while (obs.type !== "observed"); // a second "node" event may arrive after the Hello
     expect(obs).toMatchObject({ type: "observed", serverId: s.id, observed: { state: "running", appliedVersion: 1 } });
     b.ws.close();
   });
 
-  it("abre un stream de logs por servidor mientras haya suscriptores y avisa al cerrarse", async () => {
+  it("opens one log stream per server while there are subscribers and notifies when it closes", async () => {
     const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
@@ -6229,7 +6227,7 @@ describe("realtime", () => {
     if (sub.body.case !== "subscribeLogs") throw new Error();
     expect(sub.body.value.serverId).toBe(s.id);
     expect(sub.body.value.tail).toBe(200);
-    agent.ack(sub.id, sub.id); // Ack con stream_id = id
+    agent.ack(sub.id, sub.id); // Ack with stream_id = id
     b2.ws.send(JSON.stringify({ type: "subscribe", topic: `server:${s.id}:logs` }));
     await new Promise((r) => setTimeout(r, 50));
     agent.send({ streamId: sub.id, body: { case: "logLine", value: create(LogLineSchema, { serverId: s.id, tsUnixMs: 1760000000000n, line: "Done!" }) } });
@@ -6238,15 +6236,15 @@ describe("realtime", () => {
 
     b1.ws.send(JSON.stringify({ type: "unsubscribe", topic: `server:${s.id}:logs` }));
     await new Promise((r) => setTimeout(r, 50));
-    await expect(agent.next(300)).rejects.toThrow(); // con b2 aún suscrito, no se cierra el stream
+    await expect(agent.next(300)).rejects.toThrow(); // b2 is still subscribed, so the stream is not closed
 
-    agent.close(); // el nodo cae
+    agent.close(); // the node drops
     const closed = await b2.next();
     expect(closed).toMatchObject({ type: "stream_closed", serverId: s.id });
     b2.ws.close();
   });
 
-  it("cierra el stream del agente cuando se va el último suscriptor", async () => {
+  it("closes the agent's stream when the last subscriber leaves", async () => {
     const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
@@ -6263,7 +6261,7 @@ describe("realtime", () => {
 });
 ```
 
-- [ ] **Step 2: Implementación**
+- [ ] **Step 2: Implementation**
 
 `panel/apps/api/src/realtime/hub.ts`:
 ```ts
@@ -6290,8 +6288,8 @@ export class BrowserHub {
     this.clients.set(socket, new Set());
     socket.on("message", (raw) => {
       let msg: { type?: string; topic?: string };
-      try { msg = JSON.parse(raw.toString()); } catch { return this.send(socket, { type: "error", message: "JSON inválido" }); }
-      if (typeof msg.topic !== "string") return this.send(socket, { type: "error", message: "topic requerido" });
+      try { msg = JSON.parse(raw.toString()); } catch { return this.send(socket, { type: "error", message: "invalid JSON" }); }
+      if (typeof msg.topic !== "string") return this.send(socket, { type: "error", message: "topic required" });
       if (msg.type === "subscribe") this.subscribe(socket, msg.topic);
       else if (msg.type === "unsubscribe") this.unsubscribe(socket, msg.topic);
     });
@@ -6305,7 +6303,7 @@ export class BrowserHub {
     const mine = this.clients.get(socket);
     if (!mine || mine.has(topic)) return;
     const m = topic.match(/^server:([^:]+):logs$/);
-    if (m && !this.app.servers.get(m[1]!)) return this.send(socket, { type: "error", message: "Servidor desconocido" });
+    if (m && !this.app.servers.get(m[1]!)) return this.send(socket, { type: "error", message: "Unknown server" });
     mine.add(topic);
     if (!this.topics.has(topic)) this.topics.set(topic, new Set());
     this.topics.get(topic)!.add(socket);
@@ -6332,7 +6330,7 @@ export class BrowserHub {
   }
 }
 
-/** Mantiene un único stream de logs por servidor hacia el agente mientras haya navegadores suscritos. */
+/** Keeps a single log stream per server toward the agent while there are subscribed browsers. */
 class LogRelay {
   private active = new Map<string, { count: number; close?: () => void; opening: boolean }>();
 
@@ -6360,7 +6358,7 @@ class LogRelay {
     const conn = row && this.app.agents.get(row.node_id);
     const topic = `server:${serverId}:logs`;
     if (!conn) {
-      this.hub.publish(topic, { type: "stream_closed", serverId, reason: "nodo desconectado" });
+      this.hub.publish(topic, { type: "stream_closed", serverId, reason: "node disconnected" });
       return;
     }
     entry.opening = true;
@@ -6378,7 +6376,7 @@ class LogRelay {
         },
       );
       entry.close = stream.close;
-      if (entry.count <= 0) stream.close(); // todos se fueron mientras abríamos
+      if (entry.count <= 0) stream.close(); // everyone left while we were opening
     } catch (e) {
       this.hub.publish(topic, { type: "stream_closed", serverId, reason: e instanceof Error ? e.message : "error" });
     } finally {
@@ -6398,7 +6396,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
   if (!app.hasPlugin("@fastify/websocket")) await app.register(websocket);
   const hub = new BrowserHub(app);
   app.decorate("browserHub", hub);
-  // El hook de auth (Task 11) ya responde 401 en /ws sin sesión, antes del upgrade.
+  // The auth hook (Task 11) already answers 401 on /ws without a session, before the upgrade.
   app.get("/ws", { websocket: true }, (socket) => hub.add(socket));
 }
 
@@ -6406,41 +6404,41 @@ declare module "fastify" {
   interface FastifyInstance { browserHub: BrowserHub }
 }
 ```
-En `app.ts`: registra `@fastify/websocket` una sola vez justo después de `authPlugin` (`await app.register(websocket, { options: { maxPayload: 4 * 1024 * 1024 } })`) y elimina los `if (!app.hasPlugin(...))` de agents/routes.ts y realtime/routes.ts; luego `await app.register(realtimeRoutes);`.
+In `app.ts`: register `@fastify/websocket` only once, right after `authPlugin` (`await app.register(websocket, { options: { maxPayload: 4 * 1024 * 1024 } })`), and remove the `if (!app.hasPlugin(...))` checks from agents/routes.ts and realtime/routes.ts; then `await app.register(realtimeRoutes);`.
 
-- [ ] **Step 3: Ejecutar**
+- [ ] **Step 3: Run**
 
 ```bash
 pnpm --filter @mcsm/api test && pnpm -r typecheck
 ```
-Expected: 4 tests nuevos PASS; el resto sigue en verde.
+Expected: 4 new tests PASS; the rest stays green.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add -A && git commit -m "feat(api): WebSocket para el navegador con estado en vivo y relé de logs por servidor
+git add -A && git commit -m "feat(api): browser WebSocket with live state and per-server log relay
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 16: Web — scaffold, cliente API, WebSocket y autenticación
+### Task 16: Web — scaffold, API client, WebSocket and authentication
 
 **Files:**
-- Create: `panel/apps/web/{package.json,tsconfig.json,vite.config.ts,index.html,components.json}`, `panel/apps/web/src/{main.tsx,router.tsx,index.css}`, `panel/apps/web/src/lib/{api.ts,ws.ts,format.ts}`, `panel/apps/web/src/components/layout.tsx`, `panel/apps/web/src/routes/{login.tsx,root.tsx}`, componentes shadcn en `src/components/ui/`
+- Create: `panel/apps/web/{package.json,tsconfig.json,vite.config.ts,index.html,components.json}`, `panel/apps/web/src/{main.tsx,router.tsx,index.css}`, `panel/apps/web/src/lib/{api.ts,ws.ts,format.ts}`, `panel/apps/web/src/components/layout.tsx`, `panel/apps/web/src/routes/{login.tsx,root.tsx}`, shadcn components in `src/components/ui/`
 
 **Interfaces:**
-- Produces: `api.get/post/patch/del<T>(path, body?)` (lanza `ApiError{status, message}`), `useAuthStatus()`, `realtime.subscribe(topic, handler): () => void` (singleton con reconexión), `formatBytes`, `formatUptime`, rutas `/login`, `/` (layout con sidebar), `/nodes`, `/servers/new`, `/servers/$serverId` (estas tres se rellenan en Tasks 17–18).
+- Produces: `api.get/post/patch/del<T>(path, body?)` (throws `ApiError{status, message}`), `useAuthStatus()`, `realtime.subscribe(topic, handler): () => void` (singleton with reconnection), `formatBytes`, `formatUptime`, routes `/login`, `/` (layout with sidebar), `/nodes`, `/servers/new`, `/servers/$serverId` (the last three are filled in Tasks 17–18).
 
-- [ ] **Step 1: Crear el proyecto Vite y dependencias**
+- [ ] **Step 1: Create the Vite project and dependencies**
 
 ```bash
 cd panel/apps && pnpm create vite@latest web --template react-ts && cd web && rm -rf src/assets src/App.css src/App.tsx
 pnpm add react@^19.3.0 react-dom@^19.3.0 @tanstack/react-router@^1.170.0 @tanstack/react-query@^5.104.0 @mcsm/shared@workspace:* zod@^4.6.0 lucide-react@^1.0.0 clsx tailwind-merge class-variance-authority
 pnpm add -D tailwindcss@^4.3.0 @tailwindcss/vite@^4.3.0 @types/react @types/react-dom @vitejs/plugin-react@^6.1.0 typescript@^5.9.0 vite@^8.3.0
 ```
-Ajusta `package.json` para que `name` sea `@mcsm/web`, y scripts: `"dev": "vite --port 5173"`, `"build": "tsc -p tsconfig.json && vite build"`, `"typecheck": "tsc -p tsconfig.json"`, `"test": "echo no tests"`. Si `lucide-react` no tiene 1.x, usa la última estable (`pnpm add lucide-react@latest`).
+Adjust `package.json` so that `name` is `@mcsm/web`, with scripts: `"dev": "vite --port 5173"`, `"build": "tsc -p tsconfig.json && vite build"`, `"typecheck": "tsc -p tsconfig.json"`, `"test": "echo no tests"`. If `lucide-react` has no 1.x, use the latest stable (`pnpm add lucide-react@latest`).
 
 `panel/apps/web/tsconfig.json`:
 ```json
@@ -6478,15 +6476,15 @@ export default defineConfig({
 :root { color-scheme: dark; }
 html, body, #root { height: 100%; }
 ```
-(shadcn añadirá sus variables aquí al hacer `init`; si `tw-animate-css` no se instala, elimina esa línea.)
+(shadcn will add its variables here when running `init`; if `tw-animate-css` is not installed, remove that line.)
 
-shadcn: `components.json` lo genera el CLI:
+shadcn: the CLI generates `components.json`:
 ```bash
 cd panel/apps/web && pnpm dlx shadcn@latest init -d --base-color zinc && pnpm dlx shadcn@latest add -y button card input label badge table tabs dialog select textarea separator
 ```
-Expected: `src/components/ui/*.tsx` y `src/lib/utils.ts` creados. Añade `class="dark"` al `<html>` de `index.html` y cambia el `<title>` a `MC Server Manager`.
+Expected: `src/components/ui/*.tsx` and `src/lib/utils.ts` created. Add `class="dark"` to the `<html>` of `index.html` and change the `<title>` to `MC Server Manager`.
 
-- [ ] **Step 2: Cliente API y WebSocket**
+- [ ] **Step 2: API client and WebSocket**
 
 `panel/apps/web/src/lib/api.ts`:
 ```ts
@@ -6600,16 +6598,16 @@ export function formatUptime(startedAtUnix: number): string {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 export function stateLabel(o: { state: string; health: string; error: string } | null, desired: string): { text: string; tone: "ok" | "warn" | "bad" | "muted" } {
-  if (!o) return { text: "Sin datos", tone: "muted" };
+  if (!o) return { text: "No data", tone: "muted" };
   if (o.error) return { text: "Error", tone: "bad" };
-  if (o.state === "running") return o.health === "healthy" ? { text: "En marcha", tone: "ok" } : { text: "Arrancando", tone: "warn" };
-  if (o.state === "missing") return { text: desired === "running" ? "Creando…" : "Sin crear", tone: "muted" };
-  if (o.state === "restarting") return { text: "Reiniciando", tone: "warn" };
-  return { text: "Parado", tone: "muted" };
+  if (o.state === "running") return o.health === "healthy" ? { text: "Running", tone: "ok" } : { text: "Starting", tone: "warn" };
+  if (o.state === "missing") return { text: desired === "running" ? "Creating…" : "Not created", tone: "muted" };
+  if (o.state === "restarting") return { text: "Restarting", tone: "warn" };
+  return { text: "Stopped", tone: "muted" };
 }
 ```
 
-- [ ] **Step 3: Router, layout y login**
+- [ ] **Step 3: Router, layout and login**
 
 `panel/apps/web/src/main.tsx`:
 ```tsx
@@ -6669,7 +6667,7 @@ declare module "@tanstack/react-router" {
   interface Register { router: typeof router }
 }
 ```
-Hasta que existan las páginas de las Tasks 17–18, crea `routes/dashboard.tsx`, `routes/nodes.tsx`, `routes/new-server.tsx` y `routes/server.tsx` con `export function XPage() { return <div className="p-6">Pendiente</div>; }`.
+Until the pages from Tasks 17–18 exist, create `routes/dashboard.tsx`, `routes/nodes.tsx`, `routes/new-server.tsx` and `routes/server.tsx` with `export function XPage() { return <div className="p-6">Pending</div>; }`.
 
 `panel/apps/web/src/components/layout.tsx`:
 ```tsx
@@ -6679,8 +6677,8 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 
 const nav = [
-  { to: "/", label: "Servidores", icon: LayoutDashboard },
-  { to: "/nodes", label: "Nodos", icon: Server },
+  { to: "/", label: "Servers", icon: LayoutDashboard },
+  { to: "/nodes", label: "Nodes", icon: Server },
 ] as const;
 
 export function Layout() {
@@ -6697,10 +6695,10 @@ export function Layout() {
             </Link>
           ))}
           <Link to="/servers/new" className="mt-2 flex items-center gap-2 rounded-md border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200">
-            <Plus className="size-4" /> Nuevo servidor
+            <Plus className="size-4" /> New server
           </Link>
         </nav>
-        <Button variant="ghost" className="justify-start text-zinc-400" onClick={logout}><LogOut className="size-4" /> Salir</Button>
+        <Button variant="ghost" className="justify-start text-zinc-400" onClick={logout}><LogOut className="size-4" /> Log out</Button>
       </aside>
       <main className="flex-1 overflow-auto"><Outlet /></main>
     </div>
@@ -6731,19 +6729,19 @@ export function LoginPage() {
       await api.post(configured ? "/api/auth/login" : "/api/auth/setup", { password });
       navigate({ to: "/" });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error inesperado");
+      setError(err instanceof ApiError ? err.message : "Unexpected error");
     } finally { setBusy(false); }
   };
 
   return (
     <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-100">
       <Card className="w-full max-w-sm">
-        <CardHeader><CardTitle>{configured ? "Entrar" : "Crea tu contraseña de administrador"}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{configured ? "Log in" : "Create your admin password"}</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={submit} className="flex flex-col gap-3">
-            <Input type="password" autoFocus placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+            <Input type="password" autoFocus placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
             {error && <p className="text-sm text-red-400">{error}</p>}
-            <Button type="submit" disabled={busy}>{configured ? "Entrar" : "Guardar y entrar"}</Button>
+            <Button type="submit" disabled={busy}>{configured ? "Log in" : "Save and log in"}</Button>
           </form>
         </CardContent>
       </Card>
@@ -6752,32 +6750,32 @@ export function LoginPage() {
 }
 ```
 
-- [ ] **Step 4: Verificar**
+- [ ] **Step 4: Verify**
 
 ```bash
 pnpm --filter @mcsm/web typecheck && pnpm --filter @mcsm/web build
 ```
-En dos terminales: `pnpm dev:api` y `pnpm dev:web`; abre `http://localhost:5173`. Expected: redirige a `/login`, permite crear la contraseña, entra al layout con "Pendiente".
+In two terminals: `pnpm dev:api` and `pnpm dev:web`; open `http://localhost:5173`. Expected: redirects to `/login`, lets you create the password, and enters the layout showing "Pending".
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -A && git commit -m "feat(web): scaffold Vite+React, cliente API, WebSocket con reconexión, layout y login
+git add -A && git commit -m "feat(web): scaffold Vite+React, API client, WebSocket with reconnection, layout and login
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 17: Web — dashboard de servidores, nodos y alta, asistente de nuevo servidor
+### Task 17: Web — server dashboard, nodes and enrollment, new server wizard
 
 **Files:**
 - Create/Replace: `panel/apps/web/src/routes/{dashboard.tsx,nodes.tsx,new-server.tsx}`, `panel/apps/web/src/hooks/{use-servers.ts,use-nodes.ts}`, `panel/apps/web/src/components/{state-badge.tsx,power-buttons.tsx}`
 
 **Interfaces:**
-- Produces: `useServers()` y `useNodes()` (React Query + suscripción realtime que actualiza la caché), `<StateBadge observed desired />`, `<PowerButtons server />`.
+- Produces: `useServers()` and `useNodes()` (React Query + realtime subscription that updates the cache), `<StateBadge observed desired />`, `<PowerButtons server />`.
 
-- [ ] **Step 1: Hooks con tiempo real**
+- [ ] **Step 1: Hooks with real-time updates**
 
 `panel/apps/web/src/hooks/use-servers.ts`:
 ```ts
@@ -6798,7 +6796,7 @@ export function useServers() {
 }
 
 export function useServer(id: string) {
-  useServers(); // mantiene viva la suscripción compartida
+  useServers(); // keeps the shared subscription alive
   return useQuery({ queryKey: ["server", id], queryFn: () => api.get<ServerDto>(`/api/servers/${id}`) });
 }
 ```
@@ -6821,7 +6819,7 @@ export function useNodes() {
 }
 ```
 
-- [ ] **Step 2: Componentes compartidos**
+- [ ] **Step 2: Shared components**
 
 `panel/apps/web/src/components/state-badge.tsx`:
 ```tsx
@@ -6854,10 +6852,10 @@ export function PowerButtons({ server, size = "sm" }: { server: ServerDto; size?
   const err = m.error instanceof ApiError ? m.error.message : null;
   return (
     <div className="flex items-center gap-1">
-      {!running && <Button size={size} variant="secondary" disabled={m.isPending} onClick={() => m.mutate("start")} title="Arrancar"><Play className="size-4" /></Button>}
-      {running && <Button size={size} variant="secondary" disabled={m.isPending} onClick={() => m.mutate("stop")} title="Parar"><Square className="size-4" /></Button>}
-      {running && <Button size={size} variant="ghost" disabled={m.isPending} onClick={() => m.mutate("restart")} title="Reiniciar"><RotateCcw className="size-4" /></Button>}
-      {running && <Button size={size} variant="ghost" disabled={m.isPending} onClick={() => { if (confirm("¿Matar el proceso sin guardar? Puede corromper el mundo.")) m.mutate("kill"); }} title="Matar"><Skull className="size-4" /></Button>}
+      {!running && <Button size={size} variant="secondary" disabled={m.isPending} onClick={() => m.mutate("start")} title="Start"><Play className="size-4" /></Button>}
+      {running && <Button size={size} variant="secondary" disabled={m.isPending} onClick={() => m.mutate("stop")} title="Stop"><Square className="size-4" /></Button>}
+      {running && <Button size={size} variant="ghost" disabled={m.isPending} onClick={() => m.mutate("restart")} title="Restart"><RotateCcw className="size-4" /></Button>}
+      {running && <Button size={size} variant="ghost" disabled={m.isPending} onClick={() => { if (confirm("Kill the process without saving? It can corrupt the world.")) m.mutate("kill"); }} title="Kill"><Skull className="size-4" /></Button>}
       {err && <span className="text-xs text-red-400">{err}</span>}
     </div>
   );
@@ -6891,24 +6889,24 @@ export function DashboardPage() {
             <CardContent className="flex items-center justify-between p-4">
               <div>
                 <div className="font-medium">{n.name}</div>
-                <div className="text-xs text-zinc-400">{n.status === "online" ? `Agente ${n.agentVersion ?? ""} · Docker ${n.dockerVersion ?? ""}` : "Desconectado"}</div>
+                <div className="text-xs text-zinc-400">{n.status === "online" ? `Agent ${n.agentVersion ?? ""} · Docker ${n.dockerVersion ?? ""}` : "Offline"}</div>
               </div>
               <div className="flex items-center gap-1 text-xs text-zinc-400"><Cpu className="size-3" /> {n.hostInfo?.cpus ?? "?"} CPU · {formatBytes(n.hostInfo?.memTotalBytes ?? 0)}</div>
             </CardContent>
           </Card>
         ))}
-        {nodes.data?.length === 0 && <Card><CardContent className="p-4 text-sm text-zinc-400">Aún no hay nodos. <Link to="/nodes" className="underline">Añade el primero</Link>.</CardContent></Card>}
+        {nodes.data?.length === 0 && <Card><CardContent className="p-4 text-sm text-zinc-400">There are no nodes yet. <Link to="/nodes" className="underline">Add the first one</Link>.</CardContent></Card>}
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-zinc-400">Servidores</h2>
+        <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-zinc-400">Servers</h2>
         <Table>
-          <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Estado</TableHead><TableHead>Jugadores</TableHead><TableHead>Versión</TableHead><TableHead>Nodo</TableHead><TableHead>Puerto</TableHead><TableHead /></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Players</TableHead><TableHead>Version</TableHead><TableHead>Node</TableHead><TableHead>Port</TableHead><TableHead /></TableRow></TableHeader>
           <TableBody>
             {servers.data?.map((s) => (
               <TableRow key={s.id}>
                 <TableCell><Link to="/servers/$serverId" params={{ serverId: s.id }} className="font-medium hover:underline">{s.name}</Link><div className="text-xs text-zinc-500">{s.slug}</div></TableCell>
-                <TableCell><StateBadge observed={s.observed} desired={s.desiredState} />{s.observedSpecVersion !== s.specVersion && <span className="ml-2 text-xs text-amber-400">aplicando v{s.specVersion}…</span>}</TableCell>
+                <TableCell><StateBadge observed={s.observed} desired={s.desiredState} />{s.observedSpecVersion !== s.specVersion && <span className="ml-2 text-xs text-amber-400">applying v{s.specVersion}…</span>}</TableCell>
                 <TableCell>{s.observed?.mc.online ? <span className="flex items-center gap-1"><Users className="size-3" /> {s.observed.mc.playersOnline}/{s.observed.mc.playersMax}</span> : <span className="text-zinc-500">—</span>}</TableCell>
                 <TableCell>{s.observed?.mc.version || `${s.spec.type} ${s.spec.version}`}</TableCell>
                 <TableCell>{nodeName(s.nodeId)}</TableCell>
@@ -6916,7 +6914,7 @@ export function DashboardPage() {
                 <TableCell><PowerButtons server={s} /></TableCell>
               </TableRow>
             ))}
-            {servers.data?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-zinc-400">No hay servidores. <Link to="/servers/new" className="underline">Crea el primero</Link>.</TableCell></TableRow>}
+            {servers.data?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-zinc-400">There are no servers. <Link to="/servers/new" className="underline">Create the first one</Link>.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </section>
@@ -6925,7 +6923,7 @@ export function DashboardPage() {
 }
 ```
 
-- [ ] **Step 4: Nodos y alta**
+- [ ] **Step 4: Nodes and enrollment**
 
 `panel/apps/web/src/routes/nodes.tsx`:
 ```tsx
@@ -6952,7 +6950,7 @@ export function NodesPage() {
   const [result, setResult] = useState<EnrollResp | null>(null);
 
   const gen = useMutation({
-    mutationFn: () => api.post<EnrollResp>("/api/nodes/enrollment-tokens", { nameHint: nameHint || "nodo", dataRoot }),
+    mutationFn: () => api.post<EnrollResp>("/api/nodes/enrollment-tokens", { nameHint: nameHint || "node", dataRoot }),
     onSuccess: setResult,
   });
   const del = useMutation({
@@ -6963,23 +6961,23 @@ export function NodesPage() {
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Nodos</h1>
+        <h1 className="text-xl font-semibold">Nodes</h1>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setResult(null); gen.reset(); } }}>
-          <DialogTrigger asChild><Button>Añadir nodo</Button></DialogTrigger>
+          <DialogTrigger asChild><Button>Add node</Button></DialogTrigger>
           <DialogContent className="max-w-2xl">
-            <DialogHeader><DialogTitle>Añadir nodo</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>Add node</DialogTitle></DialogHeader>
             {!result ? (
               <div className="flex flex-col gap-3">
-                <div><Label>Nombre</Label><Input value={nameHint} onChange={(e) => setNameHint(e.target.value)} placeholder="nas, salon, torre…" /></div>
-                <div><Label>Directorio de datos en esa máquina</Label><Input value={dataRoot} onChange={(e) => setDataRoot(e.target.value)} /></div>
-                <Button onClick={() => gen.mutate()} disabled={gen.isPending}>Generar comando</Button>
+                <div><Label>Name</Label><Input value={nameHint} onChange={(e) => setNameHint(e.target.value)} placeholder="nas, living-room, tower…" /></div>
+                <div><Label>Data directory on that machine</Label><Input value={dataRoot} onChange={(e) => setDataRoot(e.target.value)} /></div>
+                <Button onClick={() => gen.mutate()} disabled={gen.isPending}>Generate command</Button>
                 {gen.error && <p className="text-sm text-red-400">{(gen.error as ApiError).message}</p>}
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                <p className="text-sm text-zinc-400">Ejecuta esto en la máquina nueva. El token caduca a las {new Date(result.expiresAt).toLocaleTimeString()} y solo sirve una vez. El nodo aparecerá aquí en cuanto conecte.</p>
+                <p className="text-sm text-zinc-400">Run this on the new machine. The token expires at {new Date(result.expiresAt).toLocaleTimeString()} and works only once. The node will appear here as soon as it connects.</p>
                 <pre className="overflow-x-auto rounded-md bg-zinc-900 p-3 text-xs">{result.dockerRun}</pre>
-                <Button variant="secondary" onClick={() => navigator.clipboard.writeText(result.dockerRun)}><Copy className="size-4" /> Copiar</Button>
+                <Button variant="secondary" onClick={() => navigator.clipboard.writeText(result.dockerRun)}><Copy className="size-4" /> Copy</Button>
               </div>
             )}
           </DialogContent>
@@ -6987,18 +6985,18 @@ export function NodesPage() {
       </div>
 
       <Table>
-        <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Estado</TableHead><TableHead>Agente</TableHead><TableHead>Docker</TableHead><TableHead>Host</TableHead><TableHead>Datos</TableHead><TableHead>Última vez</TableHead><TableHead /></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Agent</TableHead><TableHead>Docker</TableHead><TableHead>Host</TableHead><TableHead>Data</TableHead><TableHead>Last seen</TableHead><TableHead /></TableRow></TableHeader>
         <TableBody>
           {nodes.data?.map((n) => (
             <TableRow key={n.id}>
               <TableCell className="font-medium">{n.name}</TableCell>
-              <TableCell><Badge variant="outline" className={n.status === "online" ? "border-emerald-700 text-emerald-300" : "border-zinc-700 text-zinc-400"}>{n.status === "online" ? "Conectado" : "Desconectado"}</Badge></TableCell>
+              <TableCell><Badge variant="outline" className={n.status === "online" ? "border-emerald-700 text-emerald-300" : "border-zinc-700 text-zinc-400"}>{n.status === "online" ? "Online" : "Offline"}</Badge></TableCell>
               <TableCell>{n.agentVersion ?? "—"}</TableCell>
               <TableCell>{n.dockerVersion ?? "—"}</TableCell>
               <TableCell className="text-xs text-zinc-400">{n.hostInfo ? `${n.hostInfo.hostname} · ${n.hostInfo.os}/${n.hostInfo.arch}` : "—"}</TableCell>
               <TableCell className="font-mono text-xs">{n.dataRoot}</TableCell>
-              <TableCell className="text-xs text-zinc-400">{n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : "nunca"}</TableCell>
-              <TableCell><Button size="sm" variant="ghost" onClick={() => { if (confirm(`¿Eliminar el nodo "${n.name}"? Solo es posible si no tiene servidores.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button></TableCell>
+              <TableCell className="text-xs text-zinc-400">{n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : "never"}</TableCell>
+              <TableCell><Button size="sm" variant="ghost" onClick={() => { if (confirm(`Delete node "${n.name}"? It is only possible if it has no servers.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button></TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -7009,7 +7007,7 @@ export function NodesPage() {
 }
 ```
 
-- [ ] **Step 5: Nuevo servidor**
+- [ ] **Step 5: New server**
 
 `panel/apps/web/src/routes/new-server.tsx`:
 ```tsx
@@ -7045,31 +7043,31 @@ export function NewServerPage() {
   return (
     <div className="p-6">
       <Card className="max-w-xl">
-        <CardHeader><CardTitle>Nuevo servidor</CardTitle></CardHeader>
+        <CardHeader><CardTitle>New server</CardTitle></CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-            <div><Label>Nodo</Label>
+            <div><Label>Node</Label>
               <Select value={form.nodeId} onValueChange={(v) => set("nodeId", v)}>
-                <SelectTrigger><SelectValue placeholder="Elige un nodo" /></SelectTrigger>
-                <SelectContent>{nodes.data?.map((n) => <SelectItem key={n.id} value={n.id}>{n.name}{n.status !== "online" ? " (desconectado)" : ""}</SelectItem>)}</SelectContent>
+                <SelectTrigger><SelectValue placeholder="Choose a node" /></SelectTrigger>
+                <SelectContent>{nodes.data?.map((n) => <SelectItem key={n.id} value={n.id}>{n.name}{n.status !== "online" ? " (offline)" : ""}</SelectItem>)}</SelectContent>
               </Select>
-              {online.length === 0 && <p className="mt-1 text-xs text-amber-400">Ningún nodo conectado: el servidor se creará cuando el nodo vuelva.</p>}
+              {online.length === 0 && <p className="mt-1 text-xs text-amber-400">No node online: the server will be created when the node comes back.</p>}
             </div>
-            <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Supervivencia 2026" required /></div>
+            <div><Label>Name</Label><Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Survival 2026" required /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Tipo</Label>
+              <div><Label>Type</Label>
                 <Select value={form.type} onValueChange={(v) => set("type", v)}><SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{SERVER_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Versión de Minecraft</Label><Input value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="LATEST o 1.21.4" /></div>
+              <div><Label>Minecraft version</Label><Input value={form.version} onChange={(e) => set("version", e.target.value)} placeholder="LATEST or 1.21.4" /></div>
               <div><Label>Java</Label>
                 <Select value={form.imageTag} onValueChange={(v) => set("imageTag", v)}><SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{JAVA_TAGS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
-              <div><Label>Memoria JVM</Label><Input value={form.memory} onChange={(e) => set("memory", e.target.value)} placeholder="4G" pattern="^\d+[MG]$" /></div>
-              <div><Label>Puerto (vacío = automático)</Label><Input value={form.port} onChange={(e) => set("port", e.target.value)} placeholder="25565" inputMode="numeric" /></div>
+              <div><Label>JVM memory</Label><Input value={form.memory} onChange={(e) => set("memory", e.target.value)} placeholder="4G" pattern="^\d+[MG]$" /></div>
+              <div><Label>Port (empty = automatic)</Label><Input value={form.port} onChange={(e) => set("port", e.target.value)} placeholder="25565" inputMode="numeric" /></div>
             </div>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.start} onChange={(e) => set("start", e.target.checked)} /> Arrancar al crear</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.start} onChange={(e) => set("start", e.target.checked)} /> Start on create</label>
             {create.error && <p className="text-sm text-red-400">{(create.error as ApiError).message}</p>}
-            <Button type="submit" disabled={!form.nodeId || !form.name || create.isPending}>Crear servidor</Button>
+            <Button type="submit" disabled={!form.nodeId || !form.name || create.isPending}>Create server</Button>
           </form>
         </CardContent>
       </Card>
@@ -7078,30 +7076,30 @@ export function NewServerPage() {
 }
 ```
 
-- [ ] **Step 6: Verificar y commit**
+- [ ] **Step 6: Verify and commit**
 
 ```bash
 pnpm --filter @mcsm/web typecheck && pnpm --filter @mcsm/web build
 ```
-Con `pnpm dev:api` + `pnpm dev:web` y el agente de desarrollo (Task 19 trae el compose; hasta entonces puedes ejecutar el agente con `cd agent && PANEL_URL=http://localhost:8080 ENROLL_TOKEN=<token> DATA_ROOT=$PWD/../deploy/data AGENT_DATA=/tmp/mcsm-agent go run ./cmd/agent`, teniendo en cuenta que así el agente no está en la red `mcsm` y la consola RCON no funcionará hasta la Task 19). Expected: el nodo aparece "Conectado"; crear un servidor VANILLA lo muestra "Creando…" → "Arrancando" → "En marcha" con jugadores 0/20.
+With `pnpm dev:api` + `pnpm dev:web` and the development agent (Task 19 brings the compose file; until then you can run the agent with `cd agent && PANEL_URL=... go run ./cmd/agent`, bearing in mind that the agent is then not on the `mcsm` network and the RCON console will not work until Task 19). Expected: the node shows "Online"; creating a VANILLA server shows "Creating…" → "Starting" → "Running" with 0/20 players.
 
 ```bash
-git add -A && git commit -m "feat(web): dashboard de servidores con estado en vivo, gestión de nodos y asistente de creación
+git add -A && git commit -m "feat(web): server dashboard with live state, node management and creation wizard
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 18: Web — detalle de servidor: resumen, consola y configuración
+### Task 18: Web — server detail: overview, console and configuration
 
 **Files:**
 - Create/Replace: `panel/apps/web/src/routes/server.tsx`, `panel/apps/web/src/components/{console.tsx,server-config-form.tsx}`
 
 **Interfaces:**
-- Produces: `<Console serverId />` (logs en vivo por `realtime` + envío de comandos), `<ServerConfigForm server onSaved />` (edita nombre, tipo, versión, Java, memoria, puerto, política de reinicio, límites, propiedades y env libre; PATCH).
+- Produces: `<Console serverId />` (live logs via `realtime` + command sending), `<ServerConfigForm server onSaved />` (edits name, type, version, Java, memory, port, restart policy, limits, properties and free env; PATCH).
 
-- [ ] **Step 1: Consola**
+- [ ] **Step 1: Console**
 
 `panel/apps/web/src/components/console.tsx`:
 ```tsx
@@ -7127,7 +7125,7 @@ export function Console({ serverId }: { serverId: string }) {
     setLines([]);
     return realtime.subscribe(`server:${serverId}:logs`, (msg) => {
       if (msg.type === "log") push({ ts: msg.ts, text: msg.line, kind: "log" });
-      else if (msg.type === "stream_closed") push({ ts: Date.now(), text: `— stream cerrado: ${msg.reason} —`, kind: "sys" });
+      else if (msg.type === "stream_closed") push({ ts: Date.now(), text: `— stream closed: ${msg.reason} —`, kind: "sys" });
     });
   }, [serverId]);
 
@@ -7140,7 +7138,7 @@ export function Console({ serverId }: { serverId: string }) {
     push({ ts: Date.now(), text: `> ${c}`, kind: "cmd" });
     try {
       const { output } = await api.post<{ output: string }>(`/api/servers/${serverId}/command`, { command: c });
-      for (const l of (output || "(sin salida)").split("\n")) push({ ts: Date.now(), text: l, kind: "out" });
+      for (const l of (output || "(no output)").split("\n")) push({ ts: Date.now(), text: l, kind: "out" });
     } catch (e) {
       push({ ts: Date.now(), text: `✗ ${e instanceof ApiError ? e.message : "error"}`, kind: "sys" });
     }
@@ -7160,14 +7158,14 @@ export function Console({ serverId }: { serverId: string }) {
         <div ref={bottom} />
       </div>
       <div className="border-t border-zinc-800 p-2">
-        <Input value={cmd} onChange={(e) => setCmd(e.target.value)} onKeyDown={onKey} placeholder="Comando (sin /): list, say hola, whitelist add Lobo…" className="font-mono" />
+        <Input value={cmd} onChange={(e) => setCmd(e.target.value)} onKeyDown={onKey} placeholder="Command (no /): list, say hello, whitelist add Lobo…" className="font-mono" />
       </div>
     </div>
   );
 }
 ```
 
-- [ ] **Step 2: Formulario de configuración**
+- [ ] **Step 2: Configuration form**
 
 `panel/apps/web/src/components/server-config-form.tsx`:
 ```tsx
@@ -7188,7 +7186,7 @@ function textToKv(t: string): Record<string, string> {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
     const i = line.indexOf("=");
-    if (i <= 0) throw new Error(`Línea inválida: "${line}" (usa clave=valor)`);
+    if (i <= 0) throw new Error(`Invalid line: "${line}" (use key=value)`);
     out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
   return out;
@@ -7227,38 +7225,38 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
   return (
     <form onSubmit={submit} className="flex max-w-3xl flex-col gap-5">
       <section className="grid grid-cols-2 gap-3">
-        <div className="col-span-2"><Label>Nombre</Label><Input value={f.name} onChange={(e) => set("name", e.target.value)} /></div>
-        <div><Label>Tipo</Label><Select value={f.type} onValueChange={(v) => set("type", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{SERVER_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
-        <div><Label>Versión</Label><Input value={f.version} onChange={(e) => set("version", e.target.value)} /></div>
+        <div className="col-span-2"><Label>Name</Label><Input value={f.name} onChange={(e) => set("name", e.target.value)} /></div>
+        <div><Label>Type</Label><Select value={f.type} onValueChange={(v) => set("type", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{SERVER_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
+        <div><Label>Version</Label><Input value={f.version} onChange={(e) => set("version", e.target.value)} /></div>
         <div><Label>Java</Label><Select value={f.imageTag} onValueChange={(v) => set("imageTag", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{JAVA_TAGS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
-        <div><Label>Memoria JVM</Label><Input value={f.memory} onChange={(e) => set("memory", e.target.value)} /></div>
-        <div><Label>Puerto de juego</Label><Input value={f.port} onChange={(e) => set("port", e.target.value)} inputMode="numeric" /></div>
-        <div><Label>Reinicio</Label><Select value={f.restartPolicy} onValueChange={(v) => set("restartPolicy", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["unless-stopped", "always", "on-failure", "no"].map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
-        <div><Label>Límite CPUs (0 = sin límite)</Label><Input value={f.cpus} onChange={(e) => set("cpus", e.target.value)} placeholder="2" /></div>
-        <div><Label>Límite RAM contenedor</Label><Input value={f.memLimit} onChange={(e) => set("memLimit", e.target.value)} placeholder="5G (≥ memoria JVM + 1G)" /></div>
+        <div><Label>JVM memory</Label><Input value={f.memory} onChange={(e) => set("memory", e.target.value)} /></div>
+        <div><Label>Game port</Label><Input value={f.port} onChange={(e) => set("port", e.target.value)} inputMode="numeric" /></div>
+        <div><Label>Restart</Label><Select value={f.restartPolicy} onValueChange={(v) => set("restartPolicy", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["unless-stopped", "always", "on-failure", "no"].map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
+        <div><Label>CPU limit (0 = no limit)</Label><Input value={f.cpus} onChange={(e) => set("cpus", e.target.value)} placeholder="2" /></div>
+        <div><Label>Container RAM limit</Label><Input value={f.memLimit} onChange={(e) => set("memLimit", e.target.value)} placeholder="5G (≥ JVM memory + 1G)" /></div>
       </section>
       <section>
-        <Label>server.properties (clave=valor por línea)</Label>
-        <Textarea rows={8} className="font-mono text-xs" value={f.properties} onChange={(e) => set("properties", e.target.value)} placeholder={"motd=Mi servidor\nmax-players=10\ndifficulty=normal\nview-distance=10"} />
+        <Label>server.properties (key=value per line)</Label>
+        <Textarea rows={8} className="font-mono text-xs" value={f.properties} onChange={(e) => set("properties", e.target.value)} placeholder={"motd=My server\nmax-players=10\ndifficulty=normal\nview-distance=10"} />
       </section>
       <section>
-        <Label>Variables de entorno extra de la imagen itzg (CLAVE=valor por línea)</Label>
+        <Label>Extra environment variables for the itzg image (KEY=value per line)</Label>
         <Textarea rows={6} className="font-mono text-xs" value={f.env} onChange={(e) => set("env", e.target.value)} placeholder={"USE_AIKAR_FLAGS=true\nENABLE_AUTOPAUSE=false\nMODRINTH_PROJECTS=lithium,ferritecore"} />
-        <p className="mt-1 text-xs text-zinc-500">No se pueden sobreescribir TYPE, VERSION, MEMORY, EULA, RCON_* ni SERVER_PORT: se generan desde los campos de arriba.</p>
+        <p className="mt-1 text-xs text-zinc-500">TYPE, VERSION, MEMORY, EULA, RCON_* and SERVER_PORT cannot be overridden: they are generated from the fields above.</p>
       </section>
       <section className="text-xs text-zinc-400">
-        RCON: <button type="button" className="underline" onClick={() => set("showRcon", !f.showRcon)}>{f.showRcon ? "ocultar" : "mostrar contraseña"}</button>
+        RCON: <button type="button" className="underline" onClick={() => set("showRcon", !f.showRcon)}>{f.showRcon ? "hide" : "show password"}</button>
         {f.showRcon && <code className="ml-2 rounded bg-zinc-900 px-1">{server.spec.rconPassword}</code>}
       </section>
       {(localErr || save.error) && <p className="text-sm text-red-400">{localErr ?? (save.error as ApiError).message}</p>}
-      {save.isSuccess && <p className="text-sm text-emerald-400">Guardado. El agente recreará el contenedor si hace falta (versión {server.specVersion}).</p>}
-      <div><Button type="submit" disabled={save.isPending}>Guardar y aplicar</Button></div>
+      {save.isSuccess && <p className="text-sm text-emerald-400">Saved. The agent will recreate the container if needed (version {server.specVersion}).</p>}
+      <div><Button type="submit" disabled={save.isPending}>Save and apply</Button></div>
     </form>
   );
 }
 ```
 
-- [ ] **Step 3: Página de servidor**
+- [ ] **Step 3: Server page**
 
 `panel/apps/web/src/routes/server.tsx`:
 ```tsx
@@ -7291,8 +7289,8 @@ export function ServerPage() {
     mutationFn: (deleteData: boolean) => api.del(`/api/servers/${serverId}?deleteData=${deleteData}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["servers"] }); navigate({ to: "/" }); },
   });
-  if (q.isLoading) return <div className="p-6 text-zinc-400">Cargando…</div>;
-  if (!q.data) return <div className="p-6 text-red-400">Servidor no encontrado</div>;
+  if (q.isLoading) return <div className="p-6 text-zinc-400">Loading…</div>;
+  if (!q.data) return <div className="p-6 text-red-400">Server not found</div>;
   const s = q.data;
   const o = s.observed;
   const node = nodes.data?.find((n) => n.id === s.nodeId);
@@ -7304,32 +7302,32 @@ export function ServerPage() {
           <h1 className="text-2xl font-semibold">{s.name}</h1>
           <div className="mt-1 flex items-center gap-2 text-sm text-zinc-400">
             <StateBadge observed={o} desired={s.desiredState} />
-            <span>{node?.name ?? "—"} · puerto {s.spec.ports.game} · {s.spec.type} {s.spec.version} · {s.spec.memory}</span>
-            {s.observedSpecVersion !== s.specVersion && <span className="text-amber-400">aplicando v{s.specVersion} (actual v{s.observedSpecVersion})</span>}
+            <span>{node?.name ?? "—"} · port {s.spec.ports.game} · {s.spec.type} {s.spec.version} · {s.spec.memory}</span>
+            {s.observedSpecVersion !== s.specVersion && <span className="text-amber-400">applying v{s.specVersion} (current v{s.observedSpecVersion})</span>}
           </div>
           {o?.error && <p className="mt-2 max-w-3xl rounded-md border border-red-900 bg-red-950/40 p-2 text-sm text-red-300">{o.error}</p>}
         </div>
         <div className="flex items-center gap-2">
           <PowerButtons server={s} size="default" />
           <Button variant="ghost" onClick={() => {
-            const withData = confirm(`¿Borrar también el mundo y los archivos de "${s.name}"?\n\nAceptar: borrar todo.\nCancelar: solo quitar el servidor y conservar los datos en el nodo.`);
-            if (confirm(`¿Seguro que quieres eliminar "${s.name}"?`)) del.mutate(withData);
+            const withData = confirm(`Also delete the world and the files of "${s.name}"?\n\nOK: delete everything.\nCancel: only remove the server and keep the data on the node.`);
+            if (confirm(`Are you sure you want to delete "${s.name}"?`)) del.mutate(withData);
           }}><Trash2 className="size-4" /></Button>
         </div>
       </header>
       {del.error && <p className="text-sm text-red-400">{(del.error as ApiError).message}</p>}
 
       <Tabs defaultValue="overview">
-        <TabsList><TabsTrigger value="overview">Resumen</TabsTrigger><TabsTrigger value="console">Consola</TabsTrigger><TabsTrigger value="config">Configuración</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="console">Console</TabsTrigger><TabsTrigger value="config">Configuration</TabsTrigger></TabsList>
         <TabsContent value="overview" className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Jugadores" value={o?.mc.online ? `${o.mc.playersOnline} / ${o.mc.playersMax}` : "—"} />
-          <Stat label="Versión detectada" value={o?.mc.version || "—"} />
-          <Stat label="Tiempo encendido" value={o?.state === "running" ? formatUptime(o.startedAtUnix) : "—"} />
-          <Stat label="Latencia" value={o?.mc.online ? `${o.mc.latencyMs} ms` : "—"} />
-          <Stat label="Contenedor" value={<code className="text-sm">{o?.containerId ? o.containerId.slice(0, 12) : "—"}</code>} />
+          <Stat label="Players" value={o?.mc.online ? `${o.mc.playersOnline} / ${o.mc.playersMax}` : "—"} />
+          <Stat label="Detected version" value={o?.mc.version || "—"} />
+          <Stat label="Uptime" value={o?.state === "running" ? formatUptime(o.startedAtUnix) : "—"} />
+          <Stat label="Latency" value={o?.mc.online ? `${o.mc.latencyMs} ms` : "—"} />
+          <Stat label="Container" value={<code className="text-sm">{o?.containerId ? o.containerId.slice(0, 12) : "—"}</code>} />
           <Stat label="Healthcheck" value={o?.health || "—"} />
-          <Stat label="Último exit code" value={o?.exitCode ?? "—"} />
-          <Stat label="Spec" value={`v${s.specVersion} (aplicada v${s.observedSpecVersion})`} />
+          <Stat label="Last exit code" value={o?.exitCode ?? "—"} />
+          <Stat label="Spec" value={`v${s.specVersion} (applied v${s.observedSpecVersion})`} />
         </TabsContent>
         <TabsContent value="console"><Console serverId={s.id} /></TabsContent>
         <TabsContent value="config"><ServerConfigForm key={s.specVersion} server={s} /></TabsContent>
@@ -7339,44 +7337,44 @@ export function ServerPage() {
 }
 ```
 
-- [ ] **Step 4: Verificar y commit**
+- [ ] **Step 4: Verify and commit**
 
 ```bash
 pnpm --filter @mcsm/web typecheck && pnpm --filter @mcsm/web build
 ```
-Prueba manual con el agente en Docker (Task 19) o con `go run`: abre un servidor, pestaña Consola, deben aparecer las últimas 200 líneas y seguir en vivo; escribe `list` → respuesta en verde. Cambia la memoria en Configuración → el estado pasa a "aplicando v2…" y vuelve a "En marcha".
+Manual test with the agent in Docker (Task 19) or with `go run`: open a server, Console tab; the last 200 lines must appear and keep updating live; type `list` → reply in green. Change the memory in Configuration → the status changes to "applying v2…" and then back to "Running".
 
 ```bash
-git add -A && git commit -m "feat(web): detalle de servidor con resumen, consola en vivo y formulario de configuración
+git add -A && git commit -m "feat(web): server detail with overview, live console and configuration form
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-### Task 19: Despliegue (Dockerfiles, compose), README y verificación extremo a extremo
+### Task 19: Deployment (Dockerfiles, compose), README and end-to-end verification
 
 **Files:**
 - Create: `deploy/panel.Dockerfile`, `.dockerignore`, `deploy/docker-compose.yml`, `deploy/docker-compose.node.yml`, `deploy/docker-compose.dev.yml`, `deploy/.env.example`, `README.md`
-- Modify: `panel/apps/api/src/app.ts` (servir la web compilada)
+- Modify: `panel/apps/api/src/app.ts` (serve the compiled web app)
 
-- [ ] **Step 1: Servir la web desde la API**
+- [ ] **Step 1: Serve the web app from the API**
 
-En `app.ts`, sustituye el comentario de la Task 19 por:
+In `app.ts`, replace the Task 19 comment with:
 ```ts
   if (cfg.webDist) {
     await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith("/api/") || req.url.startsWith("/agent/") || req.url === "/ws") return reply.code(404).send({ error: "No encontrado" });
+      if (req.url.startsWith("/api/") || req.url.startsWith("/agent/") || req.url === "/ws") return reply.code(404).send({ error: "Not found" });
       return reply.sendFile("index.html");
     });
   }
 ```
-con `import fastifyStatic from "@fastify/static";` y `cfg.webDist` como ruta absoluta.
+with `import fastifyStatic from "@fastify/static";` and `cfg.webDist` as an absolute path.
 
-- [ ] **Step 2: Imagen del panel**
+- [ ] **Step 2: Panel image**
 
-`.dockerignore` (raíz):
+`.dockerignore` (root):
 ```
 **/node_modules
 **/dist
@@ -7409,21 +7407,21 @@ VOLUME ["/data"]
 EXPOSE 8080
 CMD ["node", "./panel/apps/api/node_modules/.bin/tsx", "panel/apps/api/src/main.ts"]
 ```
-Si la línea `pnpm deploy` da problemas con el workspace, elimínala: el `pnpm prune --prod` deja `tsx` fuera, así que en ese caso mueve `tsx` a `dependencies` de `@mcsm/api` (ya lo está) y usa `pnpm install --frozen-lockfile --prod` en la segunda etapa en vez de copiar `node_modules`.
+If the `pnpm deploy` line causes problems with the workspace, remove it: `pnpm prune --prod` leaves `tsx` out, so in that case move `tsx` to the `dependencies` of `@mcsm/api` (it already is) and use `pnpm install --frozen-lockfile --prod` in the second stage instead of copying `node_modules`.
 
 - [ ] **Step 3: Compose**
 
 `deploy/.env.example`:
 ```
-# IP o nombre por el que los nodos y tu navegador alcanzan el panel
+# IP or name by which the nodes and your browser reach the panel
 PANEL_PUBLIC_URL=http://192.168.1.10:8080
-# Directorio del host donde viven los mundos de ESTA máquina
+# Host directory where the worlds of THIS machine live
 DATA_ROOT=/srv/minecraft
-# Token de alta para el agente local (genera uno en Nodos → Añadir nodo la primera vez)
+# Enrollment token for the local agent (generate one in Nodes → Add node the first time)
 ENROLL_TOKEN=
 ```
 
-`deploy/docker-compose.yml` (máquina principal: panel + agente local):
+`deploy/docker-compose.yml` (main machine: panel + local agent):
 ```yaml
 name: mcsm
 services:
@@ -7444,7 +7442,7 @@ services:
     environment:
       PANEL_URL: http://panel:8080
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
-      NODE_NAME: ${NODE_NAME:-principal}
+      NODE_NAME: ${NODE_NAME:-main}
       DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
       HOST_PROC: /host/proc
     volumes:
@@ -7461,7 +7459,7 @@ volumes:
   agent-data: {}
 ```
 
-`deploy/docker-compose.node.yml` (nodos adicionales, solo agente):
+`deploy/docker-compose.node.yml` (additional nodes, agent only):
 ```yaml
 name: mcsm-node
 services:
@@ -7470,7 +7468,7 @@ services:
     build: { context: ../agent }
     restart: unless-stopped
     environment:
-      PANEL_URL: ${PANEL_URL:?Define PANEL_URL, p. ej. http://192.168.1.10:8080}
+      PANEL_URL: ${PANEL_URL:?Define PANEL_URL, e.g. http://192.168.1.10:8080}
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
       NODE_NAME: ${NODE_NAME:-}
       DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
@@ -7488,7 +7486,7 @@ volumes:
   agent-data: {}
 ```
 
-`deploy/docker-compose.dev.yml` (desarrollo: panel con `pnpm dev:api` en el host, agente en Docker):
+`deploy/docker-compose.dev.yml` (development: panel with `pnpm dev:api` on the host, agent in Docker):
 ```yaml
 name: mcsm-dev
 services:
@@ -7499,7 +7497,7 @@ services:
       PANEL_URL: http://host.docker.internal:8080
       ENROLL_TOKEN: ${ENROLL_TOKEN:-}
       NODE_NAME: dev
-      DATA_ROOT: ${DATA_ROOT:?Ruta absoluta en el host, p. ej. /home/lobo/dev/mc-server-manager/deploy/data}
+      DATA_ROOT: ${DATA_ROOT:?Absolute host path, e.g. /home/lobo/dev/mc-server-manager/deploy/data}
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -7519,65 +7517,65 @@ volumes:
 ```markdown
 # MC Server Manager
 
-Panel self-hosted para gestionar servidores de Minecraft (imagen `itzg/minecraft-server`) repartidos en varias máquinas con Docker. Un panel, un agente por máquina.
+Self-hosted panel to manage Minecraft servers (`itzg/minecraft-server` image) spread across several machines with Docker. One panel, one agent per machine.
 
-## Puesta en marcha (máquina principal)
+## Getting started (main machine)
 
-1. `cp deploy/.env.example deploy/.env` y edita `PANEL_PUBLIC_URL` (IP de esta máquina) y `DATA_ROOT`.
+1. `cp deploy/.env.example deploy/.env` and edit `PANEL_PUBLIC_URL` (this machine's IP) and `DATA_ROOT`.
 2. `docker compose -f deploy/docker-compose.yml up -d --build panel`
-3. Abre `http://<ip>:8080`, crea la contraseña, ve a **Nodos → Añadir nodo** y copia el token en `ENROLL_TOKEN` del `.env`.
-4. `docker compose -f deploy/docker-compose.yml up -d agent`. El nodo aparece como conectado.
+3. Open `http://<ip>:8080`, create the password, go to **Nodes → Add node** and copy the token into `ENROLL_TOKEN` in the `.env`.
+4. `docker compose -f deploy/docker-compose.yml up -d agent`. The node appears as online.
 
-## Añadir otra máquina
+## Adding another machine
 
-En **Nodos → Añadir nodo** copia el `docker run` que se muestra y ejecútalo allí (necesita la imagen `mcsm-agent`: constrúyela con `docker build -t mcsm-agent:latest agent/` o usa `deploy/docker-compose.node.yml` con `PANEL_URL` y `ENROLL_TOKEN`).
+In **Nodes → Add node** copy the `docker run` shown and run it there (it needs the `mcsm-agent` image: build it with `docker build -t mcsm-agent:latest agent/` or use `deploy/docker-compose.node.yml` with `PANEL_URL` and `ENROLL_TOKEN`).
 
-## Desarrollo
+## Development
 
 ```bash
 mise install && pnpm install
-pnpm dev:api        # panel en :8080
-pnpm dev:web        # web en :5173 (proxy a :8080)
+pnpm dev:api        # panel on :8080
+pnpm dev:web        # web on :5173 (proxy to :8080)
 ENROLL_TOKEN=... DATA_ROOT=$PWD/deploy/data docker compose -f deploy/docker-compose.dev.yml up --build
 ```
-Tests: `cd agent && go test ./...` · `pnpm test` · integración con Docker real: `go test -tags integration ./...`.
-Protocolo: edita `proto/`, luego `pnpm gen` y commitea lo generado.
+Tests: `cd agent && go test ./...` · `pnpm test` · integration with real Docker: `go test -tags integration ./...`.
+Protocol: edit `proto/`, then `pnpm gen` and commit the generated code.
 
-## Seguridad
+## Security
 
-Pensado para una LAN doméstica y un único administrador. El agente monta el socket de Docker: quien controle el panel controla Docker en todos los nodos. No lo expongas a Internet.
+Designed for a home LAN and a single administrator. The agent mounts the Docker socket: whoever controls the panel controls Docker on all nodes. Do not expose it to the Internet.
 ```
 
-- [ ] **Step 5: Verificación extremo a extremo (manual, con Docker real)**
+- [ ] **Step 5: End-to-end verification (manual, with real Docker)**
 
 ```bash
 mkdir -p deploy/data && cp deploy/.env.example deploy/.env
-# edita PANEL_PUBLIC_URL=http://<tu-ip>:8080 y DATA_ROOT=$PWD/deploy/data (ruta absoluta)
+# edit PANEL_PUBLIC_URL=http://<your-ip>:8080 and DATA_ROOT=$PWD/deploy/data (absolute path)
 docker compose -f deploy/docker-compose.yml up -d --build panel
 ```
-1. Abre `http://<tu-ip>:8080`: crea contraseña → dashboard vacío.
-2. Nodos → Añadir nodo → "principal" → copia el token en `deploy/.env` → `docker compose -f deploy/docker-compose.yml up -d agent`. El nodo pasa a **Conectado** en menos de 5 s sin recargar.
-3. Nuevo servidor: nodo principal, "Prueba E2E", VANILLA, LATEST, 2G, arrancar al crear. Expected: fila "Creando…" → "Arrancando" → "En marcha" (la primera vez tarda por la descarga de la imagen y del servidor; sigue el progreso en Consola).
-4. Consola: aparecen los logs de arranque; `list` responde "There are 0 of a max of 20 players online".
-5. Conéctate con el cliente de Minecraft a `<tu-ip>:25565`: el dashboard muestra 1/20 en menos de 15 s.
-6. Configuración: cambia memoria a 3G y guarda. Expected: "aplicando v2…" → el contenedor se recrea (ver `docker ps`) → "En marcha" con v2 aplicada. La consola sigue funcionando tras la recreación.
-7. `docker compose -f deploy/docker-compose.yml restart panel`: el nodo pasa a Desconectado y vuelve a Conectado solo; la consola muestra "stream cerrado" y vuelve a emitir al resuscribirse (cambia de pestaña y vuelve).
-8. Para el agente (`docker compose stop agent`), cambia la versión del servidor a `1.21.4`, arranca el agente: al conectar recibe `SyncSpecs` y aplica el cambio (v3).
-9. Borra el servidor conservando datos: desaparece de la lista; `deploy/data/prueba-e2e/data` sigue existiendo.
-10. `go test ./... && pnpm test` en verde.
+1. Open `http://<your-ip>:8080`: create the password → empty dashboard.
+2. Nodes → Add node → "main" → copy the token into `deploy/.env` → `docker compose -f deploy/docker-compose.yml up -d agent`. The node switches to **Online** in less than 5 s without reloading.
+3. New server: node main, "E2E test", VANILLA, LATEST, 2G, start on create. Expected: row "Creating…" → "Starting" → "Running" (the first time it takes a while because of the image and server download; follow the progress in the Console).
+4. Console: the startup logs appear; `list` replies "There are 0 of a max of 20 players online".
+5. Connect with the Minecraft client to `<your-ip>:25565`: the dashboard shows 1/20 in less than 15 s.
+6. Configuration: change memory to 3G and save. Expected: "applying v2…" → the container is recreated (see `docker ps`) → "Running" with v2 applied. The console keeps working after the recreation.
+7. `docker compose -f deploy/docker-compose.yml restart panel`: the node switches to Offline and back to Online on its own; the console shows "stream closed" and resumes emitting when resubscribed (switch tabs and come back).
+8. Stop the agent (`docker compose stop agent`), change the server version to `1.21.4`, start the agent: on connecting it receives `SyncSpecs` and applies the change (v3).
+9. Delete the server keeping the data: it disappears from the list; `deploy/data/e2e-test/data` still exists.
+10. `go test ./... && pnpm test` green.
 
-Anota cualquier desviación en `docs/superpowers/plans/2026-10-12-01-fundamentos.md` como nota al pie de esta task antes de cerrar el plan.
+Note any deviation in `docs/superpowers/plans/2026-10-12-01-foundations.md` as a footnote to this task before closing the plan.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add -A && git commit -m "feat(deploy): Dockerfile del panel, compose de producción/nodo/desarrollo y README
+git add -A && git commit -m "feat(deploy): panel Dockerfile, production/node/development compose and README
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Cierre del plan
+## Closing the plan
 
-Al terminar la Task 19 el sistema cumple los pasos 1–3 del orden de construcción de la spec (sección 13). Lo que sigue está en `docs/superpowers/plans/README.md`. Antes de empezar el Plan 2, usa `superpowers:finishing-a-development-branch` para integrar y revisar la rama.
+When Task 19 is finished, the system meets steps 1–3 of the build order in the spec (section 13). What follows is in `docs/superpowers/plans/README.md`. Before starting Plan 2, use `superpowers:finishing-a-development-branch` to integrate and review the branch.

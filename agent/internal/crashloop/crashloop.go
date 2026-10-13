@@ -1,6 +1,6 @@
-// Package crashloop detecta bucles de crash de los servidores (spec §10): un servidor que se cierra con error
-// más de MaxCrashes veces en Window se para. Intents distingue las paradas que pidió alguien (el agente al
-// parar, recrear o borrar; mc-router a través del proxy del socket) de los crashes: cada una explica un die.
+// Package crashloop detects server crash loops (spec §10): a server that exits with an error
+// more than MaxCrashes times within Window is stopped. Intents tells stops that someone asked for (the agent
+// when stopping, recreating or deleting; mc-router through the socket proxy) apart from crashes: each one explains a die.
 package crashloop
 
 import (
@@ -13,23 +13,23 @@ import (
 )
 
 const (
-	// Window es la ventana en la que se cuentan los crashes.
+	// Window is the window in which crashes are counted.
 	Window = time.Hour
-	// MaxCrashes: con más de estos crashes en Window el servidor está en bucle.
+	// MaxCrashes: with more than this many crashes within Window the server is in a loop.
 	MaxCrashes = 3
-	// IntentTTL: el primer die hasta este tiempo después de un Stop/Kill/Remove pedido no es un crash. Cubre la
-	// espera de una parada limpia (reconcile.StopTimeout, 60 s) con margen.
+	// IntentTTL: the first die up to this long after a requested Stop/Kill/Remove is not a crash. It covers the
+	// wait for a clean stop (reconcile.StopTimeout, 60 s) with margin.
 	IntentTTL = 3 * time.Minute
 )
 
-// Tracker cuenta los crashes de cada servidor en la última Window. Seguro para uso concurrente.
+// Tracker counts each server's crashes in the last Window. Safe for concurrent use.
 type Tracker struct {
 	mu   sync.Mutex
 	now  func() time.Time
 	hits map[string][]time.Time
 }
 
-// NewTracker crea un contador con el reloj dado (time.Now si es nil).
+// NewTracker creates a counter with the given clock (time.Now if nil).
 func NewTracker(now func() time.Time) *Tracker {
 	if now == nil {
 		now = time.Now
@@ -37,8 +37,8 @@ func NewTracker(now func() time.Time) *Tracker {
 	return &Tracker{now: now, hits: map[string][]time.Time{}}
 }
 
-// Record anota un crash de serverID y devuelve cuántos lleva en la última Window y si supera MaxCrashes. Al
-// dispararse olvida los anteriores: tras la parada, la cuenta del servidor empieza de cero.
+// Record notes a crash of serverID and returns how many it has in the last Window and whether it exceeds MaxCrashes. When
+// it trips it forgets the previous ones: after the stop, the server's count starts from zero.
 func (t *Tracker) Record(serverID string) (count int, tripped bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -58,23 +58,23 @@ func (t *Tracker) Record(serverID string) (count int, tripped bool) {
 	return len(keep), false
 }
 
-// Reset olvida los crashes de serverID (p. ej. al arrancarlo a mano).
+// Reset forgets serverID's crashes (e.g. when it is started by hand).
 func (t *Tracker) Reset(serverID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.hits, serverID)
 }
 
-// Intents recuerda, por contenedor, las paradas pedidas (Stop, Kill, Remove) de los últimos IntentTTL. Cada una
-// explica un solo die: un bucle que empieza justo después de un Reiniciar se cuenta desde el primer crash.
-// Seguro para uso concurrente.
+// Intents remembers, per container, the requested stops (Stop, Kill, Remove) of the last IntentTTL. Each one
+// explains a single die: a loop that starts right after a Restart is counted from the first crash.
+// Safe for concurrent use.
 type Intents struct {
 	mu  sync.Mutex
 	now func() time.Time
-	at  map[string][]time.Time // por contenedor, de la más antigua a la más reciente
+	at  map[string][]time.Time // per container, oldest to newest
 }
 
-// NewIntents crea el registro con el reloj dado (time.Now si es nil).
+// NewIntents creates the registry with the given clock (time.Now if nil).
 func NewIntents(now func() time.Time) *Intents {
 	if now == nil {
 		now = time.Now
@@ -82,8 +82,8 @@ func NewIntents(now func() time.Time) *Intents {
 	return &Intents{now: now, at: map[string][]time.Time{}}
 }
 
-// Note anota que alguien pidió parar (o matar, o borrar) el contenedor id. Poda las anotaciones caducadas de
-// todos los contenedores (una parada sin die, p. ej. sobre uno ya parado o borrado, no se queda para siempre).
+// Note records that someone asked to stop (or kill, or delete) container id. It prunes expired notes from
+// all containers (a stop without a die, e.g. on one already stopped or deleted, does not linger forever).
 func (i *Intents) Note(id string) {
 	if id == "" {
 		return
@@ -97,7 +97,7 @@ func (i *Intents) Note(id string) {
 	i.at[id] = append(i.at[id], now)
 }
 
-// Consume indica si un die de id lo explica una parada pedida hace como mucho IntentTTL y, si es así, la gasta.
+// Consume reports whether a die of id is explained by a stop requested at most IntentTTL ago and, if so, spends it.
 func (i *Intents) Consume(id string) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
@@ -113,7 +113,7 @@ func (i *Intents) Consume(id string) bool {
 	return true
 }
 
-// pruneLocked quita las anotaciones caducadas de id y devuelve las que quedan.
+// pruneLocked removes the expired notes of id and returns the ones that remain.
 func (i *Intents) pruneLocked(id string, now time.Time) []time.Time {
 	list := i.at[id]
 	n := 0
@@ -131,8 +131,8 @@ func (i *Intents) pruneLocked(id string, now time.Time) []time.Time {
 	return list
 }
 
-// Engine envuelve un docker.Engine y anota en Intents cada parada, muerte o borrado que pide el agente. Todo
-// lo demás pasa al motor de debajo.
+// Engine wraps a docker.Engine and records in Intents every stop, kill or delete the agent requests. Everything
+// else goes to the engine underneath.
 type Engine struct {
 	docker.Engine
 	Intents *Intents
@@ -153,8 +153,8 @@ func (e Engine) Remove(ctx context.Context, id string) error {
 	return e.Engine.Remove(ctx, id)
 }
 
-// ExitCode devuelve el código de salida de un evento die (atributo exitCode de Docker, que Moby.Events copia
-// en Event.Labels). false si no lo trae o no es un número.
+// ExitCode returns the exit code of a die event (Docker's exitCode attribute, which Moby.Events copies
+// into Event.Labels). false if it is missing or not a number.
 func ExitCode(ev docker.Event) (int, bool) {
 	v, ok := ev.Labels["exitCode"]
 	if !ok {

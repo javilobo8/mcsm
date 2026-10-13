@@ -23,7 +23,7 @@ func TestHoldDefersApplyUntilRelease(t *testing.T) {
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	release, err := r.Hold("a", "copia de seguridad")
+	release, err := r.Hold("a", "backup")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,25 +34,25 @@ func TestHoldDefersApplyUntilRelease(t *testing.T) {
 	r.ReconcileAll(ctx)
 	for _, c := range fake.Calls[before:] {
 		if strings.HasPrefix(c, "Stop") || strings.HasPrefix(c, "Remove") || strings.HasPrefix(c, "Create") {
-			t.Fatalf("no debe tocar el contenedor durante la reserva: %v", fake.Calls[before:])
+			t.Fatalf("it must not touch the container during the reservation: %v", fake.Calls[before:])
 		}
 	}
 	if v, _ := st.Applied("a"); v != 1 {
 		t.Fatalf("applied = %d, want 1", v)
 	}
 	if sp, _ := st.GetSpec("a"); sp.Version != 2 {
-		t.Fatal("la spec nueva debe quedar guardada")
+		t.Fatal("the new spec must be stored")
 	}
 	release(ctx)
 	if v, _ := st.Applied("a"); v != 2 {
-		t.Fatalf("tras liberar applied = %d, want 2", v)
+		t.Fatalf("after release applied = %d, want 2", v)
 	}
 	if calls(fake, "Remove") != 1 || calls(fake, "Create") != 2 {
-		t.Fatalf("debe recrear al liberar: %v", fake.Calls)
+		t.Fatalf("it must recreate on release: %v", fake.Calls)
 	}
-	release(ctx) // idempotente
+	release(ctx) // idempotent
 	if calls(fake, "Create") != 2 {
-		t.Fatal("liberar dos veces no repite nada")
+		t.Fatal("releasing twice repeats nothing")
 	}
 }
 
@@ -63,32 +63,32 @@ func TestHoldRejectsSecondHoldPowerAndRemove(t *testing.T) {
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	release, err := r.Hold("a", "restauración")
+	release, err := r.Hold("a", "restore")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !r.Held("a") || r.Held("b") {
 		t.Fatal("Held")
 	}
-	if _, err := r.Hold("a", "copia"); !errors.Is(err, ErrBusy) || !strings.Contains(err.Error(), "restauración") {
-		t.Fatalf("segunda reserva = %v", err)
+	if _, err := r.Hold("a", "backup"); !errors.Is(err, ErrBusy) || !strings.Contains(err.Error(), "restore") {
+		t.Fatalf("second reservation = %v", err)
 	}
 	stops := calls(fake, "Stop")
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); !errors.Is(err, ErrBusy) {
 		t.Fatalf("Power = %v", err)
 	}
 	if calls(fake, "Stop") != stops {
-		t.Fatal("Power no debe tocar el contenedor reservado")
+		t.Fatal("Power must not touch the reserved container")
 	}
 	if err := r.Remove(ctx, "a", false); !errors.Is(err, ErrBusy) {
 		t.Fatalf("Remove = %v", err)
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil {
-		t.Fatal("Remove no debe borrar la spec de un servidor reservado")
+		t.Fatal("Remove must not delete the spec of a reserved server")
 	}
 	release(ctx)
 	if r.Held("a") {
-		t.Fatal("debe liberarse")
+		t.Fatal("it must be released")
 	}
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); err != nil {
 		t.Fatal(err)
@@ -98,15 +98,15 @@ func TestHoldRejectsSecondHoldPowerAndRemove(t *testing.T) {
 func TestHoldWaitsForOperationInProgress(t *testing.T) {
 	r, st, _, _, _ := setup(t)
 	put(t, st, "a", "alpha", 1, runningState, specJSON)
-	unlock := r.lock("a") // otra operación sobre el servidor en curso
+	unlock := r.lock("a") // another operation on the server in progress
 	done := make(chan error, 1)
 	go func() {
-		_, err := r.Hold("a", "copia")
+		_, err := r.Hold("a", "backup")
 		done <- err
 	}()
 	select {
 	case <-done:
-		t.Fatal("Hold no debe volver mientras otra operación tiene el lock del servidor")
+		t.Fatal("Hold must not return while another operation holds the server's lock")
 	default:
 	}
 	unlock()
@@ -116,7 +116,7 @@ func TestHoldWaitsForOperationInProgress(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("Hold no volvió tras liberar el lock")
+		t.Fatal("Hold did not return after releasing the lock")
 	}
 }
 
@@ -127,26 +127,26 @@ func TestReleaseRestartsServerStoppedDuringHold(t *testing.T) {
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	release, err := r.Hold("a", "restauración")
+	release, err := r.Hold("a", "restore")
 	if err != nil {
 		t.Fatal(err)
 	}
 	cid := r.ContainerID(ctx, "a")
-	if err := fake.Stop(ctx, cid, StopTimeout); err != nil { // la restauración lo para
+	if err := fake.Stop(ctx, cid, StopTimeout); err != nil { // the restore stops it
 		t.Fatal(err)
 	}
 	r.ReconcileAll(ctx)
 	if ins, _ := fake.Inspect(ctx, cid); ins.Running {
-		t.Fatal("durante la reserva nadie debe arrancarlo")
+		t.Fatal("during the reservation nobody must start it")
 	}
 	release(ctx)
 	if ins, _ := fake.Inspect(ctx, cid); !ins.Running {
-		t.Fatal("al liberar vuelve a su estado deseado (running)")
+		t.Fatal("on release it returns to its desired state (running)")
 	}
 }
 
-// Una reserva sin motivo sigue siendo una reserva: el motivo vacío no puede desactivar
-// las comprobaciones.
+// A reservation without a reason is still a reservation: the empty reason cannot disable
+// the checks.
 func TestHoldWithEmptyReasonStillHolds(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
 	ctx := context.Background()
@@ -159,23 +159,23 @@ func TestHoldWithEmptyReasonStillHolds(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !r.Held("a") {
-		t.Fatal("Held con motivo vacío")
+		t.Fatal("Held with an empty reason")
 	}
 	stops := calls(fake, "Stop")
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); !errors.Is(err, ErrBusy) {
 		t.Fatalf("Power = %v", err)
 	}
 	if calls(fake, "Stop") != stops {
-		t.Fatal("Power no debe tocar el contenedor reservado")
+		t.Fatal("Power must not touch the reserved container")
 	}
 	release(ctx)
 	if r.Held("a") {
-		t.Fatal("debe liberarse")
+		t.Fatal("it must be released")
 	}
 }
 
-// Reservas y liberaciones concurrentes con ticks y acciones de encendido: sin carreras
-// (-race), sin bloqueos y con el servidor en su estado deseado al acabar.
+// Concurrent reservations and releases with ticks and power actions: no races
+// (-race), no deadlocks and with the server in its desired state at the end.
 func TestHoldConcurrentWithTicksAndPower(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
 	ctx := context.Background()
@@ -188,7 +188,7 @@ func TestHoldConcurrentWithTicksAndPower(t *testing.T) {
 		wg.Add(3)
 		go func() {
 			defer wg.Done()
-			release, err := r.Hold("a", "copia")
+			release, err := r.Hold("a", "backup")
 			if err != nil {
 				if !errors.Is(err, ErrBusy) {
 					t.Error(err)
@@ -210,7 +210,7 @@ func TestHoldConcurrentWithTicksAndPower(t *testing.T) {
 	}
 	wg.Wait()
 	if r.Held("a") {
-		t.Fatal("todas las reservas debían liberarse")
+		t.Fatal("all the reservations should have been released")
 	}
 	ins, err := fake.Inspect(ctx, r.ContainerID(ctx, "a"))
 	if err != nil || !ins.Running || calls(fake, "Create") != 1 {
@@ -218,10 +218,10 @@ func TestHoldConcurrentWithTicksAndPower(t *testing.T) {
 	}
 }
 
-// plan-4: un servidor que se queda reservado sin poder arrancar (p. ej. sin directorio de
-// datos tras una restauración fallida) muestra el motivo en Observed mientras dure la
-// reserva: ni un tick ni SyncSpecs (StoreForce limpia los fallos) lo borran, y desaparece al
-// liberarla. Sin reserva, HoldError no hace nada.
+// plan-4: a server that stays reserved unable to start (e.g. without a data
+// directory after a failed restore) shows the reason in Observed for as long as the
+// reservation lasts: neither a tick nor SyncSpecs (StoreForce clears failures) delete it, and it disappears when
+// it is released. Without a reservation, HoldError does nothing.
 func TestHoldErrorIsObservedUntilRelease(t *testing.T) {
 	r, st, _, _, _ := setup(t)
 	ctx := context.Background()
@@ -229,15 +229,15 @@ func TestHoldErrorIsObservedUntilRelease(t *testing.T) {
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	r.HoldError("a", "no debe quedar")
+	r.HoldError("a", "must not remain")
 	if obs := r.Observe(ctx, "a"); obs.Error != "" {
-		t.Fatalf("sin reserva HoldError no hace nada: %q", obs.Error)
+		t.Fatalf("without a reservation HoldError does nothing: %q", obs.Error)
 	}
-	release, err := r.Hold("a", "sin datos")
+	release, err := r.Hold("a", "no data")
 	if err != nil {
 		t.Fatal(err)
 	}
-	const msg = "falta el directorio de datos"
+	const msg = "the data directory is missing"
 	r.HoldError("a", msg)
 	if obs := r.Observe(ctx, "a"); obs.Error != msg {
 		t.Fatalf("Observed.Error = %q, want %q", obs.Error, msg)
@@ -247,23 +247,23 @@ func TestHoldErrorIsObservedUntilRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	if obs := r.Observe(ctx, "a"); obs.Error != msg {
-		t.Fatalf("tras un tick y SyncSpecs Observed.Error = %q, want %q", obs.Error, msg)
+		t.Fatalf("after a tick and SyncSpecs Observed.Error = %q, want %q", obs.Error, msg)
 	}
 	release(ctx)
 	if obs := r.Observe(ctx, "a"); obs.Error != "" {
-		t.Fatalf("al liberar desaparece: %q", obs.Error)
+		t.Fatalf("on release it disappears: %q", obs.Error)
 	}
-	again, err := r.Hold("a", "copia")
+	again, err := r.Hold("a", "backup")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer again(ctx)
 	if obs := r.Observe(ctx, "a"); obs.Error != "" {
-		t.Fatalf("una reserva nueva no hereda el error: %q", obs.Error)
+		t.Fatalf("a new reservation does not inherit the error: %q", obs.Error)
 	}
 }
 
-// listFailEngine hace fallar ListManaged mientras fail esté activo.
+// listFailEngine makes ListManaged fail while fail is active.
 type listFailEngine struct {
 	*docker.Fake
 	mu   sync.Mutex
@@ -281,20 +281,20 @@ func (e *listFailEngine) ListManaged(ctx context.Context) ([]docker.Container, e
 	fail := e.fail
 	e.mu.Unlock()
 	if fail {
-		return nil, errors.New("docker no responde")
+		return nil, errors.New("docker is not responding")
 	}
 	return e.Fake.ListManaged(ctx)
 }
 
-// plan-4: Container distingue «no hay contenedor» (nil, nil) de «no se pudo comprobar»
-// (error): una copia o una restauración no pueden tomar lo segundo por lo primero.
+// plan-4: Container distinguishes "there is no container" (nil, nil) from "could not be checked"
+// (error): a backup or a restore cannot mistake the latter for the former.
 func TestContainerReportsDockerErrors(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
 	eng := &listFailEngine{Fake: fake}
 	r.eng = eng
 	ctx := context.Background()
 	if c, err := r.Container(ctx, "a"); c != nil || err != nil {
-		t.Fatalf("sin contenedor: %+v, %v", c, err)
+		t.Fatalf("without a container: %+v, %v", c, err)
 	}
 	put(t, st, "a", "alpha", 1, runningState, specJSON)
 	if err := r.Reconcile(ctx, "a"); err != nil {
@@ -305,35 +305,35 @@ func TestContainerReportsDockerErrors(t *testing.T) {
 		t.Fatalf("Container = %+v, %v", c, err)
 	}
 	eng.setFail(true)
-	if c, err := r.Container(ctx, "a"); c != nil || err == nil || !strings.Contains(err.Error(), "docker no responde") {
-		t.Fatalf("con Docker fallando: %+v, %v", c, err)
+	if c, err := r.Container(ctx, "a"); c != nil || err == nil || !strings.Contains(err.Error(), "docker is not responding") {
+		t.Fatalf("with Docker failing: %+v, %v", c, err)
 	}
 }
 
-// ErrBusy tiene un prefijo neutro y cada sitio añade el motivo concreto: un servidor
-// bloqueado sin datos no dice «ocupado con otra copia o restauración».
+// ErrBusy has a neutral prefix and each place adds the specific reason: a server
+// locked without data does not say "busy with another backup or restore".
 func TestBusyMessageNamesTheReason(t *testing.T) {
 	r, st, _, _, _ := setup(t)
 	ctx := context.Background()
 	put(t, st, "a", "alpha", 1, runningState, specJSON)
-	release, err := r.Hold("a", "sin directorio de datos")
+	release, err := r.Hold("a", "no data directory")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release(ctx)
-	want := "servidor ocupado o reservado (sin directorio de datos)"
+	want := "server busy or reserved (no data directory)"
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); err == nil || err.Error() != want {
-		t.Fatalf("Power = %v; quiero %q", err, want)
+		t.Fatalf("Power = %v; want %q", err, want)
 	}
 	if err := r.Remove(ctx, "a", false); err == nil || err.Error() != want {
-		t.Fatalf("Remove = %v; quiero %q", err, want)
+		t.Fatalf("Remove = %v; want %q", err, want)
 	}
-	if _, err := r.Hold("a", "copia de seguridad"); err == nil || err.Error() != want {
-		t.Fatalf("Hold = %v; quiero %q", err, want)
+	if _, err := r.Hold("a", "backup"); err == nil || err.Error() != want {
+		t.Fatalf("Hold = %v; want %q", err, want)
 	}
 }
 
-// TryHold no espera al lock del servidor (una reconciliación larga, una descarga de imagen): si está tomado, busy.
+// TryHold does not wait for the server's lock (a long reconciliation, an image pull): if it is held, busy.
 func TestTryHoldDoesNotWaitForTheServerLock(t *testing.T) {
 	r, st, _, _, _ := setup(t)
 	put(t, st, "a", "alpha", 1, runningState, specJSON)
@@ -341,20 +341,20 @@ func TestTryHoldDoesNotWaitForTheServerLock(t *testing.T) {
 	_, err := r.TryHold("a", "save-on")
 	unlock()
 	if !errors.Is(err, ErrBusy) {
-		t.Fatalf("con el lock tomado = %v", err)
+		t.Fatalf("with the lock held = %v", err)
 	}
 	release, err := r.TryHold("a", "save-on")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if r.HeldReason("a") != "save-on" {
-		t.Fatalf("motivo = %q", r.HeldReason("a"))
+		t.Fatalf("reason = %q", r.HeldReason("a"))
 	}
-	if _, err := r.TryHold("a", "otra"); !errors.Is(err, ErrBusy) {
-		t.Fatalf("ya reservado = %v", err)
+	if _, err := r.TryHold("a", "another"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("already reserved = %v", err)
 	}
 	release(context.Background())
 	if r.Held("a") {
-		t.Fatal("liberado")
+		t.Fatal("released")
 	}
 }

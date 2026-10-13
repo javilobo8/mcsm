@@ -13,10 +13,10 @@ import (
 	"mcsm/agent/internal/spec"
 )
 
-// Clock es el reloj del planificador (inyectable en tests).
+// Clock is the scheduler's clock (injectable in tests).
 type Clock interface {
 	Now() time.Time
-	// Until devuelve un canal que recibe un valor cuando el reloj alcanza t.
+	// Until returns a channel that receives a value when the clock reaches t.
 	Until(t time.Time) <-chan time.Time
 }
 
@@ -25,15 +25,15 @@ type realClock struct{}
 func (realClock) Now() time.Time                     { return time.Now() }
 func (realClock) Until(t time.Time) <-chan time.Time { return time.After(time.Until(t)) }
 
-// RealClock es el reloj del sistema. Las expresiones cron se interpretan en su zona
-// horaria (variable TZ del contenedor del agente; UTC si no se define).
+// RealClock is the system clock. Cron expressions are interpreted in its time
+// zone (TZ variable of the agent's container; UTC if not defined).
 var RealClock Clock = realClock{}
 
-// maxSchedWait acota cada espera: un salto del reloj del sistema se corrige en ≤ 1 min.
+// maxSchedWait bounds each wait: a jump of the system clock is corrected within ≤ 1 min.
 const maxSchedWait = time.Minute
 
-// maxLate es la tardanza máxima con la que aún se dispara una ejecución: si el agente (o el
-// equipo) estuvo suspendido más tiempo, la ejecución se salta y se recalcula la siguiente.
+// maxLate is the maximum lateness with which a run still fires: if the agent (or the
+// machine) was suspended longer, the run is skipped and the next one is recomputed.
 const maxLate = 5 * time.Minute
 
 type schedEntry struct {
@@ -42,10 +42,10 @@ type schedEntry struct {
 	next  time.Time
 }
 
-// Scheduler dispara fire(serverID) según la expresión cron de cada servidor. Usa
-// cron.ParseStandard de robfig/cron para calcular la siguiente ejecución y un bucle propio
-// con reloj inyectable (el runner de robfig usa el reloj real y no se puede probar). Una
-// ejecución perdida (agente parado) no se recupera.
+// Scheduler fires fire(serverID) according to each server's cron expression. It uses
+// robfig/cron's cron.ParseStandard to compute the next run and a loop of its own
+// with an injectable clock (robfig's runner uses the real clock and cannot be tested). A
+// missed run (agent stopped) is not recovered.
 type Scheduler struct {
 	clock   Clock
 	fire    func(serverID string)
@@ -54,25 +54,25 @@ type Scheduler struct {
 	wake    chan struct{}
 }
 
-// NewScheduler crea el planificador. fire se llama desde el bucle: debe volver enseguida.
+// NewScheduler creates the scheduler. fire is called from the loop: it must return right away.
 func NewScheduler(clock Clock, fire func(serverID string)) *Scheduler {
 	return &Scheduler{clock: clock, fire: fire, entries: map[string]*schedEntry{}, wake: make(chan struct{}, 1)}
 }
 
-// Set programa un servidor o lo reprograma si cambió la expresión (si no cambió, conserva
-// la próxima ejecución). Una expresión vacía lo desprograma.
+// Set schedules a server or reschedules it if the expression changed (if it did not change, it keeps
+// the next run). An empty expression unschedules it.
 func (s *Scheduler) Set(serverID, expr string) error {
 	if expr == "" {
 		s.Remove(serverID)
 		return nil
 	}
-	// ValidCron aplica el mismo criterio que el panel (sin @daily, nombres, ? ni CRON_TZ,
-	// solo ASCII); ParseStandard sola los aceptaría. Valida la expresión original, antes de
-	// normalizar. Ver TestSchedulerSetMatchesPanelFixture.
+	// ValidCron applies the same criterion as the panel (no @daily, names, ? or CRON_TZ,
+	// ASCII only); ParseStandard alone would accept them. It validates the original expression, before
+	// normalizing. See TestSchedulerSetMatchesPanelFixture.
 	if err := spec.ValidCron(expr); err != nil {
 		return err
 	}
-	expr = strings.Join(strings.Fields(expr), " ") // una variante con espacios no reprograma
+	expr = strings.Join(strings.Fields(expr), " ") // a variant with extra spaces does not reschedule
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e, ok := s.entries[serverID]; ok && e.expr == expr {
@@ -87,7 +87,7 @@ func (s *Scheduler) Set(serverID, expr string) error {
 	return nil
 }
 
-// Remove desprograma un servidor.
+// Remove unschedules a server.
 func (s *Scheduler) Remove(serverID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -97,7 +97,7 @@ func (s *Scheduler) Remove(serverID string) {
 	}
 }
 
-// IDs devuelve los servidores programados, ordenados.
+// IDs returns the scheduled servers, sorted.
 func (s *Scheduler) IDs() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,7 +109,7 @@ func (s *Scheduler) IDs() []string {
 	return out
 }
 
-// Next devuelve la próxima ejecución de un servidor.
+// Next returns a server's next run.
 func (s *Scheduler) Next(serverID string) (time.Time, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -127,7 +127,7 @@ func (s *Scheduler) poke() {
 	}
 }
 
-// Run ejecuta el bucle hasta que ctx termina.
+// Run runs the loop until ctx ends.
 func (s *Scheduler) Run(ctx context.Context) {
 	for {
 		now := s.clock.Now()
@@ -141,7 +141,7 @@ func (s *Scheduler) Run(ctx context.Context) {
 		for id, e := range s.entries {
 			if !e.next.After(now) {
 				if late := now.Sub(e.next); late > maxLate {
-					slog.Warn("copia programada saltada: el planificador despertó tarde", "serverId", id, "late", late.Round(time.Second))
+					slog.Warn("scheduled backup skipped: the scheduler woke up late", "serverId", id, "late", late.Round(time.Second))
 				} else {
 					due = append(due, dueItem{id, e})
 				}
@@ -154,8 +154,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 		s.mu.Unlock()
 		sort.Slice(due, func(i, j int) bool { return due[i].id < due[j].id })
 		for _, d := range due {
-			// Un Remove o Set posterior al vencimiento anula el disparo (la ventana restante
-			// es la de un Remove concurrente a la propia llamada a fire).
+			// A Remove or Set after the deadline voids the firing (the remaining window
+			// is that of a Remove concurrent with the fire call itself).
 			s.mu.Lock()
 			current := s.entries[d.id] == d.entry
 			s.mu.Unlock()
@@ -172,11 +172,11 @@ func (s *Scheduler) Run(ctx context.Context) {
 	}
 }
 
-// ShouldRun decide si un backup programado se hace (onlyIfPlayersSince, spec §6.5). Se
-// omite solo si: hay un backup anterior, el agente ha observado el servidor desde antes de
-// ese backup y nadie se ha conectado desde entonces. lastBackup debe ser el INICIO de la última
-// copia (con el fin, un jugador que entró durante la copia contaría como anterior y se omitiría
-// la siguiente). PlayerWatch muestrea cada ~10 s: una conexión más corta puede pasar inadvertida. Ante la duda (agente reiniciado), se hace.
+// ShouldRun decides whether a scheduled backup is made (onlyIfPlayersSince, spec §6.5). It is
+// skipped only if: there is a previous backup, the agent has observed the server since before
+// that backup and nobody has connected since. lastBackup must be the START of the last
+// backup (with the end, a player who joined during the backup would count as earlier and the next
+// one would be skipped). PlayerWatch samples every ~10 s: a shorter connection may go unnoticed. When in doubt (agent restarted), it is made.
 func ShouldRun(onlyIfPlayersSince bool, lastBackup, playersSeen, watchingSince time.Time) bool {
 	if !onlyIfPlayersSince || lastBackup.IsZero() {
 		return true
@@ -187,8 +187,8 @@ func ShouldRun(onlyIfPlayersSince bool, lastBackup, playersSeen, watchingSince t
 	return playersSeen.After(lastBackup)
 }
 
-// PlayerWatch recuerda cuándo se vio por última vez a algún jugador en cada servidor (con
-// cada estado observado, cada ~10 s). Solo en memoria: Since indica desde cuándo observa.
+// PlayerWatch remembers when any player was last seen on each server (with
+// each observed state, every ~10 s). In memory only: Since says since when it observes.
 type PlayerWatch struct {
 	now   func() time.Time
 	since time.Time
@@ -196,12 +196,12 @@ type PlayerWatch struct {
 	seen  map[string]time.Time
 }
 
-// NewPlayerWatch empieza a observar ahora.
+// NewPlayerWatch starts observing now.
 func NewPlayerWatch(now func() time.Time) *PlayerWatch {
 	return &PlayerWatch{now: now, since: now(), seen: map[string]time.Time{}}
 }
 
-// Observe anota el número de jugadores conectados de un servidor.
+// Observe records the number of players connected to a server.
 func (w *PlayerWatch) Observe(serverID string, playersOnline uint32) {
 	if playersOnline == 0 {
 		return
@@ -212,12 +212,12 @@ func (w *PlayerWatch) Observe(serverID string, playersOnline uint32) {
 	w.mu.Unlock()
 }
 
-// LastSeen es la última vez que el servidor tenía jugadores (cero si nunca desde Since).
+// LastSeen is the last time the server had players (zero if never since Since).
 func (w *PlayerWatch) LastSeen(serverID string) time.Time {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.seen[serverID]
 }
 
-// Since es desde cuándo se observa.
+// Since is since when it is observed.
 func (w *PlayerWatch) Since() time.Time { return w.since }

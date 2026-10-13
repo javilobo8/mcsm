@@ -1,4 +1,4 @@
-// Package app conecta todas las piezas del agente.
+// Package app wires together all the agent's pieces.
 package app
 
 import (
@@ -36,20 +36,20 @@ const (
 	retryEvery     = 2 * time.Second
 	droppedEvery   = 5 * time.Second
 	helloDockerTTL = 5 * time.Second
-	maxConcurrent  = 16 // operaciones de fondo simultáneas (observar/reconciliar) en todo el nodo
+	maxConcurrent  = 16 // simultaneous background operations (observe/reconcile) across the whole node
 )
 
-// logStream es un stream de logs abierto por el panel.
+// logStream is a log stream opened by the panel.
 type logStream struct {
 	cancel context.CancelFunc
-	done   chan struct{} // se cierra cuando la goroutine del stream termina
+	done   chan struct{} // closed when the stream's goroutine ends
 }
 
-// flight es el estado de una tarea de fondo por servidor: en curso y, si llegó otra
-// petición mientras tanto, pendiente de repetir una sola vez (coalescida).
+// flight is the state of a per-server background task: in progress and, if another
+// request arrived in the meantime, pending a single repeat (coalesced).
 type flight struct{ pending bool }
 
-// App es el agente completo: reconciliador, hub de logs y mensajes del panel.
+// App is the complete agent: reconciler, log hub and panel messages.
 type App struct {
 	cfg    Config
 	st     *store.Store
@@ -60,49 +60,49 @@ type App struct {
 	status mc.StatusFunc
 	rcon   func(ctx context.Context, host string, port uint16, password, command string) (string, error)
 
-	// send debe fijarse antes de lanzar goroutines (Run) o antes de usar la App (tests);
-	// después es de solo lectura. Por eso se lee sin lock.
+	// send must be set before launching goroutines (Run) or before using the App (tests);
+	// afterwards it is read-only. That is why it is read without a lock.
 	send func(*mcsmv1.Envelope) error
-	// life es el contexto de vida del agente (el de Run). Las operaciones que mutan
-	// Docker o disco lo usan en vez del de la sesión WS: un corte de la conexión no
-	// debe dejar a medias un recreado ni un borrado. Mismo régimen que send.
+	// life is the agent's life context (Run's). Operations that mutate
+	// Docker or disk use it instead of the WS session's: a connection drop must
+	// not leave a recreation or a deletion half done. Same regime as send.
 	life context.Context
 
 	mu      sync.Mutex // protege streams
 	streams map[uint64]*logStream
 
-	fmu     sync.Mutex // protege flights y forced
+	fmu     sync.Mutex // protects flights and forced
 	flights map[string]*flight
-	forced  map[string]bool // reconciliaciones pedidas sin backoff (SyncSpecs), pendientes de ejecutar
+	forced  map[string]bool // reconciliations requested without backoff (SyncSpecs), pending execution
 	sem     chan struct{}
-	bg      sync.WaitGroup // tareas de fondo (sincronización y despachos)
+	bg      sync.WaitGroup // background tasks (synchronization and dispatches)
 
-	xfer transferGate // transferencias de archivos en curso (files.go)
-	// fileWrites: mutaciones de archivos en curso por servidor; una restauración las espera
-	// tras reservar el servidor (integración de los Planes 4 y 5, ver filewrites.go).
+	xfer transferGate // file transfers in progress (files.go)
+	// fileWrites: file mutations in progress per server; a restore waits for them
+	// after reserving the server (integration of Plans 4 and 5, see filewrites.go).
 	fileWrites fileWrites
-	bk         *backupService // plan-4: copias, restauraciones, jobs y programación
-	// plan-8: mc-router del nodo (router.go).
+	bk         *backupService // plan-4: backups, restores, jobs and scheduling
+	// plan-8: the node's mc-router (router.go).
 	router *router.Manager
-	proxy  *dockerproxy.Proxy // plan-9: socket filtrado de Docker para el router
-	// plan-9: incidencias para el panel (Event), en su propia cola FIFO; bucles de crash.
+	proxy  *dockerproxy.Proxy // plan-9: filtered Docker socket for the router
+	// plan-9: events for the panel (Event), in their own FIFO queue; crash loops.
 	events  *outbox
 	crashes *crashloop.Tracker
 	intents *crashloop.Intents
-	// stopMu protege crashStops: la última parada por bucle decidida por servidor, pendiente de ejecutar. dispatch
-	// fusiona los disparos de un mismo servidor; la ejecución lee siempre la última decisión (plan-9, N1).
+	// stopMu protects crashStops: the last loop stop decided per server, pending execution. dispatch
+	// merges the firings of the same server; the execution always reads the last decision (plan-9, N1).
 	stopMu     sync.Mutex
 	crashStops map[string]crashStop
-	// plan-9: RotateToken. Run los conecta al cliente WS; en tests son no-ops o fakes.
+	// plan-9: RotateToken. Run connects them to the WS client; in tests they are no-ops or fakes.
 	setToken  func(string)
 	reconnect func()
-	rotateMu  sync.Mutex // serializa RotateToken: guardar, setToken, Ack y reconectar van juntos
+	rotateMu  sync.Mutex // serializes RotateToken: saving, setToken, Ack and reconnecting go together
 }
 
-// New construye la aplicación. send se fija después (Run) o en tests.
+// New builds the application. send is set later (Run) or in tests.
 func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App {
-	// plan-9 (fuera de ancla): todas las piezas usan el motor envuelto, que anota las paradas que pide el agente
-	// para no contarlas como crashes.
+	// plan-9 (outside anchor): all the pieces use the wrapped engine, which records the stops the agent requests
+	// so as not to count them as crashes.
 	intents := crashloop.NewIntents(time.Now)
 	eng = crashloop.Engine{Engine: eng, Intents: intents}
 	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{},
@@ -115,26 +115,26 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	a.hub = logs.NewHub(eng)
 	a.hub.SetSecrets(a.logSecrets)               // plan-9
 	a.bk = newBackupService(a, backup.RealClock) // plan-4
-	// plan-8: mc-router del nodo; con su autoscale, los servidores con hostname van bajo demanda.
-	// plan-9 (fuera de ancla): el router monta el socket del proxy, no el de Docker.
+	// plan-8: the node's mc-router; with its autoscale, servers with a hostname are on-demand.
+	// plan-9 (outside anchor): the router mounts the proxy socket, not Docker's.
 	a.proxy = dockerproxy.New(dockerproxy.Options{Listen: proxySocketPath(cfg.DataRoot), Upstream: router.HostSocket,
 		Policy: a.routerPolicy, UID: 65532, GID: 65532, Log: log})
 	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot),
 		ProxySocket: proxySocketPath(cfg.DataRoot), ProxyReady: a.proxy.Ready})
 	a.rec.SetOnDemand(a.onDemand)
-	// plan-9: cola de Event (a.send se lee al entregar) y el drift del reconciliador, sin bloquear su lock.
-	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log, "eventos para el panel (Event)")
+	// plan-9: Event queue (a.send is read on delivery) and the reconciler's drift, without blocking its lock.
+	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log, "events for the panel (Event)")
 	a.rec.SetEventSink(func(id, kind, msg string) { a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_WARN, kind, msg) })
-	// plan-9: arrancar a mano empieza la cuenta de crashes de cero, solo si Power acepta la acción (no si responde
-	// busy) y antes de la acción en Docker: un cierre con error mientras arranca no se suma a los de antes.
+	// plan-9: starting by hand starts the crash count from zero, only if Power accepts the action (not if it replies
+	// busy) and before the Docker action: an error exit while starting is not added to the earlier ones.
 	a.rec.SetOnManualStart(a.crashes.Reset)
 	return a
 }
 
-// Run es el punto de entrada del binario.
+// Run is the binary's entry point.
 func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
-	// §6.1: sin el montaje espejo de DATA_ROOT el agente trabajaría sobre su propio
-	// contenedor sin enterarse; mejor no arrancar.
+	// §6.1: without the mirror mount of DATA_ROOT the agent would work on its own
+	// container without noticing; better not to start.
 	if err := checkDataRoot(cfg.DataRoot, hostProbe, log); err != nil {
 		return err
 	}
@@ -151,22 +151,22 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		return err
 	}
 	if _, err := eng.Version(ctx); err != nil {
-		return fmt.Errorf("no se puede hablar con Docker (¿está montado /var/run/docker.sock?): %w", err)
+		return fmt.Errorf("cannot talk to Docker (is /var/run/docker.sock mounted?): %w", err)
 	}
 	if err := eng.EnsureNetwork(ctx, cfg.Network); err != nil {
-		return fmt.Errorf("crear red %s: %w", cfg.Network, err)
+		return fmt.Errorf("create network %s: %w", cfg.Network, err)
 	}
 
-	// Spec §6.1: solo se da de alta si no hay token guardado.
+	// Spec §6.1: it only enrolls if there is no stored token.
 	creds, err := st.Credentials()
 	if err != nil {
 		return err
 	}
 	if creds == nil {
 		if cfg.EnrollToken == "" {
-			return errors.New("este agente no está dado de alta: define ENROLL_TOKEN (se genera en Nodos → Añadir nodo)")
+			return errors.New("this agent is not enrolled: set ENROLL_TOKEN (generated in Nodes → Add node)")
 		}
-		log.Info("dando de alta el nodo en el panel", "panel", cfg.PanelURL)
+		log.Info("enrolling the node with the panel", "panel", cfg.PanelURL)
 		res, err := conn.Enroll(ctx, cfg.PanelURL, cfg.EnrollToken, cfg.NameHint, cfg.Version)
 		if err != nil {
 			return err
@@ -175,7 +175,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		if err := st.SaveCredentials(*creds); err != nil {
 			return err
 		}
-		log.Info("nodo dado de alta", "node_id", res.NodeID)
+		log.Info("node enrolled", "node_id", res.NodeID)
 	}
 
 	a := New(cfg, st, eng, log)
@@ -183,27 +183,27 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		PanelURL: cfg.PanelURL, Token: creds.Token, Hello: a.hello, Handler: a, Log: log,
 		OnDisconnect: a.cancelAllStreams,
 		OnAuthRejected: func() {
-			log.Error("el panel rechazó el token del nodo (401): el nodo pudo ser borrado o su token rotado; borra el volumen de AGENT_DATA y vuelve a darlo de alta con un token nuevo (ENROLL_TOKEN se ignora mientras haya credenciales guardadas)")
+			log.Error("the panel rejected the node's token (401): the node may have been deleted or its token rotated; delete the AGENT_DATA volume and enroll it again with a new token (ENROLL_TOKEN is ignored while there are stored credentials)")
 		},
 	})
 	a.send = func(e *mcsmv1.Envelope) error { return client.Send(ctx, e) }
-	a.setToken, a.reconnect = client.SetToken, client.Reconnect // plan-9 (fuera de ancla): RotateToken
+	a.setToken, a.reconnect = client.SetToken, client.Reconnect // plan-9 (outside anchor): RotateToken
 	a.life = ctx
-	// plan-4 (fuera de ancla: tiene que ir antes de la primera reconciliación y de aceptar
-	// jobs): save-on y jobs que un cierre o crash dejó a medias, y el disco de cada servidor.
-	// Una restauración interrumpida puede dejar un servidor sin data, y reconcileAll lo
-	// arrancaría con un mundo nuevo.
+	// plan-4 (outside anchor: it has to go before the first reconciliation and before accepting
+	// jobs): save-on and jobs that a shutdown or crash left half done, and each server's disk.
+	// An interrupted restore can leave a server without data, and reconcileAll would
+	// start it with a new world.
 	a.bk.recoverAtStart(ctx)
 
-	// plan-9: sin proxy el router no se despliega (error en su estado). El primer Listen va antes de la primera pasada
-	// del router; si falla, Run lo reintenta con backoff y despliega el router en cuanto escucha.
+	// plan-9: without the proxy the router is not deployed (error in its state). The first Listen goes before the router's
+	// first pass; if it fails, Run retries with backoff and deploys the router as soon as it listens.
 	if err := a.proxy.Listen(); err != nil {
-		log.Error("proxy del socket de Docker para el router; se reintenta", "err", err)
+		log.Error("Docker socket proxy for the router; retrying", "err", err)
 	}
 	go a.proxy.Run(ctx, func() { a.routerAsync(ctx) })
 	go a.eventLoop(ctx)
 	go a.tickers(ctx)
-	// §6.1: primero el WS; la primera pasada de reconciliación va en segundo plano.
+	// §6.1: the WS first; the first reconciliation pass runs in the background.
 	go a.reconcileAll(ctx)
 	// ── plan-2 ──
 	go a.runMetrics(ctx)
@@ -211,7 +211,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-4 ──
 	a.bk.start(ctx)
 	// ── plan-5 ──
-	go a.sweepTemps(ctx) // temporales huérfanos de subidas cortadas (kill -9, corte de luz)
+	go a.sweepTemps(ctx) // orphaned temporaries of interrupted uploads (kill -9, power cut)
 	// ── plan-6 ──
 	// ── plan-7 ──
 	// ── plan-8 ──
@@ -219,14 +219,14 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-9 ──
 	go a.events.run(ctx)
 	client.Run(ctx)
-	// Cierre (ctx ya cancelado), las dos esperas EN PARALELO para que el total no pase de
-	// shutdownWait (25 s < stop_grace_period de 30 s):
-	//   - los Files* en curso (ya cortados por ctx) terminan de limpiar sus temporales;
-	//   - plan-4: las copias en curso abortan y su defer envía save-on.
+	// Shutdown (ctx already cancelled), the two waits IN PARALLEL so that the total does not exceed
+	// shutdownWait (25 s < stop_grace_period of 30 s):
+	//   - the Files* in progress (already cut by ctx) finish cleaning their temporaries;
+	//   - plan-4: the backups in progress abort and their defer sends save-on.
 	waitAll(
 		func() bool {
 			if !a.xfer.wait(filesShutdownWait) {
-				log.Warn("cierre sin esperar a las operaciones de archivos en curso: venció el plazo", "plazo", filesShutdownWait)
+				log.Warn("shutting down without waiting for the file operations in progress: the deadline expired", "deadline", filesShutdownWait)
 				return false
 			}
 			return true
@@ -239,7 +239,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 	specs, err := a.st.ListSpecs()
 	if err != nil {
-		a.log.Error("listar specs para el Hello", "err", err)
+		a.log.Error("list specs for the Hello", "err", err)
 	}
 	vers := make(map[string]uint64, len(specs))
 	desired := make(map[string]mcsmv1.DesiredState, len(specs))
@@ -249,7 +249,7 @@ func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 	}
 	vctx, cancel := context.WithTimeout(ctx, helloDockerTTL)
 	dv, _ := a.eng.Version(vctx)
-	host, herr := a.eng.HostName(vctx) // plan-9: el host del daemon, no el id del contenedor del agente
+	host, herr := a.eng.HostName(vctx) // plan-9: the daemon's host, not the agent container's id
 	cancel()
 	if herr != nil || host == "" {
 		host, _ = os.Hostname()
@@ -261,17 +261,17 @@ func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 	return &mcsmv1.Hello{AgentVersion: a.cfg.Version, DockerVersion: dv, Host: info, SpecVersions: vers, DesiredStates: desired}
 }
 
-// onObserved se invoca con el lock por servidor tomado: no puede llamar al reconciliador.
+// onObserved is invoked with the per-server lock held: it cannot call the reconciler.
 func (a *App) onObserved(serverID string, obs *mcsmv1.Observed) {
-	a.bk.players.Observe(serverID, obs.GetMc().GetPlayersOnline()) // plan-4: onlyIfPlayersSince (solo su propio mutex)
+	a.bk.players.Observe(serverID, obs.GetMc().GetPlayersOnline()) // plan-4: onlyIfPlayersSince (only its own mutex)
 	_ = a.send(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_ServerObserved{ServerObserved: &mcsmv1.ServerObserved{
 		ServerId: serverID, Observed: obs, TsUnixMs: time.Now().UnixMilli(),
 	}}})
 }
 
-// validUTF8 sanea texto que viene del contenedor: proto3 rechaza string con UTF-8
-// inválido (el truncado por bytes puede partir una runa, o la salida no es UTF-8) y
-// proto.Marshal fallaría, perdiendo el mensaje en silencio.
+// validUTF8 sanitizes text coming from the container: proto3 rejects strings with
+// invalid UTF-8 (truncating by bytes can split a rune, or the output is not UTF-8) and
+// proto.Marshal would fail, silently losing the message.
 func validUTF8(s string) string { return strings.ToValidUTF8(s, "\uFFFD") }
 
 func ack(id uint64) *mcsmv1.Envelope {
@@ -282,22 +282,22 @@ func errMsg(id uint64, code string, err error) *mcsmv1.Envelope {
 	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_Error{Error: &mcsmv1.Error{Code: code, Message: err.Error()}}}
 }
 
-// validSpecMsg comprueba lo mínimo para guardar una spec del panel: server_id y slug
-// (el slug acaba en rutas de disco y nombres de contenedor).
+// validSpecMsg checks the minimum to store a spec from the panel: server_id and slug
+// (the slug ends up in disk paths and container names).
 func validSpecMsg(sp *mcsmv1.ServerSpec) error {
 	if sp == nil || sp.ServerId == "" || !spec.ValidSlug(sp.Slug) {
-		return errors.New("spec inválida: server_id o slug no válido")
+		return errors.New("invalid spec: invalid server_id or slug")
 	}
 	return nil
 }
 
-// applySpec valida y aplica una spec del panel (guarda de versión incluida en el reconciliador).
+// applySpec validates and applies a spec from the panel (version guard included in the reconciler).
 func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string, err error) {
 	if err := validSpecMsg(sp); err != nil {
 		return errcode.InvalidSpec, err
 	}
 	if err := a.rec.Apply(ctx, sp); err != nil {
-		if errors.Is(err, reconcile.ErrDataPathUnverified) { // plan-6 (H1): dataPath que el agente no verificó
+		if errors.Is(err, reconcile.ErrDataPathUnverified) { // plan-6 (H1): a dataPath the agent did not verify
 			return errcode.BadSpec, err
 		}
 		return busyOr(err, errcode.ApplyFailed), err
@@ -305,8 +305,8 @@ func (a *App) applySpec(ctx context.Context, sp *mcsmv1.ServerSpec) (code string
 	return "", nil
 }
 
-// busyOr devuelve errcode.Busy (409 en el panel) si err es un servidor ocupado o reservado
-// (reconcile.ErrBusy: copia, restauración o bloqueado sin datos), y fallback en otro caso.
+// busyOr returns errcode.Busy (409 in the panel) if err is a busy or reserved server
+// (reconcile.ErrBusy: backup, restore or locked without data), and fallback otherwise.
 func busyOr(err error, fallback string) string {
 	if errors.Is(err, reconcile.ErrBusy) {
 		return errcode.Busy
@@ -314,36 +314,36 @@ func busyOr(err error, fallback string) string {
 	return fallback
 }
 
-// syncSpecs aplica la foto del panel al reconectar (spec §3: el panel es la verdad).
+// syncSpecs applies the panel's snapshot on reconnecting (spec §3: the panel is the truth).
 //
-//  1. removed_ids primero: se borra su spec del store (nada puede resucitarlos).
-//  2. Se guardan forzadas todas las specs recibidas, sin guarda de versión (la BD del
-//     panel pudo restaurarse) y sin reconciliar en línea.
-//  3. Ack inmediato: el panel retiene el resto de peticiones hasta recibirlo
-//     (AgentConn.ready), así que esta fase solo toca el store.
-//  4. En segundo plano y con el contexto de vida: se paran y borran los contenedores
-//     retirados y, después (un slug borrado y recreado sin conexión reutiliza el
-//     nombre del contenedor), se reconcilia cada servidor recibido sin backoff.
+//  1. removed_ids first: their spec is deleted from the store (nothing can resurrect them).
+//  2. All the received specs are stored forced, without a version guard (the panel's
+//     DB may have been restored) and without reconciling inline.
+//  3. Immediate Ack: the panel holds back the rest of the requests until it receives it
+//     (AgentConn.ready), so this phase only touches the store.
+//  4. In the background and with the life context: the withdrawn containers are stopped and
+//     deleted and, afterwards (a slug deleted and recreated while offline reuses the
+//     container name), each received server is reconciled without backoff.
 //
-// Un ApplySpec posterior con versión mayor gana: Apply mantiene su guarda de versión y
-// la reconciliación de fondo lee siempre la spec vigente del store.
+// A later ApplySpec with a higher version wins: Apply keeps its version guard and
+// the background reconciliation always reads the current spec from the store.
 func (a *App) syncSpecs(id uint64, req *mcsmv1.SyncSpecs, send func(*mcsmv1.Envelope) error) {
 	life := a.life
 	var removed, synced []string
 	for _, sid := range req.RemovedIds {
 		if err := a.rec.Forget(sid); err != nil {
-			a.log.Warn("olvidar servidor retirado", "id", sid, "err", err)
+			a.log.Warn("forget withdrawn server", "id", sid, "err", err)
 			continue
 		}
 		removed = append(removed, sid)
 	}
 	for _, sp := range req.Servers {
 		if err := validSpecMsg(sp); err != nil {
-			a.log.Warn("spec de la sincronización ignorada", "id", sp.GetServerId(), "err", err)
+			a.log.Warn("sync spec ignored", "id", sp.GetServerId(), "err", err)
 			continue
 		}
 		if err := a.rec.StoreForce(sp); err != nil {
-			a.log.Warn("guardar spec de la sincronización", "id", sp.ServerId, "err", err)
+			a.log.Warn("store sync spec", "id", sp.ServerId, "err", err)
 			continue
 		}
 		synced = append(synced, sp.ServerId)
@@ -359,7 +359,7 @@ func (a *App) syncSpecs(id uint64, req *mcsmv1.SyncSpecs, send func(*mcsmv1.Enve
 			go func() {
 				defer wg.Done()
 				if err := a.rec.Remove(life, sid, false); err != nil {
-					a.log.Warn("eliminar servidor retirado", "id", sid, "err", err)
+					a.log.Warn("remove withdrawn server", "id", sid, "err", err)
 					return
 				}
 				a.hub.Reset(sid)
@@ -372,13 +372,13 @@ func (a *App) syncSpecs(id uint64, req *mcsmv1.SyncSpecs, send func(*mcsmv1.Enve
 	}()
 }
 
-// Handle implementa conn.Handler. ctx es el de la sesión WS: solo vale para lo ligado a
-// ella (streams, RCON). Lo que muta Docker o disco usa a.life.
+// Handle implements conn.Handler. ctx is the WS session's: it is only good for what is tied to
+// it (streams, RCON). What mutates Docker or disk uses a.life.
 func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv1.Envelope) error) {
 	life := a.life
 	switch b := env.Body.(type) {
 	case *mcsmv1.Envelope_HelloAck:
-		a.log.Info("panel confirmó la sesión", "node_id", b.HelloAck.NodeId)
+		a.log.Info("panel confirmed the session", "node_id", b.HelloAck.NodeId)
 
 	case *mcsmv1.Envelope_SyncSpecs:
 		a.syncSpecs(env.Id, b.SyncSpecs, send)
@@ -408,7 +408,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	case *mcsmv1.Envelope_SendCommand:
 		sp, err := a.st.GetSpec(b.SendCommand.ServerId)
 		if err != nil || sp == nil {
-			_ = send(errMsg(env.Id, errcode.UnknownServer, errors.New("servidor desconocido")))
+			_ = send(errMsg(env.Id, errcode.UnknownServer, errors.New("unknown server")))
 			return
 		}
 		parsed, err := spec.Parse(sp.SpecJson)
@@ -427,7 +427,7 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 
 	case *mcsmv1.Envelope_SubscribeLogs:
 		if sp, err := a.st.GetSpec(b.SubscribeLogs.ServerId); err != nil || sp == nil {
-			_ = send(errMsg(env.Id, errcode.UnknownServer, errors.New("servidor desconocido")))
+			_ = send(errMsg(env.Id, errcode.UnknownServer, errors.New("unknown server")))
 			return
 		}
 		a.startLogStream(ctx, env.Id, b.SubscribeLogs, send)
@@ -441,9 +441,9 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		a.mu.Unlock()
 
 	case *mcsmv1.Envelope_Ack, *mcsmv1.Envelope_Error:
-		// El agente no hace peticiones al panel: nada espera estas respuestas, y contestar
-		// un Error con otro Error podría encadenar un bucle. Se ignoran.
-		a.log.Debug("respuesta del panel ignorada", "type", fmt.Sprintf("%T", env.Body), "id", env.Id)
+		// The agent makes no requests to the panel: nothing waits for these responses, and replying
+		// to an Error with another Error could chain into a loop. They are ignored.
+		a.log.Debug("panel response ignored", "type", fmt.Sprintf("%T", env.Body), "id", env.Id)
 
 	// ── plan-2 ──
 	// ── plan-3 ──
@@ -460,16 +460,16 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	case *mcsmv1.Envelope_FilesList, *mcsmv1.Envelope_FilesStat, *mcsmv1.Envelope_FilesRead,
 		*mcsmv1.Envelope_FilesWrite, *mcsmv1.Envelope_FilesMkdir, *mcsmv1.Envelope_FilesRename,
 		*mcsmv1.Envelope_FilesDelete, *mcsmv1.Envelope_FilesDownload, *mcsmv1.Envelope_FilesUpload:
-		// Disco y transferencias con el contexto de vida: un corte del WS no los aborta.
+		// Disk and transfers with the life context: a WS drop does not abort them.
 		a.handleFiles(life, env, send)
 	// ── plan-6 ──
 	case *mcsmv1.Envelope_ImportScan:
-		a.handleImportScan(ctx, env.Id, send) // solo lectura: contexto de la sesión
+		a.handleImportScan(ctx, env.Id, send) // read-only: session context
 	case *mcsmv1.Envelope_ImportAdopt:
-		a.handleImportAdopt(env.Id, b.ImportAdopt, send) // muta Docker y store: a.life dentro
+		a.handleImportAdopt(env.Id, b.ImportAdopt, send) // mutates Docker and store: a.life inside
 	// ── plan-7 ──
 	case *mcsmv1.Envelope_BackupPush:
-		// Disco y transferencia con el contexto de vida: un corte del WS no la aborta.
+		// Disk and transfer with the life context: a WS drop does not abort it.
 		a.handleBackupPush(life, env.Id, b.BackupPush, send)
 	case *mcsmv1.Envelope_MigrateReceive:
 		a.bk.handleMigrateReceive(env.Id, b.MigrateReceive, send)
@@ -489,11 +489,11 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		a.handleRotateToken(env.Id, b.RotateToken, send)
 
 	default:
-		// Body nil: un panel más nuevo envió un cuerpo que este agente no conoce (protobuf lo
-		// deja en campos desconocidos). Si no, es un cuerpo conocido que el panel no envía.
-		msg := "mensaje desconocido: actualiza el agente"
+		// Body nil: a newer panel sent a body this agent does not know (protobuf leaves it in
+		// unknown fields). Otherwise, it is a known body that the panel does not send.
+		msg := "unknown message: update the agent"
 		if env.Body != nil {
-			msg = fmt.Sprintf("mensaje no soportado por el agente: %T", env.Body)
+			msg = fmt.Sprintf("message not supported by the agent: %T", env.Body)
 		}
 		a.log.Warn(msg, "id", env.Id)
 		if env.Id != 0 {
@@ -518,7 +518,7 @@ func (a *App) startLogStream(parent context.Context, streamID uint64, req *mcsmv
 			cancel()
 			defer close(me.done)
 			a.mu.Lock()
-			if a.streams[streamID] == me { // no borrar un stream que lo reemplazó
+			if a.streams[streamID] == me { // do not delete a stream that replaced it
 				delete(a.streams, streamID)
 			}
 			a.mu.Unlock()
@@ -527,7 +527,7 @@ func (a *App) startLogStream(parent context.Context, streamID uint64, req *mcsmv
 		for ctx.Err() == nil {
 			if cid := a.rec.ContainerID(ctx, req.ServerId); cid != "" {
 				if sub, err := a.hub.SubscribeSub(req.ServerId, cid, tail); err == nil {
-					tail = 0 // tras una reconexión al contenedor no repetimos el histórico
+					tail = 0 // after reconnecting to the container we do not repeat the history
 					a.pumpLogs(ctx, streamID, req.ServerId, sub, send)
 					sub.Close()
 				}
@@ -541,15 +541,15 @@ func (a *App) startLogStream(parent context.Context, streamID uint64, req *mcsmv
 	}()
 }
 
-// pumpLogs reenvía las líneas de sub hasta que ctx termina o el follower se cierra, y cada droppedEvery avisa al
-// panel de las líneas descartadas por ir lento (StreamDropped, spec §5.2).
+// pumpLogs forwards sub's lines until ctx ends or the follower closes, and every droppedEvery it notifies the
+// panel of the lines dropped for being slow (StreamDropped, spec §5.2).
 func (a *App) pumpLogs(ctx context.Context, streamID uint64, serverID string, sub *logs.Subscription, send func(*mcsmv1.Envelope) error) {
 	tick := time.NewTicker(droppedEvery)
 	defer tick.Stop()
 	a.pump(ctx, streamID, serverID, sub.Lines, sub.Dropped, tick.C, send)
 }
 
-// pump es pumpLogs con sus fuentes inyectables (tests): las líneas, el contador acumulado de descartes y el tick.
+// pump is pumpLogs with its sources injectable (tests): the lines, the accumulated drop counter and the tick.
 func (a *App) pump(ctx context.Context, streamID uint64, serverID string, lines <-chan logs.Line, dropped func() uint64, tick <-chan time.Time, send func(*mcsmv1.Envelope) error) {
 	var reported uint64
 	for {
@@ -559,7 +559,7 @@ func (a *App) pump(ctx context.Context, streamID uint64, serverID string, lines 
 		case <-tick:
 			if d := dropped(); d > reported {
 				_ = send(&mcsmv1.Envelope{StreamId: streamID, Body: &mcsmv1.Envelope_StreamDropped{StreamDropped: &mcsmv1.StreamDropped{Count: d - reported}}})
-				a.log.Warn("líneas de log descartadas por suscriptor lento", "server", serverID, "stream", streamID, "nuevas", d-reported, "total", d)
+				a.log.Warn("log lines dropped because of a slow subscriber", "server", serverID, "stream", streamID, "new", d-reported, "total", d)
 				reported = d
 			}
 		case line, ok := <-lines:
@@ -592,14 +592,14 @@ func (a *App) eventLoop(ctx context.Context) {
 				return
 			case err := <-errs:
 				if err != nil && !errors.Is(err, context.Canceled) {
-					a.log.Warn("stream de eventos Docker cortado", "err", err)
+					a.log.Warn("Docker event stream cut", "err", err)
 				}
 				break loop
 			case ev, ok := <-events:
 				if !ok {
 					break loop
 				}
-				if isRouterEvent(ev.Labels) { // plan-8: el contenedor del router
+				if isRouterEvent(ev.Labels) { // plan-8: the router's container
 					a.routerEvent(ctx, ev.Action)
 					continue
 				}
@@ -610,13 +610,13 @@ func (a *App) eventLoop(ctx context.Context) {
 				if ev.Action == "destroy" {
 					a.hub.Reset(id)
 				}
-				// plan-9: crashes y OOM (spec §10).
+				// plan-9: crashes and OOM (spec §10).
 				switch ev.Action {
 				case "die":
 					a.onDie(id, ev)
 				case "oom":
 					a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_WARN, KindOOM,
-						"Docker ha matado el servidor por falta de memoria: sube la memoria o el límite del contenedor en Configuración → Recursos")
+						"Docker killed the server because it ran out of memory: raise the memory or the container limit in Configuration → Resources")
 				}
 				switch ev.Action {
 				case "start", "die", "stop", "kill", "destroy", "oom", "health_status: healthy", "health_status: unhealthy", "restart":
@@ -652,17 +652,17 @@ func (a *App) tickers(ctx context.Context) {
 	}
 }
 
-// observeAsync observa un servidor sin bloquear al llamador: un servidor en una
-// operación larga (pull, stop de 60 s) solo retiene su propia tarea.
+// observeAsync observes a server without blocking the caller: a server in a
+// long operation (pull, 60 s stop) only holds back its own task.
 func (a *App) observeAsync(ctx context.Context, id string) {
 	a.dispatch(ctx, "obs:"+id, func() { a.rec.Observe(ctx, id) })
 }
 
-// reconcileAll ejecuta una pasada de reconciliación sin bloquear al llamador. Primero
-// reintenta los borrados pendientes de servidores retirados (lápidas; acotados por pasada
-// y con backoff en el reconciliador): un slug retirado y recreado con otro id reutiliza el
-// nombre del contenedor. Después reconcilia cada servidor por separado y sin esperar a
-// ninguno.
+// reconcileAll runs a reconciliation pass without blocking the caller. It first
+// retries the pending deletions of withdrawn servers (tombstones; bounded per pass
+// and with backoff in the reconciler): a withdrawn slug recreated with another id reuses the
+// container name. Then it reconciles each server separately and without waiting for
+// any.
 func (a *App) reconcileAll(ctx context.Context) {
 	a.dispatch(ctx, "reconcile-all", func() {
 		for _, id := range a.rec.RetryRemovals(ctx) {
@@ -670,7 +670,7 @@ func (a *App) reconcileAll(ctx context.Context) {
 		}
 		specs, err := a.st.ListSpecs()
 		if err != nil {
-			a.log.Error("listar specs", "err", err)
+			a.log.Error("list specs", "err", err)
 			return
 		}
 		for _, sp := range specs {
@@ -679,9 +679,9 @@ func (a *App) reconcileAll(ctx context.Context) {
 	})
 }
 
-// reconcileAsync reconcilia un servidor con el despachador por servidor. Con force se
-// salta el backoff (SyncSpecs); la marca se consume al ejecutar, así que sobrevive a la
-// coalescencia con un tick que ya estaba en curso.
+// reconcileAsync reconciles a server with the per-server dispatcher. With force it
+// skips the backoff (SyncSpecs); the mark is consumed on execution, so it survives
+// coalescing with a tick that was already in progress.
 func (a *App) reconcileAsync(ctx context.Context, id string, force bool) {
 	if force {
 		a.fmu.Lock()
@@ -700,13 +700,13 @@ func (a *App) reconcileAsync(ctx context.Context, id string, force bool) {
 			err = a.rec.ReconcileTick(ctx, id)
 		}
 		if err != nil {
-			a.log.Warn("reconciliar", "server", id, "err", err)
+			a.log.Warn("reconcile", "server", id, "err", err)
 		}
 	})
 }
 
-// dispatch ejecuta fn en una goroutine con concurrencia acotada. Si ya hay una tarea
-// con la misma clave en curso no se apila otra: se anota una repetición pendiente.
+// dispatch runs fn in a goroutine with bounded concurrency. If a task with the
+// same key is already in progress another is not stacked: a pending repeat is recorded.
 func (a *App) dispatch(ctx context.Context, key string, fn func()) {
 	a.fmu.Lock()
 	if f, ok := a.flights[key]; ok {
@@ -740,9 +740,9 @@ func (a *App) dispatch(ctx context.Context, key string, fn func()) {
 	}()
 }
 
-// waitAll ejecuta a la vez las esperas del cierre (cada una con su propio tope) y vuelve
-// cuando han terminado todas: el total es el mayor de los topes, no la suma. false si
-// alguna venció su plazo.
+// waitAll runs the shutdown waits at the same time (each with its own cap) and returns
+// when all have finished: the total is the greatest of the caps, not the sum. false if
+// any exceeded its deadline.
 func waitAll(waits ...func() bool) bool {
 	results := make(chan bool, len(waits))
 	for _, w := range waits {

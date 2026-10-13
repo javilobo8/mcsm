@@ -10,15 +10,15 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 )
 
-// bJobs guarda los jobs largos (backup, restore) por job_id: así el agente responde a un
-// job_id repetido con su resultado (spec §5.4) e informa al panel tras reconectar. El bucket
-// se crea al primer uso para no tocar la lista de buckets de Open.
+// bJobs stores the long jobs (backup, restore) by job_id: this way the agent answers a repeated
+// job_id with its result (spec §5.4) and informs the panel after reconnecting. The bucket
+// is created on first use so as not to touch Open's bucket list.
 var bJobs = []byte("jobs")
 
-// PutJob guarda (o reemplaza) el registro de un job.
+// PutJob stores (or replaces) a job's record.
 func (s *Store) PutJob(j *mcsmv1.JobRecord) error {
 	if j.GetJobId() == "" {
-		return errors.New("store: job sin id")
+		return errors.New("store: job without id")
 	}
 	raw, err := proto.Marshal(j)
 	if err != nil {
@@ -33,7 +33,7 @@ func (s *Store) PutJob(j *mcsmv1.JobRecord) error {
 	})
 }
 
-// GetJob devuelve el job o nil si no existe.
+// GetJob returns the job or nil if it does not exist.
 func (s *Store) GetJob(id string) (*mcsmv1.JobRecord, error) {
 	var out *mcsmv1.JobRecord
 	err := s.db.View(func(tx *bbolt.Tx) error {
@@ -55,7 +55,7 @@ func (s *Store) GetJob(id string) (*mcsmv1.JobRecord, error) {
 	return out, err
 }
 
-// ListJobs devuelve todos los jobs guardados.
+// ListJobs returns all the stored jobs.
 func (s *Store) ListJobs() ([]*mcsmv1.JobRecord, error) {
 	var out []*mcsmv1.JobRecord
 	err := s.db.View(func(tx *bbolt.Tx) error {
@@ -75,7 +75,7 @@ func (s *Store) ListJobs() ([]*mcsmv1.JobRecord, error) {
 	return out, err
 }
 
-// PruneJobs borra los jobs terminados antes de before (los RUNNING nunca). Devuelve cuántos.
+// PruneJobs deletes the jobs finished before before (RUNNING ones never). It returns how many.
 func (s *Store) PruneJobs(before time.Time) (int, error) {
 	n := 0
 	err := s.db.Update(func(tx *bbolt.Tx) error {
@@ -91,10 +91,10 @@ func (s *Store) PruneJobs(before time.Time) (int, error) {
 			}
 			end := j.FinishedUnixMs
 			if end == 0 {
-				end = j.StartedUnixMs // terminado sin hora de fin: se poda por la de inicio
+				end = j.StartedUnixMs // finished without an end time: pruned by its start time
 			}
 			if j.Status != mcsmv1.JobStatus_JOB_STATUS_RUNNING && end > 0 && end < before.UnixMilli() {
-				del = append(del, append([]byte(nil), k...)) // k solo vale dentro de la transacción
+				del = append(del, append([]byte(nil), k...)) // k is only valid inside the transaction
 			}
 			return nil
 		})

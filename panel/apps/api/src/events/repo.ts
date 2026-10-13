@@ -11,7 +11,7 @@ export const toEventDto = (r: EventRow): EventDto => ({
   message: r.message, createdAt: r.created_at, agentAt: r.agent_at,
 });
 
-/** Niveles que incluye cada nivel mínimo. */
+/** Levels that each minimum level includes. */
 const AT_LEAST: Record<EventLevelName, EventLevelName[]> = { info: ["info", "warn", "error"], warn: ["warn", "error"], error: ["error"] };
 
 export class EventsRepo {
@@ -22,7 +22,7 @@ export class EventsRepo {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(r.id, r.node_id, r.server_id, r.server_name, r.level, r.kind, r.message, r.agent_at, r.created_at);
   }
 
-  /** Más nuevos primero. */
+  /** Newest first. */
   list(f: Partial<EventsQuery> & { limit: number }): EventRow[] {
     const where: string[] = [];
     const args: (string | number)[] = [];
@@ -45,7 +45,7 @@ export class EventsRepo {
     return this.db.prepare(sql).all(...args) as unknown as EventRow[];
   }
 
-  /** Borra lo anterior a `olderThan` y, de lo que quede, todo menos los `keep` más nuevos. Devuelve cuántos borró. */
+  /** Deletes anything older than `olderThan` and, of what remains, everything except the `keep` newest. Returns how many it deleted. */
   purge(olderThan: string, keep: number): number {
     const old = Number(this.db.prepare("DELETE FROM events WHERE created_at < ?").run(olderThan).changes);
     const extra = Number(this.db.prepare(

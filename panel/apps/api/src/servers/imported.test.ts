@@ -20,7 +20,7 @@ const req = (method: "GET" | "POST" | "PATCH" | "DELETE", url: string, payload?:
   app.inject({ method, url, headers: { cookie }, ...(payload ? { payload } : {}) });
 
 const DATA = "/home/lobo/mc/viejo";
-/** Un importado con dataPath, insertado como lo hará ImportService (Task 10). */
+/** An imported server with dataPath, inserted as ImportService will (Task 10). */
 function imported() {
   const row = app.servers.create({
     nodeId, name: "Viejo", slug: "viejo", desiredState: "running",
@@ -31,8 +31,8 @@ function imported() {
   });
 }
 
-describe("servidores importados", () => {
-  it("la migración 050 deja imported_from en null para los servidores del panel; el DTO lo expone", async () => {
+describe("imported servers", () => {
+  it("migration 050 leaves imported_from null for the panel's servers; the DTO exposes it", async () => {
     const s = (await req("POST", "/api/servers", { nodeId, name: "Nuevo" })).json();
     expect(s.importedFrom).toBeNull();
     const row = imported();
@@ -41,12 +41,12 @@ describe("servidores importados", () => {
     expect(dto.spec.dataPath).toBe(DATA);
   });
 
-  it("crear un servidor con dataPath da 400 (solo lo fija la importación)", async () => {
+  it("creating a server with dataPath gives 400 (only import sets it)", async () => {
     const res = await req("POST", "/api/servers", { nodeId, name: "X", spec: { dataPath: "/home/lobo/otra" } });
     expect(res.statusCode).toBe(400);
   });
 
-  it("PATCH: el formulario conserva dataPath; cambiarlo o quitarlo (null) da 400", async () => {
+  it("PATCH: the form keeps dataPath; changing or removing it (null) gives 400", async () => {
     const row = imported();
     let res = await req("PATCH", `/api/servers/${row.id}`, { spec: { memory: "3G" } });
     expect(res.statusCode).toBe(200);
@@ -57,18 +57,18 @@ describe("servidores importados", () => {
     expect(res.json().specVersion).toBe(2);
     res = await req("PATCH", `/api/servers/${row.id}`, { spec: { dataPath: null } });
     expect(res.statusCode).toBe(400);
-    expect(res.json().error).toContain("importación");
+    expect(res.json().error).toContain("importing");
     const after = (await req("GET", `/api/servers/${row.id}`)).json();
     expect(after).toMatchObject({ specVersion: 2, spec: { dataPath: DATA } });
   });
 
-  it("con dataPath no se pueden programar copias", async () => {
+  it("backups cannot be scheduled with dataPath", async () => {
     const row = imported();
     const res = await req("PATCH", `/api/servers/${row.id}`, { spec: { backups: { enabled: true, cron: "0 4 * * *" } } });
     expect(res.statusCode).toBe(400);
   });
 
-  it("borrar con datos un servidor con dataPath da 400; sin datos se borra", async () => {
+  it("deleting with data a server with dataPath gives 400; without data it is deleted", async () => {
     const row = imported();
     let res = await req("DELETE", `/api/servers/${row.id}?deleteData=true`);
     expect(res.statusCode).toBe(400);
@@ -77,7 +77,7 @@ describe("servidores importados", () => {
     expect(res.statusCode).toBe(204);
   });
 
-  it("guardar un importado como plantilla no arrastra dataPath", async () => {
+  it("saving an imported server as a template does not carry dataPath", async () => {
     const row = imported();
     const tpl = (await req("POST", "/api/templates", { name: "Del viejo", fromServerId: row.id })).json();
     expect(tpl.spec).not.toHaveProperty("dataPath");

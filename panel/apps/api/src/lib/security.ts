@@ -1,8 +1,8 @@
 import type { FastifyInstance } from "fastify";
 
 /**
- * L10 del Plan 1. CSP sin scripts en línea; los estilos en línea hacen falta (Radix posiciona con style="", uPlot y
- * CodeMirror también). 'self' en connect-src cubre el WebSocket del mismo origen.
+ * L10 of Plan 1. CSP without inline scripts; inline styles are needed (Radix positions with style="", uPlot and
+ * CodeMirror too). 'self' in connect-src covers the same-origin WebSocket.
  */
 export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "content-security-policy": [
@@ -15,7 +15,7 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "referrer-policy": "no-referrer",
 };
 
-/** Añade las cabeceras a todas las respuestas. Se registra en la raíz ANTES que las rutas (los hooks se fijan al registrar). */
+/** Adds the headers to all responses. Registered at the root BEFORE the routes (hooks are fixed at registration). */
 export function securityHeaders(app: FastifyInstance): void {
   app.addHook("onSend", async (_req, reply, payload) => {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) if (!reply.hasHeader(k)) reply.header(k, v);
@@ -23,7 +23,7 @@ export function securityHeaders(app: FastifyInstance): void {
   });
 }
 
-/** Clave del rate-limit por IP (L6 del Plan 1): una máquina IPv6 con SLAAC tiene miles de direcciones de su /64. */
+/** Per-IP rate-limit key (L6 of Plan 1): an IPv6 machine with SLAAC has thousands of addresses in its /64. */
 export function ipKey(ip: string): string {
   const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip);
   if (mapped) return mapped[1]!;
@@ -36,7 +36,7 @@ export function ipKey(ip: string): string {
   return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
 }
 
-/** Límite global de fallos de login (L6 del Plan 1): además del de cada IP, que una red con muchas direcciones no sortea. */
+/** Global limit of login failures (L6 of Plan 1): in addition to each IP's, which a network with many addresses does not get around. */
 export class FailureLimiter {
   private fails: number[] = [];
   constructor(private max = 30, private windowMs = 60_000, private now: () => number = Date.now) {}

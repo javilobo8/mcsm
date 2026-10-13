@@ -18,16 +18,16 @@ func TestValidCronFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cases.Valid) == 0 || len(cases.Invalid) == 0 {
-		t.Fatal("fixture vacía")
+		t.Fatal("empty fixture")
 	}
 	for _, e := range cases.Valid {
 		if err := ValidCron(e); err != nil {
-			t.Errorf("%q debería ser válida: %v", e, err)
+			t.Errorf("%q should be valid: %v", e, err)
 		}
 	}
 	for _, e := range cases.Invalid {
 		if err := ValidCron(e); err == nil {
-			t.Errorf("%q debería ser inválida", e)
+			t.Errorf("%q should be invalid", e)
 		}
 	}
 }
@@ -41,7 +41,7 @@ func TestBackupsValidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := (&Backups{}).Validate(); err != nil {
-		t.Fatalf("desactivado y sin cron debe valer: %v", err)
+		t.Fatalf("disabled and without cron must be valid: %v", err)
 	}
 	bad := []Backups{
 		{Enabled: true, Cron: ""},
@@ -57,7 +57,7 @@ func TestBackupsValidate(t *testing.T) {
 	}
 	for i, b := range bad {
 		if err := b.Validate(); err == nil {
-			t.Errorf("caso %d %+v debería fallar", i, b)
+			t.Errorf("case %d %+v should fail", i, b)
 		}
 	}
 }
@@ -65,10 +65,10 @@ func TestBackupsValidate(t *testing.T) {
 func TestSpecWithBackups(t *testing.T) {
 	s := loadFixture(t)
 	if s.Backups != nil {
-		t.Fatal("la fixture no trae backups")
+		t.Fatal("the fixture carries no backups")
 	}
 	if got := strings.Join(s.BackupExcludes(), ","); got != "logs,cache,*.tmp" {
-		t.Fatalf("exclusiones por defecto = %s", got)
+		t.Fatalf("default exclusions = %s", got)
 	}
 	before, err := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	if err != nil {
@@ -79,18 +79,18 @@ func TestSpecWithBackups(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(s.BackupExcludes()) != 0 {
-		t.Fatal("una lista de exclusiones vacía explícita se respeta")
+		t.Fatal("an explicitly empty exclusions list is respected")
 	}
 	after, err := BuildContainer(meta, s, "/srv/minecraft", "mcsm")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if before.Hash != after.Hash {
-		t.Fatal("cambiar la programación de copias no debe recrear el contenedor")
+		t.Fatal("changing the backup schedule must not recreate the container")
 	}
 	s.Backups.Cron = "0 4 * * SUN"
 	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "backups.cron") {
-		t.Fatalf("Validate debe validar backups: %v", err)
+		t.Fatalf("Validate must validate backups: %v", err)
 	}
 	raw := []byte(`{"type":"PAPER","version":"1.21.4","memory":"2G","ports":{"game":25565},"rconPassword":"abcdefgh",
 		"backups":{"enabled":true,"cron":"0 4 * * *","keepDays":7,"keepCount":10,"excludes":["logs"],"onlyIfPlayersSince":true}}`)
@@ -108,6 +108,6 @@ func TestBackupsDoNotChangeHashGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	if b.Hash != "09ff6e5490b40677" {
-		t.Fatalf("hash con backups = %s, debe seguir siendo el golden", b.Hash)
+		t.Fatalf("hash with backups = %s, it must remain the golden", b.Hash)
 	}
 }

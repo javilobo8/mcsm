@@ -22,14 +22,14 @@ func main() {
 	slog.SetDefault(log)
 	cfg, err := app.LoadConfig(version)
 	if err != nil {
-		log.Error("configuración inválida", "err", err)
+		log.Error("invalid configuration", "err", err)
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	log.Info("mcsm-agent arrancando", "version", version, "panel", cfg.PanelURL, "data_root", cfg.DataRoot)
+	log.Info("mcsm-agent starting", "version", version, "panel", cfg.PanelURL, "data_root", cfg.DataRoot)
 	if err := app.Run(ctx, cfg, log); err != nil {
-		log.Error("el agente terminó con error", "err", err)
+		log.Error("the agent exited with an error", "err", err)
 		os.Exit(1)
 	}
 }

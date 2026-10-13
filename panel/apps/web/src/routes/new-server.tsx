@@ -19,9 +19,9 @@ import { useNodes } from "@/hooks/use-nodes";
 import { useTemplates } from "@/hooks/use-templates";
 
 type Step = 1 | 2 | 3;
-const STEPS: { n: Step; label: string }[] = [{ n: 1, label: "Plantilla o desde cero" }, { n: 2, label: "Nodo y nombre" }, { n: 3, label: "Revisar" }];
+const STEPS: { n: Step; label: string }[] = [{ n: 1, label: "Template or from scratch" }, { n: 2, label: "Node and name" }, { n: 3, label: "Review" }];
 
-/** Asistente de nuevo servidor en 3 pasos (spec §8). `?template=<id>` lo abre en el paso 2 con esa plantilla elegida. */
+/** New server wizard in 3 steps (spec §8). `?template=<id>` opens it at step 2 with that template chosen. */
 export function NewServerPage() {
   const { template: preselected } = useSearch({ from: "/app/servers/new" });
   const nodes = useNodes();
@@ -41,7 +41,7 @@ export function NewServerPage() {
 
   const tpl = source === SCRATCH ? undefined : templates.data?.find((t) => t.id === source);
 
-  // Una plantilla del enlace (o elegida) que ya no existe: avisa y vuelve a elegir.
+  // A template from the link (or chosen) that no longer exists: warn and choose again.
   const templatesLoaded = templates.isSuccess;
   useEffect(() => {
     if (templatesLoaded && source !== SCRATCH && !tpl) { setGone(true); setSource(SCRATCH); setStep(1); }
@@ -59,7 +59,7 @@ export function NewServerPage() {
   const create = useMutation({
     mutationFn: () => {
       const from = creationSource(source, tpl, spec);
-      if (!from) throw new Error("La plantilla elegida ya no existe: vuelve al paso 1 y elige otra");
+      if (!from) throw new Error("The chosen template no longer exists: go back to step 1 and choose another");
       const req = createRequest(from, { nodeId, name, port: portNum, start });
       return api.post<ServerDto>(req.url, req.body);
     },
@@ -67,7 +67,7 @@ export function NewServerPage() {
       void qc.invalidateQueries({ queryKey: ["servers"] });
       void navigate({ to: "/servers/$serverId", params: { serverId: s.id } });
     },
-    // Lo rellenado se conserva: solo se cambia de paso para que el error se vea junto al campo.
+    // What was filled in is kept: only the step changes so that the error is seen next to the field.
     onError: (e) => setStep(createErrorStep(e instanceof ApiError ? e.status : undefined)),
   });
 
@@ -78,12 +78,12 @@ export function NewServerPage() {
 
   const createMsg = create.error?.message ?? null;
   const conflict = create.error instanceof ApiError && create.error.status === 409;
-  const portConflict = conflict && /puerto/i.test(createMsg ?? "");
+  const portConflict = conflict && /\bports?\b/i.test(createMsg ?? "");
   const summary = tpl ? summarizeSpec(tpl.spec) : source === SCRATCH ? summarizeSpec(spec) : [];
 
   return (
     <div className="flex flex-col gap-4 p-6">
-      <ol className="flex flex-wrap gap-2 text-sm" aria-label="Pasos">
+      <ol className="flex flex-wrap gap-2 text-sm" aria-label="Steps">
         {STEPS.map((s) => (
           <li key={s.n} aria-current={s.n === step ? "step" : undefined}
             className={cn("rounded-full border px-3 py-1", s.n === step ? "border-ring bg-accent" : s.n < step ? "border-emerald-800 text-emerald-400" : "border-border text-muted-foreground")}>
@@ -93,25 +93,25 @@ export function NewServerPage() {
       </ol>
 
       <Card className="max-w-4xl">
-        <CardHeader><CardTitle>Nuevo servidor</CardTitle></CardHeader>
+        <CardHeader><CardTitle>New server</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-5">
           {step === 1 && (
             <>
-              {gone && <p role="status" className="text-sm text-amber-400">La plantilla del enlace ya no existe. Elige otra o crea el servidor desde cero.</p>}
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Origen">
-                <SourceCard selected={source === SCRATCH} onSelect={() => pick(SCRATCH)} title="Desde cero" subtitle="Elige tipo, versión y mods. El resto se ajusta después en Configuración." />
+              {gone && <p role="status" className="text-sm text-amber-400">The link's template no longer exists. Choose another or create the server from scratch.</p>}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Source">
+                <SourceCard selected={source === SCRATCH} onSelect={() => pick(SCRATCH)} title="From scratch" subtitle="Choose type, version and mods. The rest is adjusted later in Configuration." />
                 {templates.data?.map((t) => (
                   <SourceCard key={t.id} selected={source === t.id} onSelect={() => pick(t.id)} title={t.name}
                     subtitle={`${typeLabel(t.spec.type)} ${t.spec.version} · ${t.spec.memory}${t.description ? ` · ${t.description}` : ""}`} />
                 ))}
               </div>
-              {templates.isPending && <p className="text-xs text-muted-foreground">Cargando plantillas…</p>}
-              {templates.isError && <p role="alert" className="text-xs text-red-400">No se pudieron cargar las plantillas: {templates.error.message}</p>}
+              {templates.isPending && <p className="text-xs text-muted-foreground">Loading templates…</p>}
+              {templates.isError && <p role="alert" className="text-xs text-red-400">Could not load the templates: {templates.error.message}</p>}
               {source === SCRATCH && (
                 <div className="flex flex-col gap-4 border-t border-border pt-4">
                   <VersionSection spec={spec} onChange={setSpec} onError={onError} />
                   <div className="max-w-xs">
-                    <ValidatedInput id="sf-memory" label="Memoria de la JVM" hint="Ej. 4G o 512M." value={spec.memory} onError={onError}
+                    <ValidatedInput id="sf-memory" label="JVM memory" hint="E.g. 4G or 512M." value={spec.memory} onError={onError}
                       validate={validateMemory} onChange={(memory) => setSpec({ ...spec, memory })} />
                   </div>
                 </div>
@@ -121,47 +121,47 @@ export function NewServerPage() {
 
           {step === 2 && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field id="ns-node" label="Nodo">
+              <Field id="ns-node" label="Node">
                 <Select value={nodeId} onValueChange={(v) => edited(() => setNodeId(v))}>
-                  <SelectTrigger id="ns-node"><SelectValue placeholder={nodes.isPending ? "Cargando nodos…" : "Elige un nodo"} /></SelectTrigger>
-                  <SelectContent>{nodes.data?.map((n) => <SelectItem key={n.id} value={n.id}>{n.name}{n.status !== "online" ? " (desconectado, se creará al volver)" : ""}</SelectItem>)}</SelectContent>
+                  <SelectTrigger id="ns-node"><SelectValue placeholder={nodes.isPending ? "Loading nodes…" : "Choose a node"} /></SelectTrigger>
+                  <SelectContent>{nodes.data?.map((n) => <SelectItem key={n.id} value={n.id}>{n.name}{n.status !== "online" ? " (offline, it will be created when it returns)" : ""}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <Field id="ns-name" label="Nombre" error={conflict && !portConflict ? createMsg : null}
-                hint={name.trim() ? <>Carpeta y contenedor: <code>{slugify(name)}</code> (si ya existe se añade -2, -3…)</> : undefined}>
-                <Input id="ns-name" value={name} maxLength={60} placeholder="Supervivencia 2026" aria-invalid={conflict && !portConflict} onChange={(e) => edited(() => setName(e.target.value))} />
+              <Field id="ns-name" label="Name" error={conflict && !portConflict ? createMsg : null}
+                hint={name.trim() ? <>Folder and container: <code>{slugify(name)}</code> (if it already exists, -2, -3… is added)</> : undefined}>
+                <Input id="ns-name" value={name} maxLength={60} placeholder="Survival 2026" aria-invalid={conflict && !portConflict} onChange={(e) => edited(() => setName(e.target.value))} />
               </Field>
-              <Field id="ns-port" label="Puerto de juego (vacío = automático)" error={portConflict ? createMsg : null}>
+              <Field id="ns-port" label="Game port (empty = automatic)" error={portConflict ? createMsg : null}>
                 <Input id="ns-port" value={port} inputMode="numeric" placeholder="25565" aria-invalid={portConflict} onChange={(e) => edited(() => setPort(e.target.value))} />
               </Field>
-              <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Arrancar al crear</label>
+              <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start on creation</label>
               <div className="flex flex-col gap-1 sm:col-span-2">
-                {nodes.isError && <p role="alert" className="text-xs text-red-400">No se pudieron cargar los nodos: {nodes.error.message}</p>}
-                {selectedNode && selectedNode.status !== "online" && <p className="text-xs text-amber-400">El nodo «{selectedNode.name}» está desconectado: el servidor se creará pero no arrancará hasta que vuelva.</p>}
-                {nodes.data && online.length === 0 && <p className="text-xs text-amber-400">Ningún nodo conectado: el servidor se creará cuando el nodo vuelva.</p>}
+                {nodes.isError && <p role="alert" className="text-xs text-red-400">Could not load the nodes: {nodes.error.message}</p>}
+                {selectedNode && selectedNode.status !== "online" && <p className="text-xs text-amber-400">The node “{selectedNode.name}” is offline: the server will be created but will not start until it returns.</p>}
+                {nodes.data && online.length === 0 && <p className="text-xs text-amber-400">No node is online: the server will be created when the node returns.</p>}
               </div>
             </div>
           )}
 
           {step === 3 && (
             <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm" data-testid="wizard-summary">
-              <Row label="Origen" value={tpl ? `Plantilla «${tpl.name}»` : "Desde cero"} />
+              <Row label="Source" value={tpl ? `Template “${tpl.name}”` : "From scratch"} />
               {summary.map((l) => <Row key={l.label} label={l.label} value={l.value} />)}
-              <Row label="Nodo" value={selectedNode?.name ?? "—"} />
-              <Row label="Nombre" value={name.trim()} />
-              <Row label="Puerto" value={portNum ? String(portNum) : "automático"} />
-              <Row label="Al crear" value={start ? "arrancar" : "dejar parado"} />
+              <Row label="Node" value={selectedNode?.name ?? "—"} />
+              <Row label="Name" value={name.trim()} />
+              <Row label="Port" value={portNum ? String(portNum) : "automatic"} />
+              <Row label="On creation" value={start ? "start" : "leave stopped"} />
             </dl>
           )}
 
           {create.isError && !conflict && <p role="alert" className="text-sm text-red-400">{createMsg}</p>}
           <div className="flex items-center justify-between gap-3">
-            <Button type="button" variant="ghost" disabled={step === 1 || create.isPending} onClick={back}><ArrowLeft className="size-4" /> Atrás</Button>
+            <Button type="button" variant="ghost" disabled={step === 1 || create.isPending} onClick={back}><ArrowLeft className="size-4" /> Back</Button>
             <div className="flex items-center gap-3">
               {blocked && <span id="ns-block-why" className="text-sm text-muted-foreground">{blocked}</span>}
               {step < 3
-                ? <Button type="button" disabled={blocked !== null} aria-describedby={blocked ? "ns-block-why" : undefined} onClick={next}>Siguiente <ArrowRight className="size-4" /></Button>
-                : <Button type="button" disabled={create.isPending} onClick={() => create.mutate()}>{create.isPending ? "Creando…" : "Crear servidor"}</Button>}
+                ? <Button type="button" disabled={blocked !== null} aria-describedby={blocked ? "ns-block-why" : undefined} onClick={next}>Next <ArrowRight className="size-4" /></Button>
+                : <Button type="button" disabled={create.isPending} onClick={() => create.mutate()}>{create.isPending ? "Creating…" : "Create server"}</Button>}
             </div>
           </div>
         </CardContent>

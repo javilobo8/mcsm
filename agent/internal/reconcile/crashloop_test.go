@@ -36,13 +36,13 @@ func TestCrashLoopStopRetainsUntilPowerStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := state(t, r, "a"); got != "exited" {
-		t.Fatalf("estado tras la parada = %s", got)
+		t.Fatalf("state after the stop = %s", got)
 	}
-	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "bucle de crash") {
+	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "crash loop") {
 		t.Fatalf("observed = %+v", o)
 	}
 	starts := calls(fake, "Start ")
-	// Ni el tick ni un SyncSpecs con la misma versión y «en marcha» lo arrancan.
+	// Neither the tick nor a SyncSpecs with the same version and "running" start it.
 	if err := r.StoreForce(&mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 1, DesiredState: running, SpecJson: []byte(specJSON)}); err != nil {
 		t.Fatal(err)
 	}
@@ -50,23 +50,23 @@ func TestCrashLoopStopRetainsUntilPowerStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if calls(fake, "Start ") != starts || state(t, r, "a") != "exited" {
-		t.Fatal("un servidor retenido no se arranca")
+		t.Fatal("a latched server is not started")
 	}
-	if o := rec.get("a"); !strings.Contains(o.Error, "bucle de crash") {
-		t.Fatalf("el error sigue visible: %+v", o)
+	if o := rec.get("a"); !strings.Contains(o.Error, "crash loop") {
+		t.Fatalf("the error stays visible: %+v", o)
 	}
-	if msg := r.StartBlocked("a"); !strings.Contains(msg, "bucle de crash") {
+	if msg := r.StartBlocked("a"); !strings.Contains(msg, "crash loop") {
 		t.Fatalf("StartBlocked = %q", msg)
 	}
-	// Arrancar a mano levanta la retención.
+	// Starting by hand lifts the latch.
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err != nil {
 		t.Fatal(err)
 	}
 	if state(t, r, "a") != "running" {
-		t.Fatal("Power start lo arranca")
+		t.Fatal("Power start starts it")
 	}
 	if l, _ := st.CrashLatch("a"); l != nil {
-		t.Fatal("la retención desaparece")
+		t.Fatal("the latch disappears")
 	}
 	if msg := r.StartBlocked("a"); msg != "" {
 		t.Fatalf("StartBlocked = %q", msg)
@@ -83,15 +83,15 @@ func TestCrashLatchIgnoredForNewSpecVersion(t *testing.T) {
 	if err := r.CrashLoopStop(ctx, "a", 4); err != nil {
 		t.Fatal(err)
 	}
-	// Una configuración nueva (p. ej. más memoria) se prueba: la retención era de la versión 1.
+	// A new configuration (e.g. more memory) is tried: the latch was for version 1.
 	if err := r.Apply(ctx, &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: running, SpecJson: []byte(strings.Replace(specJSON, `"2G"`, `"3G"`, 1))}); err != nil {
 		t.Fatal(err)
 	}
 	if state(t, r, "a") != "running" {
-		t.Fatal("con una versión nueva se arranca")
+		t.Fatal("with a new version it starts")
 	}
 	if l, _ := st.CrashLatch("a"); l != nil {
-		t.Fatal("la retención de otra versión se borra")
+		t.Fatal("the latch from another version is deleted")
 	}
 }
 
@@ -102,7 +102,7 @@ func TestCrashLoopStopBusyWhenHeld(t *testing.T) {
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	release, err := r.Hold("a", "copia")
+	release, err := r.Hold("a", "backup")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,11 +110,11 @@ func TestCrashLoopStopBusyWhenHeld(t *testing.T) {
 	if err := r.CrashLoopStop(ctx, "a", 4); !errors.Is(err, ErrBusy) {
 		t.Fatalf("err = %v", err)
 	}
-	if msg := r.StartBlocked("a"); !strings.Contains(msg, "copia") {
-		t.Fatalf("StartBlocked con reserva = %q", msg)
+	if msg := r.StartBlocked("a"); !strings.Contains(msg, "backup") {
+		t.Fatalf("StartBlocked with a reservation = %q", msg)
 	}
-	if msg := r.StartBlocked("desconocido"); msg == "" {
-		t.Fatal("un servidor que el agente no conoce no se arranca")
+	if msg := r.StartBlocked("unknown"); msg == "" {
+		t.Fatal("a server the agent does not know is not started")
 	}
 }
 
@@ -144,34 +144,34 @@ func TestDriftEventOnlyForTheAppliedVersion(t *testing.T) {
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	// Una versión nueva recrea sin drift.
+	// A new version recreates without drift.
 	if err := r.Apply(ctx, &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: running, SpecJson: []byte(strings.Replace(specJSON, `"2G"`, `"3G"`, 1))}); err != nil {
 		t.Fatal(err)
 	}
 	if got := sink.list(); len(got) != 0 {
-		t.Fatalf("eventos = %v", got)
+		t.Fatalf("events = %v", got)
 	}
-	// Alguien cambia el contenedor fuera del agente: misma versión aplicada, hash distinto.
+	// Someone changes the container outside the agent: same applied version, different hash.
 	for _, c := range fake.Containers {
-		c.Config.Labels[spec.LabelHash] = "cambiado-a-mano"
+		c.Config.Labels[spec.LabelHash] = "changed-by-hand"
 	}
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if got := sink.list(); len(got) != 1 || got[0] != KindDrift {
-		t.Fatalf("eventos = %v", got)
+		t.Fatalf("events = %v", got)
 	}
 }
 
 func TestCrashLoopMessage(t *testing.T) {
-	if msg := CrashLoopMessage(5); !strings.Contains(msg, "5 veces") || !strings.Contains(msg, "Arrancar") {
+	if msg := CrashLoopMessage(5); !strings.Contains(msg, "5 times") || !strings.Contains(msg, "Start") {
 		t.Fatalf("msg = %q", msg)
 	}
 }
 
-// Un servidor bajo demanda retenido que vuelve a estar en marcha (la política de reinicio en la ventana entre la
-// retención y la parada, o restartPolicy always tras reiniciar el daemon) se para en el tick: mc-router no lo
-// arrancaría (la política del proxy lo impide), pero Docker sí.
+// A latched on-demand server that is running again (the restart policy in the window between the
+// latch and the stop, or restartPolicy always after the daemon restarts) is stopped on the tick: mc-router would not
+// start it (the proxy's policy prevents it), but Docker would.
 func TestOnDemandLatchedServerIsStoppedByTheTick(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
 	ctx := context.Background()
@@ -185,16 +185,16 @@ func TestOnDemandLatchedServerIsStoppedByTheTick(t *testing.T) {
 	}
 	c, err := r.Container(ctx, "a")
 	if err != nil || c == nil || c.State != "exited" {
-		t.Fatalf("tras la retención: %+v %v", c, err)
+		t.Fatalf("after the latch: %+v %v", c, err)
 	}
-	if err := fake.Start(ctx, c.ID); err != nil { // Docker lo vuelve a arrancar por su cuenta
+	if err := fake.Start(ctx, c.ID); err != nil { // Docker starts it again on its own
 		t.Fatal(err)
 	}
 	if err := r.ReconcileTick(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if got := state(t, r, "a"); got != "exited" {
-		t.Fatalf("un bajo demanda retenido en marcha se para; estado = %s", got)
+		t.Fatalf("a latched running on-demand server is stopped; state = %s", got)
 	}
 }
 
@@ -210,20 +210,20 @@ func TestCrashLoopStopUnlessStartedYieldsToPower(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stopped, err := r.CrashLoopStopUnlessStarted(ctx, "a", 4, gen); err != nil || stopped {
-		t.Fatalf("decidida antes del reinicio: stopped=%v err=%v", stopped, err)
+		t.Fatalf("decided before the restart: stopped=%v err=%v", stopped, err)
 	}
 	if l, _ := st.CrashLatch("a"); l != nil || state(t, r, "a") != "running" {
-		t.Fatal("no retiene ni para")
+		t.Fatal("it neither latches nor stops")
 	}
 	if stopped, err := r.CrashLoopStopUnlessStarted(ctx, "a", 4, r.StartGen("a")); err != nil || !stopped {
-		t.Fatalf("decidida después: stopped=%v err=%v", stopped, err)
+		t.Fatalf("decided after: stopped=%v err=%v", stopped, err)
 	}
 	if l, _ := st.CrashLatch("a"); l == nil || state(t, r, "a") != "exited" {
-		t.Fatal("retiene y para")
+		t.Fatal("it latches and stops")
 	}
 }
 
-// OOS2: una versión nueva de la spec (Apply o la de SyncSpecs) cuenta como un arranque nuevo; la misma versión no.
+// OOS2: a new spec version (Apply or the one from SyncSpecs) counts as a new start; the same version does not.
 func TestStartGenBumpsOnNewSpecVersions(t *testing.T) {
 	r, st, _, _, _ := setup(t)
 	ctx := context.Background()
@@ -239,7 +239,7 @@ func TestStartGenBumpsOnNewSpecVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r.StartGen("a") != g0 {
-		t.Fatal("la misma versión no cambia la generación")
+		t.Fatal("the same version does not change the generation")
 	}
 	v2 := []byte(strings.Replace(specJSON, `"2G"`, `"3G"`, 1))
 	if err := r.Apply(ctx, &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: running, SpecJson: v2}); err != nil {
@@ -247,12 +247,12 @@ func TestStartGenBumpsOnNewSpecVersions(t *testing.T) {
 	}
 	g1 := r.StartGen("a")
 	if g1 == g0 {
-		t.Fatal("Apply de una versión nueva cambia la generación")
+		t.Fatal("Apply of a new version changes the generation")
 	}
 	if err := r.StoreForce(&mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 3, DesiredState: running, SpecJson: v2}); err != nil {
 		t.Fatal(err)
 	}
 	if r.StartGen("a") == g1 {
-		t.Fatal("StoreForce de una versión nueva cambia la generación")
+		t.Fatal("StoreForce of a new version changes the generation")
 	}
 }

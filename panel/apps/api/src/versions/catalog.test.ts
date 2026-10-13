@@ -8,14 +8,14 @@ const purpurDoc = (versions: string[]) => JSON.stringify({ project: "purpur", ve
 const buildsDoc = (all: string[]) => JSON.stringify({ builds: { all } });
 type Init = Parameters<FetchFn>[1];
 
-/** fetch falso: respuestas en cola por URL; apunta cada llamada. */
+/** Fake fetch: queued responses per URL; records each call. */
 function fakeFetch() {
   const calls: ({ url: string } & Init)[] = [];
   const routes = new Map<string, ((init: Init) => Promise<Response>)[]>();
   const fetch: FetchFn = (url, init) => {
     calls.push({ url, ...init });
     const next = routes.get(url)?.shift();
-    return next ? next(init) : Promise.reject(new TypeError(`sin red para ${url}`));
+    return next ? next(init) : Promise.reject(new TypeError(`no network for ${url}`));
   };
   const reply = (url: string, body: string | ((init: Init) => Promise<Response>), status = 200) => {
     const q = routes.get(url) ?? [];
@@ -35,7 +35,7 @@ function setup() {
 }
 
 describe("VersionCatalog", () => {
-  it("guarda la lista 1 h y la vuelve a pedir al caducar", async () => {
+  it("stores the list for 1 h and requests it again on expiry", async () => {
     const t = setup();
     t.reply(PURPUR, purpurDoc(["1.21.11", "26.2"]));
     expect(await t.catalog.versions("PURPUR")).toEqual({
@@ -53,43 +53,43 @@ describe("VersionCatalog", () => {
     expect(t.calls).toHaveLength(2);
   });
 
-  it("si la fuente falla sirve lo guardado con stale; sin nada guardado, 502 en castellano", async () => {
+  it("if the source fails it serves what is stored with stale; with nothing stored, 502 in English", async () => {
     const t = setup();
     t.reply(PURPUR, purpurDoc(["26.2"]));
     await t.catalog.versions("PURPUR");
     t.advance(LIST_TTL_MS);
-    t.reply(PURPUR, "caído", 503);
+    t.reply(PURPUR, "down", 503);
     expect(await t.catalog.versions("PURPUR")).toMatchObject({ stale: true, fetchedAt: "2026-10-13T10:00:00.000Z", versions: [{ id: "26.2", stable: true }] });
     expect(t.errors).toEqual([PURPUR]);
 
     const t2 = setup();
-    t2.reply(PURPUR, "caído", 503);
-    await expect(t2.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502, message: "No se pudo consultar la lista de versiones de Purpur" });
+    t2.reply(PURPUR, "down", 503);
+    await expect(t2.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502, message: "Could not query the version list of Purpur" });
   });
 
-  it("un 200 que no es el JSON esperado es 502, no 500", async () => {
+  it("a 200 that is not the expected JSON is 502, not 500", async () => {
     const t = setup();
-    t.reply(PURPUR, "<html>mantenimiento</html>");
+    t.reply(PURPUR, "<html>maintenance</html>");
     await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
-    t.reply(PURPUR, JSON.stringify({ otra: "forma" }));
+    t.reply(PURPUR, JSON.stringify({ otra: "shape" }));
     await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
   });
 
-  it("un 200 con otra forma no pisa lo guardado: se sirve la lista vieja con stale y se avisa", async () => {
+  it("a 200 with another shape does not overwrite what is stored: the old list is served with stale and a warning is logged", async () => {
     const t = setup();
     t.reply(PURPUR, purpurDoc(["26.2"]));
     await t.catalog.versions("PURPUR");
     t.advance(LIST_TTL_MS);
-    t.reply(PURPUR, JSON.stringify({ otra: "forma" }));
+    t.reply(PURPUR, JSON.stringify({ otra: "shape" }));
     expect(await t.catalog.versions("PURPUR")).toMatchObject({ stale: true, versions: [{ id: "26.2", stable: true }] });
     expect(t.errors).toEqual([PURPUR]);
   });
 
-  it("sin nada guardado, un 200 con otra forma es 502 y no se guarda: la siguiente consulta vuelve a la red", async () => {
+  it("with nothing stored, a 200 with another shape is 502 and is not stored: the next query goes back to the network", async () => {
     const t = setup();
-    t.reply(PURPUR, "<html>mantenimiento</html>");
+    t.reply(PURPUR, "<html>maintenance</html>");
     await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
-    t.reply(PURPUR, JSON.stringify({ otra: "forma" }));
+    t.reply(PURPUR, JSON.stringify({ otra: "shape" }));
     await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
     expect(t.calls).toHaveLength(2);
     expect(t.errors).toEqual([PURPUR, PURPUR]);
@@ -97,14 +97,14 @@ describe("VersionCatalog", () => {
     expect((await t.catalog.versions("PURPUR")).versions).toEqual([{ id: "26.2", stable: true }]);
   });
 
-  it("una redirección no se sigue: 502 y la petición va con redirect manual", async () => {
+  it("a redirect is not followed: 502 and the request goes with manual redirect", async () => {
     const t = setup();
     t.reply(PURPUR, () => Promise.resolve(new Response(null, { status: 302, headers: { location: "http://192.168.1.1/" } })));
     await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
     expect(t.calls[0]!.redirect).toBe("manual");
   });
 
-  it("dos consultas a la vez comparten la descarga", async () => {
+  it("two simultaneous queries share the download", async () => {
     const t = setup();
     let release!: (r: Response) => void;
     t.reply(PURPUR, () => new Promise<Response>((r) => { release = r; }));
@@ -117,10 +117,10 @@ describe("VersionCatalog", () => {
     expect(t.calls).toHaveLength(1);
   });
 
-  it("plazo de 10 s: aborta la descarga y responde 502", async () => {
+  it("10 s deadline: aborts the download and responds 502", async () => {
     const t = setup();
     t.reply(PURPUR, (init) => new Promise<Response>((_, reject) => {
-      init.signal.addEventListener("abort", () => reject(new DOMException("plazo", "AbortError")));
+      init.signal.addEventListener("abort", () => reject(new DOMException("deadline", "AbortError")));
     }));
     const p = t.catalog.versions("PURPUR");
     expect(t.timers.pending).toBe(1);
@@ -129,13 +129,13 @@ describe("VersionCatalog", () => {
     expect(t.timers.pending).toBe(0);
   });
 
-  it("una respuesta de más de 8 MiB es 502", async () => {
+  it("a response over 8 MiB is 502", async () => {
     const t = setup();
     t.reply(PURPUR, "x".repeat(MAX_BODY_BYTES + 1));
     await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
   });
 
-  it("builds: 15 min de caché; un 4xx de la fuente es una lista vacía", async () => {
+  it("builds: 15 min cache; a 4xx from the source is an empty list", async () => {
     const t = setup();
     const url = `${PURPUR}/26.2`;
     t.reply(url, buildsDoc(["2600", "2633"]));
@@ -149,7 +149,7 @@ describe("VersionCatalog", () => {
     expect(await t.catalog.builds("PURPUR", "9.9.9")).toMatchObject({ type: "PURPUR", version: "9.9.9", builds: [], stale: false });
   });
 
-  it("solo 400 y 404 de la fuente significan «sin builds»: 429 y 403 son un fallo (502)", async () => {
+  it("only 400 and 404 from the source mean “no builds”: 429 and 403 are a failure (502)", async () => {
     const t = setup();
     t.reply(`${PURPUR}/1.0.1`, "slow down", 429);
     await expect(t.catalog.builds("PURPUR", "1.0.1")).rejects.toMatchObject({ status: 502 });
@@ -159,7 +159,7 @@ describe("VersionCatalog", () => {
     expect((await t.catalog.builds("PURPUR", "1.0.3")).builds).toEqual([]);
   });
 
-  it("un fallo de red conserva el error original como causa", async () => {
+  it("a network failure keeps the original error as the cause", async () => {
     const seen: unknown[] = [];
     const f = fakeFetch();
     const catalog = new VersionCatalog({ fetch: f.fetch, timers: new ManualTimers(), onError: (_u, e) => seen.push(e) });
@@ -170,7 +170,7 @@ describe("VersionCatalog", () => {
     expect((seen[0] as UpstreamError).cause).toBe(cause);
   });
 
-  it("libera el cuerpo sin leer de una respuesta de error", async () => {
+  it("releases the unread body of an error response", async () => {
     const t = setup();
     let cancelled = false;
     const body = new ReadableStream({ cancel() { cancelled = true; } });
@@ -179,27 +179,27 @@ describe("VersionCatalog", () => {
     expect(cancelled).toBe(true);
   });
 
-  it("tipos sin lista, tipos sin build y versiones inválidas: 400 sin tocar la red", async () => {
+  it("types without a list, types without builds and invalid versions: 400 without touching the network", async () => {
     const t = setup();
-    await expect(t.catalog.versions("MODRINTH")).rejects.toMatchObject({ status: 400, message: "Tipo sin lista de versiones" });
+    await expect(t.catalog.versions("MODRINTH")).rejects.toMatchObject({ status: 400, message: "Type without a version list" });
     await expect(t.catalog.versions("__proto__")).rejects.toMatchObject({ status: 400 });
-    await expect(t.catalog.builds("VANILLA", "1.21.4")).rejects.toMatchObject({ status: 400, message: expect.stringMatching(/VANILLA no admite/) });
+    await expect(t.catalog.builds("VANILLA", "1.21.4")).rejects.toMatchObject({ status: 400, message: expect.stringMatching(/VANILLA type does not support/) });
     for (const v of ["../../etc", "1.21 ", "\u0000", "a".repeat(65), ""]) {
-      await expect(t.catalog.builds("PAPER", v)).rejects.toMatchObject({ status: 400, message: "Versión inválida" });
+      await expect(t.catalog.builds("PAPER", v)).rejects.toMatchObject({ status: 400, message: "Invalid version" });
     }
     expect(t.calls).toHaveLength(0);
   });
 
-  it(`como mucho ${MAX_ENTRIES} entradas: se descarta la menos usada`, async () => {
+  it(`at most ${MAX_ENTRIES} entries: the least used is discarded`, async () => {
     const t = setup();
     const url = (i: number) => `${PURPUR}/1.0.${i}`;
     for (let i = 0; i < MAX_ENTRIES; i++) {
       t.reply(url(i), buildsDoc([String(i)]));
       await t.catalog.builds("PURPUR", `1.0.${i}`);
     }
-    await t.catalog.builds("PURPUR", "1.0.0"); // uso: pasa a ser la más reciente
+    await t.catalog.builds("PURPUR", "1.0.0"); // use: it becomes the most recent
     t.reply(url(MAX_ENTRIES), buildsDoc(["x"]));
-    await t.catalog.builds("PURPUR", `1.0.${MAX_ENTRIES}`); // descarta 1.0.1
+    await t.catalog.builds("PURPUR", `1.0.${MAX_ENTRIES}`); // discards 1.0.1
     const before = t.calls.length;
     await t.catalog.builds("PURPUR", "1.0.0");
     expect(t.calls).toHaveLength(before);

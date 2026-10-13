@@ -9,7 +9,7 @@ export function JobsPage() {
     <div className="flex flex-col gap-4 p-6">
       <header className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold">Jobs</h1>
-        <div className="flex gap-1" role="group" aria-label="Filtrar por estado">
+        <div className="flex gap-1" role="group" aria-label="Filter by status">
           {JOB_FILTER_OPTIONS.map((f) => (
             <Button key={f.label} size="sm" variant={selected === f ? "secondary" : "ghost"} aria-pressed={selected === f} onClick={() => setSelected(f)}>{f.label}</Button>
           ))}

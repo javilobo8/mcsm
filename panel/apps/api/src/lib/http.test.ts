@@ -32,34 +32,34 @@ describe("agentErrorToHttp", () => {
     [AgentErrorCode.PowerFailed, 502],
     ["codigo_nuevo", 502],
   ])("%s → %i", (code, status) => {
-    expect(agentErrorToHttp(new AgentError(code, "texto del agente")).status).toBe(status);
+    expect(agentErrorToHttp(new AgentError(code, "agent text")).status).toBe(status);
   });
 
-  it("502 conserva el texto del agente/Docker (spec §10); unsupported pide actualizar el agente", () => {
+  it("502 keeps the agent/Docker text (spec §10); unsupported asks to update the agent", () => {
     expect(agentErrorToHttp(new AgentError("power_failed", "port is already allocated")).message).toBe("port is already allocated");
-    expect(agentErrorToHttp(new AgentError("unsupported", "mensaje desconocido: actualiza el agente")).message).toMatch(/agente del nodo está desactualizado/);
+    expect(agentErrorToHttp(new AgentError("unsupported", "unknown message: update the agent")).message).toMatch(/agent is out of date/);
   });
 
-  it("devuelve tal cual un HttpError y usa el fallback para lo demás", () => {
-    const h = new HttpError(409, "ya existe");
+  it("returns an HttpError as is and uses the fallback for anything else", () => {
+    const h = new HttpError(409, "already exists");
     expect(agentErrorToHttp(h)).toBe(h);
-    expect(agentErrorToHttp(new Error("boom"), "No se pudo")).toMatchObject({ status: 502, message: "No se pudo" });
+    expect(agentErrorToHttp(new Error("boom"), "Could not")).toMatchObject({ status: 502, message: "Could not" });
   });
 
-  it("servers/service.ts re-exporta el mismo HttpError", () => {
+  it("servers/service.ts re-exports the same HttpError", () => {
     expect(HttpErrorFromServers).toBe(HttpError);
   });
 });
 
-describe("manejador de errores global", () => {
+describe("global error handler", () => {
   let app: FastifyInstance;
   let cookie: string;
   beforeEach(async () => {
     app = await buildApp({ db: openDb(":memory:") });
-    app.get("/api/__http", async () => { throw new HttpError(409, "Conflicto explicado"); });
-    app.get("/api/__http500", async () => { throw new HttpError(500, "detalle interno /ruta"); });
+    app.get("/api/__http", async () => { throw new HttpError(409, "Explained conflict"); });
+    app.get("/api/__http500", async () => { throw new HttpError(500, "internal detail /path"); });
     app.get("/api/__agent", async () => { throw new AgentError("power_failed", "port is already allocated"); });
-    app.get("/api/__zod", async () => z.object({ a: z.string({ error: "Falta a" }) }).parse({}));
+    app.get("/api/__zod", async () => z.object({ a: z.string({ error: "Missing a" }) }).parse({}));
     await app.ready();
     const res = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
     const c = res.cookies.find((c) => c.name === "mcsm_session")!;
@@ -69,33 +69,33 @@ describe("manejador de errores global", () => {
 
   const get = (url: string) => app.inject({ method: "GET", url, headers: { cookie } });
 
-  it("HttpError 4xx con su mensaje, 500 genérico, AgentError traducido y ZodError → 400", async () => {
-    expect((await get("/api/__http")).json()).toEqual({ error: "Conflicto explicado" });
+  it("4xx HttpError with its message, generic 500, translated AgentError and ZodError → 400", async () => {
+    expect((await get("/api/__http")).json()).toEqual({ error: "Explained conflict" });
     const r500 = await get("/api/__http500");
     expect(r500.statusCode).toBe(500);
-    expect(r500.json()).toEqual({ error: "Error interno" });
+    expect(r500.json()).toEqual({ error: "Internal error" });
     const ag = await get("/api/__agent");
     expect(ag.statusCode).toBe(502);
     expect(ag.json()).toEqual({ error: "port is already allocated" });
     const zr = await get("/api/__zod");
     expect(zr.statusCode).toBe(400);
-    expect(zr.json()).toEqual({ error: "Falta a" });
+    expect(zr.json()).toEqual({ error: "Missing a" });
   });
 
-  it("un error interno fuera de /api/servers no filtra su mensaje (L7)", async () => {
-    app.nodes.list = () => { throw new Error("SQLITE_ERROR /secreto/ruta"); };
+  it("an internal error outside /api/servers does not leak its message (L7)", async () => {
+    app.nodes.list = () => { throw new Error("SQLITE_ERROR /secret/path"); };
     const res = await get("/api/nodes");
     expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({ error: "Error interno" });
+    expect(res.json()).toEqual({ error: "Internal error" });
     app.nodes.enrollNode = () => { throw new Error("UNIQUE constraint failed: nodes.name"); };
     const enroll = await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: "x" } });
     expect(enroll.statusCode).toBe(500);
     expect(enroll.body).not.toMatch(/UNIQUE|nodes\.name/);
   });
 
-  it("los errores de Fastify salen como { error } en castellano", async () => {
+  it("Fastify errors come out as { error } in English", async () => {
     const res = await app.inject({ method: "POST", url: "/api/auth/login", headers: { "content-type": "application/json" }, payload: "{mal" });
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toEqual({ error: "Petición inválida" });
+    expect(res.json()).toEqual({ error: "Invalid request" });
   });
 });

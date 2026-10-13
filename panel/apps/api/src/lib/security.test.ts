@@ -5,8 +5,8 @@ import { openDb } from "../db/db.js";
 import { loggerOptions, redactUrl } from "./log.js";
 import { FailureLimiter, ipKey, SECURITY_HEADERS } from "./security.js";
 
-describe("seguridad del panel", () => {
-  it("cabeceras en las respuestas, también en errores", async () => {
+describe("panel security", () => {
+  it("headers on responses, also on errors", async () => {
     const app = await buildApp({ db: openDb(":memory:") });
     for (const url of ["/api/health", "/api/no-existe"]) {
       const res = await app.inject({ method: "GET", url });
@@ -16,7 +16,7 @@ describe("seguridad del panel", () => {
     await app.close();
   });
 
-  it("ipKey agrupa IPv6 por /64", () => {
+  it("ipKey groups IPv6 by /64", () => {
     expect(ipKey("192.168.1.10")).toBe("192.168.1.10");
     expect(ipKey("::ffff:192.168.1.10")).toBe("192.168.1.10");
     expect(ipKey("2001:db8:1:2:aaaa::1")).toBe(ipKey("2001:0db8:0001:0002:bbbb:0:0:2"));
@@ -24,7 +24,7 @@ describe("seguridad del panel", () => {
     expect(ipKey("fe80::1%eth0")).toBe(ipKey("fe80::2"));
   });
 
-  it("FailureLimiter: como mucho max fallos por ventana", () => {
+  it("FailureLimiter: at most max failures per window", () => {
     let now = 0;
     const l = new FailureLimiter(3, 60_000, () => now);
     for (let i = 0; i < 3; i++) { expect(l.blocked()).toBe(false); l.fail(); }
@@ -33,7 +33,7 @@ describe("seguridad del panel", () => {
     expect(l.blocked()).toBe(false);
   });
 
-  it("límite global de fallos de login aunque cambie la IP", async () => {
+  it("global limit of login failures even if the IP changes", async () => {
     const app = await buildApp({ db: openDb(":memory:") });
     await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
     for (let i = 0; i < 30; i++) {
@@ -42,19 +42,19 @@ describe("seguridad del panel", () => {
     }
     const blocked = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" }, remoteAddress: "10.9.9.9" });
     expect(blocked.statusCode).toBe(429);
-    expect(blocked.json().error).toMatch(/Demasiados intentos fallidos/);
+    expect(blocked.json().error).toMatch(/Too many failed attempts/);
     await app.close();
   });
 
-  it("el log de acceso no muestra el id de una transferencia", async () => {
-    expect(redactUrl("/agent/transfer/abc123?x=1")).toBe("/agent/transfer/[oculto]?x=1");
+  it("the access log does not show a transfer's id", async () => {
+    expect(redactUrl("/agent/transfer/abc123?x=1")).toBe("/agent/transfer/[hidden]?x=1");
     expect(redactUrl("/api/servers/s1")).toBe("/api/servers/s1");
     let out = "";
     const stream = new Writable({ write(chunk, _enc, cb) { out += chunk.toString(); cb(); } });
     const app = await buildApp({ db: openDb(":memory:"), logger: { ...(loggerOptions as object), level: "info", stream } });
     await app.inject({ method: "GET", url: "/agent/transfer/idsecreto123" });
     await app.close();
-    expect(out).toContain("/agent/transfer/[oculto]");
+    expect(out).toContain("/agent/transfer/[hidden]");
     expect(out).not.toContain("idsecreto123");
   });
 });

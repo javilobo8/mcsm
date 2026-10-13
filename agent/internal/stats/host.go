@@ -9,17 +9,17 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
-// HostReader lee el uso del host.
+// HostReader reads the host's usage.
 type HostReader interface {
 	CPUTimes(ctx context.Context) (CPUTimes, error)
-	// Memory devuelve la RAM usada (total - disponible) y la total.
+	// Memory returns the used RAM (total - available) and the total.
 	Memory(ctx context.Context) (used, total uint64, err error)
-	// Disk devuelve el uso del sistema de ficheros que contiene path.
+	// Disk returns the usage of the filesystem containing path.
 	Disk(ctx context.Context, path string) (used, total uint64, err error)
 }
 
-// GopsutilHost implementa HostReader con gopsutil. gopsutil lee HOST_PROC, así que con
-// /proc del host montado en /host/proc (spec §6.1) mide el host y no el contenedor.
+// GopsutilHost implements HostReader with gopsutil. gopsutil reads HOST_PROC, so with the
+// host's /proc mounted at /host/proc (spec §6.1) it measures the host and not the container.
 type GopsutilHost struct{}
 
 func (GopsutilHost) CPUTimes(ctx context.Context) (CPUTimes, error) {
@@ -28,13 +28,13 @@ func (GopsutilHost) CPUTimes(ctx context.Context) (CPUTimes, error) {
 		return CPUTimes{}, err
 	}
 	if len(ts) == 0 {
-		return CPUTimes{}, errors.New("stats: sin tiempos de CPU")
+		return CPUTimes{}, errors.New("stats: no CPU times")
 	}
 	return cpuTimesFrom(ts[0]), nil
 }
 
-// cpuTimesFrom replica el cálculo de gopsutil: guest y guestNice ya están incluidos
-// en user y nice, así que no se suman otra vez.
+// cpuTimesFrom replicates gopsutil's calculation: guest and guestNice are already included
+// in user and nice, so they are not added again.
 func cpuTimesFrom(t cpu.TimesStat) CPUTimes {
 	total := t.User + t.System + t.Idle + t.Nice + t.Iowait + t.Irq + t.Softirq + t.Steal
 	return CPUTimes{Busy: total - t.Idle - t.Iowait, Total: total}

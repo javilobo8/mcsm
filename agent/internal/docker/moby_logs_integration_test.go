@@ -14,9 +14,9 @@ import (
 	"github.com/moby/moby/client"
 )
 
-// Un contenedor sin TTY (los de Compose, p. ej. un servidor importado aún adoptado) tiene los logs
-// multiplexados por Docker (cabecera de 8 bytes por trama): Logs debe devolver solo el texto, con
-// cada línea empezando por su marca de tiempo, igual que con TTY.
+// A container without a TTY (Compose ones, e.g. an imported server still adopted) has its logs
+// multiplexed by Docker (8-byte header per frame): Logs must return only the text, with
+// each line starting with its timestamp, just as with a TTY.
 func TestMobyLogsWithoutTTY(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -31,8 +31,8 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 	_, _ = m.cli.ContainerRemove(ctx, name, client.ContainerRemoveOptions{Force: true})
 	id, err := m.Create(ctx, name,
 		&container.Config{Image: "alpine:3.22", Tty: false, Labels: map[string]string{"mcsm.test": "true"},
-			// «cuatro» espera a que exista /tmp/sigue: llega en streaming, con el seguimiento ya abierto.
-			Cmd: []string{"sh", "-c", "echo uno; echo dos >&2; echo tres; while [ ! -e /tmp/sigue ]; do sleep 0.1; done; echo cuatro >&2; sleep 300"}},
+			// "four" waits for /tmp/go-on to exist: it arrives in streaming, with the follow already open.
+			Cmd: []string{"sh", "-c", "echo one; echo two >&2; echo three; while [ ! -e /tmp/go-on ]; do sleep 0.1; done; echo four >&2; sleep 300"}},
 		&container.HostConfig{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -52,10 +52,10 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 		line := sc.Text()
 		ts, msg, ok := strings.Cut(line, " ")
 		if !ok {
-			t.Fatalf("línea sin marca de tiempo: %q", line)
+			t.Fatalf("line without timestamp: %q", line)
 		}
 		if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
-			t.Fatalf("la línea no empieza por la marca de tiempo (¿cabecera del multiplexado?): %q", line)
+			t.Fatalf("the line does not start with the timestamp (multiplexing header?): %q", line)
 		}
 		got = append(got, msg)
 	}
@@ -63,11 +63,11 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	slices.Sort(got)
-	if want := []string{"dos", "tres", "uno"}; !slices.Equal(got, want) {
-		t.Fatalf("líneas = %q, quiero %q (stdout y stderr, sin cabeceras)", got, want)
+	if want := []string{"one", "three", "two"}; !slices.Equal(got, want) {
+		t.Fatalf("lines = %q, want %q (stdout and stderr, without headers)", got, want)
 	}
-	// Seguimiento en vivo: una línea nueva de stderr llega separada y con su marca de tiempo.
-	ex, err := m.cli.ExecCreate(ctx, id, client.ExecCreateOptions{Cmd: []string{"touch", "/tmp/sigue"}})
+	// Live follow: a new stderr line arrives separated and with its timestamp.
+	ex, err := m.cli.ExecCreate(ctx, id, client.ExecCreateOptions{Cmd: []string{"touch", "/tmp/go-on"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,14 +75,14 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !sc.Scan() {
-		t.Fatalf("no llegó la línea en vivo: %v", sc.Err())
+		t.Fatalf("the live line did not arrive: %v", sc.Err())
 	}
-	if ts, msg, _ := strings.Cut(sc.Text(), " "); msg != "cuatro" {
-		t.Fatalf("línea en vivo = %q", sc.Text())
+	if ts, msg, _ := strings.Cut(sc.Text(), " "); msg != "four" {
+		t.Fatalf("live line = %q", sc.Text())
 	} else if _, err := time.Parse(time.RFC3339Nano, ts); err != nil {
-		t.Fatalf("línea en vivo sin marca de tiempo: %q", sc.Text())
+		t.Fatalf("live line without timestamp: %q", sc.Text())
 	}
-	// Close corta el seguimiento: la lectura pendiente termina (sin goroutines colgadas).
+	// Close cuts the follow: the pending read ends (no dangling goroutines).
 	done := make(chan error, 1)
 	go func() { _, err := rc.Read(make([]byte, 1)); done <- err }()
 	if err := rc.Close(); err != nil {
@@ -91,18 +91,18 @@ func TestMobyLogsWithoutTTY(t *testing.T) {
 	select {
 	case err := <-done:
 		if err == nil {
-			t.Fatal("leer tras Close debe fallar")
+			t.Fatal("reading after Close must fail")
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("Close no cortó la lectura")
+		t.Fatal("Close did not cut the read")
 	}
 	if d, ok := rc.(*demuxedLogs); !ok {
-		t.Fatalf("sin TTY Logs devuelve el flujo separado: %T", rc)
+		t.Fatalf("without a TTY Logs returns the separated stream: %T", rc)
 	} else {
 		select {
 		case <-d.done:
 		case <-time.After(10 * time.Second):
-			t.Fatal("la goroutine de StdCopy no terminó tras Close")
+			t.Fatal("the StdCopy goroutine did not finish after Close")
 		}
 	}
 }

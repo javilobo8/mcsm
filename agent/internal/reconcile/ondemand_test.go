@@ -20,30 +20,30 @@ func TestOnDemandLeavesExistingContainersAlone(t *testing.T) {
 	autoscale := true
 	r.SetOnDemand(func(s spec.Spec) bool { return s.Router.Active() && autoscale })
 
-	// Recién creado: sigue el estado deseado (running).
+	// Freshly created: it follows the desired state (running).
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, routedJSON)
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	c, _ := r.find(ctx, "a")
 	if c == nil || c.State != "running" {
-		t.Fatalf("recién creado: %+v", c)
+		t.Fatalf("freshly created: %+v", c)
 	}
 	if v, _ := st.Applied("a"); v != 1 {
 		t.Fatalf("applied = %d", v)
 	}
 
-	// mc-router lo para tras N minutos sin jugadores: el tick no lo vuelve a arrancar.
+	// mc-router stops it after N minutes without players: the tick does not start it again.
 	_ = fake.Stop(ctx, c.ID, time.Second)
 	starts := calls(fake, "Start")
 	if err := r.ReconcileTick(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if calls(fake, "Start") != starts {
-		t.Fatal("un servidor bajo demanda dormido no se arranca en el tick")
+		t.Fatal("a sleeping on-demand server is not started on the tick")
 	}
 
-	// Deseado parado y mc-router lo despierta: el tick no lo para.
+	// Desired stopped and mc-router wakes it: the tick does not stop it.
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, routedJSON)
 	_ = fake.Start(ctx, c.ID)
 	stops := calls(fake, "Stop")
@@ -51,30 +51,30 @@ func TestOnDemandLeavesExistingContainersAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if calls(fake, "Stop") != stops {
-		t.Fatal("un servidor bajo demanda despierto no se para en el tick")
+		t.Fatal("an awake on-demand server is not stopped on the tick")
 	}
 
-	// Un cambio de spec sí recrea, y el nuevo se arranca aunque el deseado sea parado: mc-router no
-	// ve un contenedor que nunca arrancó (no lo podría despertar); él lo duerme sin jugadores.
-	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, strings.Replace(routedJSON, "survival.lan", "otro.lan", 1))
+	// A spec change does recreate, and the new one is started even if the desired state is stopped: mc-router does
+	// not see a container that never started (it could not wake it); it puts it to sleep without players.
+	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, strings.Replace(routedJSON, "survival.lan", "other.lan", 1))
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	c2, _ := r.find(ctx, "a")
 	if c2 == nil || c2.ID == c.ID || c2.State != "running" {
-		t.Fatalf("recreado: %+v", c2)
+		t.Fatalf("recreated: %+v", c2)
 	}
-	_ = fake.Stop(ctx, c2.ID, time.Second) // mc-router lo duerme
+	_ = fake.Stop(ctx, c2.ID, time.Second) // mc-router puts it to sleep
 
-	// Power sigue mandando: arranca aunque esté bajo demanda.
+	// Power still rules: it starts even if it is on-demand.
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err != nil {
 		t.Fatal(err)
 	}
 	if c3, _ := r.find(ctx, "a"); c3.State != "running" {
-		t.Fatalf("tras Power start: %+v", c3)
+		t.Fatalf("after Power start: %+v", c3)
 	}
 
-	// Sin autoscale vuelve a imponerse el estado deseado (running tras el Power).
+	// Without autoscale the desired state is imposed again (running after the Power).
 	autoscale = false
 	c3, _ := r.find(ctx, "a")
 	_ = fake.Stop(ctx, c3.ID, time.Second)
@@ -82,7 +82,7 @@ func TestOnDemandLeavesExistingContainersAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c4, _ := r.find(ctx, "a"); c4.State != "running" {
-		t.Fatalf("sin autoscale: %+v", c4)
+		t.Fatalf("without autoscale: %+v", c4)
 	}
 }
 
@@ -100,14 +100,14 @@ func TestOnDemandOnlyForRoutedServers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c2, _ := r.find(ctx, "b"); c2.State != "running" {
-		t.Fatal("un servidor sin router sigue su estado deseado")
+		t.Fatal("a server without a router follows its desired state")
 	}
 }
 
-// plan-8 (H1): la reserva (Hold) solo frena al agente; mc-router arranca por su cuenta un
-// contenedor parado con hostname. Park lo borra mientras dura la reserva: un intento de entrar
-// (docker start del contenedor) no encuentra nada que arrancar. La liberación lo recrea y lo
-// arranca (mc-router no ve un contenedor que nunca arrancó; lo vuelve a dormir sin jugadores).
+// plan-8 (H1): the reservation (Hold) only holds back the agent; mc-router starts on its own a
+// stopped container with a hostname. Park deletes it for as long as the reservation lasts: an attempt to join
+// (docker start of the container) finds nothing to start. The release recreates and
+// starts it (mc-router does not see a container that never started; it puts it back to sleep without players).
 func TestParkRemovesOnDemandContainerWhileHeld(t *testing.T) {
 	for _, wasRunning := range []bool{true, false} {
 		r, st, fake, _, _ := setup(t)
@@ -119,12 +119,12 @@ func TestParkRemovesOnDemandContainerWhileHeld(t *testing.T) {
 		}
 		old, _ := r.find(ctx, "a")
 		if !wasRunning {
-			_ = fake.Stop(ctx, old.ID, time.Second) // dormido por inactividad
+			_ = fake.Stop(ctx, old.ID, time.Second) // asleep from inactivity
 		}
 		if _, err := r.Park(ctx, "a"); err == nil {
-			t.Fatal("aparcar sin reserva no vale: un tick lo recrearía al momento")
+			t.Fatal("parking without a reservation is not valid: a tick would recreate it immediately")
 		}
-		release, err := r.Hold("a", "restauración")
+		release, err := r.Hold("a", "restore")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -133,14 +133,14 @@ func TestParkRemovesOnDemandContainerWhileHeld(t *testing.T) {
 			t.Fatalf("park = %v %v", parked, err)
 		}
 		if c, _ := r.find(ctx, "a"); c != nil {
-			t.Fatalf("sin contenedor durante la reserva: %+v", c)
+			t.Fatalf("without a container during the reservation: %+v", c)
 		}
-		if err := fake.Start(ctx, old.ID); !errors.Is(err, docker.ErrNotFound) { // mc-router: un jugador intenta entrar
-			t.Fatalf("start de mc-router = %v", err)
+		if err := fake.Start(ctx, old.ID); !errors.Is(err, docker.ErrNotFound) { // mc-router: a player tries to join
+			t.Fatalf("mc-router start = %v", err)
 		}
 		release(ctx)
 		if c, _ := r.find(ctx, "a"); c == nil || c.ID == old.ID || c.State != "running" {
-			t.Fatalf("en marcha=%v: tras liberar %+v", wasRunning, c)
+			t.Fatalf("running=%v: after release %+v", wasRunning, c)
 		}
 	}
 }
@@ -151,12 +151,12 @@ func TestParkLeavesOtherServersAlone(t *testing.T) {
 	r.SetOnDemand(func(s spec.Spec) bool { return s.Router.Active() })
 	put(t, st, "b", "beta", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	_ = r.Reconcile(ctx, "b")
-	release, _ := r.Hold("b", "copia")
+	release, _ := r.Hold("b", "backup")
 	defer release(ctx)
 	if parked, err := r.Park(ctx, "b"); err != nil || parked {
 		t.Fatalf("park = %v %v", parked, err)
 	}
 	if c, _ := r.find(ctx, "b"); c == nil || c.State != "running" {
-		t.Fatal("un servidor sin router no se aparca")
+		t.Fatal("a server without a router is not parked")
 	}
 }

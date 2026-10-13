@@ -28,12 +28,12 @@ const createServer = async (name: string, spec: object) =>
   (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name, spec } })).json();
 const cfSpec = { type: "AUTO_CURSEFORGE", modpack: { platform: "AUTO_CURSEFORGE", slugOrUrl: "all-the-mods-10" } };
 const specOf = (env: Envelope) => {
-  if (env.body.case !== "applySpec") throw new Error(`esperaba applySpec, llegó ${env.body.case}`);
+  if (env.body.case !== "applySpec") throw new Error(`expected applySpec, got ${env.body.case}`);
   return { version: env.body.value.server!.version, serverId: env.body.value.server!.serverId, spec: JSON.parse(new TextDecoder().decode(env.body.value.server!.specJson)) };
 };
 
-describe("API key de CurseForge", () => {
-  it("GET/PUT nunca devuelven la key; valida el formato", async () => {
+describe("CurseForge API key", () => {
+  it("GET/PUT never return the key; it validates the format", async () => {
     expect((await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } })).json()).toEqual({ configured: false, valid: true });
     let res = await putKey(KEY);
     expect(res.statusCode).toBe(200);
@@ -41,12 +41,12 @@ describe("API key de CurseForge", () => {
     res = await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } });
     expect(res.json()).toEqual({ configured: true, valid: true });
     expect(res.body).not.toContain(KEY);
-    expect((await putKey("con espacio")).statusCode).toBe(400);
+    expect((await putKey("with space")).statusCode).toBe(400);
     expect((await app.inject({ method: "GET", url: "/api/settings/curseforge" })).statusCode).toBe(401);
     expect((await putKey("")).json()).toEqual({ configured: false, valid: true });
   });
 
-  it("la key es ASCII imprimible sin espacios (1-200); se recorta y \"\" la borra", async () => {
+  it("the key is printable ASCII without spaces (1-200); it is trimmed and \"\" deletes it", async () => {
     for (const bad of ["nul\u0000", "esc\u001b[0m", "del\u007f", "clé", "a b", "k".repeat(201)]) {
       const res = await putKey(bad);
       expect(res.statusCode, JSON.stringify(bad)).toBe(400);
@@ -59,7 +59,7 @@ describe("API key de CurseForge", () => {
     expect((await putKey("  ")).json()).toEqual({ configured: false, valid: true });
   });
 
-  it("solo viaja al agente en specs que usan CurseForge y nunca al navegador", async () => {
+  it("it only travels to the agent in specs that use CurseForge and never to the browser", async () => {
     await putKey(KEY);
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
@@ -87,7 +87,7 @@ describe("API key de CurseForge", () => {
     agent.close();
   });
 
-  it("cambiar la key reaplica solo los servidores de CurseForge; la misma key no hace nada", async () => {
+  it("changing the key re-applies only the CurseForge servers; the same key does nothing", async () => {
     const cf = await createServer("Pack", cfSpec);
     const paper = await createServer("Paper", { type: "PAPER", mods: { curseforgeFiles: [] } });
     const agent = new FakeAgent(url, nodeToken);
@@ -113,7 +113,7 @@ describe("API key de CurseForge", () => {
     agent.close();
   });
 
-  it("el SyncSpecs tras Hello incluye la key en los servidores de CurseForge", async () => {
+  it("the SyncSpecs after Hello includes the key in CurseForge servers", async () => {
     await putKey(KEY);
     const cf = await createServer("Pack", cfSpec);
     const paper = await createServer("Paper", { type: "PAPER" });
@@ -130,8 +130,8 @@ describe("API key de CurseForge", () => {
   });
 });
 
-describe("migración 020_cf_api_key_env_to_settings", () => {
-  it("mueve CF_API_KEY del env libre a Ajustes y versiona la spec", () => {
+describe("migration 020_cf_api_key_env_to_settings", () => {
+  it("moves CF_API_KEY from the free env to Settings and versions the spec", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON; CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)");
     const idx = migrations.findIndex((m) => m.name === "020_cf_api_key_env_to_settings");

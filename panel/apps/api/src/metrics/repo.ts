@@ -4,21 +4,21 @@ import type { Db } from "../db/db.js";
 
 export type MetricScope = "server" | "node";
 
-/** Una fila de `metric_samples`. `ts` en epoch segundos, múltiplo de 10. */
+/** A `metric_samples` row. `ts` in epoch seconds, a multiple of 10. */
 export type MetricRow = { scope: MetricScope; scopeId: string; ts: number } & Record<MetricColumn, number | null>;
 
-/** Columna SQL y agregación por cubo de cada columna de la serie. */
+/** SQL column and per-bucket aggregation of each series column. */
 const AGG: Record<MetricColumn, string> = {
   cpuPct: "AVG(cpu_pct)",
   memBytes: "AVG(mem_bytes)",
   memLimitBytes: "MAX(mem_limit_bytes)",
-  netRxBytes: "MAX(net_rx_bytes)", // contadores acumulados: el último del cubo
+  netRxBytes: "MAX(net_rx_bytes)", // cumulative counters: the bucket's last one
   netTxBytes: "MAX(net_tx_bytes)",
   diskBytes: "MAX(disk_bytes)",
   diskTotalBytes: "MAX(disk_total_bytes)",
-  playersOnline: "MAX(players_online)", // pico del cubo: un jugador que entra y sale no desaparece
+  playersOnline: "MAX(players_online)", // bucket peak: a player who joins and leaves does not disappear
   playersMax: "MAX(players_max)",
-  tps: "AVG(tps)", // AVG ignora los NULL (servidores sin TPS o sin medida)
+  tps: "AVG(tps)", // AVG ignores NULLs (servers without TPS or without a measurement)
   pingMs: "AVG(ping_ms)",
 };
 
@@ -28,7 +28,7 @@ const SQL_COLUMN: Record<MetricColumn, string> = {
   playersOnline: "players_online", playersMax: "players_max", tps: "tps", pingMs: "ping_ms",
 };
 
-/** Decimales con que se devuelve cada columna (los bytes y contadores, enteros). */
+/** Decimals with which each column is returned (bytes and counters, integers). */
 const DECIMALS: Partial<Record<MetricColumn, number>> = { cpuPct: 1, tps: 2, pingMs: 0 };
 
 const round = (v: number, decimals: number) => {
@@ -45,8 +45,8 @@ export class MetricsRepo {
     this.insert = db.prepare(
       `INSERT OR REPLACE INTO metric_samples (scope, scope_id, ts, ${cols.join(", ")}) VALUES (?, ?, ?, ${cols.map(() => "?").join(", ")})`,
     );
-    // node:sqlite enlaza los number de JS como REAL: sin CAST, ts / 10 sería una división real
-    // y no habría cubos.
+    // node:sqlite binds JS numbers as REAL: without CAST, ts / 10 would be a real division
+    // and there would be no buckets.
     this.aggregate = db.prepare(
       `SELECT (ts / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS t, ${METRIC_COLUMNS.map((c) => `${AGG[c]} AS ${c}`).join(", ")}
        FROM metric_samples
@@ -55,7 +55,7 @@ export class MetricsRepo {
     );
   }
 
-  /** Inserta (o reemplaza, si ya existe esa ventana) todas las filas en una transacción. */
+  /** Inserts (or replaces, if that window already exists) all rows in one transaction. */
   insertMany(rows: MetricRow[]): void {
     if (rows.length === 0) return;
     this.db.exec("BEGIN");
@@ -68,7 +68,7 @@ export class MetricsRepo {
     }
   }
 
-  /** Borra las filas con `ts` anterior a `beforeTs`. Devuelve cuántas borró. */
+  /** Deletes the rows with `ts` before `beforeTs`. Returns how many it deleted. */
   deleteOlderThan(beforeTs: number): number {
     return Number(this.db.prepare("DELETE FROM metric_samples WHERE ts < ?").run(beforeTs).changes);
   }
@@ -77,7 +77,7 @@ export class MetricsRepo {
     return (this.db.prepare("SELECT COUNT(*) AS n FROM metric_samples WHERE scope = ? AND scope_id = ?").get(scope, scopeId) as { n: number }).n;
   }
 
-  /** Agrega al vuelo por cubos del rango y rellena con null los cubos sin muestras. */
+  /** Aggregates on the fly into range buckets and fills buckets without samples with null. */
   series(scope: MetricScope, scopeId: string, range: MetricRange, nowSec: number): MetricSeries {
     const { from, step, count } = metricBuckets(range, nowSec);
     const out = { range, step, t: Array.from({ length: count }, (_, i) => from + i * step) } as MetricSeries;

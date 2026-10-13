@@ -41,7 +41,7 @@ func TestFakeLifecycle(t *testing.T) {
 	}
 	ins, _ = f.Inspect(ctx, id)
 	if ins.Running || ins.State != "exited" {
-		t.Fatalf("inspect tras stop = %+v", ins)
+		t.Fatalf("inspect after stop = %+v", ins)
 	}
 	if err := f.Remove(ctx, id); err != nil {
 		t.Fatal(err)
@@ -57,16 +57,16 @@ func TestFakeLifecycle(t *testing.T) {
 func TestFakeCreateErrorAndNameConflict(t *testing.T) {
 	ctx := context.Background()
 	f := NewFake()
-	f.CreateErr = errors.New("fallo de creación inyectado")
+	f.CreateErr = errors.New("injected create failure")
 	if _, err := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	f.CreateErr = nil
 	if _, err := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil); err == nil {
-		t.Fatal("nombre duplicado debe fallar")
+		t.Fatal("a duplicate name must fail")
 	}
 }
 
@@ -87,7 +87,7 @@ func TestFakeLogsAndEvents(t *testing.T) {
 	}
 	rc.Close()
 	if _, err := rc.Read(buf); err == nil {
-		t.Fatal("tras Close, Read debe devolver error o EOF")
+		t.Fatal("after Close, Read must return an error or EOF")
 	}
 	evs, _ := f.Events(ctx)
 	go f.EmitEvent(Event{Action: "die", ContainerID: id, Labels: map[string]string{"mcsm.server_id": "a"}})
@@ -97,7 +97,7 @@ func TestFakeLogsAndEvents(t *testing.T) {
 			t.Fatalf("ev = %+v", ev)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("sin evento")
+		t.Fatal("no event")
 	}
 }
 
@@ -120,32 +120,32 @@ func TestFakeStartPortCollision(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if ins, _ := f.Inspect(ctx, b); ins.State != "created" {
-		t.Fatalf("b debe seguir created, es %q", ins.State)
+		t.Fatalf("b must stay created, it is %q", ins.State)
 	}
 	_ = f.Stop(ctx, a, time.Second)
 	if err := f.Start(ctx, b); err != nil {
-		t.Fatalf("con a parado debe arrancar: %v", err)
+		t.Fatalf("with a stopped it must start: %v", err)
 	}
-	// Docker 29.7.2: un start tras otro fallido por el puerto arranca SIN publicar los puertos,
-	// y así se queda aunque se pare y se vuelva a arrancar.
+	// Docker 29.7.2: a start after another one that failed on the port starts WITHOUT publishing the ports,
+	// and stays that way even if it is stopped and started again.
 	if ins, _ := f.Inspect(ctx, b); !ins.Running || !ins.PortsMissing {
-		t.Fatalf("b arranca sin puertos: %+v", ins)
+		t.Fatalf("b starts without ports: %+v", ins)
 	}
 	_ = f.Stop(ctx, b, time.Second)
 	_ = f.Start(ctx, b)
 	if ins, _ := f.Inspect(ctx, b); !ins.PortsMissing {
-		t.Fatal("parar y arrancar no lo arregla")
+		t.Fatal("stopping and starting does not fix it")
 	}
-	// Sin publicar no ocupa el puerto: otro contenedor puede publicarlo.
+	// Without publishing it does not occupy the port: another container can publish it.
 	c, _ := f.Create(ctx, "mcsm-c", &container.Config{}, portHost("25565"), nil)
 	if err := f.Start(ctx, c); err != nil {
-		t.Fatalf("el puerto está libre: %v", err)
+		t.Fatalf("the port is free: %v", err)
 	}
 	if ins, _ := f.Inspect(ctx, c); ins.PortsMissing {
-		t.Fatal("un contenedor sin arranques fallidos publica sus puertos")
+		t.Fatal("a container without failed starts publishes its ports")
 	}
 	if ins, _ := f.Inspect(ctx, a); ins.PortsMissing {
-		t.Fatal("parado no cuenta como sin puertos")
+		t.Fatal("stopped does not count as without ports")
 	}
 }
 
@@ -158,11 +158,11 @@ func TestPortsMissing(t *testing.T) {
 		want, got network.PortMap
 		missing   bool
 	}{
-		{"sin puertos pedidos", nil, nil, false},
-		{"todos publicados", want, network.PortMap{p: {{HostPort: "25565"}}, q: {{HostPort: "8100"}}}, false},
-		{"ninguno (fallo de Docker)", want, network.PortMap{}, true},
-		{"expuesto sin binding", want, network.PortMap{p: nil, q: {{HostPort: "8100"}}}, true},
-		{"binding sin puerto de host no cuenta", network.PortMap{p: {{}}}, network.PortMap{}, false},
+		{"no ports requested", nil, nil, false},
+		{"all published", want, network.PortMap{p: {{HostPort: "25565"}}, q: {{HostPort: "8100"}}}, false},
+		{"none (Docker failure)", want, network.PortMap{}, true},
+		{"exposed without binding", want, network.PortMap{p: nil, q: {{HostPort: "8100"}}}, true},
+		{"binding without host port does not count", network.PortMap{p: {{}}}, network.PortMap{}, false},
 	}
 	for _, c := range cases {
 		if got := PortsMissing(c.want, c.got); got != c.missing {
@@ -177,7 +177,7 @@ func TestFakeStartErr(t *testing.T) {
 	id, _ := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil)
 	f.StartErr = errors.New("boom")
 	if err := f.Start(ctx, id); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 }
 
@@ -186,18 +186,18 @@ func TestFakeStateTransitionsLikeDocker(t *testing.T) {
 	f := NewFake()
 	id, _ := f.Create(ctx, "mcsm-a", &container.Config{}, &container.HostConfig{}, nil)
 
-	// Stop sobre created sigue created.
+	// Stop on created stays created.
 	if err := f.Stop(ctx, id, time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if ins, _ := f.Inspect(ctx, id); ins.State != "created" {
-		t.Fatalf("stop sobre created -> %q", ins.State)
+		t.Fatalf("stop on created -> %q", ins.State)
 	}
-	// Kill sobre no-running: conflicto.
+	// Kill on non-running: conflict.
 	if err := f.Kill(ctx, id); !cerrdefs.IsConflict(err) {
-		t.Fatalf("kill sobre created err = %v", err)
+		t.Fatalf("kill on created err = %v", err)
 	}
-	// Start sobre running es no-op.
+	// Start on running is a no-op.
 	_ = f.Start(ctx, id)
 	f.SetHealth(id, "healthy")
 	before, _ := f.Inspect(ctx, id)
@@ -207,9 +207,9 @@ func TestFakeStateTransitionsLikeDocker(t *testing.T) {
 	}
 	after, _ := f.Inspect(ctx, id)
 	if !after.StartedAt.Equal(before.StartedAt) || after.Health != "healthy" {
-		t.Fatalf("start sobre running modificó estado: %+v -> %+v", before, after)
+		t.Fatalf("start on running modified state: %+v -> %+v", before, after)
 	}
-	// Kill -> 137; Stop sobre exited conserva ExitCode; Kill sobre exited: conflicto.
+	// Kill -> 137; Stop on exited keeps ExitCode; Kill on exited: conflict.
 	if err := f.Kill(ctx, id); err != nil {
 		t.Fatal(err)
 	}
@@ -217,10 +217,10 @@ func TestFakeStateTransitionsLikeDocker(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ins, _ := f.Inspect(ctx, id); ins.State != "exited" || ins.ExitCode != 137 {
-		t.Fatalf("tras kill+stop = %+v", ins)
+		t.Fatalf("after kill+stop = %+v", ins)
 	}
 	if err := f.Kill(ctx, id); !cerrdefs.IsConflict(err) {
-		t.Fatalf("kill sobre exited err = %v", err)
+		t.Fatalf("kill on exited err = %v", err)
 	}
 }
 
@@ -243,18 +243,18 @@ func TestFakeNotFound(t *testing.T) {
 func TestFakeListManagedFiltersAndCopiesLabels(t *testing.T) {
 	ctx := context.Background()
 	f := NewFake()
-	_, _ = f.Create(ctx, "ajeno", &container.Config{Labels: map[string]string{"x": "y"}}, &container.HostConfig{}, nil)
+	_, _ = f.Create(ctx, "foreign", &container.Config{Labels: map[string]string{"x": "y"}}, &container.HostConfig{}, nil)
 	id, _ := f.Create(ctx, "mcsm-a", &container.Config{Labels: map[string]string{"mcsm.managed": "true"}}, &container.HostConfig{}, nil)
 	list, _ := f.ListManaged(ctx)
 	if len(list) != 1 || list[0].ID != id {
 		t.Fatalf("list = %+v", list)
 	}
-	list[0].Labels["mcsm.managed"] = "mutado"
+	list[0].Labels["mcsm.managed"] = "mutated"
 	ins, _ := f.Inspect(ctx, id)
-	ins.Labels["otro"] = "x"
+	ins.Labels["other"] = "x"
 	ins2, _ := f.Inspect(ctx, id)
-	if ins2.Labels["mcsm.managed"] != "true" || ins2.Labels["otro"] != "" {
-		t.Fatalf("aliasing de labels: %+v", ins2.Labels)
+	if ins2.Labels["mcsm.managed"] != "true" || ins2.Labels["other"] != "" {
+		t.Fatalf("labels aliasing: %+v", ins2.Labels)
 	}
 }
 
@@ -262,23 +262,23 @@ func TestFakeEventsCloseOnCancelAndInjectedError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	f := NewFake()
 	evs, errs := f.Events(ctx)
-	f.EmitEventErr(errors.New("conexión perdida"))
+	f.EmitEventErr(errors.New("connection lost"))
 	select {
 	case err := <-errs:
-		if err == nil || err.Error() != "conexión perdida" {
+		if err == nil || err.Error() != "connection lost" {
 			t.Fatalf("err = %v", err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("sin error")
+		t.Fatal("no error")
 	}
 	cancel()
 	select {
 	case _, ok := <-evs:
 		if ok {
-			t.Fatal("evento inesperado")
+			t.Fatal("unexpected event")
 		}
 	case <-time.After(time.Second):
-		t.Fatal("el canal debe cerrarse al cancelar ctx")
+		t.Fatal("the channel must close when ctx is cancelled")
 	}
 }
 
@@ -287,19 +287,19 @@ func TestFakeEmitEventNeverBlocks(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		f.EmitEvent(Event{Action: "die"}) // sin suscriptores
+		f.EmitEvent(Event{Action: "die"}) // no subscribers
 		ctx, cancel := context.WithCancel(context.Background())
 		_, _ = f.Events(ctx)
-		for i := 0; i < 1000; i++ { // buffer lleno: descarta
+		for i := 0; i < 1000; i++ { // buffer full: drops
 			f.EmitEvent(Event{Action: "die"})
 		}
 		cancel()
-		f.EmitEvent(Event{Action: "die"}) // ctx cancelado
+		f.EmitEvent(Event{Action: "die"}) // ctx cancelled
 	}()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("EmitEvent se bloqueó")
+		t.Fatal("EmitEvent blocked")
 	}
 }
 
@@ -308,7 +308,7 @@ func TestFakeSubscribed(t *testing.T) {
 	sub := f.Subscribed()
 	select {
 	case <-sub:
-		t.Fatal("sin suscriptores no está cerrado")
+		t.Fatal("without subscribers it is not closed")
 	default:
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -317,8 +317,8 @@ func TestFakeSubscribed(t *testing.T) {
 	select {
 	case <-sub:
 	default:
-		t.Fatal("con un suscriptor se cierra")
+		t.Fatal("with a subscriber it closes")
 	}
-	f.Events(ctx) // un segundo suscriptor no lo vuelve a cerrar (no hay pánico)
+	f.Events(ctx) // a second subscriber does not close it again (no panic)
 	<-f.Subscribed()
 }

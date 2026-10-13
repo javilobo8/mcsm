@@ -16,11 +16,11 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); });
 
 const create = async (spec: object = {}) =>
-  (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno", spec: { type: "PAPER", memory: "4G", properties: { motd: "Hola" }, ...spec } } })).json();
+  (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One", spec: { type: "PAPER", memory: "4G", properties: { motd: "Hola" }, ...spec } } })).json();
 const patch = (id: string, payload: unknown) => app.inject({ method: "PATCH", url: `/api/servers/${id}`, headers: { cookie }, payload: payload as object });
 
-describe("PATCH de spec como merge de primer nivel", () => {
-  it("una sección sola no pisa el resto de la spec", async () => {
+describe("spec PATCH as a first-level merge", () => {
+  it("a single section does not overwrite the rest of the spec", async () => {
     const s = await create();
     const res = await patch(s.id, { spec: { whitelist: { enabled: true, players: ["Lobo"] } } });
     expect(res.statusCode).toBe(200);
@@ -31,7 +31,7 @@ describe("PATCH de spec como merge de primer nivel", () => {
     expect(after.spec.rconPassword).toBe(s.spec.rconPassword);
   });
 
-  it("null borra una sección; el tipo de modpack exige modpack", async () => {
+  it("null deletes a section; the modpack type requires modpack", async () => {
     const s = await create();
     let res = await patch(s.id, { spec: { type: "MODRINTH" } });
     expect(res.statusCode).toBe(400);
@@ -45,16 +45,16 @@ describe("PATCH de spec como merge de primer nivel", () => {
     expect(res.json().specVersion).toBe(3);
   });
 
-  it("reenviar la misma spec no incrementa la versión; con nombre nuevo solo renombra", async () => {
+  it("resending the same spec does not increment the version; with a new name it only renames", async () => {
     const s = await create();
     const { rconPassword: _r, ...same } = s.spec;
     let res = await patch(s.id, { spec: same });
     expect(res.json().specVersion).toBe(1);
-    res = await patch(s.id, { name: "Otro nombre", spec: same });
-    expect(res.json()).toMatchObject({ name: "Otro nombre", specVersion: 1 });
+    res = await patch(s.id, { name: "Other name", spec: same });
+    expect(res.json()).toMatchObject({ name: "Other name", specVersion: 1 });
   });
 
-  it("no se puede cambiar rconPassword por PATCH", async () => {
+  it("rconPassword cannot be changed via PATCH", async () => {
     const s = await create();
     const res = await patch(s.id, { spec: { rconPassword: "hackhackhack" } });
     expect(res.statusCode).toBe(200);
@@ -62,16 +62,16 @@ describe("PATCH de spec como merge de primer nivel", () => {
     expect(res.json().specVersion).toBe(1);
   });
 
-  it("ports sin game conserva el puerto de juego", async () => {
+  it("ports without game keeps the game port", async () => {
     const s = await create();
     const res = await patch(s.id, { spec: { ports: { extra: [{ host: 19132, container: 19132, proto: "udp", label: "Geyser" }] } } });
     expect(res.statusCode).toBe(200);
     expect(res.json().spec.ports).toEqual({ game: s.spec.ports.game, extra: [{ host: 19132, container: 19132, proto: "udp", label: "Geyser" }] });
   });
 
-  it("errores con la ruta del campo y cuerpos inválidos", async () => {
+  it("errors with the field path and invalid bodies", async () => {
     const s = await create();
-    let res = await patch(s.id, { spec: { mods: { modrinthProjects: ["con espacio"] } } });
+    let res = await patch(s.id, { spec: { mods: { modrinthProjects: ["with space"] } } });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/^mods\.modrinthProjects\.0: /);
     res = await patch(s.id, { spec: "x" });
@@ -82,8 +82,8 @@ describe("PATCH de spec como merge de primer nivel", () => {
   });
 });
 
-describe("PATCH: ausente, null y [] en ops/whitelist", () => {
-  it("[] deja la sección presente y vacía, ausente no la toca y null la elimina", async () => {
+describe("PATCH: absent, null and [] in ops/whitelist", () => {
+  it("[] leaves the section present and empty, absent does not touch it and null removes it", async () => {
     const s = await create();
     expect(s.spec).not.toHaveProperty("ops");
     let res = await patch(s.id, { spec: { ops: [] } });
@@ -97,26 +97,26 @@ describe("PATCH: ausente, null y [] en ops/whitelist", () => {
   });
 });
 
-describe("PATCH: null en claves obligatorias", () => {
-  it("responde 400 nombrando la clave y no resetea nada (un FABRIC no pasa a PAPER)", async () => {
+describe("PATCH: null on required keys", () => {
+  it("responds 400 naming the key and resets nothing (a FABRIC does not become PAPER)", async () => {
     const s = await create({ type: "FABRIC" });
     for (const k of ["type", "version", "memory", "ports", "properties", "env", "resources", "restartPolicy", "imageTag"]) {
       const res = await patch(s.id, { spec: { [k]: null } });
       expect(res.statusCode, k).toBe(400);
-      expect(res.json().error, k).toContain(`«${k}»`);
+      expect(res.json().error, k).toContain(`“${k}”`);
     }
     const row = app.servers.get(s.id)!;
     expect(row.spec_version).toBe(1);
     expect(JSON.parse(row.spec).type).toBe("FABRIC");
-    // Las secciones opcionales sí se borran con null.
+    // Optional sections do get deleted with null.
     expect((await patch(s.id, { spec: { ops: [] } })).statusCode).toBe(200);
     expect((await patch(s.id, { spec: { ops: null, mods: null } })).statusCode).toBe(200);
   });
 });
 
-describe("PATCH: tope de 64 KiB de la spec tras el merge", () => {
+describe("PATCH: 64 KiB cap on the spec after the merge", () => {
   const bigEnv = (prefix: string) => Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`${prefix}${i}`, "x".repeat(4000)]));
-  it("cada PATCH cabe, pero la spec resultante no: 400 claro y la spec guardada no cambia", async () => {
+  it("each PATCH fits, but the resulting spec does not: clear 400 and the stored spec does not change", async () => {
     const s = await create();
     let res = await patch(s.id, { spec: { env: bigEnv("A") } });
     expect(res.statusCode).toBe(200);
@@ -125,7 +125,7 @@ describe("PATCH: tope de 64 KiB de la spec tras el merge", () => {
     expect(res.json().error).toMatch(/64 KiB/);
     expect(app.servers.get(s.id)!.spec_version).toBe(2);
   });
-  it("también al crear", async () => {
+  it("also on create", async () => {
     const res = await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Grande", spec: { env: { ...bigEnv("A"), ...bigEnv("B") } } } });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/64 KiB/);

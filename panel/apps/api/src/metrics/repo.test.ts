@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../db/db.js";
 import { MetricsRepo, type MetricRow } from "./repo.js";
 
-const NOW = 1_760_000_017; // 10 s después de un múltiplo de 10 + 7
+const NOW = 1_760_000_017; // 10 s after a multiple of 10 + 7
 let db: Db;
 let repo: MetricsRepo;
 
@@ -17,14 +17,14 @@ beforeEach(() => {
 });
 
 describe("MetricsRepo", () => {
-  it("la migración crea la tabla con la clave (scope, scope_id, ts) y una ventana repetida se reemplaza", () => {
+  it("the migration creates the table with the (scope, scope_id, ts) key and a repeated window is replaced", () => {
     repo.insertMany([row({ ts: 1_760_000_000, cpuPct: 10 }), row({ ts: 1_760_000_000, cpuPct: 30 }), row({ ts: 1_760_000_010 })]);
     expect(repo.count("server", "s1")).toBe(2);
     const s = repo.series("server", "s1", "1h", NOW);
     expect(s.cpuPct.at(-2)).toBe(30);
   });
 
-  it("1h: 360 cubos de 10 s alineados, null donde no hay muestras", () => {
+  it("1h: 360 aligned 10 s buckets, null where there are no samples", () => {
     repo.insertMany([row({ ts: 1_760_000_000, cpuPct: 12.345 }), row({ ts: 1_760_000_010, cpuPct: 50 })]);
     const s = repo.series("server", "s1", "1h", NOW);
     expect(s.step).toBe(10);
@@ -32,13 +32,13 @@ describe("MetricsRepo", () => {
     expect(s.t.at(-1)).toBe(1_760_000_010);
     expect(s.t[1]! - s.t[0]!).toBe(10);
     expect(s.cpuPct.at(-1)).toBe(50);
-    expect(s.cpuPct.at(-2)).toBe(12.3); // un decimal
+    expect(s.cpuPct.at(-2)).toBe(12.3); // one decimal
     expect(s.cpuPct.filter((v) => v !== null)).toHaveLength(2);
     expect(s.memBytes.at(-3)).toBeNull();
   });
 
-  it("24h agrupa por minuto con media (CPU, memoria, TPS) y máximo (jugadores), ignorando TPS nulos", () => {
-    // Tres muestras en el mismo minuto [1_759_999_980, 1_760_000_040).
+  it("24h groups by minute with average (CPU, memory, TPS) and maximum (players), ignoring null TPS", () => {
+    // Three samples in the same minute [1_759_999_980, 1_760_000_040).
     const base = 1_759_999_980;
     repo.insertMany([
       row({ ts: base, cpuPct: 10, memBytes: 100, playersOnline: 1, tps: 20 }),
@@ -56,31 +56,31 @@ describe("MetricsRepo", () => {
     expect(s.tps[i]).toBe(19);
   });
 
-  it("ts que no son múltiplo del cubo caen en su cubo (división entera)", () => {
+  it("ts values that are not a multiple of the bucket fall into their bucket (integer division)", () => {
     repo.insertMany([row({ ts: 1_760_000_000 - 7 * 60 - 10 }), row({ ts: 1_760_000_000 - 7 * 60 + 50 })]);
     const s = repo.series("server", "s1", "7d", NOW);
     expect(s.cpuPct.filter((v) => v !== null)).toHaveLength(1);
   });
 
-  it("separa servidores y nodos y no devuelve muestras fuera del rango", () => {
+  it("separates servers and nodes and returns no samples outside the range", () => {
     repo.insertMany([
       row({ ts: 1_760_000_000 }),
-      row({ ts: 1_760_000_000, scopeId: "otro", cpuPct: 99 }),
+      row({ ts: 1_760_000_000, scopeId: "other", cpuPct: 99 }),
       row({ ts: 1_760_000_000, scope: "node", cpuPct: 77 }),
-      row({ ts: 1_760_000_000 - 3_600, cpuPct: 1 }), // justo fuera de la última hora
+      row({ ts: 1_760_000_000 - 3_600, cpuPct: 1 }), // just outside the last hour
     ]);
     const s = repo.series("server", "s1", "1h", NOW);
     expect(s.cpuPct.filter((v) => v !== null)).toEqual([10]);
     expect(repo.series("node", "s1", "1h", NOW).cpuPct.at(-2)).toBe(77);
   });
 
-  it("deleteOlderThan borra solo lo anterior al corte", () => {
+  it("deleteOlderThan deletes only what is before the cutoff", () => {
     repo.insertMany([row({ ts: 100 }), row({ ts: 110 }), row({ ts: 120 })]);
     expect(repo.deleteOlderThan(120)).toBe(2);
     expect(repo.count("server", "s1")).toBe(1);
   });
 
-  it("la consulta usa la clave primaria (sin recorrer la tabla)", () => {
+  it("the query uses the primary key (without scanning the table)", () => {
     const plan = db.prepare(
       "EXPLAIN QUERY PLAN SELECT (ts / CAST(? AS INTEGER)) * CAST(? AS INTEGER) AS t, AVG(cpu_pct) FROM metric_samples WHERE scope = ? AND scope_id = ? AND ts >= ? AND ts < ? GROUP BY t",
     ).all(10, 10, "server", "s1", 0, 1) as { detail: string }[];
@@ -88,17 +88,17 @@ describe("MetricsRepo", () => {
   });
 });
 
-describe("planes de consulta", () => {
+describe("query plans", () => {
   const plan = (sql: string, ...args: (string | number)[]) =>
     (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args) as { detail: string }[]).map((r) => r.detail).join(" | ");
 
-  it("la purga usa un índice por ts, no recorre la tabla", () => {
+  it("the purge uses an index on ts, it does not scan the table", () => {
     const p = plan("DELETE FROM metric_samples WHERE ts < ?", 1);
     expect(p).toMatch(/USING (COVERING )?INDEX/);
     expect(p).not.toMatch(/SCAN metric_samples(?! USING)/);
   });
 
-  it("la serie de 7 d usa la clave primaria (scope, scope_id, ts)", () => {
+  it("the 7 d series uses the primary key (scope, scope_id, ts)", () => {
     const p = plan("SELECT ts FROM metric_samples WHERE scope = ? AND scope_id = ? AND ts >= ? AND ts < ?", "server", "s1", 1, 2);
     expect(p).toMatch(/SEARCH metric_samples USING (PRIMARY KEY|INDEX)/);
     expect(p).toContain("scope=? AND scope_id=? AND ts>? AND ts<?");

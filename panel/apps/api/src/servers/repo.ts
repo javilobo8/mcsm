@@ -9,9 +9,9 @@ export interface ServerRow {
   id: string; node_id: string; name: string; slug: string; spec: string; spec_version: number;
   desired_state: "running" | "stopped"; observed: string | null; observed_spec_version: number;
   observed_at: string | null; created_at: string; updated_at: string;
-  /** plan-9: cuándo cambió por última vez desired_state (null si nunca). */
+  /** plan-9: when desired_state last changed (null if never). */
   desired_changed_at?: string | null;
-  /** plan-6: JSON de ImportedFrom (servidores importados). Opcional en el tipo: filas de tests anteriores a la columna. */
+  /** plan-6: ImportedFrom JSON (imported servers). Optional in the type: test rows predating the column. */
   imported_from?: string | null;
 }
 
@@ -25,7 +25,7 @@ export interface ServerDto {
   id: string; nodeId: string; name: string; slug: string; spec: Spec | Omit<Spec, "rconPassword">; specVersion: number;
   desiredState: "running" | "stopped"; observed: ObservedDto | null; observedSpecVersion: number; observedAt: string | null;
   createdAt: string; updatedAt: string;
-  /** plan-6: origen de un servidor importado (null si lo creó el panel). */
+  /** plan-6: origin of an imported server (null if created by the panel). */
   importedFrom: ImportedFrom | null;
 }
 
@@ -48,21 +48,21 @@ export function toServerDto(r: ServerRow, opts: { includeSecrets: boolean } = { 
 }
 
 /**
- * Mensaje ServerSpec para el agente. La API key global de CurseForge se añade aquí, solo a las
- * specs que usan CurseForge: no está en servers.spec ni en los DTO del navegador.
- * `curseforgeApiKey` es obligatorio (`app.curseforge.get()`, null si no hay): un emisor que la
- * olvidara alternaría «con key» y «sin key» frente a SyncSpecs, cambiando el hash y recreando
- * el contenedor en cada envío.
- * plan-6: la spec de un importado lleva además `adopt: {containerId, version}` (solo en el mensaje,
- * nunca en servers.spec), para que el agente reconstruya una adopción perdida sin crear un segundo
- * contenedor sobre el mismo mundo.
+ * ServerSpec message for the agent. The global CurseForge API key is added here, only to the
+ * specs that use CurseForge: it is not in servers.spec nor in the browser DTOs.
+ * `curseforgeApiKey` is required (`app.curseforge.get()`, null if there is none): a sender that
+ * forgot it would alternate “with key” and “without key” against SyncSpecs, changing the hash and recreating
+ * the container on every send.
+ * plan-6: an imported server's spec also carries `adopt: {containerId, version}` (only in the message,
+ * never in servers.spec), so that the agent rebuilds a lost adoption without creating a second
+ * container over the same world.
  */
 export function toServerSpecMessage(r: ServerRow, curseforgeApiKey: string | null): ServerSpec {
   const spec = JSON.parse(r.spec) as Spec;
   const extra: Record<string, unknown> = {};
   if (curseforgeApiKey && usesCurseForge(spec)) extra.curseforgeApiKey = curseforgeApiKey;
-  // plan-6: un importado lleva su contenedor original y la versión de la adopción; el agente lo sigue
-  // sin recrearlo mientras spec_version no la supere, y lo vuelve a adoptar si perdió el registro.
+  // plan-6: an imported server carries its original container and the adoption version; the agent follows it
+  // without recreating it while spec_version does not exceed it, and adopts it again if it lost the record.
   const from = parseImportedFrom(r);
   if (from) extra.adopt = { containerId: from.containerId, version: from.specVersion };
   const json = Object.keys(extra).length > 0 ? JSON.stringify({ ...spec, ...extra }) : r.spec;
@@ -94,23 +94,23 @@ export class ServersRepo {
       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`).run(id, input.nodeId, input.name, input.slug, JSON.stringify(input.spec), input.desiredState, now, now);
     return this.get(id)!;
   }
-  /** Guarda la spec nueva, incrementa la versión. */
+  /** Stores the new spec, increments the version. */
   updateSpec(id: string, spec: Spec, name?: string): ServerRow {
     this.db.prepare(`UPDATE servers SET spec = ?, spec_version = spec_version + 1, name = COALESCE(?, name), updated_at = ? WHERE id = ?`)
       .run(JSON.stringify(spec), name ?? null, nowIso(), id);
     return this.get(id)!;
   }
-  /** Solo cambia el nombre: no toca spec_version (no hay nada que enviar al agente). */
+  /** Only changes the name: does not touch spec_version (there is nothing to send to the agent). */
   rename(id: string, name: string): ServerRow {
     this.db.prepare("UPDATE servers SET name = ?, updated_at = ? WHERE id = ?").run(name, nowIso(), id);
     return this.get(id)!;
   }
-  /** Nueva versión con la misma spec (p. ej. cambió la API key de CurseForge): el agente la reaplica. */
+  /** New version with the same spec (e.g. the CurseForge API key changed): the agent reapplies it. */
   bumpVersion(id: string): ServerRow {
     this.db.prepare("UPDATE servers SET spec_version = spec_version + 1, updated_at = ? WHERE id = ?").run(nowIso(), id);
     return this.get(id)!;
   }
-  /** plan-6: marca la fila como importada (ImportService, justo después de create). */
+  /** plan-6: marks the row as imported (ImportService, right after create). */
   setImportedFrom(id: string, from: ImportedFrom): ServerRow {
     this.db.prepare("UPDATE servers SET imported_from = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(from), nowIso(), id);
     return this.get(id)!;

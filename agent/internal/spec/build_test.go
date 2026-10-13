@@ -23,7 +23,7 @@ func TestBuildCasesSharedWithZod(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cases) < 20 {
-		t.Fatalf("solo %d casos: ¿fixture truncada?", len(cases))
+		t.Fatalf("only %d cases: truncated fixture?", len(cases))
 	}
 	for _, c := range cases {
 		s := loadFixture(t)
@@ -32,12 +32,12 @@ func TestBuildCasesSharedWithZod(t *testing.T) {
 			s.Env = c.Env
 		}
 		if err := s.Validate(); (err == nil) != c.OK {
-			t.Errorf("%s: Validate() = %v; ok esperado %v", c.Name, err, c.OK)
+			t.Errorf("%s: Validate() = %v; expected ok %v", c.Name, err, c.OK)
 		}
 	}
 }
 
-func TestBuildEnvPorTipo(t *testing.T) {
+func TestBuildEnvByType(t *testing.T) {
 	want := map[string]string{
 		"PAPER": "PAPER_BUILD", "FOLIA": "FOLIABUILD", "PURPUR": "PURPUR_BUILD",
 		"FABRIC": "FABRIC_LOADER_VERSION", "QUILT": "QUILT_LOADER_VERSION",
@@ -55,43 +55,43 @@ func TestBuildEnvPorTipo(t *testing.T) {
 		}
 		for _, other := range buildEnvKeys {
 			if _, ok := env[other]; ok && other != key {
-				t.Errorf("%s: no debe emitir %s", typ, other)
+				t.Errorf("%s: must not emit %s", typ, other)
 			}
 		}
 	}
 }
 
-// Sin build no se emite nada: al actualizar el agente ningún contenedor se recrea.
-func TestBuildVacioNoCambiaElHash(t *testing.T) {
+// Without build nothing is emitted: no container is recreated when updating the agent.
+func TestBuildEmptyKeepsHash(t *testing.T) {
 	s := loadFixture(t)
 	if s.Build != "" {
-		t.Fatal("la fixture no debe llevar build")
+		t.Fatal("the fixture must not carry build")
 	}
 	if h := hashOfSpec(t, s); h != "09ff6e5490b40677" {
-		t.Fatalf("el hash de una spec sin build cambió: %s", h)
+		t.Fatalf("the hash of a spec without build changed: %s", h)
 	}
 	env := buildEnv(t, s)
 	for _, k := range buildEnvKeys {
 		if _, ok := env[k]; ok {
-			t.Errorf("sin build no se emite %s", k)
+			t.Errorf("without build %s is not emitted", k)
 		}
 	}
 	s.Build = "178"
 	if hashOfSpec(t, s) == "09ff6e5490b40677" {
-		t.Error("un build fijado cambia el entorno y debe cambiar el hash")
+		t.Error("a pinned build changes the environment and must change the hash")
 	}
 }
 
-// Un panel sin el campo (o un agente antiguo) no rompe el JSON.
-func TestBuildAusenteEnElJSON(t *testing.T) {
+// A panel without the field (or an old agent) does not break the JSON.
+func TestBuildAbsentFromJSON(t *testing.T) {
 	s, err := Parse([]byte(`{"imageTag":"java21","type":"PAPER","version":"1.21.4","memory":"4G","ports":{"game":25565,"extra":[]},"restartPolicy":"unless-stopped","rconPassword":"s3cretpassw0rd"}`))
 	if err != nil || s.Build != "" {
-		t.Fatalf("Parse sin build: %v, %q", err, s.Build)
+		t.Fatalf("Parse without build: %v, %q", err, s.Build)
 	}
 	b, _ := json.Marshal(s)
 	var m map[string]any
 	_ = json.Unmarshal(b, &m)
 	if _, ok := m["build"]; ok {
-		t.Error("build vacío no se serializa (omitempty)")
+		t.Error("an empty build is not serialized (omitempty)")
 	}
 }

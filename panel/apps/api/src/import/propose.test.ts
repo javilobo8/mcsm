@@ -5,7 +5,7 @@ import { proposeImport, toCandidateDto, type ProposeContext } from "./propose.js
 
 const ROOT = "/srv/minecraft";
 const ctx = (over: Partial<ProposeContext> = {}): ProposeContext => ({ dataRoot: ROOT, takenSlugs: new Set(), curseforgeConfigured: false, ...over });
-/** Inicializador (no el mensaje): así `Partial` y el spread conservan `$typeName?: undefined`. */
+/** Initializer (not the message): so `Partial` and the spread keep `$typeName?: undefined`. */
 type Init = Exclude<MessageInitShape<typeof ImportCandidateSchema>, ImportCandidate>;
 const cand = (over: Partial<Init> = {}) => create(ImportCandidateSchema, {
   containerId: "c".repeat(64), name: "survival", image: "itzg/minecraft-server:java21", state: "running",
@@ -18,7 +18,7 @@ const cand = (over: Partial<Init> = {}) => create(ImportCandidateSchema, {
 const env = (extra: Record<string, string>) => ({ EULA: "TRUE", TYPE: "PAPER", VERSION: "1.21.4", MEMORY: "4G", RCON_PASSWORD: "s3cr3t-rcon-pass", ...extra });
 
 describe("proposeImport", () => {
-  it("contenedor típico de compose con los datos fuera de DATA_ROOT", () => {
+  it("typical compose container with the data outside DATA_ROOT", () => {
     const p = proposeImport(cand({
       env: env({ MOTD: "Hola", USE_AIKAR_FLAGS: "true", CF_API_KEY: "$2a$10$clave" }),
       ports: [
@@ -51,7 +51,7 @@ describe("proposeImport", () => {
     expect(p.warnings.join(" ")).toMatch(/25575/);
   });
 
-  it("plan-10: la variable de build del tipo pasa a build (mismo entorno); si no vale, se queda en env", () => {
+  it("plan-10: the type's build variable becomes build (same environment); if invalid, it stays in env", () => {
     const fabric = proposeImport(cand({ env: env({ TYPE: "FABRIC", FABRIC_LOADER_VERSION: "0.16.9", PAPER_BUILD: "100" }) }), ctx());
     expect(fabric.specError).toBeNull();
     expect(fabric.spec.build).toBe("0.16.9");
@@ -69,20 +69,20 @@ describe("proposeImport", () => {
     expect(proposeImport(cand({ env: env({ TYPE: "FOLIA", FOLIABUILD: "12" }) }), ctx()).spec.build).toBe("12");
   });
 
-  it("datos en <DATA_ROOT>/<slug>/data: sin dataPath y slug fijo; ocupado = bloqueo", () => {
+  it("data in <DATA_ROOT>/<slug>/data: no dataPath and fixed slug; taken = blocker", () => {
     const c = cand({ mounts: [{ type: "bind", source: `${ROOT}/survival/data`, destination: "/data", readWrite: true }] });
     const p = proposeImport(c, ctx());
     expect(p).toMatchObject({ dataPath: null, slugLocked: true, slug: "survival", blockers: [] });
     expect(proposeImport(c, ctx({ takenSlugs: new Set(["survival"]) })).blockers.join(" ")).toMatch(/survival/);
   });
 
-  it("datos dentro de DATA_ROOT con otra forma, o conteniéndolo: bloqueo", () => {
+  it("data inside DATA_ROOT with a different shape, or containing it: blocker", () => {
     for (const source of [`${ROOT}/survival`, `${ROOT}/Mundo/data`, "/srv"]) {
       expect(proposeImport(cand({ mounts: [{ type: "bind", source, destination: "/data", readWrite: true }] }), ctx()).blockers).toHaveLength(1);
     }
   });
 
-  it("bloqueos: volumen, sin /data, solo lectura, red host, zona del sistema, sin 25565, SERVER_PORT", () => {
+  it("blockers: volume, no /data, read-only, host network, system area, no 25565, SERVER_PORT", () => {
     const blocked = (over: Partial<Init>) => proposeImport(cand(over), ctx()).blockers.length;
     expect(blocked({ mounts: [{ type: "volume", source: "/var/lib/docker/volumes/mc/_data", name: "mc", destination: "/data", readWrite: true }] })).toBe(1);
     expect(blocked({ mounts: [] })).toBe(1);
@@ -94,7 +94,7 @@ describe("proposeImport", () => {
     expect(blocked({ env: env({ SERVER_PORT: "25570" }) })).toBe(1);
   });
 
-  it("valores por defecto de itzg y avisos de RCON", () => {
+  it("itzg default values and RCON warnings", () => {
     const p = proposeImport(cand({ env: {} }), ctx());
     expect(p.spec).toMatchObject({ type: "VANILLA", version: "LATEST", memory: "1G" });
     expect(p.rconPassword).toBeNull();
@@ -103,7 +103,7 @@ describe("proposeImport", () => {
     expect(proposeImport(cand({ env: env({ RCON_PASSWORD: "corta" }) }), ctx()).rconPassword).toBeNull();
   });
 
-  it("whitelist y ops solo pasan a secciones con SYNCHRONIZE; si no, se quedan en env y la spec vale", () => {
+  it("whitelist and ops only become sections with SYNCHRONIZE; otherwise they stay in env and the spec is valid", () => {
     const sync = proposeImport(cand({ env: env({ OPS: "Lobo,Steve", EXISTING_OPS_FILE: "SYNCHRONIZE", WHITELIST: "Lobo\nSteve", EXISTING_WHITELIST_FILE: "synchronize" }) }), ctx());
     expect(sync.spec).toMatchObject({ ops: ["Lobo", "Steve"], whitelist: { enabled: true, players: ["Lobo", "Steve"] } });
     expect(sync.spec.env).toEqual({});
@@ -113,12 +113,12 @@ describe("proposeImport", () => {
     expect(keep.spec).not.toHaveProperty("whitelist");
     expect(keep.spec.env).toEqual({ OPS: "Lobo", WHITELIST: "Lobo", ENABLE_WHITELIST: "true" });
     expect(keep.specError).toBeNull();
-    const bad = proposeImport(cand({ env: env({ OPS: "nombre con espacios", EXISTING_OPS_FILE: "SYNCHRONIZE" }) }), ctx());
+    const bad = proposeImport(cand({ env: env({ OPS: "name with spaces", EXISTING_OPS_FILE: "SYNCHRONIZE" }) }), ctx());
     expect(bad.spec).not.toHaveProperty("ops");
     expect(bad.specError).toBeNull();
   });
 
-  it("MODRINTH_PROJECTS va a plugins o a mods según el tipo; una entrada inválida lo deja en env", () => {
+  it("MODRINTH_PROJECTS goes to plugins or mods depending on the type; an invalid entry leaves it in env", () => {
     expect(proposeImport(cand({ env: env({ MODRINTH_PROJECTS: "chunky,luckperms" }) }), ctx()).spec.plugins?.modrinthProjects).toEqual(["chunky", "luckperms"]);
     const fabric = proposeImport(cand({ env: env({ TYPE: "FABRIC", MODRINTH_PROJECTS: "lithium\nfabric-api", MODS: "https://x.example/a.jar" }) }), ctx());
     expect(fabric.spec.mods).toEqual({ modrinthProjects: ["lithium", "fabric-api"], curseforgeFiles: [], urls: ["https://x.example/a.jar"] });
@@ -128,7 +128,7 @@ describe("proposeImport", () => {
     expect(odd.spec).not.toHaveProperty("mods");
   });
 
-  it("modpacks: Modrinth, CurseForge por slug y MODPACK_PLATFORM sin TYPE", () => {
+  it("modpacks: Modrinth, CurseForge by slug and MODPACK_PLATFORM without TYPE", () => {
     const mr = proposeImport(cand({ env: env({ TYPE: "MODRINTH", MODRINTH_MODPACK: "cobblemon-fabric", MODRINTH_LOADER: "fabric" }) }), ctx());
     expect(mr.spec).toMatchObject({ type: "MODRINTH", modpack: { platform: "MODRINTH", slugOrUrl: "cobblemon-fabric", versionId: "", loader: "fabric" } });
     expect(mr.specError).toBeNull();
@@ -141,14 +141,14 @@ describe("proposeImport", () => {
     expect(missing.specError).not.toBeNull();
   });
 
-  it("CUSTOM_SERVER_PROPERTIES pasa a properties; las líneas no admitidas se descartan sin mostrar su valor", () => {
+  it("CUSTOM_SERVER_PROPERTIES becomes properties; unsupported lines are discarded without showing their value", () => {
     const p = proposeImport(cand({ env: env({ CUSTOM_SERVER_PROPERTIES: "difficulty=hard\nview-distance=12\nrcon.password=supersecreta\nlinea rara\n# comentario" }) }), ctx());
     expect(p.spec.properties).toEqual({ difficulty: "hard", "view-distance": "12" });
     expect(JSON.stringify(p.warnings)).not.toContain("supersecreta");
     expect(p.warnings.join(" ")).toMatch(/rcon\.password/);
   });
 
-  it("memoria, límites, imagen y política de reinicio", () => {
+  it("memory, limits, image and restart policy", () => {
     const p = proposeImport(cand({ env: env({ MEMORY: "1.5G" }), memoryLimitBytes: 512n * 1024n * 1024n, image: "itzg/minecraft-server@sha256:" + "a".repeat(64), restartPolicy: "" }), ctx());
     expect(p.spec).toMatchObject({ memory: "1G", imageTag: "latest", restartPolicy: "no", resources: { memLimit: "" } });
     expect(p.warnings.join(" ")).toMatch(/MEMORY/);
@@ -157,12 +157,12 @@ describe("proposeImport", () => {
     expect(proposeImport(cand({ image: "docker.io/itzg/minecraft-server:java17" }), ctx()).spec.imageTag).toBe("java17");
   });
 
-  it("slug libre sin repetir y estado parado", () => {
+  it("free slug without repeating and stopped state", () => {
     const p = proposeImport(cand({ name: "Survival Mundo", state: "exited" }), ctx({ takenSlugs: new Set(["survival-mundo"]) }));
     expect(p).toMatchObject({ name: "Survival Mundo", slug: "survival-mundo-2", desiredState: "stopped" });
   });
 
-  it("dos publicaciones con el mismo puerto del host: se queda la primera y avisa (el panel no las admite)", () => {
+  it("two publications with the same host port: the first is kept and it warns (the panel does not allow them)", () => {
     const p = proposeImport(cand({
       ports: [
         { containerPort: 25565, proto: "tcp", hostIp: "0.0.0.0", hostPort: 25565 },
@@ -172,12 +172,12 @@ describe("proposeImport", () => {
       ],
     }), ctx());
     expect(p.spec.ports).toEqual({ game: 25565, extra: [{ host: 24454, container: 24454, proto: "udp", label: "" }] });
-    expect(p.warnings.filter((w) => /repite el puerto/.test(w))).toHaveLength(2);
-    expect(p.warnings.join(" ")).not.toMatch(/solo escucha/);
+    expect(p.warnings.filter((w) => /repeats host port/.test(w))).toHaveLength(2);
+    expect(p.warnings.join(" ")).not.toMatch(/only listens/);
     expect(p.specError).toBeNull();
   });
 
-  it("variables con nombre inválido se descartan con aviso", () => {
+  it("variables with an invalid name are discarded with a warning", () => {
     const p = proposeImport(cand({ env: env({ "1MAL": "x", "OK_VAR": "y" }) }), ctx());
     expect(p.spec.env).toEqual({ OK_VAR: "y" });
     expect(p.warnings.join(" ")).toMatch(/1MAL/);
@@ -185,7 +185,7 @@ describe("proposeImport", () => {
 });
 
 describe("toCandidateDto", () => {
-  it("nunca lleva los secretos", () => {
+  it("never carries the secrets", () => {
     const c = cand({ env: env({ CF_API_KEY: "$2a$10$clave", CUSTOM_SERVER_PROPERTIES: "rcon.password=supersecreta" }), labels: { "com.docker.compose.project": "casa", "com.docker.compose.service": "mc" } });
     const dto = toCandidateDto(c, proposeImport(c, ctx()));
     const json = JSON.stringify(dto);
@@ -196,8 +196,8 @@ describe("toCandidateDto", () => {
   });
 });
 
-describe("proposeImport: arreglos de la revisión", () => {
-  it("I2: un montaje dentro de /data (/data/world…) bloquea: al recrearlo solo se monta /data y el mundo sería otro", () => {
+describe("proposeImport: review fixes", () => {
+  it("I2: a mount inside /data (/data/world…) blocks: on recreation only /data is mounted and the world would be a different one", () => {
     const p = proposeImport(cand({
       mounts: [
         { type: "bind", source: "/home/lobo/mc/survival", destination: "/data", readWrite: true },
@@ -206,7 +206,7 @@ describe("proposeImport: arreglos de la revisión", () => {
     }), ctx());
     expect(p.blockers).toHaveLength(1);
     expect(p.blockers[0]).toMatch(/\/data\/world/);
-    // Fuera de /data sigue siendo solo un aviso.
+    // Outside /data it is still only a warning.
     const q = proposeImport(cand({
       mounts: [
         { type: "bind", source: "/home/lobo/mc/survival", destination: "/data", readWrite: true },
@@ -219,51 +219,51 @@ describe("proposeImport: arreglos de la revisión", () => {
   });
 });
 
-describe("proposeImport: estado", () => {
-  it("m6: un contenedor en pausa se propone en marcha (adoptarlo no lo para) y se avisa de que sigue en pausa", () => {
+describe("proposeImport: state", () => {
+  it("m6: a paused container is proposed as running (adopting it does not stop it) and a warning says it stays paused", () => {
     const p = proposeImport(cand({ state: "paused" }), ctx());
     expect(p.desiredState).toBe("running");
-    expect(p.warnings.join(" ")).toMatch(/pausa/);
+    expect(p.warnings.join(" ")).toMatch(/paused/);
     expect(proposeImport(cand({ state: "exited" }), ctx()).desiredState).toBe("stopped");
   });
 });
 
-describe("proposeImport: usuario del contenedor (m7)", () => {
-  it("--user uid:gid numérico → UID y GID en env (itzg no cambia el propietario de /data al recrearlo)", () => {
+describe("proposeImport: container user (m7)", () => {
+  it("--user uid:gid numeric → UID and GID in env (itzg does not change the owner of /data on recreation)", () => {
     const p = proposeImport(cand({ user: "1001:1002" }), ctx());
     expect(p.spec.env).toMatchObject({ UID: "1001", GID: "1002" });
     expect(p.specError).toBeNull();
     expect(p.warnings.join(" ")).toMatch(/UID=1001/);
   });
-  it("solo uid: UID y aviso de revisar GID", () => {
+  it("uid only: UID and a warning to check GID", () => {
     const p = proposeImport(cand({ user: "1001" }), ctx());
     expect(p.spec.env).toMatchObject({ UID: "1001" });
     expect(p.spec.env).not.toHaveProperty("GID");
     expect(p.warnings.join(" ")).toMatch(/GID/);
   });
-  it("por nombre: aviso, sin UID/GID", () => {
+  it("by name: warning, no UID/GID", () => {
     const p = proposeImport(cand({ user: "minecraft" }), ctx());
     expect(p.spec.env).not.toHaveProperty("UID");
-    expect(p.warnings.join(" ")).toMatch(/usuario «minecraft»/);
+    expect(p.warnings.join(" ")).toMatch(/user “minecraft”/);
   });
-  it("vacío o root: nada que hacer (itzg ya arrancaba como root)", () => {
+  it("empty or root: nothing to do (itzg already started as root)", () => {
     for (const user of ["", "0", "0:0", "root"]) {
       const p = proposeImport(cand({ user }), ctx());
       expect(p.spec.env).not.toHaveProperty("UID");
-      expect(p.warnings.join(" ")).not.toMatch(/UID|usuario/);
+      expect(p.warnings.join(" ")).not.toMatch(/UID|user/);
     }
   });
 });
 
-describe("proposeImport: avisos de la revisión", () => {
-  it("m8: un dataPath bajo /tmp avisa (tmpfs o systemd-tmpfiles lo borran)", () => {
+describe("proposeImport: review warnings", () => {
+  it("m8: a dataPath under /tmp warns (tmpfs or systemd-tmpfiles delete it)", () => {
     const at = (source: string) => proposeImport(cand({ mounts: [{ type: "bind", source, destination: "/data", readWrite: true }] }), ctx());
     expect(at("/tmp/mc/survival").dataPath).toBe("/tmp/mc/survival");
-    expect(at("/tmp/mc/survival").warnings.join(" ")).toMatch(/temporal/);
-    expect(at("/var/tmp/mc").warnings.join(" ")).toMatch(/temporal/);
-    expect(at("/home/lobo/tmp/mc").warnings.join(" ")).not.toMatch(/temporal/);
+    expect(at("/tmp/mc/survival").warnings.join(" ")).toMatch(/temporary/);
+    expect(at("/var/tmp/mc").warnings.join(" ")).toMatch(/temporary/);
+    expect(at("/home/lobo/tmp/mc").warnings.join(" ")).not.toMatch(/temporary/);
   });
-  it("m11: RCON_PASSWORD_FILE y CF_API_KEY_FILE no pasan a env (el secreto montado no se conserva) y se avisa", () => {
+  it("m11: RCON_PASSWORD_FILE and CF_API_KEY_FILE do not go to env (the mounted secret is not kept) and it warns", () => {
     const p = proposeImport(cand({ env: env({ RCON_PASSWORD_FILE: "/run/secrets/rcon", CF_API_KEY_FILE: "/run/secrets/cf", MOTD: "Hola" }) }), ctx());
     expect(p.spec.env).toEqual({ MOTD: "Hola" });
     expect(p.warnings.join(" ")).toMatch(/RCON_PASSWORD_FILE/);

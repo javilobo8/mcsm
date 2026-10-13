@@ -34,17 +34,17 @@ afterEach(async () => {
 });
 
 const spec = (game: number) => specSchema.parse({ type: "PAPER", version: "1.21.4", memory: "2G", ports: { game }, rconPassword: "abcdefgh" });
-const NAME = "uno-20261012T040000.000Z-1.tar.zst";
+const NAME = "one-20261012T040000.000Z-1.tar.zst";
 const stagingFiles = (): string[] => { try { return readdirSync(join(dataDir, "staging")); } catch { return []; } };
 
 async function setup(): Promise<{ a: FakeNode; b: FakeNode; m: MigrationRow; d: StepDeps; timers: ManualTimers }> {
   const a = await FakeNode.enroll(app, url, cookie, "a");
   const b = await FakeNode.enroll(app, url, cookie, "b");
-  const s = app.servers.create({ nodeId: a.id, name: "Uno", slug: "uno", spec: spec(25565), desiredState: "running" });
+  const s = app.servers.create({ nodeId: a.id, name: "One", slug: "one", spec: spec(25565), desiredState: "running" });
   await a.connect({ [s.id]: 1n });
   await b.connect();
   const m = app.migrations.insert({
-    id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "uno", target_slug: "uno",
+    id: newId(), server_id: s.id, source_node_id: a.id, target_node_id: b.id, source_slug: "one", target_slug: "one",
     source_version: 1, target_version: 2, target_port: 25565, target_spec: JSON.stringify(spec(25565)), was_running: 1, delete_source: 0,
   });
   const timers = new ManualTimers();
@@ -56,7 +56,7 @@ async function setup(): Promise<{ a: FakeNode; b: FakeNode; m: MigrationRow; d: 
 }
 
 describe("pushToPanel", () => {
-  it("guarda la copia en el staging con tamaño y sha256 comprobados", async () => {
+  it("stores the backup in the staging with size and sha256 verified", async () => {
     const { a, m, d } = await setup();
     const payload = randomBytes(200_000);
     const pushing = pushToPanel(d, m, { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) });
@@ -70,7 +70,7 @@ describe("pushToPanel", () => {
     expect(readFileSync(pushed.staged.path).equals(payload)).toBe(true);
   });
 
-  it("una copia que llega distinta se rechaza y no queda en el staging", async () => {
+  it("a backup that arrives different is rejected and does not stay in the staging", async () => {
     const { a, m, d } = await setup();
     const payload = randomBytes(100_000);
     const pushing = pushToPanel(d, m, { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) });
@@ -79,19 +79,19 @@ describe("pushToPanel", () => {
     if (push.body.case !== "backupPush") throw new Error();
     await a.put(push.body.value.transferId, randomBytes(payload.length));
     a.send({ id: push.id, body: { case: "backupPushResult", value: { sizeBytes: BigInt(payload.length), sha256: sha256(payload), dataBytes: 0n } } });
-    await expect(pushing).rejects.toThrow(/dañada/);
+    await expect(pushing).rejects.toThrow(/corrupted/);
     expect(stagingFiles()).toEqual([]);
   });
 
-  it("sin espacio en el panel no pide nada al origen", async () => {
+  it("without space on the panel it asks the source for nothing", async () => {
     const { a, m, d } = await setup();
     d.timings = { ...d.timings, freeSpace: async () => 1024 };
-    await expect(pushToPanel(d, m, { filename: NAME, sizeBytes: 10, sha256: "ab".repeat(32) })).rejects.toThrow(/espacio en el panel/);
+    await expect(pushToPanel(d, m, { filename: NAME, sizeBytes: 10, sha256: "ab".repeat(32) })).rejects.toThrow(/space on the panel/);
     await a.nothingFor(200);
   });
 });
 
-describe("pushToPanel: espacio del panel (M3) y avances (m7)", () => {
+describe("pushToPanel: panel space (M3) and progress (m7)", () => {
   async function push(a: FakeNode, payload: Buffer, sent: Buffer = payload) {
     const msg = await a.next("backupPush");
     if (msg.body.case !== "backupPush") throw new Error();
@@ -99,26 +99,26 @@ describe("pushToPanel: espacio del panel (M3) y avances (m7)", () => {
     if (status === 204) {
       a.send({ id: msg.id, body: { case: "backupPushResult", value: { sizeBytes: BigInt(payload.length), sha256: sha256(payload), dataBytes: 0n } } });
     } else {
-      a.fail(msg, "transfer_failed", `PUT ${status}`); // como el agente cuando el panel corta la subida
+      a.fail(msg, "transfer_failed", `PUT ${status}`); // like the agent when the panel cuts the upload
     }
     return status;
   }
 
-  it("la comprobación previa descuenta lo que ya se está subiendo de otras migraciones", async () => {
+  it("the pre-check subtracts what other migrations are already uploading", async () => {
     const { a, m, d } = await setup();
     const payload = randomBytes(50_000);
     const made = { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) };
     d.timings = { ...d.timings, freeSpace: async () => requiredSpace(payload.length) + payload.length / 2 };
     const first = pushToPanel(d, m, made);
-    const second = pushToPanel(d, { ...m, id: newId() }, made); // otra migración a la vez
-    await expect(second).rejects.toThrow(/espacio en el panel.*otras migraciones/);
+    const second = pushToPanel(d, { ...m, id: newId() }, made); // another migration at the same time
+    await expect(second).rejects.toThrow(/space on the panel.*other migrations/);
     await push(a, payload);
     await expect(first).resolves.toMatchObject({ dataBytes: 0 });
     expect(d.budget.pendingBytes).toBe(0);
-    await a.nothingFor(100); // la segunda no pidió nada al origen
+    await a.nothingFor(100); // the second asked the source for nothing
   });
 
-  it("vuelve a mirar el espacio mientras escribe y corta si el disco del panel se llena", async () => {
+  it("checks the space again while writing and cuts if the panel's disk fills up", async () => {
     const { a, m, d } = await setup();
     const payload = randomBytes(600_000);
     let calls = 0;
@@ -126,13 +126,13 @@ describe("pushToPanel: espacio del panel (M3) y avances (m7)", () => {
     const pushing = pushToPanel(d, m, { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) });
     pushing.catch(() => {});
     await push(a, payload);
-    await expect(pushing).rejects.toThrow(/disco del panel se está llenando/);
+    await expect(pushing).rejects.toThrow(/panel's disk is filling up/);
     expect(calls).toBeGreaterThan(1);
     expect(stagingFiles()).toEqual([]);
     expect(d.budget.pendingBytes).toBe(0);
   });
 
-  it("un avance que falla al guardarse (p. ej. SQLITE_FULL) no tumba la subida; los avances van acotados", async () => {
+  it("a progress update that fails to save (e.g. SQLITE_FULL) does not take down the upload; progress updates are bounded", async () => {
     const { a, m, d } = await setup();
     const payload = randomBytes(3 * 1024 * 1024);
     let within = 0;
@@ -141,12 +141,12 @@ describe("pushToPanel: espacio del panel (M3) y avances (m7)", () => {
     expect(await push(a, payload)).toBe(204);
     await expect(pushing).resolves.toMatchObject({ dataBytes: 0 });
     expect(within).toBeGreaterThan(0);
-    expect(within).toBeLessThanOrEqual(3); // como mucho uno cada 8 MiB o cada 2 s (y el inicial)
+    expect(within).toBeLessThanOrEqual(3); // at most one every 8 MiB or every 2 s (and the initial one)
   });
 });
 
 describe("startAndVerify", () => {
-  it("marca target_started antes de la orden y espera a que el destino esté sano", async () => {
+  it("marks target_started before the command and waits for the target to be healthy", async () => {
     const { b, m, d } = await setup();
     const p = startAndVerify(d, m);
     const start = await b.next("powerAction");
@@ -157,26 +157,26 @@ describe("startAndVerify", () => {
     await expect(p).resolves.toMatchObject({ state: "running", health: "healthy" });
   });
 
-  it("un servidor que se para en el destino falla al instante", async () => {
+  it("a server that stops on the target fails immediately", async () => {
     const { b, m, d } = await setup();
     const p = startAndVerify(d, m);
     p.catch(() => {});
     b.ack(await b.next("powerAction"));
     b.observed(m.server_id, { state: "exited", exitCode: 1 });
-    await expect(p).rejects.toThrow(/se paró en el destino.*código de salida 1/);
+    await expect(p).rejects.toThrow(/stopped on the target.*exit code 1/);
   });
 
-  it("sin quedar sano en el plazo, falla", async () => {
+  it("without becoming healthy within the deadline, it fails", async () => {
     const { b, m, d, timers } = await setup();
     const p = startAndVerify(d, m);
     p.catch(() => {});
     b.ack(await b.next("powerAction"));
     await vi.waitFor(() => expect(timers.pending).toBeGreaterThan(0));
     timers.advance(DEFAULT_TIMINGS.verifyTimeoutMs);
-    await expect(p).rejects.toThrow(/no quedó sano/);
+    await expect(p).rejects.toThrow(/did not become healthy/);
   });
 
-  it("si el agente rechaza el arranque, falla con su texto", async () => {
+  it("if the agent rejects the start, it fails with its text", async () => {
     const { b, m, d } = await setup();
     const p = startAndVerify(d, m);
     p.catch(() => {});
@@ -186,7 +186,7 @@ describe("startAndVerify", () => {
 });
 
 describe("waitJob", () => {
-  it("se resuelve al terminar el job y falla si deja de avanzar", async () => {
+  it("resolves when the job ends and fails if it stops advancing", async () => {
     const timers = new ManualTimers();
     const j = app.jobs.create({ type: "backup", status: "running" });
     const seen: number[] = [];
@@ -202,13 +202,13 @@ describe("waitJob", () => {
   });
 });
 
-describe("deshacer en el destino", () => {
-  it("abortTarget nunca envía MigrateAbort de una migración confirmada (el servidor ya vive en el destino)", async () => {
+describe("undo on the target", () => {
+  it("abortTarget never sends MigrateAbort of a confirmed migration (the server already lives on the target)", async () => {
     const { b, m, d } = await setup();
     expect(app.migrations.commit(m, "running", null)).toBe(true);
-    await expect(abortTarget(d, m)).rejects.toThrow(/confirmada/);
+    await expect(abortTarget(d, m)).rejects.toThrow(/confirmed/);
     app.migrations.update(m.id, { phase: "done", source_pending: 0 });
-    await expect(abortTarget(d, m)).rejects.toThrow(/confirmada/);
+    await expect(abortTarget(d, m)).rejects.toThrow(/confirmed/);
     await b.nothingFor(200);
   });
 });
@@ -218,7 +218,7 @@ describe("receiveOnTarget", () => {
     return app.staging.save(stagingId(m.id), Readable.from([payload]));
   }
 
-  it("el reintento espera a que el destino confirme la limpieza antes de volver a pedir la copia", async () => {
+  it("the retry waits for the target to confirm the cleanup before asking for the backup again", async () => {
     const { b, m, d } = await setup();
     const payload = randomBytes(40_000);
     const made = { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) };
@@ -228,20 +228,20 @@ describe("receiveOnTarget", () => {
     if (rx1.body.case !== "migrateReceive") throw new Error();
     expect(app.migrations.get(m.id)!.target_touched).toBe(1);
     b.ack(rx1);
-    b.progress(rx1.body.value.jobId, m.server_id, "migrate_in", JobStatus.FAILED, 10, "se cortó la descarga");
+    b.progress(rx1.body.value.jobId, m.server_id, "migrate_in", JobStatus.FAILED, 10, "the download was cut");
     const abort = await b.next("migrateAbort");
-    await b.nothingFor(200); // sin el Ack de la limpieza, no hay segundo MigrateReceive
+    await b.nothingFor(200); // without the cleanup Ack, there is no second MigrateReceive
     b.ack(abort);
     const rx2 = await b.next("migrateReceive");
     if (rx2.body.case !== "migrateReceive") throw new Error();
     expect(rx2.body.value.jobId).not.toBe(rx1.body.value.jobId);
     b.ack(rx2);
     expect(sha256(await b.get(rx2.body.value.transferId))).toBe(sha256(payload));
-    b.progress(rx2.body.value.jobId, m.server_id, "migrate_in", JobStatus.OK, 100, "Copia recibida");
+    b.progress(rx2.body.value.jobId, m.server_id, "migrate_in", JobStatus.OK, 100, "Backup received");
     await expect(p).resolves.toBeUndefined();
   });
 
-  it("la copia espera al destino en cola: su transferencia no caduca a los 60 s (M2)", async () => {
+  it("the backup waits for the target in the queue: its transfer does not expire at 60 s (M2)", async () => {
     const { b, m, d } = await setup();
     const payload = randomBytes(20_000);
     const made = { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) };
@@ -251,18 +251,18 @@ describe("receiveOnTarget", () => {
     if (rx.body.case !== "migrateReceive") throw new Error();
     b.ack(rx);
     const now = Date.now();
-    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 10 * 60_000); // 10 min en cola en el destino
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + 10 * 60_000); // 10 min queued on the target
     try {
       expect(app.transfers.sweep()).toBe(0);
     } finally {
       clock.mockRestore();
     }
     expect(sha256(await b.get(rx.body.value.transferId))).toBe(sha256(payload));
-    b.progress(rx.body.value.jobId, m.server_id, "migrate_in", JobStatus.OK, 100, "Copia recibida");
+    b.progress(rx.body.value.jobId, m.server_id, "migrate_in", JobStatus.OK, 100, "Backup received");
     await expect(p).resolves.toBeUndefined();
   });
 
-  it("si el destino no confirma la limpieza del intento fallido, no se reintenta", async () => {
+  it("if the target does not confirm the cleanup of the failed attempt, it is not retried", async () => {
     const { b, m, d } = await setup();
     const payload = randomBytes(10_000);
     const made = { filename: NAME, sizeBytes: payload.length, sha256: sha256(payload) };
@@ -271,9 +271,9 @@ describe("receiveOnTarget", () => {
     const rx1 = await b.next("migrateReceive");
     if (rx1.body.case !== "migrateReceive") throw new Error();
     b.ack(rx1);
-    b.progress(rx1.body.value.jobId, m.server_id, "migrate_in", JobStatus.FAILED, 10, "se cortó la descarga");
-    b.fail(await b.next("migrateAbort"), "busy", "servidor ocupado o reservado");
-    await expect(p).rejects.toThrow(/se cortó la descarga.*no se pudo limpiar/);
+    b.progress(rx1.body.value.jobId, m.server_id, "migrate_in", JobStatus.FAILED, 10, "the download was cut");
+    b.fail(await b.next("migrateAbort"), "busy", "server busy or reserved");
+    await expect(p).rejects.toThrow(/the download was cut.*could not be cleaned up/);
     await b.nothingFor(200);
   });
 });

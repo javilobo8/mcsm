@@ -10,12 +10,12 @@ export function ProgressBar({ value }: { value: number }) {
   );
 }
 
-/** Tarjeta con el job en curso (copia o restauración). */
+/** Card with the job in progress (backup or restore). */
 export function JobProgress({ job }: { job: JobDto }) {
   return (
     <div className="rounded-md border border-zinc-800 p-3 text-sm" aria-live="polite">
       <div className="mb-2 flex justify-between gap-2">
-        <span>{jobTypeLabel(job.type)} en curso: {job.message || "…"}</span>
+        <span>{jobTypeLabel(job.type)} in progress: {job.message || "…"}</span>
         <span className="tabular-nums text-zinc-400">{job.progress}%</span>
       </div>
       <ProgressBar value={job.progress} />

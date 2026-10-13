@@ -14,8 +14,8 @@ export const RESERVED_ENV = new Set([
 ]);
 
 export const MEMORY_RE = /^[1-9]\d*[MmGg]$/;
-const memory = z.string().regex(MEMORY_RE, "Formato de memoria inválido (ej. 4G, 512M; sin ceros)");
-/** Etiqueta de la imagen itzg (gramática de tag de Docker, sin digest). Misma regex que el agente. */
+const memory = z.string().regex(MEMORY_RE, "Invalid memory format (e.g. 4G, 512M; no zeros)");
+/** itzg image tag (Docker tag grammar, no digest). Same regex as the agent. */
 export const IMAGE_TAG_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const port = z.number().int().min(1).max(65535);
 export const PROPERTY_KEY_RE = /^[a-z0-9][a-z0-9._-]*$/;
@@ -33,14 +33,14 @@ export const portMappingSchema = z.object({
   proto: z.enum(["tcp", "udp"]),
   label: z.string().max(40).default(""),
 }).refine((pm) => pm.container !== RCON_PORT, {
-  message: "El puerto extra no puede publicar RCON (25575)",
+  message: "The extra port cannot publish RCON (25575)",
 });
 
 export const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const envSchema = z
-  .record(z.string().regex(ENV_KEY_RE, "Nombre de variable inválido"), z.string())
+  .record(z.string().regex(ENV_KEY_RE, "Invalid variable name"), z.string())
   .refine((env) => !Object.keys(env).some((k) => RESERVED_ENV.has(k)), {
-    message: "Contiene una variable reservada (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES, CF_API_KEY)",
+    message: "Contains a reserved variable (EULA, TYPE, VERSION, MEMORY, RCON_*, SERVER_PORT, CUSTOM_SERVER_PROPERTIES, CF_API_KEY)",
   });
 
 const resourcesSchema = z.object({
@@ -49,16 +49,16 @@ const resourcesSchema = z.object({
 });
 
 const baseFields = {
-  imageTag: z.string().regex(IMAGE_TAG_RE, "Etiqueta de imagen inválida (letras, números, . _ -; empieza por letra o número; máx. 128)").default("latest"),
+  imageTag: z.string().regex(IMAGE_TAG_RE, "Invalid image tag (letters, numbers, . _ -; starts with a letter or number; max. 128)").default("latest"),
   type: z.string().min(1).default("PAPER"),
   version: z.string().min(1).default("LATEST"),
   memory: memory.default("2G"),
   properties: z
     .record(
-      z.string().regex(PROPERTY_KEY_RE, "Nombre de propiedad inválido").refine((k) => !RESERVED_PROPS.has(k), {
-        message: "La propiedad es reservada (la gestiona el agente)",
+      z.string().regex(PROPERTY_KEY_RE, "Invalid property name").refine((k) => !RESERVED_PROPS.has(k), {
+        message: "The property is reserved (managed by the agent)",
       }),
-      z.string().refine((v) => !/[\r\n]/.test(v), { message: "El valor de la propiedad no puede contener saltos de línea" }),
+      z.string().refine((v) => !/[\r\n]/.test(v), { message: "The property value cannot contain line breaks" }),
     )
     .default({}),
   env: envSchema.default({}),
@@ -81,11 +81,11 @@ const baseFields = {
 
 function memLimitCheck(s: { memory: string; resources: { memLimit: string } }, ctx: z.RefinementCtx) {
   if (s.resources.memLimit && memoryToBytes(s.resources.memLimit) < memoryToBytes(s.memory)) {
-    ctx.addIssue({ code: "custom", path: ["resources", "memLimit"], message: "memLimit no puede ser menor que memory" });
+    ctx.addIssue({ code: "custom", path: ["resources", "memLimit"], message: "memLimit cannot be lower than memory" });
   }
 }
 
-/** Validaciones de objeto completo: memoria y, debajo de las anclas, las de cada plan. */
+/** Whole-object validations: memory and, below the anchors, those of each plan. */
 function specChecks(
   s: Parameters<typeof memLimitCheck>[0] & Parameters<typeof contentCheck>[0] & Parameters<typeof limitsCheck>[0] & Parameters<typeof buildCheck>[0],
   ctx: z.RefinementCtx,
@@ -98,25 +98,25 @@ function specChecks(
   buildCheck(s, ctx);
 }
 
-/** Spec completa, tal y como se persiste y se envía al agente. */
+/** Complete spec, as persisted and sent to the agent. */
 export const specSchema = z
   .object({
     ...baseFields,
     ports: z.object({ game: port, extra: z.array(portMappingSchema).default([]) }),
     rconPassword: z.string().min(8),
-    // plan-6: solo specs de servidor (no está en baseFields: las plantillas no lo llevan).
+    // plan-6: server specs only (it is not in baseFields: templates do not carry it).
     dataPath: dataPathSchema.optional(),
   })
   .superRefine(specChecks)
   .superRefine(dataPathCheck);
 
-/** Lo que envía la UI al crear/editar: el panel añade puerto y rconPassword. */
+/** What the UI sends on create/edit: the panel adds the port and rconPassword. */
 export const specInputSchema = z
   .object({
     ...baseFields,
     ports: z.object({ game: port.optional(), extra: z.array(portMappingSchema).default([]) }).prefault({}),
-    // plan-6: un PATCH lo conserva al fusionar con la spec guardada (si faltara, zod lo descartaría
-    // y el servidor se recrearía sobre <DATA_ROOT>/<slug>/data, vacío).
+    // plan-6: a PATCH keeps it when merging with the stored spec (if it were missing, zod would discard it
+    // and the server would be recreated over <DATA_ROOT>/<slug>/data, empty).
     dataPath: dataPathSchema.optional(),
   })
   .superRefine(specChecks)
@@ -140,7 +140,7 @@ export type ServerCreateInput = z.infer<typeof serverCreateSchema>;
 
 export const serverPatchSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
-  /** Merge de primer nivel sobre la spec guardada (ver mergeSpecPatch). */
+  /** First-level merge over the stored spec (see mergeSpecPatch). */
   spec: specPatchSchema.optional(),
 });
 export const powerActionSchema = z.object({ action: z.enum(["start", "stop", "restart", "kill"]) });
@@ -149,14 +149,14 @@ export type PowerActionName = z.infer<typeof powerActionSchema>["action"];
 // ── plan-2 ──
 // ── plan-3 ──
 /**
- * Spec de plantilla: la de servidor sin `ports` ni `rconPassword`. Al parsear, zod descarta esas
- * claves (y cualquier otra desconocida), así que guardar una spec de servidor como plantilla
- * nunca arrastra puertos ni secretos. (No `.omit()`: zod 4 lo rechaza con refinamientos.)
+ * Template spec: the server one without `ports` or `rconPassword`. When parsing, zod discards those
+ * keys (and any other unknown one), so saving a server spec as a template
+ * never drags along ports or secrets. (Not `.omit()`: zod 4 rejects it with refinements.)
  */
 export const templateSpecSchema = z.object({ ...baseFields }).superRefine(specChecks);
 export type TemplateSpec = z.infer<typeof templateSpecSchema>;
 
-/** ¿Puede el PATCH borrar la clave con `null`? Solo las secciones opcionales (sin valor por defecto) y las desconocidas (no-op). */
+/** Can the PATCH delete the key with `null`? Only optional sections (no default value) and unknown ones (no-op). */
 function nullableInPatch(key: string): boolean {
   const field = (specInputSchema.shape as Record<string, z.ZodType | undefined>)[key];
   if (!field) return true;
@@ -165,13 +165,13 @@ function nullableInPatch(key: string): boolean {
 }
 
 /**
- * PATCH de spec (servidor o plantilla): `null` en una clave obligatoria o con valor por defecto
- * (type, version, memory, ports, properties…) la resetearía en silencio (un FABRIC pasaría a PAPER y
- * se recrearía sobre un mundo con mods). Devuelve el mensaje del 400 o null si el PATCH es válido.
+ * Spec PATCH (server or template): `null` on a required key or one with a default value
+ * (type, version, memory, ports, properties…) would silently reset it (a FABRIC would become PAPER and
+ * be recreated over a world with mods). Returns the 400 message or null if the PATCH is valid.
  */
 export function specPatchNullError(patch: SpecPatch): string | null {
   const key = Object.keys(patch).find((k) => patch[k] === null && !nullableInPatch(k));
-  return key === undefined ? null : `La clave «${key}» de la spec es obligatoria: no se puede borrar con null (envía su valor)`;
+  return key === undefined ? null : `The spec key “${key}” is required: it cannot be deleted with null (send its value)`;
 }
 // ── plan-4 ──
 // ── plan-5 ──

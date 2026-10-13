@@ -1,4 +1,4 @@
 import { z } from "zod";
 
-// Mensajes por defecto de zod en castellano para el panel y la web (comparten esta instancia de zod).
-z.config(z.locales.es());
+// Default zod messages in English for the panel and the web (they share this zod instance).
+z.config(z.locales.en());

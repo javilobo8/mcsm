@@ -24,7 +24,7 @@ import (
 func TestEnroll(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/agent/enroll" || r.Method != http.MethodPost {
-			t.Errorf("ruta %s %s", r.Method, r.URL.Path)
+			t.Errorf("path %s %s", r.Method, r.URL.Path)
 		}
 		var body map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -40,17 +40,17 @@ func TestEnroll(t *testing.T) {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
 	if _, err := Enroll(context.Background(), srv.URL, "BAD", "nas", "0.1.0"); err == nil {
-		t.Fatal("token inválido debe fallar")
+		t.Fatal("an invalid token must fail")
 	}
 }
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 
-// hangGuard solo evita que un fallo cuelgue la suite: no forma parte de lo que
-// se comprueba, así que es holgado para máquinas cargadas.
+// hangGuard only prevents a failure from hanging the suite: it is not part of what
+// is being checked, so it is generous for loaded machines.
 const hangGuard = 10 * time.Second
 
-// waitFor espera a que cond se cumpla, sondeando.
+// waitFor waits for cond to hold, polling.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	tick := time.NewTicker(time.Millisecond)
@@ -60,18 +60,18 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 		select {
 		case <-tick.C:
 		case <-deadline:
-			t.Fatalf("timeout esperando %s", what)
+			t.Fatalf("timeout waiting for %s", what)
 		}
 	}
 }
 
-// waitConnected espera a que el cliente publique la sesión. El panel recibe el
-// Hello antes de que el cliente marque la sesión como conectada (el Hello se
-// escribe antes de publicar el ws para que nada se le adelante), así que leer
-// el Hello en el panel no garantiza que Connected/Send ya funcionen.
+// waitConnected waits for the client to publish the session. The panel receives the
+// Hello before the client marks the session as connected (the Hello is
+// written before publishing the ws so nothing gets ahead of it), so reading
+// the Hello in the panel does not guarantee that Connected/Send already work.
 func waitConnected(t *testing.T, c *Client) {
 	t.Helper()
-	waitFor(t, "sesión publicada", c.Connected)
+	waitFor(t, "session published", c.Connected)
 }
 
 type captureHandler struct {
@@ -88,8 +88,8 @@ func (h *captureHandler) Handle(_ context.Context, env *mcsmv1.Envelope, send fu
 	}
 }
 
-// fakePanel acepta WebSockets, verifica el token, lee el Hello y deja
-// que el test dirija la conversación.
+// fakePanel accepts WebSockets, verifies the token, reads the Hello and lets
+// the test drive the conversation.
 type fakePanel struct {
 	t        *testing.T
 	srv      *httptest.Server
@@ -144,7 +144,7 @@ func TestClientHelloDispatchAndReconnect(t *testing.T) {
 	select {
 	case hello = <-fp.gotHello:
 	case <-time.After(hangGuard):
-		t.Fatal("sin Hello")
+		t.Fatal("no Hello")
 	}
 	if hello.AgentVersion != "0.1.0" || hello.SpecVersions["a"] != 3 {
 		t.Fatalf("hello = %+v", hello)
@@ -152,7 +152,7 @@ func TestClientHelloDispatchAndReconnect(t *testing.T) {
 	ws := <-fp.ws
 	waitConnected(t, c)
 
-	// panel → agente: PowerAction; el handler responde Ack con el mismo id
+	// panel → agent: PowerAction; the handler replies with an Ack with the same id
 	req := &mcsmv1.Envelope{Id: 42, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a"}}}
 	raw, _ := proto.Marshal(req)
 	if err := ws.Write(ctx, websocket.MessageBinary, raw); err != nil {
@@ -170,12 +170,12 @@ func TestClientHelloDispatchAndReconnect(t *testing.T) {
 		t.Fatalf("resp = %+v", resp)
 	}
 
-	// el panel cierra: el agente debe reconectar y volver a saludar
-	ws.Close(websocket.StatusGoingAway, "reinicio")
+	// the panel closes: the agent must reconnect and say hello again
+	ws.Close(websocket.StatusGoingAway, "restart")
 	select {
 	case <-fp.gotHello:
 	case <-time.After(hangGuard):
-		t.Fatal("no reconectó")
+		t.Fatal("did not reconnect")
 	}
 	if n := atomic.LoadInt32(&fp.conns); n < 2 {
 		t.Fatalf("conns = %d", n)
@@ -196,7 +196,7 @@ func TestBackoffDelay(t *testing.T) {
 			d := jittered(tc.wait)
 			lo, hi := time.Duration(float64(tc.wait)*0.8), time.Duration(float64(tc.wait)*1.2)
 			if d < lo || d > hi {
-				t.Fatalf("jittered(%v) = %v fuera de ±20%%", tc.wait, d)
+				t.Fatalf("jittered(%v) = %v outside ±20%%", tc.wait, d)
 			}
 		}
 	}
@@ -240,20 +240,20 @@ func TestPingKeepsSessionAndConcurrentSends(t *testing.T) {
 	got := 0
 	for got < n {
 		rctx, rc := context.WithTimeout(ctx, hangGuard)
-		_, data, err := ws.Read(rctx) // Read procesa también los pings del cliente
+		_, data, err := ws.Read(rctx) // Read also processes the client's pings
 		rc()
 		if err != nil {
-			t.Fatalf("read tras %d: %v", got, err)
+			t.Fatalf("read after %d: %v", got, err)
 		}
 		env := &mcsmv1.Envelope{}
 		if err := proto.Unmarshal(data, env); err != nil || env.GetLogLine() == nil {
-			t.Fatalf("env inválido: %v %+v", err, env)
+			t.Fatalf("invalid env: %v %+v", err, env)
 		}
 		got++
 	}
 	wg.Wait()
 	if !c.Connected() {
-		t.Fatal("la sesión no debería haber caído con pings activos")
+		t.Fatal("the session should not have dropped with active pings")
 	}
 }
 
@@ -268,24 +268,24 @@ func TestOnDisconnectAndStop(t *testing.T) {
 	go func() { c.Run(ctx); close(done) }()
 	<-fp.gotHello
 	ws := <-fp.ws
-	// Como un panel real, el lado servidor sigue leyendo y contesta al cierre.
-	// Si la cancelación llega antes del primer Read del cliente, coder/websocket
-	// no tumba la conexión y el Close del cliente hace el handshake completo,
-	// que con un par que no lee espera 5 s a la respuesta.
+	// Like a real panel, the server side keeps reading and answers the close.
+	// If the cancellation arrives before the client's first Read, coder/websocket
+	// does not tear the connection down and the client's Close does the full handshake,
+	// which with a peer that does not read waits 5 s for the reply.
 	ws.CloseRead(context.Background())
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(hangGuard):
-		t.Fatal("Run no terminó con ctx cancelado")
+		t.Fatal("Run did not finish with ctx cancelled")
 	}
 	select {
 	case <-disc:
 	default:
-		t.Fatal("OnDisconnect no se llamó")
+		t.Fatal("OnDisconnect was not called")
 	}
 	if c.Connected() {
-		t.Fatal("no debería estar conectado")
+		t.Fatal("should not be connected")
 	}
 }
 
@@ -293,18 +293,18 @@ func TestBadTokenRetries(t *testing.T) {
 	fp := newFakePanel(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	c := NewClient(Options{Log: quiet, PanelURL: fp.srv.URL, Token: "MALO", Handler: &captureHandler{},
+	c := NewClient(Options{Log: quiet, PanelURL: fp.srv.URL, Token: "BAD", Handler: &captureHandler{},
 		Hello: func(context.Context) *mcsmv1.Hello { return &mcsmv1.Hello{} }})
 	c.backoffMin, c.backoffMax = time.Millisecond, 2*time.Millisecond
 	go c.Run(ctx)
 	for deadline := time.Now().Add(3 * time.Second); atomic.LoadInt32(&fp.rejected) < 3; {
 		if time.Now().After(deadline) {
-			t.Fatal("no reintentó tras el 401")
+			t.Fatal("did not retry after the 401")
 		}
 		time.Sleep(time.Millisecond)
 	}
 	if c.Connected() || atomic.LoadInt32(&fp.conns) != 0 {
-		t.Fatal("token malo no debe conectar")
+		t.Fatal("a bad token must not connect")
 	}
 }
 
@@ -323,7 +323,7 @@ func TestHelloIsAlwaysFirstFrame(t *testing.T) {
 	var c *Client
 	c = NewClient(Options{Log: quiet, PanelURL: fp.srv.URL, Token: "TOK", Handler: &captureHandler{},
 		Hello: func(ctx context.Context) *mcsmv1.Hello {
-			// un Send concurrente justo mientras se prepara el Hello no debe adelantarlo
+			// a concurrent Send right while the Hello is being prepared must not get ahead of it
 			_ = c.Send(ctx, &mcsmv1.Envelope{Body: &mcsmv1.Envelope_LogLine{LogLine: &mcsmv1.LogLine{}}})
 			return &mcsmv1.Hello{AgentVersion: "x"}
 		}})
@@ -331,10 +331,10 @@ func TestHelloIsAlwaysFirstFrame(t *testing.T) {
 	select {
 	case h := <-fp.gotHello:
 		if h == nil {
-			t.Fatal("el primer frame no fue el Hello")
+			t.Fatal("the first frame was not the Hello")
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("sin Hello")
+		t.Fatal("no Hello")
 	}
 }
 
@@ -362,20 +362,20 @@ func TestHandlerSendBoundToItsSession(t *testing.T) {
 	_ = ws.Write(ctx, websocket.MessageBinary, raw)
 	oldSend := <-h.first
 	ws.Close(websocket.StatusGoingAway, "x")
-	<-fp.gotHello // sesión nueva establecida
+	<-fp.gotHello // new session established
 	ws2 := <-fp.ws
 	waitConnected(t, c)
 	if err := oldSend(&mcsmv1.Envelope{Id: 7, Body: &mcsmv1.Envelope_Ack{Ack: &mcsmv1.Ack{}}}); !errors.Is(err, ErrNotConnected) {
-		t.Fatalf("send de sesión vieja: %v", err)
+		t.Fatalf("send on old session: %v", err)
 	}
 	rctx, rc := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer rc()
 	if _, _, err := ws2.Read(rctx); err == nil {
-		t.Fatal("la sesión nueva recibió un frame de la vieja")
+		t.Fatal("the new session received a frame from the old one")
 	}
 }
 
-// delayRecorder sustituye a time.After para registrar las esperas sin dormir.
+// delayRecorder replaces time.After to record the waits without sleeping.
 type delayRecorder struct {
 	mu sync.Mutex
 	ds []time.Duration
@@ -397,7 +397,7 @@ func (d *delayRecorder) collect(t *testing.T, n int) []time.Duration {
 		select {
 		case <-d.n:
 		case <-time.After(3 * time.Second):
-			t.Fatal("faltan reintentos")
+			t.Fatal("missing retries")
 		}
 	}
 	d.mu.Lock()
@@ -418,7 +418,7 @@ func flappingPanel(t *testing.T, sendFrame bool) *httptest.Server {
 			raw, _ := proto.Marshal(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_HelloAck{HelloAck: &mcsmv1.HelloAck{}}})
 			_ = c.Write(r.Context(), websocket.MessageBinary, raw)
 		}
-		c.Close(websocket.StatusPolicyViolation, "fuera")
+		c.Close(websocket.StatusPolicyViolation, "out")
 	}))
 	t.Cleanup(srv.Close)
 	return srv
@@ -438,8 +438,8 @@ func TestBackoffNotResetWhenPanelDropsImmediately(t *testing.T) {
 	rec := &delayRecorder{n: make(chan struct{}, 16)}
 	runRecording(t, flappingPanel(t, false).URL, rec)
 	ds := rec.collect(t, 4)
-	if ds[3] < 600*time.Millisecond { // 100,200,400,800 con ±20 %
-		t.Fatalf("el backoff debe crecer: %v", ds)
+	if ds[3] < 600*time.Millisecond { // 100,200,400,800 with ±20 %
+		t.Fatalf("the backoff must grow: %v", ds)
 	}
 }
 
@@ -448,7 +448,7 @@ func TestBackoffResetAfterPanelFrame(t *testing.T) {
 	runRecording(t, flappingPanel(t, true).URL, rec)
 	for _, d := range rec.collect(t, 3) {
 		if d > 120*time.Millisecond {
-			t.Fatalf("tras recibir un frame del panel el backoff debe reiniciarse: %v", d)
+			t.Fatalf("after receiving a frame from the panel the backoff must reset: %v", d)
 		}
 	}
 }
@@ -459,7 +459,7 @@ func TestAuthRejected(t *testing.T) {
 	defer cancel()
 	buf := &syncBuf{}
 	rejected := make(chan struct{}, 8)
-	c := NewClient(Options{Log: slog.New(slog.NewTextHandler(buf, nil)), PanelURL: fp.srv.URL, Token: "SECRETO", Handler: &captureHandler{},
+	c := NewClient(Options{Log: slog.New(slog.NewTextHandler(buf, nil)), PanelURL: fp.srv.URL, Token: "SECRET", Handler: &captureHandler{},
 		Hello:          func(context.Context) *mcsmv1.Hello { return &mcsmv1.Hello{} },
 		OnAuthRejected: func() { rejected <- struct{}{} }})
 	c.backoffMin, c.backoffMax = time.Millisecond, 2*time.Millisecond
@@ -467,14 +467,14 @@ func TestAuthRejected(t *testing.T) {
 	select {
 	case <-rejected:
 	case <-time.After(3 * time.Second):
-		t.Fatal("OnAuthRejected no se llamó")
+		t.Fatal("OnAuthRejected was not called")
 	}
 	out := buf.String()
-	if !strings.Contains(out, "level=WARN") || !strings.Contains(out, "rechazó el token") || strings.Contains(out, "level=ERROR") {
-		t.Fatalf("log sin error claro: %s", out)
+	if !strings.Contains(out, "level=WARN") || !strings.Contains(out, "rejected the node token") || strings.Contains(out, "level=ERROR") {
+		t.Fatalf("log without a clear error: %s", out)
 	}
-	if strings.Contains(out, "SECRETO") {
-		t.Fatal("el log no debe incluir el token")
+	if strings.Contains(out, "SECRET") {
+		t.Fatal("the log must not include the token")
 	}
 }
 
@@ -498,9 +498,9 @@ func TestHandlerPanicDoesNotCrash(t *testing.T) {
 	raw, _ := proto.Marshal(&mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{}}})
 	_ = ws.Write(ctx, websocket.MessageBinary, raw)
 	<-h.done
-	time.Sleep(10 * time.Millisecond) // deja que el panic se propague si no hay recover
+	time.Sleep(10 * time.Millisecond) // lets the panic propagate if there is no recover
 	if !c.Connected() {
-		t.Fatal("la sesión debería seguir viva")
+		t.Fatal("the session should still be alive")
 	}
 }
 
@@ -515,18 +515,18 @@ func TestPingIsSentAndFailureClosesSession(t *testing.T) {
 	var calls int32
 	c.ping = func(context.Context, *websocket.Conn) error {
 		if atomic.AddInt32(&calls, 1) == 2 {
-			return errors.New("par muerto")
+			return errors.New("dead peer")
 		}
 		return nil
 	}
 	go c.Run(ctx)
 	<-fp.gotHello
 	select {
-	case <-fp.gotHello: // el ping fallido tumbó la sesión y se reconectó
+	case <-fp.gotHello: // the failed ping brought the session down and it reconnected
 	case <-time.After(3 * time.Second):
-		t.Fatal("no reconectó tras ping fallido")
+		t.Fatal("did not reconnect after a failed ping")
 	}
 	if atomic.LoadInt32(&calls) < 2 {
-		t.Fatal("no se enviaron pings")
+		t.Fatal("no pings were sent")
 	}
 }

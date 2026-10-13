@@ -24,7 +24,7 @@ async function start(path = ":memory:", setup = true) {
   cookie = `${c.name}=${c.value}`;
 }
 
-// No se cierra la Db: el detach asíncrono del agente aún puede escribir en ella tras app.close().
+// The Db is not closed: the agent's asynchronous detach may still write to it after app.close().
 async function stop() {
   await app.close();
 }
@@ -32,7 +32,7 @@ async function stop() {
 async function enrollWithServer(): Promise<{ nodeId: string; nodeToken: string; serverId: string }> {
   const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } })).json().token;
   const { nodeId, nodeToken } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas", agentVersion: "fake" } })).json();
-  const serverId = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json().id;
+  const serverId = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "One" } })).json().id;
   return { nodeId, nodeToken, serverId };
 }
 
@@ -45,7 +45,7 @@ async function connect(nodeToken: string, serverId: string): Promise<FakeAgent> 
 
 const nowSlot = () => BigInt(Math.floor(Date.now() / 10_000) * 10);
 
-/** Envía un lote fechado en la ventana actual y devuelve esa ventana. */
+/** Sends a batch dated in the current window and returns that window. */
 function sendBatch(agent: FakeAgent, serverId: string, cpuPct = 33): bigint {
   const tsUnix = nowSlot();
   agent.send({ body: { case: "metricBatch", value: {
@@ -56,7 +56,7 @@ function sendBatch(agent: FakeAgent, serverId: string, cpuPct = 33): bigint {
   return tsUnix;
 }
 
-/** Sondea (cediendo el turno, sin dormir) hasta que el panel haya guardado la muestra. */
+/** Polls (yielding the turn, without sleeping) until the panel has saved the sample. */
 async function waitForPoint(path: string): Promise<any> {
   const deadline = Date.now() + 3000;
   while (Date.now() < deadline) {
@@ -64,7 +64,7 @@ async function waitForPoint(path: string): Promise<any> {
     if (s.cpuPct?.some((v: number | null) => v !== null)) return s;
     await new Promise((r) => setImmediate(r));
   }
-  throw new Error("la muestra no llegó");
+  throw new Error("the sample did not arrive");
 }
 
 afterEach(async () => {
@@ -72,15 +72,15 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-describe("métricas (HTTP + agente)", () => {
-  it("exige sesión, valida el rango y responde 404 a ids desconocidos", async () => {
+describe("metrics (HTTP + agent)", () => {
+  it("requires a session, validates the range and responds 404 to unknown ids", async () => {
     await start();
     const { nodeId, serverId } = await enrollWithServer();
     expect((await app.inject({ method: "GET", url: `/api/servers/${serverId}/metrics` })).statusCode).toBe(401);
     const bad = await app.inject({ method: "GET", url: `/api/servers/${serverId}/metrics?range=30d`, headers: { cookie } });
     expect(bad.statusCode).toBe(400);
-    expect(bad.json().error).toBe("Rango inválido: usa 1h, 24h o 7d");
-    expect((await app.inject({ method: "GET", url: "/api/servers/nope/metrics", headers: { cookie } })).json()).toEqual({ error: "Servidor no encontrado" });
+    expect(bad.json().error).toBe("Invalid range: use 1h, 24h or 7d");
+    expect((await app.inject({ method: "GET", url: "/api/servers/nope/metrics", headers: { cookie } })).json()).toEqual({ error: "Server not found" });
     expect((await app.inject({ method: "GET", url: "/api/nodes/nope/metrics", headers: { cookie } })).statusCode).toBe(404);
     const empty = (await app.inject({ method: "GET", url: `/api/nodes/${nodeId}/metrics?range=7d`, headers: { cookie } })).json();
     expect(empty).toMatchObject({ range: "7d", step: 300 });
@@ -88,7 +88,7 @@ describe("métricas (HTTP + agente)", () => {
     expect(empty.cpuPct.every((v: unknown) => v === null)).toBe(true);
   });
 
-  it("un MetricBatch del agente se guarda y se sirve por servidor y por nodo (1h por defecto)", async () => {
+  it("an agent's MetricBatch is stored and served per server and per node (1h by default)", async () => {
     await start();
     const { nodeId, nodeToken, serverId } = await enrollWithServer();
     const agent = await connect(nodeToken, serverId);
@@ -106,7 +106,7 @@ describe("métricas (HTTP + agente)", () => {
     agent.close();
   });
 
-  it("el navegador suscrito a nodes recibe node_metrics en vivo", async () => {
+  it("a browser subscribed to nodes receives node_metrics live", async () => {
     await start();
     const { nodeId, nodeToken, serverId } = await enrollWithServer();
     const b = await browserClient(url, cookie);
@@ -114,13 +114,13 @@ describe("métricas (HTTP + agente)", () => {
     const agent = await connect(nodeToken, serverId);
     const ts = sendBatch(agent, serverId);
     let msg: any;
-    do { msg = await b.next(); } while (msg.type !== "node_metrics"); // antes llegan los "node" del Hello
+    do { msg = await b.next(); } while (msg.type !== "node_metrics"); // the Hello's "node" ones arrive first
     expect(msg).toEqual({ type: "node_metrics", nodeId, sample: { ts: Number(ts), cpuPct: 12, memBytes: 4 * 1024 ** 3, memTotalBytes: 16 * 1024 ** 3, diskBytes: 50 * 1024 ** 3, diskTotalBytes: 500 * 1024 ** 3 } });
     b.ws.close();
     agent.close();
   });
 
-  it("el histórico sigue tras reiniciar el panel", async () => {
+  it("the history survives a panel restart", async () => {
     const dir = mkdtempSync(join(tmpdir(), "mcsm-metrics-"));
     dirs.push(dir);
     const path = join(dir, "panel.db");
@@ -132,7 +132,7 @@ describe("métricas (HTTP + agente)", () => {
     agent.close();
     await stop();
 
-    await start(path, false); // mismo fichero: login en vez de setup
+    await start(path, false); // same file: login instead of setup
     const s = (await app.inject({ method: "GET", url: `/api/servers/${serverId}/metrics`, headers: { cookie } })).json();
     expect(s.cpuPct.filter((v: number | null) => v !== null)).toEqual([44]);
   });

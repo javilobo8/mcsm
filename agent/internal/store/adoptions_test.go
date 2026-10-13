@@ -10,16 +10,16 @@ import (
 func TestAdoptionsCRUD(t *testing.T) {
 	s := open(t)
 	if a, err := s.Adoption("a"); err != nil || a != nil {
-		t.Fatalf("sin bucket: %v, %v", a, err)
+		t.Fatalf("without bucket: %v, %v", a, err)
 	}
 	if err := s.DeleteAdoption("a"); err != nil {
-		t.Fatalf("borrar sin bucket es idempotente: %v", err)
+		t.Fatalf("deleting without a bucket is idempotent: %v", err)
 	}
 	if err := s.PutAdoption("a", Adoption{ContainerID: "c1", Slug: "alpha", Version: 2}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.PutAdoption("", Adoption{ContainerID: "c1"}, ""); err == nil {
-		t.Fatal("sin server_id debe fallar")
+		t.Fatal("without server_id it must fail")
 	}
 	if a, _ := s.Adoption("a"); a == nil || *a != (Adoption{ContainerID: "c1", Slug: "alpha", Version: 2}) {
 		t.Fatalf("adoption = %+v", a)
@@ -28,7 +28,7 @@ func TestAdoptionsCRUD(t *testing.T) {
 		t.Fatalf("AdoptedBy = %q", id)
 	}
 	if id, _ := s.AdoptedBy("c2"); id != "" {
-		t.Fatalf("AdoptedBy de otro = %q", id)
+		t.Fatalf("AdoptedBy of another = %q", id)
 	}
 	all, _ := s.Adoptions()
 	if len(all) != 1 || all["a"].ContainerID != "c1" {
@@ -38,7 +38,7 @@ func TestAdoptionsCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	if a, _ := s.Adoption("a"); a != nil {
-		t.Fatal("debe haberse borrado")
+		t.Fatal("it must have been deleted")
 	}
 }
 
@@ -55,7 +55,7 @@ func TestAdoptWithSpecIsAtomicAndCancelsTombstone(t *testing.T) {
 		t.Fatalf("spec = %v", got)
 	}
 	if tomb, _ := s.HasTombstone("a"); tomb {
-		t.Fatal("la spec anula la lápida, como PutSpec")
+		t.Fatal("the spec clears the tombstone, like PutSpec")
 	}
 	if a, _ := s.Adoption("a"); a == nil || a.ContainerID != "c1" {
 		t.Fatalf("adoption = %+v", a)
@@ -69,6 +69,6 @@ func TestAdoptionSurvivesForget(t *testing.T) {
 		t.Fatal(err)
 	}
 	if a, _ := s.Adoption("a"); a == nil {
-		t.Fatal("el borrado pendiente necesita saber qué contenedor parar")
+		t.Fatal("the pending deletion needs to know which container to stop")
 	}
 }

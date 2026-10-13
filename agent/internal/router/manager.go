@@ -17,54 +17,54 @@ import (
 )
 
 const (
-	// stopTimeout es la espera de una parada limpia del router antes de matarlo.
+	// stopTimeout is the wait for a clean stop of the router before killing it.
 	stopTimeout = 10 * time.Second
-	// RetryAfter es la espera tras un fallo antes de volver a tocar Docker con la misma spec (los
-	// eventos del propio intento fallido no deben convertirse en un bucle de crear y borrar).
-	RetryAfter = 25 * time.Second // menos que el tick de 30 s del agente: cada tick reintenta
+	// RetryAfter is the wait after a failure before touching Docker again with the same spec (the
+	// events of the failed attempt itself must not turn into a create-and-delete loop).
+	RetryAfter = 25 * time.Second // less than the agent's 30 s tick: each tick retries
 )
 
-// Store es lo que el router usa del store del agente (store.Store lo cumple).
+// Store is what the router uses from the agent's store (store.Store satisfies it).
 type Store interface {
 	RouterSpec() (*mcsmv1.RouterSpec, error)
 	PutRouterSpec(*mcsmv1.RouterSpec) error
 	DeleteRouterSpec() error
 }
 
-// Options configura un Manager. Name tiene valor por defecto.
+// Options configures a Manager. Name has a default value.
 type Options struct {
-	// Name del contenedor: ContainerName si está vacío (los tests con Docker real usan mcsm-test-…).
+	// Name of the container: ContainerName if empty (tests with real Docker use mcsm-test-…).
 	Name    string
 	Network string
-	// ProxySocket es la ruta del HOST del socket del proxy de Docker del agente (dockerproxy); su directorio se
-	// monta en el router en RouterSocketDir. ProxyReady (opcional) dice si escucha. Un proxy nuevo (el agente se
-	// reinició) no reinicia el router: mc-router vuelve a conectarse solo al socket nuevo del mismo directorio.
+	// ProxySocket is the HOST path of the agent's Docker proxy socket (dockerproxy); its directory is
+	// mounted in the router at RouterSocketDir. ProxyReady (optional) says whether it is listening. A new proxy (the agent
+	// restarted) does not restart the router: mc-router reconnects by itself to the new socket in the same directory.
 	ProxySocket string
 	ProxyReady  func() error
 	Now         func() time.Time
-	// FilesDir es un directorio del HOST (el agente lo ve en la misma ruta: montaje espejo de DATA_ROOT) donde se
-	// escribe la lista de jugadores del autoscale que se monta en el router.
+	// FilesDir is a HOST directory (the agent sees it at the same path: mirror mount of DATA_ROOT) where the
+	// autoscale player list mounted in the router is written.
 	FilesDir string
 }
 
-// Manager reconcilia el contenedor del router con la spec guardada: con spec, un contenedor igual a
-// BuildContainer y en marcha; sin spec, ningún contenedor del router. Reconcile y las demás
-// operaciones sobre Docker se serializan con mu.
+// Manager reconciles the router container with the stored spec: with a spec, a container equal to
+// BuildContainer and running; without a spec, no router container. Reconcile and the other
+// operations on Docker are serialized with mu.
 type Manager struct {
 	eng  docker.Engine
 	st   Store
 	opts Options
 
 	mu        sync.Mutex
-	lastErr   string    // error de la última reconciliación (bajo mu)
-	failedAt  time.Time // cuándo falló (bajo mu)
-	failedFor string    // specKey de la spec con la que falló (bajo mu)
-	// autoscale refleja la spec guardada sin tomar mu: la lee el reconciliador de servidores con su
-	// propio lock tomado mientras Reconcile puede estar esperando a Docker.
+	lastErr   string    // error of the last reconciliation (under mu)
+	failedAt  time.Time // when it failed (under mu)
+	failedFor string    // specKey of the spec it failed with (under mu)
+	// autoscale reflects the stored spec without taking mu: the server reconciler reads it with its
+	// own lock held while Reconcile may be waiting on Docker.
 	autoscale atomic.Bool
 }
 
-// New crea el gestor y carga el autoscale de la spec guardada (reinicio del agente).
+// New creates the manager and loads the autoscale from the stored spec (agent restart).
 func New(eng docker.Engine, st Store, opts Options) *Manager {
 	if opts.Name == "" {
 		opts.Name = ContainerName
@@ -79,7 +79,7 @@ func New(eng docker.Engine, st Store, opts Options) *Manager {
 	return m
 }
 
-// Apply valida y guarda la spec sin tocar Docker (el contenedor lo ajusta Reconcile).
+// Apply validates and stores the spec without touching Docker (Reconcile adjusts the container).
 func (m *Manager) Apply(sp *mcsmv1.RouterSpec) error {
 	if err := Validate(sp); err != nil {
 		return err
@@ -91,7 +91,7 @@ func (m *Manager) Apply(sp *mcsmv1.RouterSpec) error {
 	return nil
 }
 
-// Clear borra la spec guardada sin tocar Docker (Reconcile retira el contenedor).
+// Clear deletes the stored spec without touching Docker (Reconcile removes the container).
 func (m *Manager) Clear() error {
 	if err := m.st.DeleteRouterSpec(); err != nil {
 		return err
@@ -100,10 +100,10 @@ func (m *Manager) Clear() error {
 	return nil
 }
 
-// Autoscale indica si el router guardado arranca y para los servidores con hostname. No bloquea.
+// Autoscale reports whether the stored router starts and stops servers with a hostname. It does not block.
 func (m *Manager) Autoscale() bool { return m.autoscale.Load() }
 
-// specKey identifica una spec para la espera tras un fallo ("" = sin spec).
+// specKey identifies a spec for the wait after a failure ("" = no spec).
 func specKey(sp *mcsmv1.RouterSpec) string {
 	if sp == nil {
 		return ""
@@ -111,22 +111,22 @@ func specKey(sp *mcsmv1.RouterSpec) string {
 	return fmt.Sprintf("%d/%t/%d", sp.HostPort, sp.Autoscale, sp.AutoscaleDownAfterMinutes)
 }
 
-// Reconcile deja Docker igual que la spec guardada y devuelve el estado observado. Idempotente:
-// recrea el contenedor si falta (borrado a mano) o si su hash no coincide (spec o imagen nuevas),
-// lo arranca si está parado y, sin spec, lo borra. Un fallo (p. ej. el puerto del host ocupado)
-// queda en RouterObserved.Error; con la misma spec no se reintenta hasta pasados RetryAfter (una
-// spec nueva sí se aplica al momento).
+// Reconcile leaves Docker the same as the stored spec and returns the observed state. Idempotent:
+// it recreates the container if it is missing (deleted by hand) or if its hash does not match (new spec or image),
+// starts it if stopped and, without a spec, deletes it. A failure (e.g. the host port taken)
+// stays in RouterObserved.Error; with the same spec it is not retried until RetryAfter has passed (a
+// new spec is applied immediately).
 func (m *Manager) Reconcile(ctx context.Context) *mcsmv1.RouterObserved {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	sp, err := m.st.RouterSpec()
 	if err != nil {
-		m.lastErr = fmt.Sprintf("leer la spec del router: %v", err)
+		m.lastErr = fmt.Sprintf("read the router spec: %v", err)
 		return m.observeLocked(ctx)
 	}
 	key := specKey(sp)
 	if m.opts.ProxyReady != nil && m.opts.ProxyReady() == nil {
-		key += "/proxy" // plan-9 (m5): un proxy que ya escucha no espera a RetryAfter tras fallar por no estar listo
+		key += "/proxy" // plan-9 (m5): a proxy that is already listening does not wait for RetryAfter after failing for not being ready
 	}
 	if m.lastErr != "" && key == m.failedFor && m.opts.Now().Before(m.failedAt.Add(RetryAfter)) {
 		return m.observeLocked(ctx)
@@ -151,14 +151,14 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 	}
 	if m.opts.ProxyReady != nil {
 		if err := m.opts.ProxyReady(); err != nil {
-			err = fmt.Errorf("el proxy del socket de Docker para el router no está listo: %w", err)
-			// plan-9 (S2): un router de otra versión (el del Plan 8 monta el socket real de Docker) no puede seguir
-			// en marcha mientras tanto: se borra. Uno de esta versión monta el socket del proxy y se deja.
+			err = fmt.Errorf("the Docker socket proxy for the router is not ready: %w", err)
+			// plan-9 (S2): a router of another version (Plan 8's mounts the real Docker socket) cannot stay
+			// running in the meantime: it is deleted. One of this version mounts the proxy socket and is left alone.
 			if existing != nil {
 				b, berr := BuildContainer(sp, m.opts.Name, m.opts.Network, m.opts.ProxySocket, m.opts.FilesDir)
 				if berr != nil || existing.Labels[LabelHash] != b.Hash {
 					if rerr := m.remove(ctx, existing); rerr != nil {
-						return fmt.Errorf("%w (y no se pudo retirar el router anterior: %v)", err, rerr)
+						return fmt.Errorf("%w (and the previous router could not be removed: %v)", err, rerr)
 					}
 				}
 			}
@@ -169,8 +169,8 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 	if err != nil {
 		return err
 	}
-	// La lista del autoscale tiene que estar en el host antes de crear o arrancar el router: si
-	// falta, Docker crearía un directorio en su lugar. Se repone en cada pasada si alguien la borra.
+	// The autoscale list has to be on the host before creating or starting the router: if
+	// missing, Docker would create a directory in its place. It is restored on every pass if someone deletes it.
 	if err := m.syncAllowDeny(b); err != nil {
 		return err
 	}
@@ -180,21 +180,21 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 		}
 		existing = nil
 	}
-	// Docker (29.7.2) arranca SIN publicar puertos, y así lo deja aunque se pare y se arranque, un
-	// contenedor cuyo arranque anterior falló por el puerto del host (también si el arranque fallido
-	// fue de la política de reinicio). Un router en marcha sin su puerto se borra y se crea de nuevo;
-	// uno que arranca sin él, igual, una vez por pasada.
+	// Docker (29.7.2) starts WITHOUT publishing ports, and leaves it that way even if stopped and started, a
+	// container whose previous start failed on the host port (also if the failed start
+	// was by the restart policy). A running router without its port is deleted and created again;
+	// one that starts without it, likewise, once per pass.
 	for recreated := false; ; {
 		if existing != nil && existing.State == "running" {
 			ins, err := m.eng.Inspect(ctx, existing.ID)
 			if err != nil && !errors.Is(err, docker.ErrNotFound) {
-				return fmt.Errorf("inspeccionar el router: %w", err)
+				return fmt.Errorf("inspect the router: %w", err)
 			}
 			switch {
 			case err == nil && !ins.PortsMissing:
 				return nil
 			case err == nil && recreated:
-				return fmt.Errorf("el router arrancó sin publicar el puerto %d del host (fallo de Docker)", sp.HostPort)
+				return fmt.Errorf("the router started without publishing host port %d (Docker failure)", sp.HostPort)
 			default:
 				if err := m.remove(ctx, existing); err != nil {
 					return err
@@ -205,11 +205,11 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 		fresh := false
 		if existing == nil {
 			if err := m.eng.EnsureImage(ctx, b.Config.Image); err != nil {
-				return fmt.Errorf("descargar %s: %w", b.Config.Image, err)
+				return fmt.Errorf("pull %s: %w", b.Config.Image, err)
 			}
 			id, err := m.eng.Create(ctx, b.Name, b.Config, b.HostConfig, b.Networking)
 			if err != nil {
-				return fmt.Errorf("crear el contenedor %s: %w", b.Name, err)
+				return fmt.Errorf("create container %s: %w", b.Name, err)
 			}
 			existing, fresh = &docker.Container{ID: id, Name: b.Name, State: "created"}, true
 		}
@@ -217,42 +217,42 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 			return nil
 		}
 		if existing.State != "running" && !fresh {
-			// Un `docker rm -f` a mano emite kill y die antes que destroy, y la lista (una instantánea) da
-			// el contenedor como exited o dead mientras se borra: Docker no lo arrancaría («marked for
-			// removal»). No es un fallo (contaría para RetryAfter y retrasaría la recreación hasta el tick):
-			// la pasada que dispara su destroy lo crea de nuevo.
+			// A manual `docker rm -f` emits kill and die before destroy, and the list (a snapshot) gives
+			// the container as exited or dead while it is being deleted: Docker would not start it ("marked for
+			// removal"). It is not a failure (it would count for RetryAfter and delay the recreation until the tick):
+			// the pass triggered by its destroy creates it again.
 			ins, err := m.eng.Inspect(ctx, existing.ID)
 			switch {
 			case errors.Is(err, docker.ErrNotFound):
 				existing = nil
 				continue
 			case err != nil:
-				return fmt.Errorf("inspeccionar el router: %w", err)
+				return fmt.Errorf("inspect the router: %w", err)
 			case ins.State == "removing":
 				return nil
 			}
 		}
 		if existing.State != "running" {
 			if err := m.eng.Start(ctx, existing.ID); err != nil {
-				// Se borra para que el reintento lo cree de nuevo y vuelva a fallar mientras el puerto
-				// siga ocupado, en vez de quedar «en marcha» e inalcanzable.
+				// It is deleted so that the retry creates it again and fails again while the port
+				// stays taken, instead of being left "running" and unreachable.
 				if rerr := m.eng.Remove(ctx, existing.ID); rerr != nil && !errors.Is(rerr, docker.ErrNotFound) {
-					return fmt.Errorf("arrancar el router en el puerto %d del host: %w (y no se pudo borrar: %v)", sp.HostPort, err, rerr)
+					return fmt.Errorf("start the router on host port %d: %w (and it could not be deleted: %v)", sp.HostPort, err, rerr)
 				}
-				return fmt.Errorf("arrancar el router en el puerto %d del host: %w", sp.HostPort, err)
+				return fmt.Errorf("start the router on host port %d: %w", sp.HostPort, err)
 			}
 			existing.State = "running"
 		}
 	}
 }
 
-// syncAllowDeny deja en FilesDir el fichero de la lista del autoscale de b (escritura atómica y
-// legible por el usuario de mc-router), o lo borra si b no lleva lista.
+// syncAllowDeny leaves in FilesDir the file with b's autoscale list (atomic write and
+// readable by the mc-router user), or deletes it if b carries no list.
 func (m *Manager) syncAllowDeny(b *Build) error {
 	if b.AllowDeny == nil {
 		if m.opts.FilesDir != "" {
 			if err := os.Remove(filepath.Join(m.opts.FilesDir, AllowDenyFile)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return fmt.Errorf("borrar la lista de jugadores del autoscale: %w", err)
+				return fmt.Errorf("delete the autoscale player list: %w", err)
 			}
 		}
 		return nil
@@ -261,37 +261,37 @@ func (m *Manager) syncAllowDeny(b *Build) error {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(b.AllowDenyPath), 0o755); err != nil {
-		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+		return fmt.Errorf("save the autoscale player list: %w", err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(b.AllowDenyPath), ".allow-deny-*")
 	if err != nil {
-		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+		return fmt.Errorf("save the autoscale player list: %w", err)
 	}
 	defer os.Remove(tmp.Name())
 	if _, err := tmp.Write(b.AllowDeny); err != nil {
 		tmp.Close()
-		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+		return fmt.Errorf("save the autoscale player list: %w", err)
 	}
 	if err := tmp.Chmod(0o644); err != nil {
 		tmp.Close()
-		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+		return fmt.Errorf("save the autoscale player list: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+		return fmt.Errorf("save the autoscale player list: %w", err)
 	}
 	if err := os.Rename(tmp.Name(), b.AllowDenyPath); err != nil {
-		return fmt.Errorf("guardar la lista de jugadores del autoscale: %w", err)
+		return fmt.Errorf("save the autoscale player list: %w", err)
 	}
 	return nil
 }
 
-// remove para y borra el contenedor del router.
+// remove stops and deletes the router's container.
 func (m *Manager) remove(ctx context.Context, c *docker.Container) error {
 	if err := m.eng.Stop(ctx, c.ID, stopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-		return fmt.Errorf("parar el router: %w", err)
+		return fmt.Errorf("stop the router: %w", err)
 	}
 	if err := m.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
-		return fmt.Errorf("borrar el router: %w", err)
+		return fmt.Errorf("delete the router: %w", err)
 	}
 	return nil
 }
@@ -326,11 +326,11 @@ func (m *Manager) observeLocked(ctx context.Context) *mcsmv1.RouterObserved {
 	return obs
 }
 
-// find busca el contenedor del router por su etiqueta y su nombre (nil si no existe).
+// find looks for the router's container by its label and name (nil if it does not exist).
 func (m *Manager) find(ctx context.Context) (*docker.Container, error) {
 	list, err := m.eng.ListManaged(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("listar contenedores: %w", err)
+		return nil, fmt.Errorf("list containers: %w", err)
 	}
 	for i := range list {
 		if list[i].Labels[LabelRouter] == "true" && list[i].Name == m.opts.Name {

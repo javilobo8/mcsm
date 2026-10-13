@@ -5,12 +5,12 @@ import type { Db } from "../db/db.js";
 export const PUBLIC_URL_SETTING = "public_url";
 export const PORT_RANGE_SETTING = "game_port_range";
 
-/** Estado de la API key de CurseForge: la migración 020 copiaba el valor del env sin validarlo. */
+/** State of the CurseForge API key: migration 020 copied the env value without validating it. */
 export function curseforgeStatus(key: string | null): { configured: boolean; valid: boolean } {
   return { configured: key !== null, valid: key === null || (key.length <= 200 && CURSEFORGE_API_KEY_RE.test(key)) };
 }
 
-/** Ajustes del panel (spec §8) en la tabla settings; el entorno da los valores por defecto. */
+/** Panel settings (spec §8) in the settings table; the environment provides the defaults. */
 export class SettingsService {
   constructor(private db: Db, private cfg: Config) {}
 
@@ -24,19 +24,19 @@ export class SettingsService {
     else this.db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
   }
 
-  /** URL del panel: la de Ajustes o, si no hay, PANEL_PUBLIC_URL ("" = la del navegador que pide el comando). */
+  /** The panel's URL: the one in Settings or, if none, PANEL_PUBLIC_URL ("" = that of the browser requesting the command). */
   publicUrl(): string {
     return this.get(PUBLIC_URL_SETTING) ?? this.cfg.publicUrl;
   }
 
-  /** Rango de puertos de juego que se reparte; uno guardado ilegible cae al de configuración. */
+  /** Range of game ports that gets allocated; an unreadable stored one falls back to the configuration's. */
   gamePortRange(): PortRange {
     const raw = this.get(PORT_RANGE_SETTING);
     if (raw) {
       try {
         const r = portRangeSchema.safeParse(JSON.parse(raw));
         if (r.success) return r.data;
-      } catch { /* JSON roto: el de configuración */ }
+      } catch { /* broken JSON: the configuration's */ }
     }
     return { ...this.cfg.gamePortRange };
   }

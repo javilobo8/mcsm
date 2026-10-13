@@ -1,8 +1,8 @@
 import type { Timers } from "../src/files/stream.js";
 
 /**
- * Temporizadores de prueba con reloj virtual: nada vence hasta que el test llama a `advance`.
- * Sustituye a `realTimers` (p. ej. `app.filesService.timers = clock`).
+ * Test timers with a virtual clock: nothing expires until the test calls `advance`.
+ * Replaces `realTimers` (e.g. `app.filesService.timers = clock`).
  */
 export class ManualTimers implements Timers {
   private now = 0;
@@ -15,10 +15,10 @@ export class ManualTimers implements Timers {
     return () => { this.armed.delete(id); };
   }
 
-  /** Temporizadores armados y aún sin vencer. */
+  /** Timers armed and not yet expired. */
   get pending(): number { return this.armed.size; }
 
-  /** Avanza el reloj y dispara, por orden de vencimiento, los que venzan. */
+  /** Advances the clock and fires, in order of expiry, those that expire. */
   advance(ms: number): void {
     this.now += ms;
     for (;;) {

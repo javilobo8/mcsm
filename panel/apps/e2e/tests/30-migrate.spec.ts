@@ -1,31 +1,31 @@
 import { expect, test } from "@playwright/test";
 import { NODE_B, SERVER, nodeId, poll, serverByName, shot, watchCsp, watchForbidden } from "./helpers";
 
-test("migrar el servidor al segundo nodo (dind) y verlo en marcha allí", async ({ page, request }) => {
+test("migrate the server to the second node (dind) and see it running there", async ({ page, request }) => {
   const csp = watchCsp(page);
   const forbidden = watchForbidden(page);
   const s = await serverByName(request, SERVER);
   const target = await nodeId(request, NODE_B);
   await page.goto(`/servers/${s.id}`);
-  await page.getByRole("tab", { name: "Migrar" }).click();
+  await page.getByRole("tab", { name: "Migrate" }).click();
   await page.locator("#mig-target").click();
   await page.getByRole("option", { name: NODE_B }).click();
   await expect(page.locator("#mig-port")).toHaveAttribute("placeholder", /^\d+$/);
-  await shot(page, "09-migrar");
-  await page.getByRole("button", { name: /Migrar…/ }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Migrar" }).click();
+  await shot(page, "09-migrate");
+  await page.getByRole("button", { name: /Migrate…/ }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Migrate" }).click();
   await poll(async () => {
     const m = (await (await request.get(`/api/servers/${s.id}/migration`)).json()).migration as { phase: string; error: string | null } | null;
-    if (m?.phase === "failed") throw new Error(`migración fallida: ${m.error}`);
+    if (m?.phase === "failed") throw new Error(`migration failed: ${m.error}`);
     return m?.phase === "done";
-  }, "la migración", 10 * 60_000, 3_000);
+  }, "the migration", 10 * 60_000, 3_000);
   await poll(async () => {
     const x = await (await request.get(`/api/servers/${s.id}`)).json();
     return x.nodeId === target && x.observed?.mc?.online;
-  }, "el servidor en marcha en el nodo B", 5 * 60_000);
+  }, "the server running on node B", 5 * 60_000);
   await page.reload();
   await expect(page.getByText(NODE_B).first()).toBeVisible();
-  await shot(page, "10-migrado");
+  await shot(page, "10-migrated");
   expect(csp).toEqual([]);
   expect(forbidden).toEqual([]);
 });

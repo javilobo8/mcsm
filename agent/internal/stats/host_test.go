@@ -14,7 +14,7 @@ func TestCPUTimesFromExcludesGuest(t *testing.T) {
 	}
 }
 
-// Lee el host real: solo comprueba que los valores tienen sentido.
+// Reads the real host: it only checks that the values make sense.
 func TestGopsutilHostReadsThisMachine(t *testing.T) {
 	ctx := context.Background()
 	h := GopsutilHost{}
@@ -30,7 +30,7 @@ func TestGopsutilHostReadsThisMachine(t *testing.T) {
 	if err != nil || total == 0 || used > total {
 		t.Fatalf("disk = %d/%d, %v", used, total, err)
 	}
-	if _, _, err := h.Disk(ctx, "/no/existe/mcsm"); err == nil {
-		t.Fatal("una ruta inexistente debe dar error")
+	if _, _, err := h.Disk(ctx, "/does/not/exist/mcsm"); err == nil {
+		t.Fatal("a nonexistent path must give an error")
 	}
 }

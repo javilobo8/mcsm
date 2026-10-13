@@ -284,8 +284,8 @@ func (EventLevel) EnumDescriptor() ([]byte, []int) {
 	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{4}
 }
 
-// Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
-// petición y su respuesta; `stream_id` agrupa los frames de un stream.
+// Envelope is the only type that travels over the WebSocket. `id` identifies a
+// request and its response; `stream_id` groups the frames of a stream.
 type Envelope struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Id       uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -1049,7 +1049,7 @@ type Envelope_RouterObserved struct {
 
 type Envelope_Event struct {
 	// ── plan-9 ──
-	// Campo 24: reservado desde el Plan 1 para Event (arreglos transversales).
+	// Field 24: reserved since Plan 1 for Event (cross-cutting fixes).
 	Event *Event `protobuf:"bytes,24,opt,name=event,proto3,oneof"`
 }
 
@@ -1243,8 +1243,8 @@ type Hello struct {
 	DockerVersion string                 `protobuf:"bytes,2,opt,name=docker_version,json=dockerVersion,proto3" json:"docker_version,omitempty"`
 	Host          *HostInfo              `protobuf:"bytes,3,opt,name=host,proto3" json:"host,omitempty"`
 	SpecVersions  map[string]uint64      `protobuf:"bytes,4,rep,name=spec_versions,json=specVersions,proto3" json:"spec_versions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value"`
-	// Estado deseado que el agente tiene guardado por servidor. El panel reenvía en
-	// SyncSpecs las specs cuya versión o estado deseado difieren de los suyos.
+	// Desired state the agent has stored per server. The panel resends in
+	// SyncSpecs the specs whose version or desired state differ from its own.
 	DesiredStates map[string]DesiredState `protobuf:"bytes,5,rep,name=desired_states,json=desiredStates,proto3" json:"desired_states,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"varint,2,opt,name=value,enum=mcsm.v1.DesiredState"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1731,7 +1731,7 @@ func (x *CommandResult) GetOutput() string {
 	return ""
 }
 
-// Respuesta: Ack con envelope.stream_id = envelope.id de la petición.
+// Response: Ack with envelope.stream_id = the request's envelope.id.
 type SubscribeLogs struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -2160,35 +2160,35 @@ func (*Ack) Descriptor() ([]byte, []int) {
 	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{17}
 }
 
-// Respuesta de error a una petición (mismo id). Catálogo de `code`, con su traducción a
-// HTTP en el panel (agentErrorToHttp en panel/apps/api/src/lib/http.ts). Constantes:
-// agent/internal/errcode (Go) y panel/apps/api/src/agents/error-codes.ts (TS); un código
-// nuevo se añade en los tres sitios. Un código desconocido para el panel es 502.
+// Error response to a request (same id). Catalog of `code`, with its translation to
+// HTTP in the panel (agentErrorToHttp in panel/apps/api/src/lib/http.ts). Constants:
+// agent/internal/errcode (Go) and panel/apps/api/src/agents/error-codes.ts (TS); a new
+// code is added in all three places. A code unknown to the panel is 502.
 //
-//	invalid_spec     spec inválida (server_id o slug)                  400
-//	invalid_request  petición mal formada                              400
-//	unknown_server   el nodo no conoce ese servidor                    404
-//	not_found        recurso inexistente (fichero, copia…)            404
-//	busy             servidor ocupado o reservado (el mensaje da el motivo)  409
-//	exists           ya existe                                         409
-//	unsupported      el agente no entiende el cuerpo: desactualizado   409
-//	too_large        demasiado grande                                  413
-//	invalid_path     ruta con «..», caracteres de control o fichero no regular   400
-//	path_outside     la ruta resuelta sale de /data del servidor        400
-//	root             operación no permitida sobre la raíz               400
-//	is_dir           era un fichero y es una carpeta                    400
-//	not_dir          era una carpeta y es un fichero                    400
-//	transfer_failed  subida/descarga fallida                            502
-//	io_error         error de E/S del host                              502
-//	external_data    los datos del servidor están fuera de DATA_ROOT (dataPath):  409
-//	                 sin copias de seguridad ni archivos (Plan 6)
-//	apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
-//	                 del agente o de Docker (spec §10)
-//	backup_failed    fallo de una copia, restauración o borrado de copias  502
+//	invalid_spec     invalid spec (server_id or slug)                  400
+//	invalid_request  malformed request                                 400
+//	unknown_server   the node does not know that server                404
+//	not_found        nonexistent resource (file, backup…)             404
+//	busy             server busy or reserved (the message gives the reason)  409
+//	exists           already exists                                    409
+//	unsupported      the agent does not understand the body: outdated  409
+//	too_large        too large                                         413
+//	invalid_path     path with "..", control characters or a non-regular file   400
+//	path_outside     the resolved path leaves the server's /data        400
+//	root             operation not allowed on the root                  400
+//	is_dir           it was a file and is a folder                      400
+//	not_dir          it was a folder and is a file                      400
+//	transfer_failed  upload/download failed                             502
+//	io_error         host I/O error                                     502
+//	external_data    the server's data is outside DATA_ROOT (dataPath):  409
+//	                 no backups or files (Plan 6)
+//	apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 with the text
+//	                 from the agent or Docker (spec §10)
+//	backup_failed    a backup, restore or backup deletion failed        502
 //
-// Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
+// Only in the panel (local AgentError, never sent): disconnected and syncing (409),
 // timeout (504), protocol (502).
-// El agente nunca responde a un Ack o un Error recibidos.
+// The agent never replies to a received Ack or Error.
 type Error struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Code          string                 `protobuf:"bytes,1,opt,name=code,proto3" json:"code,omitempty"`
@@ -2241,14 +2241,14 @@ func (x *Error) GetMessage() string {
 	return ""
 }
 
-// MetricBatch agrupa las métricas de un ciclo de muestreo (cada 10 s, spec §6.4).
-// Agente → panel, no solicitado (Envelope.id = 0). Solo lleva servidores cuyo
-// contenedor está en marcha.
+// MetricBatch groups the metrics of one sampling cycle (every 10 s, spec §6.4).
+// Agent → panel, unsolicited (Envelope.id = 0). It only carries servers whose
+// container is running.
 type MetricBatch struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Epoch en segundos, redondeado hacia abajo a múltiplo de 10.
+	// Epoch in seconds, rounded down to a multiple of 10.
 	TsUnix int64 `protobuf:"varint,1,opt,name=ts_unix,json=tsUnix,proto3" json:"ts_unix,omitempty"`
-	// Ausente mientras no haya dos lecturas de CPU del host.
+	// Absent until there are two host CPU readings.
 	Host          *HostMetricSample     `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
 	Servers       []*ServerMetricSample `protobuf:"bytes,3,rep,name=servers,proto3" json:"servers,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2308,12 +2308,12 @@ func (x *MetricBatch) GetServers() []*ServerMetricSample {
 
 type HostMetricSample struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 0–100 sobre todas las CPU del host.
+	// 0–100 over all the host's CPUs.
 	CpuPct float64 `protobuf:"fixed64,1,opt,name=cpu_pct,json=cpuPct,proto3" json:"cpu_pct,omitempty"`
-	// Total menos disponible.
+	// Total minus available.
 	MemUsedBytes  uint64 `protobuf:"varint,2,opt,name=mem_used_bytes,json=memUsedBytes,proto3" json:"mem_used_bytes,omitempty"`
 	MemTotalBytes uint64 `protobuf:"varint,3,opt,name=mem_total_bytes,json=memTotalBytes,proto3" json:"mem_total_bytes,omitempty"`
-	// Sistema de ficheros que contiene DATA_ROOT.
+	// Filesystem containing DATA_ROOT.
 	DiskUsedBytes  uint64 `protobuf:"varint,4,opt,name=disk_used_bytes,json=diskUsedBytes,proto3" json:"disk_used_bytes,omitempty"`
 	DiskTotalBytes uint64 `protobuf:"varint,5,opt,name=disk_total_bytes,json=diskTotalBytes,proto3" json:"disk_total_bytes,omitempty"`
 	unknownFields  protoimpl.UnknownFields
@@ -2388,20 +2388,20 @@ func (x *HostMetricSample) GetDiskTotalBytes() uint64 {
 type ServerMetricSample struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	ServerId string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
-	// 100 = un núcleo completo (mismo criterio que `docker stats`).
+	// 100 = one full core (same criterion as `docker stats`).
 	CpuPct float64 `protobuf:"fixed64,2,opt,name=cpu_pct,json=cpuPct,proto3" json:"cpu_pct,omitempty"`
-	// Uso sin la caché de páginas inactiva.
+	// Usage without the inactive page cache.
 	MemBytes      uint64 `protobuf:"varint,3,opt,name=mem_bytes,json=memBytes,proto3" json:"mem_bytes,omitempty"`
 	MemLimitBytes uint64 `protobuf:"varint,4,opt,name=mem_limit_bytes,json=memLimitBytes,proto3" json:"mem_limit_bytes,omitempty"`
-	// Acumulados desde que arrancó el contenedor (todas las interfaces).
+	// Accumulated since the container started (all interfaces).
 	NetRxBytes uint64 `protobuf:"varint,5,opt,name=net_rx_bytes,json=netRxBytes,proto3" json:"net_rx_bytes,omitempty"`
 	NetTxBytes uint64 `protobuf:"varint,6,opt,name=net_tx_bytes,json=netTxBytes,proto3" json:"net_tx_bytes,omitempty"`
-	// El Server List Ping respondió; si es false, players_* y ping_ms no significan nada.
+	// The Server List Ping responded; if false, players_* and ping_ms mean nothing.
 	McOnline      bool   `protobuf:"varint,7,opt,name=mc_online,json=mcOnline,proto3" json:"mc_online,omitempty"`
 	PlayersOnline uint32 `protobuf:"varint,8,opt,name=players_online,json=playersOnline,proto3" json:"players_online,omitempty"`
 	PlayersMax    uint32 `protobuf:"varint,9,opt,name=players_max,json=playersMax,proto3" json:"players_max,omitempty"`
 	PingMs        uint32 `protobuf:"varint,10,opt,name=ping_ms,json=pingMs,proto3" json:"ping_ms,omitempty"`
-	// Solo PAPER/PURPUR: TPS del último minuto, medido en los últimos 45 s.
+	// PAPER/PURPUR only: TPS of the last minute, measured over the last 45 s.
 	Tps           *float64 `protobuf:"fixed64,11,opt,name=tps,proto3,oneof" json:"tps,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2514,15 +2514,15 @@ func (x *ServerMetricSample) GetTps() float64 {
 	return 0
 }
 
-// BackupInfo describe una copia en el disco del nodo. `filename` es el .tar.zst de
-// <DATA_ROOT>/<slug>/backups/ o, con trigger PRE_RESTORE, el directorio
-// data.pre-restore-<ts> que se conserva junto a data/.
+// BackupInfo describes a backup on the node's disk. `filename` is the .tar.zst in
+// <DATA_ROOT>/<slug>/backups/ or, with trigger PRE_RESTORE, the
+// data.pre-restore-<ts> directory kept next to data/.
 type BackupInfo struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ServerId       string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	Filename       string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
 	SizeBytes      uint64                 `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	Sha256         string                 `protobuf:"bytes,4,opt,name=sha256,proto3" json:"sha256,omitempty"` // vacío en los directorios pre-restore
+	Sha256         string                 `protobuf:"bytes,4,opt,name=sha256,proto3" json:"sha256,omitempty"` // empty for pre-restore directories
 	SpecVersion    uint64                 `protobuf:"varint,5,opt,name=spec_version,json=specVersion,proto3" json:"spec_version,omitempty"`
 	Trigger        BackupTrigger          `protobuf:"varint,6,opt,name=trigger,proto3,enum=mcsm.v1.BackupTrigger" json:"trigger,omitempty"`
 	StartedUnixMs  int64                  `protobuf:"varint,7,opt,name=started_unix_ms,json=startedUnixMs,proto3" json:"started_unix_ms,omitempty"`
@@ -2617,14 +2617,14 @@ func (x *BackupInfo) GetFinishedUnixMs() int64 {
 	return 0
 }
 
-// Panel → agente. Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error
-// (code busy | unknown_server | invalid_request | backup_failed). Un job_id repetido
-// no se ejecuta dos veces: el agente reenvía su estado guardado.
+// Panel → agent. Response: Ack (accepted; progress arrives via JobProgress) or Error
+// (code busy | unknown_server | invalid_request | backup_failed). A repeated job_id
+// is not run twice: the agent resends its stored state.
 type BackupNow struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	JobId         string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	Trigger       BackupTrigger          `protobuf:"varint,3,opt,name=trigger,proto3,enum=mcsm.v1.BackupTrigger" json:"trigger,omitempty"` // MANUAL si no se indica; PRE_MIGRATION lo usará el Plan 7
+	Trigger       BackupTrigger          `protobuf:"varint,3,opt,name=trigger,proto3,enum=mcsm.v1.BackupTrigger" json:"trigger,omitempty"` // MANUAL if not given; PRE_MIGRATION will be used by Plan 7
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2680,8 +2680,8 @@ func (x *BackupNow) GetTrigger() BackupTrigger {
 	return BackupTrigger_BACKUP_TRIGGER_UNSPECIFIED
 }
 
-// Panel → agente. Restaura una copia .tar.zst por nombre (el agente no conoce los ids
-// del panel). Respuesta: Ack o Error, como BackupNow.
+// Panel → agent. Restores a .tar.zst backup by name (the agent does not know the panel's
+// ids). Response: Ack or Error, like BackupNow.
 type BackupRestore struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -2742,7 +2742,7 @@ func (x *BackupRestore) GetJobId() string {
 	return ""
 }
 
-// Panel → agente. Borra una copia o un directorio pre-restore. Respuesta: Ack o Error.
+// Panel → agent. Deletes a backup or a pre-restore directory. Response: Ack or Error.
 type BackupDelete struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -2795,8 +2795,8 @@ func (x *BackupDelete) GetFilename() string {
 	return ""
 }
 
-// Panel → agente. Respuesta: Ack y un BackupInventory no solicitado (id 0), que puede llegar
-// antes o después del Ack. server_id vacío = todos los servidores del nodo.
+// Panel → agent. Response: Ack and an unsolicited BackupInventory (id 0), which may arrive
+// before or after the Ack. Empty server_id = all the node's servers.
 type BackupList struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -2841,17 +2841,17 @@ func (x *BackupList) GetServerId() string {
 	return ""
 }
 
-// Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
-// son los servidores cuyo listado está completo. El agente lo envía en orden con BackupCreated
-// y BackupDeleted (un cambio que el listado no vio llega después), por una cola que no está
-// ligada a la sesión: puede llegar en la sesión siguiente, tras su Hello.
+// Agent → panel (id 0), after each BackupList and, unprompted, every 10 min. `server_ids`
+// are the servers whose listing is complete. The agent sends it in order with BackupCreated
+// and BackupDeleted (a change the listing did not see arrives afterwards), through a queue that is not
+// tied to the session: it may arrive in the next session, after its Hello.
 //
-// `request_id` es el id del BackupList al que contesta, o 0 si es el periódico. Solo un
-// inventario que contesta al último BackupList de la sesión vigente permite al panel la vía
-// negativa: marcar como borradas las copias de `server_ids` que no aparezcan en `backups` y
-// dar por perdidos los jobs abiertos que no aparezcan en `jobs` (en ambos casos, solo lo que
-// ya conocía antes de pedirlo). Cualquier otro (periódico o de una petición anterior) solo
-// aplica lo positivo: altas de copias y estados de jobs.
+// `request_id` is the id of the BackupList it answers, or 0 if it is the periodic one. Only an
+// inventory that answers the current session's last BackupList lets the panel take the
+// negative path: mark as deleted the backups of `server_ids` that do not appear in `backups` and
+// consider lost the open jobs that do not appear in `jobs` (in both cases, only what it
+// already knew before asking). Any other (periodic or from an earlier request) only
+// applies the positive: new backups and job states.
 type BackupInventory struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerIds     []string               `protobuf:"bytes,1,rep,name=server_ids,json=serverIds,proto3" json:"server_ids,omitempty"`
@@ -2920,11 +2920,11 @@ func (x *BackupInventory) GetRequestId() uint64 {
 	return 0
 }
 
-// Agente → panel (id 0): copia nueva (manual, programada o datos pre-restore).
+// Agent → panel (id 0): new backup (manual, scheduled or pre-restore data).
 type BackupCreated struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Backup        *BackupInfo            `protobuf:"bytes,1,opt,name=backup,proto3" json:"backup,omitempty"`
-	JobId         string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"` // vacío en las pre-restore
+	JobId         string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"` // empty for pre-restore ones
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2973,8 +2973,8 @@ func (x *BackupCreated) GetJobId() string {
 	return ""
 }
 
-// Agente → panel (id 0): copia borrada en el nodo, por la poda (reason "poda") o porque la
-// pidió el panel con BackupDelete (reason "borrada").
+// Agent → panel (id 0): backup deleted on the node, by pruning (reason "pruned") or because the
+// panel asked for it with BackupDelete (reason "deleted").
 type BackupDeleted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -3035,7 +3035,7 @@ func (x *BackupDeleted) GetReason() string {
 	return ""
 }
 
-// Agente → panel (id 0): avance de un job. log_chunk trae solo las líneas nuevas.
+// Agent → panel (id 0): progress of a job. log_chunk carries only the new lines.
 type JobProgress struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
@@ -3136,7 +3136,7 @@ func (x *JobProgress) GetTsUnixMs() int64 {
 	return 0
 }
 
-// Estado completo de un job guardado en el agente (inventario tras reconectar).
+// Full state of a job stored in the agent (inventory after reconnecting).
 type JobRecord struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	JobId          string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
@@ -3252,7 +3252,7 @@ type FileEntry struct {
 	Symlink       bool                   `protobuf:"varint,3,opt,name=symlink,proto3" json:"symlink,omitempty"`
 	Size          uint64                 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
 	ModTimeUnixMs int64                  `protobuf:"varint,5,opt,name=mod_time_unix_ms,json=modTimeUnixMs,proto3" json:"mod_time_unix_ms,omitempty"`
-	Mode          uint32                 `protobuf:"varint,6,opt,name=mode,proto3" json:"mode,omitempty"` // bits de permisos (0o755…)
+	Mode          uint32                 `protobuf:"varint,6,opt,name=mode,proto3" json:"mode,omitempty"` // permission bits (0o755…)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3383,8 +3383,8 @@ func (x *FilesList) GetPath() string {
 
 type FilesListResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Entries       []*FileEntry           `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`      // carpetas primero, luego por nombre
-	Truncated     bool                   `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"` // la carpeta tiene más entradas de las devueltas
+	Entries       []*FileEntry           `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`      // folders first, then by name
+	Truncated     bool                   `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"` // the folder has more entries than returned
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3529,7 +3529,7 @@ func (x *FilesStatResult) GetEntry() *FileEntry {
 	return nil
 }
 
-// Lectura inline: como máximo 2 MiB (o max_bytes si es menor); si no, too_large.
+// Inline read: at most 2 MiB (or max_bytes if smaller); otherwise, too_large.
 type FilesRead struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -3642,7 +3642,7 @@ func (x *FilesReadResult) GetSize() uint64 {
 	return 0
 }
 
-// Escritura inline atómica (temporal + rename), como máximo 2 MiB. Respuesta: Ack.
+// Atomic inline write (temporary + rename), at most 2 MiB. Response: Ack.
 type FilesWrite struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -3755,7 +3755,7 @@ func (x *FilesMkdir) GetPath() string {
 	return ""
 }
 
-// No sobrescribe: si `to` existe responde exists.
+// Does not overwrite: if `to` exists it responds exists.
 type FilesRename struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -3816,7 +3816,7 @@ func (x *FilesRename) GetTo() string {
 	return ""
 }
 
-// Una carpeta se borra con todo su contenido; un enlace se borra a sí mismo.
+// A folder is deleted with all its contents; a link deletes itself.
 type FilesDelete struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -3869,8 +3869,8 @@ func (x *FilesDelete) GetPath() string {
 	return ""
 }
 
-// El agente sube el fichero con PUT /agent/transfer/{transfer_id} y responde Ack
-// cuando el panel lo ha recibido entero.
+// The agent uploads the file with PUT /agent/transfer/{transfer_id} and responds Ack
+// when the panel has received all of it.
 type FilesDownload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -3931,8 +3931,8 @@ func (x *FilesDownload) GetTransferId() string {
 	return ""
 }
 
-// El agente descarga el contenido con GET /agent/transfer/{transfer_id}, lo escribe
-// de forma atómica y responde Ack. size = -1 si el panel no conoce el tamaño.
+// The agent downloads the content with GET /agent/transfer/{transfer_id}, writes it
+// atomically and responds Ack. size = -1 if the panel does not know the size.
 type FilesUpload struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -4001,8 +4001,8 @@ func (x *FilesUpload) GetSize() int64 {
 	return 0
 }
 
-// Panel → agente. Lista los contenedores cuya imagen es itzg/minecraft-server, sin la etiqueta
-// mcsm.managed y que este agente no haya adoptado ya. Respuesta: ImportScanResult, o Error.
+// Panel → agent. Lists the containers whose image is itzg/minecraft-server, without the
+// mcsm.managed label and that this agent has not already adopted. Response: ImportScanResult, or Error.
 type ImportScan struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -4042,8 +4042,8 @@ func (*ImportScan) Descriptor() ([]byte, []int) {
 type ImportScanResult struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	Candidates []*ImportCandidate     `protobuf:"bytes,1,rep,name=candidates,proto3" json:"candidates,omitempty"`
-	// DATA_ROOT del agente: el panel decide con él si los datos de un candidato están en
-	// <DATA_ROOT>/<slug>/data o necesitan dataPath.
+	// The agent's DATA_ROOT: the panel uses it to decide whether a candidate's data is in
+	// <DATA_ROOT>/<slug>/data or needs dataPath.
 	DataRoot      string `protobuf:"bytes,2,opt,name=data_root,json=dataRoot,proto3" json:"data_root,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4093,25 +4093,25 @@ func (x *ImportScanResult) GetDataRoot() string {
 	return ""
 }
 
-// Inspect reducido de un contenedor importable. `env` lleva solo lo que fijó el usuario (sin las
-// variables idénticas al ENV de la imagen) e INCLUYE secretos (RCON_PASSWORD, CF_API_KEY): el
-// panel no los reenvía al navegador ni los registra.
+// Reduced inspect of an importable container. `env` carries only what the user set (without the
+// variables identical to the image's ENV) and INCLUDES secrets (RCON_PASSWORD, CF_API_KEY): the
+// panel neither forwards them to the browser nor logs them.
 type ImportCandidate struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
-	ContainerId      string                 `protobuf:"bytes,1,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"` // id completo
-	Name             string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                  // sin "/" inicial
-	Image            string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`                                // Config.Image tal cual (itzg/minecraft-server:java21)
+	ContainerId      string                 `protobuf:"bytes,1,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"` // full id
+	Name             string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                  // without the leading "/"
+	Image            string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`                                // Config.Image as is (itzg/minecraft-server:java21)
 	State            string                 `protobuf:"bytes,4,opt,name=state,proto3" json:"state,omitempty"`                                // created|running|restarting|exited|paused|dead
 	Env              map[string]string      `protobuf:"bytes,5,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Ports            []*ImportPort          `protobuf:"bytes,6,rep,name=ports,proto3" json:"ports,omitempty"` // publicaciones configuradas (HostConfig.PortBindings)
+	Ports            []*ImportPort          `protobuf:"bytes,6,rep,name=ports,proto3" json:"ports,omitempty"` // configured publications (HostConfig.PortBindings)
 	Mounts           []*ImportMount         `protobuf:"bytes,7,rep,name=mounts,proto3" json:"mounts,omitempty"`
 	RestartPolicy    string                 `protobuf:"bytes,8,opt,name=restart_policy,json=restartPolicy,proto3" json:"restart_policy,omitempty"`             // no|always|unless-stopped|on-failure ("" = no)
-	MemoryLimitBytes int64                  `protobuf:"varint,9,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"` // 0 = sin límite
-	NanoCpus         int64                  `protobuf:"varint,10,opt,name=nano_cpus,json=nanoCpus,proto3" json:"nano_cpus,omitempty"`                          // 0 = sin límite
-	NetworkMode      string                 `protobuf:"bytes,11,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`                  // bridge|host|none|container:<id>|<red de usuario>
+	MemoryLimitBytes int64                  `protobuf:"varint,9,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"` // 0 = no limit
+	NanoCpus         int64                  `protobuf:"varint,10,opt,name=nano_cpus,json=nanoCpus,proto3" json:"nano_cpus,omitempty"`                          // 0 = no limit
+	NetworkMode      string                 `protobuf:"bytes,11,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`                  // bridge|host|none|container:<id>|<user network>
 	Networks         []string               `protobuf:"bytes,12,rep,name=networks,proto3" json:"networks,omitempty"`
-	Labels           map[string]string      `protobuf:"bytes,13,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // solo com.docker.compose.project y com.docker.compose.service
-	User             string                 `protobuf:"bytes,14,opt,name=user,proto3" json:"user,omitempty"`                                                                               // Config.User (--user): "" = el de la imagen; "uid[:gid]" o un nombre
+	Labels           map[string]string      `protobuf:"bytes,13,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // only com.docker.compose.project and com.docker.compose.service
+	User             string                 `protobuf:"bytes,14,opt,name=user,proto3" json:"user,omitempty"`                                                                               // Config.User (--user): "" = the image's; "uid[:gid]" or a name
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -4248,8 +4248,8 @@ type ImportPort struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ContainerPort uint32                 `protobuf:"varint,1,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
 	Proto         string                 `protobuf:"bytes,2,opt,name=proto,proto3" json:"proto,omitempty"`                        // tcp|udp
-	HostIp        string                 `protobuf:"bytes,3,opt,name=host_ip,json=hostIp,proto3" json:"host_ip,omitempty"`        // "" = todas las interfaces
-	HostPort      uint32                 `protobuf:"varint,4,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"` // 0 = efímero
+	HostIp        string                 `protobuf:"bytes,3,opt,name=host_ip,json=hostIp,proto3" json:"host_ip,omitempty"`        // "" = all interfaces
+	HostPort      uint32                 `protobuf:"varint,4,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"` // 0 = ephemeral
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4315,10 +4315,10 @@ func (x *ImportPort) GetHostPort() uint32 {
 type ImportMount struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`     // bind|volume|tmpfs…
-	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"` // ruta del host (bind) o del volumen
+	Source        string                 `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"` // host path (bind) or volume's
 	Destination   string                 `protobuf:"bytes,3,opt,name=destination,proto3" json:"destination,omitempty"`
 	ReadWrite     bool                   `protobuf:"varint,4,opt,name=read_write,json=readWrite,proto3" json:"read_write,omitempty"`
-	Name          string                 `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"` // nombre del volumen
+	Name          string                 `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"` // volume name
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4388,12 +4388,12 @@ func (x *ImportMount) GetName() string {
 	return ""
 }
 
-// Panel → agente. Adopta un contenedor sin recrearlo. server.spec_json lleva "adopt":
-// {"containerId", "version"} (lo añade el panel). El agente comprueba que el contenedor existe,
-// no es de MC Server Manager, usa la imagen itzg y monta en /data la carpeta de la spec; lo
-// conecta a su red con el alias mcsm-<slug> y guarda spec y adopción. Respuesta: Ack, o Error con
-// not_found (no existe), exists (gestionado o adoptado por otro servidor), invalid_request (no es
-// itzg, red host/none/container o /data distinto), invalid_spec o apply_failed (Docker).
+// Panel → agent. Adopts a container without recreating it. server.spec_json carries "adopt":
+// {"containerId", "version"} (added by the panel). The agent checks that the container exists,
+// is not an MC Server Manager one, uses the itzg image and mounts the spec's folder at /data; it
+// connects it to its network with the alias mcsm-<slug> and stores the spec and the adoption. Response: Ack, or Error with
+// not_found (does not exist), exists (managed or adopted by another server), invalid_request (not
+// itzg, host/none/container network or a different /data), invalid_spec or apply_failed (Docker).
 type ImportAdopt struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Server        *ServerSpec            `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
@@ -4438,11 +4438,11 @@ func (x *ImportAdopt) GetServer() *ServerSpec {
 	return nil
 }
 
-// Panel → agente (origen). Sube una copia .tar.zst de <slug>/backups/ al panel con
-// PUT /agent/transfer/{transfer_id}. Respuesta: BackupPushResult cuando el panel la ha recibido
-// entera, o Error (unknown_server | invalid_request | busy | transfer_failed | backup_failed: la
-// copia no existe o no tiene sha256 en su .json, que se lee primero | not_found: el .json existe
-// pero el .tar.zst no).
+// Panel → agent (source). Uploads a .tar.zst backup from <slug>/backups/ to the panel with
+// PUT /agent/transfer/{transfer_id}. Response: BackupPushResult when the panel has received
+// all of it, or Error (unknown_server | invalid_request | busy | transfer_failed | backup_failed: the
+// backup does not exist or has no sha256 in its .json, which is read first | not_found: the .json exists
+// but the .tar.zst does not).
 type BackupPush struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -4503,13 +4503,13 @@ func (x *BackupPush) GetTransferId() string {
 	return ""
 }
 
-// Metadatos de la copia enviada, de su .json: el panel compara tamaño y sha256 con lo que ha
-// recibido y con el BackupCreated del job.
+// Metadata of the backup sent, from its .json: the panel compares size and sha256 with what it has
+// received and with the job's BackupCreated.
 type BackupPushResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SizeBytes     uint64                 `protobuf:"varint,1,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	Sha256        string                 `protobuf:"bytes,2,opt,name=sha256,proto3" json:"sha256,omitempty"`
-	DataBytes     uint64                 `protobuf:"varint,3,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"` // contenido sin comprimir; 0 si la copia no lo anotó
+	DataBytes     uint64                 `protobuf:"varint,3,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"` // uncompressed content; 0 if the backup did not record it
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4565,24 +4565,24 @@ func (x *BackupPushResult) GetDataBytes() uint64 {
 	return 0
 }
 
-// Panel → agente (destino). Job (type "migrate_in"): descarga la copia con
-// GET /agent/transfer/{transfer_id} a <DATA_ROOT>/<slug>/backups/<filename>, comprueba que
-// llegan size_bytes bytes con ese sha256 y la restaura como <DATA_ROOT>/<slug>/data.
-// <DATA_ROOT>/<slug> no puede existir: lo crea con el marcador .mcsm-migration (contiene
-// migration_id) y, si algo falla, lo borra entero. El servidor no puede estar en este nodo.
-// Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error (invalid_request | exists |
-// busy | too_large: no cabe con el margen). Un job_id repetido reenvía su estado.
+// Panel → agent (target). Job (type "migrate_in"): downloads the backup with
+// GET /agent/transfer/{transfer_id} to <DATA_ROOT>/<slug>/backups/<filename>, checks that
+// size_bytes bytes arrive with that sha256 and restores it as <DATA_ROOT>/<slug>/data.
+// <DATA_ROOT>/<slug> must not exist: it creates it with the .mcsm-migration marker (it contains
+// migration_id) and, if anything fails, deletes it entirely. The server must not be on this node.
+// Response: Ack (accepted; progress arrives via JobProgress) or Error (invalid_request | exists |
+// busy | too_large: it does not fit with the margin). A repeated job_id resends its state.
 type MigrateReceive struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
-	Slug          string                 `protobuf:"bytes,2,opt,name=slug,proto3" json:"slug,omitempty"` // slug en el destino
+	Slug          string                 `protobuf:"bytes,2,opt,name=slug,proto3" json:"slug,omitempty"` // slug on the target
 	JobId         string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
 	MigrationId   string                 `protobuf:"bytes,4,opt,name=migration_id,json=migrationId,proto3" json:"migration_id,omitempty"`
 	TransferId    string                 `protobuf:"bytes,5,opt,name=transfer_id,json=transferId,proto3" json:"transfer_id,omitempty"`
-	Filename      string                 `protobuf:"bytes,6,opt,name=filename,proto3" json:"filename,omitempty"` // <slug>-<ts>-<versión>.tar.zst, con el slug del destino
+	Filename      string                 `protobuf:"bytes,6,opt,name=filename,proto3" json:"filename,omitempty"` // <slug>-<ts>-<version>.tar.zst, with the target's slug
 	SizeBytes     uint64                 `protobuf:"varint,7,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
 	Sha256        string                 `protobuf:"bytes,8,opt,name=sha256,proto3" json:"sha256,omitempty"`
-	DataBytes     uint64                 `protobuf:"varint,9,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"` // 0 = desconocido (se reserva el tamaño comprimido)
+	DataBytes     uint64                 `protobuf:"varint,9,opt,name=data_bytes,json=dataBytes,proto3" json:"data_bytes,omitempty"` // 0 = unknown (the compressed size is reserved)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4680,14 +4680,14 @@ func (x *MigrateReceive) GetDataBytes() uint64 {
 	return 0
 }
 
-// Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
-// olvida la spec del servidor (si la tiene) y borra su contenedor y, ya sin él, borra
-// <DATA_ROOT>/<slug> solo si lleva el marcador de migration_id sin confirmar y ningún otro
-// servidor del nodo usa ese slug. El marcador se lee ANTES de tocar la spec: si el servidor está
-// en este nodo y <slug> no lleva el marcador sin confirmar de esta migración (p. ej. ya llegó
-// MigrateConfirm), no toca nada. Idempotente. Respuesta: Ack o Error (busy: hay una recepción en
-// curso o el contenedor aún no se pudo borrar; el panel reintenta. invalid_request: otro slug,
-// otro servidor lo usa, o el servidor de este nodo no es una copia sin confirmar de esta migración).
+// Panel → agent (target). Undoes what an unconfirmed migration left on this node:
+// forgets the server's spec (if it has one) and deletes its container and, once that is gone, deletes
+// <DATA_ROOT>/<slug> only if it carries the unconfirmed migration_id marker and no other
+// server on the node uses that slug. The marker is read BEFORE touching the spec: if the server is
+// on this node and <slug> does not carry this migration's unconfirmed marker (e.g. MigrateConfirm
+// already arrived), it touches nothing. Idempotent. Response: Ack or Error (busy: a receive is in
+// progress or the container could not be deleted yet; the panel retries. invalid_request: another slug,
+// another server uses it, or this node's server is not an unconfirmed copy of this migration).
 type MigrateAbort struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -4748,22 +4748,22 @@ func (x *MigrateAbort) GetMigrationId() string {
 	return ""
 }
 
-// Panel → agente (origen), tras confirmar la migración. Comprueba que la spec guardada es la
-// versión source_version (la que se migró: un servidor que volvió después a este nodo trae otra),
-// marca <slug> con .mcsm-retiring (migration_id), para el contenedor si sigue en marcha, olvida la
-// spec y borra el contenedor y, solo entonces, aparta <DATA_ROOT>/<slug> (datos y copias) a
-// <DATA_ROOT>/<slug>.migrated-<ts> o, con delete_data, lo borra. Un reintento sin spec solo toca un
-// <slug> con el .mcsm-retiring de esta migración. Idempotente. Respuesta: Ack o Error
-// (invalid_request: otro slug, otra versión, otro servidor del nodo usa ese slug o <slug> no es el
-// de esta retirada (p. ej. una recepción en curso: marcador de migración sin confirmar); busy:
-// reintentar, p. ej. el contenedor aún no se pudo borrar).
+// Panel → agent (source), after confirming the migration. Checks that the stored spec is
+// version source_version (the one that was migrated: a server that later came back to this node has another),
+// marks <slug> with .mcsm-retiring (migration_id), stops the container if it is still running, forgets the
+// spec and deletes the container and, only then, sets <DATA_ROOT>/<slug> (data and backups) aside to
+// <DATA_ROOT>/<slug>.migrated-<ts> or, with delete_data, deletes it. A retry without a spec only touches a
+// <slug> with this migration's .mcsm-retiring. Idempotent. Response: Ack or Error
+// (invalid_request: another slug, another version, another server on the node uses that slug or <slug> is not the
+// one of this retirement (e.g. a receive in progress: unconfirmed migration marker); busy:
+// retry, e.g. the container could not be deleted yet).
 type MigrateRetire struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
 	Slug          string                 `protobuf:"bytes,2,opt,name=slug,proto3" json:"slug,omitempty"`
 	MigrationId   string                 `protobuf:"bytes,3,opt,name=migration_id,json=migrationId,proto3" json:"migration_id,omitempty"`
 	DeleteData    bool                   `protobuf:"varint,4,opt,name=delete_data,json=deleteData,proto3" json:"delete_data,omitempty"`
-	SourceVersion uint64                 `protobuf:"varint,5,opt,name=source_version,json=sourceVersion,proto3" json:"source_version,omitempty"` // versión de la spec en el origen al empezar la migración
+	SourceVersion uint64                 `protobuf:"varint,5,opt,name=source_version,json=sourceVersion,proto3" json:"source_version,omitempty"` // spec version on the source when the migration started
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4833,11 +4833,11 @@ func (x *MigrateRetire) GetSourceVersion() uint64 {
 	return 0
 }
 
-// Panel → agente (destino), tras confirmar la migración (y reintentado hasta el Ack). Reescribe
-// el marcador <DATA_ROOT>/<slug>/.mcsm-migration de migration_id como «committed <migration_id>»:
-// desde entonces ningún MigrateAbort (p. ej. de un panel restaurado desde una foto anterior al
-// commit) borra el servidor. Idempotente. Respuesta: Ack (también si ya estaba confirmado o no
-// hay marcador) o Error (invalid_request: otro slug, o el marcador es de otra migración; busy).
+// Panel → agent (target), after confirming the migration (and retried until the Ack). Rewrites
+// the <DATA_ROOT>/<slug>/.mcsm-migration marker of migration_id as “committed <migration_id>”:
+// from then on no MigrateAbort (e.g. from a panel restored from a snapshot prior to the
+// commit) deletes the server. Idempotent. Response: Ack (also if it was already confirmed or there
+// is no marker) or Error (invalid_request: another slug, or the marker is from another migration; busy).
 type MigrateConfirm struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`
@@ -4898,14 +4898,14 @@ func (x *MigrateConfirm) GetMigrationId() string {
 	return ""
 }
 
-// Configuración del router de un nodo.
+// Configuration of a node's router.
 type RouterSpec struct {
 	state                     protoimpl.MessageState `protogen:"open.v1"`
-	HostPort                  uint32                 `protobuf:"varint,1,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`                                                        // puerto TCP del host (1-65535); dentro del contenedor siempre es 25565
-	Autoscale                 bool                   `protobuf:"varint,2,opt,name=autoscale,proto3" json:"autoscale,omitempty"`                                                                      // mc-router arranca al entrar un jugador y para tras autoscale_down_after_minutes sin jugadores
+	HostPort                  uint32                 `protobuf:"varint,1,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`                                                        // host TCP port (1-65535); inside the container it is always 25565
+	Autoscale                 bool                   `protobuf:"varint,2,opt,name=autoscale,proto3" json:"autoscale,omitempty"`                                                                      // mc-router starts when a player joins and stops after autoscale_down_after_minutes without players
 	AutoscaleDownAfterMinutes uint32                 `protobuf:"varint,3,opt,name=autoscale_down_after_minutes,json=autoscaleDownAfterMinutes,proto3" json:"autoscale_down_after_minutes,omitempty"` // 1-1440; 0 = 10
-	// Con autoscale, solo estos jugadores (nombre de perfil o UUID) despiertan un servidor dormido o
-	// cancelan su parada (-auto-scale-allow-deny de mc-router). Vacío = cualquiera. Máx. 1000.
+	// With autoscale, only these players (profile name or UUID) wake up a sleeping server or
+	// cancel its stop (mc-router's -auto-scale-allow-deny). Empty = anyone. Max. 1000.
 	AutoscaleAllowPlayers []string `protobuf:"bytes,4,rep,name=autoscale_allow_players,json=autoscaleAllowPlayers,proto3" json:"autoscale_allow_players,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
@@ -4969,9 +4969,9 @@ func (x *RouterSpec) GetAutoscaleAllowPlayers() []string {
 	return nil
 }
 
-// Panel → agente. Guarda la spec (sobrevive a reinicios del agente) y reconcilia el contenedor en
-// segundo plano. Respuesta: Ack (guardada; el resultado llega por RouterObserved) o Error
-// (invalid_request: spec ausente o fuera de rango).
+// Panel → agent. Stores the spec (survives agent restarts) and reconciles the container in the
+// background. Response: Ack (stored; the result arrives via RouterObserved) or Error
+// (invalid_request: spec missing or out of range).
 type RouterApply struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Spec          *RouterSpec            `protobuf:"bytes,1,opt,name=spec,proto3" json:"spec,omitempty"`
@@ -5016,8 +5016,8 @@ func (x *RouterApply) GetSpec() *RouterSpec {
 	return nil
 }
 
-// Panel → agente. Borra la spec guardada y, en segundo plano, el contenedor del router. Idempotente.
-// Respuesta: Ack, o Error (io_error) si no se pudo borrar del store del agente.
+// Panel → agent. Deletes the stored spec and, in the background, the router container. Idempotent.
+// Response: Ack, or Error (io_error) if it could not be deleted from the agent's store.
 type RouterRemove struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -5054,19 +5054,19 @@ func (*RouterRemove) Descriptor() ([]byte, []int) {
 	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{59}
 }
 
-// Agente → panel, no solicitado (id = 0): estado del router tras cada reconciliación (al recibir
-// RouterApply/RouterRemove, cada 30 s y con los eventos de Docker de su contenedor).
+// Agent → panel, unsolicited (id = 0): router state after each reconciliation (on receiving
+// RouterApply/RouterRemove, every 30 s and with the Docker events of its container).
 type RouterObserved struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Configured    bool                   `protobuf:"varint,1,opt,name=configured,proto3" json:"configured,omitempty"` // el agente tiene una spec de router guardada
+	Configured    bool                   `protobuf:"varint,1,opt,name=configured,proto3" json:"configured,omitempty"` // the agent has a stored router spec
 	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`            // missing|created|running|restarting|exited|dead|paused
 	ContainerId   string                 `protobuf:"bytes,3,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
-	Image         string                 `protobuf:"bytes,4,opt,name=image,proto3" json:"image,omitempty"`                        // imagen del contenedor, p. ej. itzg/mc-router:1.47.1
-	HostPort      uint32                 `protobuf:"varint,5,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"` // puerto de la spec aplicada (0 sin spec)
+	Image         string                 `protobuf:"bytes,4,opt,name=image,proto3" json:"image,omitempty"`                        // container image, e.g. itzg/mc-router:1.47.1
+	HostPort      uint32                 `protobuf:"varint,5,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"` // port of the applied spec (0 without a spec)
 	Autoscale     bool                   `protobuf:"varint,6,opt,name=autoscale,proto3" json:"autoscale,omitempty"`
-	Error         string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"` // error de la última reconciliación ("" si fue bien)
+	Error         string                 `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"` // error of the last reconciliation ("" if it went well)
 	TsUnixMs      int64                  `protobuf:"varint,8,opt,name=ts_unix_ms,json=tsUnixMs,proto3" json:"ts_unix_ms,omitempty"`
-	Spec          *RouterSpec            `protobuf:"bytes,9,opt,name=spec,proto3" json:"spec,omitempty"` // spec guardada en el agente (ausente sin spec): la web compara con la del panel
+	Spec          *RouterSpec            `protobuf:"bytes,9,opt,name=spec,proto3" json:"spec,omitempty"` // spec stored in the agent (absent without a spec): the web compares it with the panel's
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5164,24 +5164,24 @@ func (x *RouterObserved) GetSpec() *RouterSpec {
 	return nil
 }
 
-// Agente → panel, no solicitado (id = 0): incidencia de un servidor o del nodo. Sale por una cola propia del
-// agente que nunca bloquea a quien la emite; sin conexión se pierde (lo que importa, p. ej. un servidor parado
-// por bucle de crash, también se ve en Observed.error). kind:
+// Agent → panel, unsolicited (id = 0): event of a server or the node. It goes out through a queue of the
+// agent's own that never blocks whoever emits it; without a connection it is lost (what matters, e.g. a server stopped
+// by crash loop, also shows in Observed.error). kind:
 //
-//	crash              el servidor se cerró con código ≠ 0 sin que nadie lo pidiera
-//	oom                Docker lo mató por falta de memoria
-//	crash_loop         más de 3 crashes en una hora: el agente lo ha parado y no lo arranca hasta un Power
-//	                   start/restart o una versión nueva de la spec (el panel pone el deseado en parado)
-//	crash_loop_failed  bucle de crash, pero no se pudo parar (el mensaje dice por qué)
-//	drift              el contenedor no coincidía con la spec ya aplicada y se ha recreado
-//	save_on_pending    el guardado automático pudo quedar desactivado (save-on falló); el agente lo reintenta
-//	save_on_resumed    save-on volvió a funcionar
+//	crash              the server exited with code ≠ 0 without anyone asking for it
+//	oom                Docker killed it for lack of memory
+//	crash_loop         more than 3 crashes in an hour: the agent has stopped it and will not start it until a Power
+//	                   start/restart or a new spec version (the panel sets the desired state to stopped)
+//	crash_loop_failed  crash loop, but it could not be stopped (the message says why)
+//	drift              the container did not match the already applied spec and has been recreated
+//	save_on_pending    autosave may have been left disabled (save-on failed); the agent retries
+//	save_on_resumed    save-on works again
 type Event struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Level         EventLevel             `protobuf:"varint,1,opt,name=level,proto3,enum=mcsm.v1.EventLevel" json:"level,omitempty"`
-	ServerId      string                 `protobuf:"bytes,2,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"` // vacío = incidencia del nodo
+	ServerId      string                 `protobuf:"bytes,2,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"` // empty = node event
 	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
-	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"` // en castellano, para mostrarlo tal cual
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"` // in English, to be shown as is
 	TsUnixMs      int64                  `protobuf:"varint,5,opt,name=ts_unix_ms,json=tsUnixMs,proto3" json:"ts_unix_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -5252,8 +5252,8 @@ func (x *Event) GetTsUnixMs() int64 {
 	return 0
 }
 
-// Agente → panel, en un stream de logs (stream_id del SubscribeLogs): el agente descartó `count` líneas nuevas
-// de ese stream porque no se leían a tiempo (spec §5.2). El panel avisa a los navegadores con log_dropped.
+// Agent → panel, on a log stream (the SubscribeLogs stream_id): the agent dropped `count` new lines
+// of that stream because they were not read in time (spec §5.2). The panel notifies browsers with log_dropped.
 type StreamDropped struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Count         uint64                 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
@@ -5298,12 +5298,12 @@ func (x *StreamDropped) GetCount() uint64 {
 	return 0
 }
 
-// Panel → agente: token permanente nuevo del nodo (spec §9). El agente lo guarda y responde Ack; después cierra
-// la sesión y vuelve a conectar con él. Error: invalid_request (formato) | io_error (no se pudo guardar). Un
-// agente anterior al Plan 9 responde unsupported y conserva el token que tenía.
+// Panel → agent: the node's new permanent token (spec §9). The agent stores it and responds Ack; then it closes
+// the session and reconnects with it. Error: invalid_request (format) | io_error (could not be stored). An
+// agent older than Plan 9 responds unsupported and keeps the token it had.
 type RotateToken struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"` // 32 bytes aleatorios en base64url sin relleno (43 caracteres)
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"` // 32 random bytes in unpadded base64url (43 characters)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

@@ -48,18 +48,18 @@ func TestSamplerUsesStoreSpecs(t *testing.T) {
 	t0 := time.Date(2026, 10, 12, 10, 0, 5, 0, time.UTC)
 	fake.SetStats(cid, docker.Stats{CPUTotalNs: 1e9, SystemCPUNs: 10e9, OnlineCPUs: 2, MemBytes: 1 << 30, MemLimit: 3 << 30})
 	if b := sm.Sample(ctx, t0); b != nil {
-		t.Fatalf("primera lectura: %v", b)
+		t.Fatalf("first reading: %v", b)
 	}
 	fake.SetStats(cid, docker.Stats{CPUTotalNs: 2e9, SystemCPUNs: 20e9, OnlineCPUs: 2, MemBytes: 1 << 30, MemLimit: 3 << 30})
 	b := sm.Sample(ctx, t0.Add(10*time.Second))
 	if b == nil || b.Host == nil || len(b.Servers) != 1 {
-		t.Fatalf("lote = %v", b)
+		t.Fatalf("batch = %v", b)
 	}
 	m := b.Servers[0]
 	if m.ServerId != "a" || m.CpuPct != 20 || !m.McOnline || m.PlayersOnline != 2 || m.Tps == nil || *m.Tps != 19.5 {
-		t.Fatalf("muestra = %+v", m)
+		t.Fatalf("sample = %+v", m)
 	}
-	// La spec del store (PAPER, rconPassword "abcdefgh") decide el sondeo de TPS.
+	// The store's spec (PAPER, rconPassword "abcdefgh") decides the TPS probe.
 	if dialed != "mcsm-alpha|abcdefgh" {
 		t.Fatalf("dial = %q", dialed)
 	}
@@ -68,7 +68,7 @@ func TestSamplerUsesStoreSpecs(t *testing.T) {
 func TestDialRconNeverReturnsTypedNil(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	c, err := dialRcon(ctx, "127.0.0.1", 1, "x") // nadie escucha en el puerto 1
+	c, err := dialRcon(ctx, "127.0.0.1", 1, "x") // nobody listens on port 1
 	if err == nil || c != nil {
 		t.Fatalf("c = %#v, err = %v", c, err)
 	}

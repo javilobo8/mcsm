@@ -8,8 +8,8 @@ import { ageText, startsUnstable, versionOptions } from "@/lib/versions";
 import { cn } from "@/lib/utils";
 
 /**
- * Combobox de versión de Minecraft (plan 10): lista de la API según el tipo, búsqueda, versiones de
- * prueba tras un interruptor y texto libre («Usar «x»») por si la versión no está o la fuente no responde.
+ * Minecraft version combobox (plan 10): list from the API according to the type, search, test versions
+ * behind a switch and free text (“Use “x””) in case the version is missing or the source does not respond.
  */
 export function VersionPicker({ id, type, value, onChange, "aria-describedby": describedby }: {
   id: string; type: string; value: string; onChange: (v: string) => void; "aria-describedby"?: string;
@@ -31,31 +31,31 @@ export function VersionPicker({ id, type, value, onChange, "aria-describedby": d
         <PopoverTrigger asChild>
           <Button id={id} type="button" variant="outline" role="combobox" aria-expanded={open} aria-describedby={describedby}
             className="w-full justify-between font-normal">
-            <span className="truncate">{value || "Elige una versión"}</span>
+            <span className="truncate">{value || "Choose a version"}</span>
             <ChevronsUpDown className="size-4 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-72 p-0" align="start">
           <Command shouldFilter={false}>
-            <CommandInput placeholder="Buscar o escribir una versión…" value={query} onValueChange={setQuery} />
+            <CommandInput placeholder="Search or type a version…" value={query} onValueChange={setQuery} />
             <CommandList>
-              {versions.isPending && <p className="px-3 py-2 text-xs text-muted-foreground">Cargando versiones…</p>}
-              {versions.isError && <p role="alert" className="px-3 py-2 text-xs text-red-400">{versions.error.message}. Puedes escribir la versión a mano.</p>}
-              {opts.freeText && <CommandGroup heading="Escrita a mano">{item(opts.freeText, `Usar «${opts.freeText}»`)}</CommandGroup>}
-              {opts.specials.length > 0 && <CommandGroup heading="Especiales">{opts.specials.map((s) => item(s.id, s.label))}</CommandGroup>}
-              {opts.stable.length > 0 && <CommandGroup heading="Estables">{opts.stable.map((v) => item(v))}</CommandGroup>}
-              {opts.unstable.length > 0 && <CommandGroup heading="Snapshots y pre-releases">{opts.unstable.map((v) => item(v))}</CommandGroup>}
-              {opts.hidden > 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{opts.hidden} más: escribe para filtrar.</p>}
-              <CommandEmpty>Sin coincidencias.</CommandEmpty>
+              {versions.isPending && <p className="px-3 py-2 text-xs text-muted-foreground">Loading versions…</p>}
+              {versions.isError && <p role="alert" className="px-3 py-2 text-xs text-red-400">{versions.error.message}. You can type the version by hand.</p>}
+              {opts.freeText && <CommandGroup heading="Typed by hand">{item(opts.freeText, `Use “${opts.freeText}”`)}</CommandGroup>}
+              {opts.specials.length > 0 && <CommandGroup heading="Specials">{opts.specials.map((s) => item(s.id, s.label))}</CommandGroup>}
+              {opts.stable.length > 0 && <CommandGroup heading="Stable">{opts.stable.map((v) => item(v))}</CommandGroup>}
+              {opts.unstable.length > 0 && <CommandGroup heading="Snapshots and pre-releases">{opts.unstable.map((v) => item(v))}</CommandGroup>}
+              {opts.hidden > 0 && <p className="px-3 py-2 text-xs text-muted-foreground">{opts.hidden} more: type to filter.</p>}
+              <CommandEmpty>No matches.</CommandEmpty>
             </CommandList>
           </Command>
           <label className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs">
-            <input type="checkbox" checked={showUnstable} onChange={(e) => setShowUnstable(e.target.checked)} /> Mostrar versiones de prueba
+            <input type="checkbox" checked={showUnstable} onChange={(e) => setShowUnstable(e.target.checked)} /> Show test versions
           </label>
         </PopoverContent>
       </Popover>
       {versions.data?.stale && (
-        <p className="text-xs text-amber-400">La fuente no responde; lista de {ageText(versions.data.fetchedAt, Date.now())}.</p>
+        <p className="text-xs text-amber-400">The source is not responding; list from {ageText(versions.data.fetchedAt, Date.now())}.</p>
       )}
     </div>
   );

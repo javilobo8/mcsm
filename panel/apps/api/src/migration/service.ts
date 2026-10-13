@@ -18,20 +18,20 @@ import {
   StagingBudget, startAndVerify, stopSource, stopTarget, type MigrationTimings, type StepDeps,
 } from "./steps.js";
 
-/** Cada cuánto se reintenta lo pendiente (deshacer, retirar el origen), además de tras cada Hello. */
+/** How often what is pending is retried (undo, remove the source), in addition to after every Hello. */
 export const PENDING_EVERY_MS = 30_000;
-export const INTERRUPTED = "interrumpido: el panel se reinició durante la migración";
-/** La migración desapareció mientras se deshacía: se borró uno de sus nodos (sus filas caen en cascada). */
-const GONE = "Se borró uno de los nodos durante la migración: el servidor sigue en su nodo de origen, quizá parado. Antes de arrancarlo a mano, " +
-  "comprueba que la copia del destino no siga en marcha (si el nodo solo estaba aislado de la red, su contenedor puede seguir vivo)";
+export const INTERRUPTED = "interrupted: the panel restarted during the migration";
+/** The migration disappeared while rolling back: one of its nodes was deleted (its rows cascade). */
+const GONE = "One of the nodes was deleted during the migration: the server remains on its source node, possibly stopped. Before starting it manually, " +
+  "check that the target copy is not still running (if the node was only isolated from the network, its container may still be alive)";
 
-/** Lo pendiente de una migración que se deshace o ya se confirmó; su nombre encabeza `pending_error`. */
+/** Pending work of a migration that is rolling back or was already confirmed; its name leads `pending_error`. */
 type PendingKind = "abort" | "restart" | "confirm" | "retire";
 const PENDING_LABEL: Record<PendingKind, string> = {
-  abort: "Limpiar el destino", restart: "Volver a arrancar el origen", confirm: "Confirmar en el destino", retire: "Retirar el origen",
+  abort: "Clean up the target", restart: "Start the source again", confirm: "Confirm on the target", retire: "Remove the source",
 };
-/** Marca de un pendiente que se dejó de reintentar (rechazo definitivo del agente). */
-const DEFINITIVE = "no se reintenta";
+/** Mark of a pending item that stopped being retried (definitive rejection by the agent). */
+const DEFINITIVE = "not retried";
 
 interface Plan {
   target: { id: string; name: string }; slug: string; port: number; portChanged: boolean; currentPort: number; spec: Spec;
@@ -40,32 +40,32 @@ interface Plan {
 const silent = (log: (line: string) => void): Reporter => ({ step: () => {}, within: () => {}, message: () => {}, log });
 
 /**
- * Migración entre nodos (spec §7 MigrationService): job `migrate` de 7 pasos, orquestado aquí, sobre la tabla
- * `migrations` (estado duradero: qué falta deshacer o retirar si el panel se reinicia o un nodo cae).
+ * Migration between nodes (spec §7 MigrationService): 7-step `migrate` job, orchestrated here, over the
+ * `migrations` table (durable state: what remains to undo or remove if the panel restarts or a node goes down).
  */
 export class MigrationService {
-  /** Temporizadores de las esperas (los tests ponen ManualTimers). */
+  /** Timers for the waits (tests provide ManualTimers). */
   timers: Timers = realTimers;
   timings: MigrationTimings = { ...DEFAULT_TIMINGS };
-  /** Bytes por escribir en el staging de las copias que se están subiendo (todas las migraciones, ver StagingBudget). */
+  /** Bytes still to write into the staging of the backups being uploaded (all migrations, see StagingBudget). */
   private budget = new StagingBudget();
-  /** Migraciones con trabajo en curso en este proceso (pasos o pendientes): nunca dos tareas a la vez sobre una. */
+  /** Migrations with work in progress in this process (steps or pending): never two tasks at once on one. */
   private busy = new Set<string>();
   private tick: NodeJS.Timeout | undefined;
 
   constructor(private app: FastifyInstance) {}
 
   start(): void {
-    // Tras el Hello de un nodo, lo pendiente con él (las peticiones esperan solas al Ack de SyncSpecs).
+    // After a node's Hello, what is pending with it (requests wait on their own for the SyncSpecs Ack).
     this.app.agents.on("message", (nodeId: string, env: Envelope) => {
       if (env.body.case === "hello") void this.runPending(nodeId);
     });
   }
 
-  /** Al arrancar el panel: lo que estaba en curso pasa a deshacerse; lo pendiente se reintenta cada 30 s. */
+  /** When the panel starts: what was in progress starts rolling back; what is pending is retried every 30 s. */
   async recover(): Promise<void> {
     const rows = this.app.migrations.interruptRunning(INTERRUPTED);
-    if (rows.length > 0) this.app.log.warn({ count: rows.length }, "migraciones interrumpidas por el reinicio del panel: se deshacen");
+    if (rows.length > 0) this.app.log.warn({ count: rows.length }, "migrations interrupted by the panel restart: rolling them back");
     if (!this.tick) {
       this.tick = setInterval(() => void this.runPending(), PENDING_EVERY_MS);
       this.tick.unref();
@@ -90,15 +90,15 @@ export class MigrationService {
     return { targetNodeId: p.target.id, slug: p.slug, port: p.port, currentPort: p.currentPort, portChanged: p.portChanged };
   }
 
-  /** Valida y lanza la migración. Devuelve el job (202); el avance va por el topic `jobs`. */
+  /** Validates and launches the migration. Returns the job (202); progress goes through the `jobs` topic. */
   begin(serverId: string, body: unknown): JobDto {
     const input = migrationRequestSchema.parse(body);
     const row = this.requireServer(serverId);
     const p = this.plan(row, input.targetNodeId, input.port);
     const sourceName = this.nodeName(row.node_id);
-    if (!this.app.agents.get(row.node_id)) throw new HttpError(409, `El nodo origen «${sourceName}» está desconectado`);
-    if (!this.app.agents.get(p.target.id)) throw new HttpError(409, `El nodo destino «${p.target.name}» está desconectado`);
-    // Sin await entre las comprobaciones y el insert: dos peticiones a la vez no lanzan dos migraciones.
+    if (!this.app.agents.get(row.node_id)) throw new HttpError(409, `The source node “${sourceName}” is offline`);
+    if (!this.app.agents.get(p.target.id)) throw new HttpError(409, `The target node “${p.target.name}” is offline`);
+    // No await between the checks and the insert: two simultaneous requests do not launch two migrations.
     const wasRunning = row.desired_state === "running";
     const job = this.app.jobs.create({
       type: "migrate", serverId, nodeId: row.node_id, status: "running", message: stepMessage(1, "preparando"),
@@ -114,8 +114,8 @@ export class MigrationService {
   }
 
   /**
-   * Reintenta lo pendiente (de un nodo, o de todos): deshacer, confirmar en el destino o retirar el origen. Cada
-   * migración va por su cuenta (en paralelo): un borrado lento en un nodo no retrasa lo pendiente de las demás.
+   * Retries what is pending (of one node, or of all): undo, confirm on the target or remove the source. Each
+   * migration goes on its own (in parallel): a slow delete on one node does not delay the pending work of the others.
    */
   async runPending(nodeId?: string): Promise<void> {
     const work: Promise<void>[] = [];
@@ -127,7 +127,7 @@ export class MigrationService {
         try {
           await this.settle(m.id, (line) => this.app.log.info({ migrationId: m.id, serverId: m.server_id }, line));
         } catch (e) {
-          this.app.log.warn({ err: e, migrationId: m.id }, "fallo reintentando lo pendiente de una migración");
+          this.app.log.warn({ err: e, migrationId: m.id }, "failure retrying a migration's pending work");
         } finally {
           this.busy.delete(m.id);
         }
@@ -137,67 +137,67 @@ export class MigrationService {
   }
 
   /**
-   * Cierre manual de una migración atascada (rolling_back o committed): deja de reintentar lo pendiente y anota lo que
-   * queda sin hacer, para resolverlo a mano. No envía nada a los nodos.
+   * Manual closing of a stuck migration (rolling_back or committed): stops retrying what is pending and notes what
+   * is left undone, to resolve it by hand. Sends nothing to the nodes.
    */
   closeManually(serverId: string): { migration: MigrationDto } {
     this.requireServer(serverId);
     const m = this.app.migrations.openForServer(serverId);
-    if (!m) throw new HttpError(404, "Este servidor no tiene ninguna migración abierta");
-    if (m.phase === "running") throw new HttpError(409, "La migración está en curso: espera a que termine o falle (solo se cierra a mano lo que queda pendiente)");
-    if (this.busy.has(m.id)) throw new HttpError(409, "Se está reintentando lo pendiente de esta migración: espera unos segundos y vuelve a intentarlo");
+    if (!m) throw new HttpError(404, "This server has no open migration");
+    if (m.phase === "running") throw new HttpError(409, "The migration is in progress: wait for it to finish or fail (only what remains pending is closed manually)");
+    if (this.busy.has(m.id)) throw new HttpError(409, "This migration's pending work is being retried: wait a few seconds and try again");
     const left = migrationLeftovers(toMigrationDto(m), (id) => this.nodeName(id));
     const row = this.app.migrations.update(m.id, {
       phase: m.phase === "committed" ? "done" : "failed", source_pending: 0, target_pending: 0, target_confirm_pending: 0,
-      pending_error: `Cerrada a mano${left.length ? `: ${left.join("; ")}` : ""}`,
+      pending_error: `Closed by hand${left.length ? `: ${left.join("; ")}` : ""}`,
     });
-    this.app.log.warn({ migrationId: m.id, serverId, left }, "migración cerrada a mano");
+    this.app.log.warn({ migrationId: m.id, serverId, left }, "migration closed manually");
     return { migration: toMigrationDto(row) };
   }
 
-  // Internos
+  // Internal
 
   private requireServer(id: string): ServerRow {
     const row = this.app.servers.get(id);
-    if (!row) throw new HttpError(404, "Servidor no encontrado");
+    if (!row) throw new HttpError(404, "Server not found");
     return row;
   }
 
   private nodeName(id: string): string {
-    return this.app.nodes.get(id)?.name ?? "otro nodo";
+    return this.app.nodes.get(id)?.name ?? "another node";
   }
 
   private deps(report: Reporter): StepDeps {
     return { app: this.app, timers: this.timers, timings: this.timings, report, budget: this.budget };
   }
 
-  /** Comprueba que se puede migrar y calcula slug, puerto y spec en el destino. Lanza HttpError. */
+  /** Checks that it can be migrated and computes slug, port and spec on the target. Throws HttpError. */
   private plan(row: ServerRow, targetNodeId: string, port?: number): Plan {
-    if (targetNodeId === row.node_id) throw new HttpError(400, "El servidor ya está en ese nodo");
+    if (targetNodeId === row.node_id) throw new HttpError(400, "The server is already on that node");
     const target = this.app.nodes.get(targetNodeId);
-    if (!target) throw new HttpError(404, "Nodo destino no encontrado");
+    if (!target) throw new HttpError(404, "Target node not found");
     const open = this.app.migrations.openForServer(row.id);
     if (open) throw new HttpError(409, this.openMessage(open));
     const spec = JSON.parse(row.spec) as Spec;
-    // dataPath (Plan 6): los datos están fuera de DATA_ROOT y el agente no puede copiarlos ni restaurarlos. dataPath
-    // no se quita por PATCH (dataPathPatchError): el camino es el mismo que da el Plan 6, volver a importarlo.
+    // dataPath (Plan 6): the data is outside DATA_ROOT and the agent can neither copy nor restore it. dataPath
+    // is not removed via PATCH (dataPathPatchError): the way is the same as Plan 6 gives, import it again.
     if (spec.dataPath) {
-      throw new HttpError(409, `Los datos de «${row.name}» están en ${spec.dataPath}, fuera de DATA_ROOT, y el agente no puede copiarlos: no se puede migrar. Para migrarlo, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${row.slug}/data del nodo y vuelve a importarlo`);
+      throw new HttpError(409, `The data of “${row.name}” is in ${spec.dataPath}, outside DATA_ROOT, and the agent cannot copy it: it cannot be migrated. To migrate it, remove it without deleting data, move that folder to DATA_ROOT/${row.slug}/data on the node and import it again`);
     }
-    // Plan 8 (H1): con el autoscale del router del origen, mc-router arrancaría el servidor parado (tiene hostname) en
-    // cuanto un jugador intentara entrar, entre el paso 1 y la retirada: la copia quedaría desfasada o se perdería lo
-    // jugado allí. Aparcarlo (Park) no basta: al soltar la reserva de la copia se recrea y se arranca.
+    // Plan 8 (H1): with the source router's autoscale, mc-router would start the stopped server (it has a hostname) as
+    // soon as a player tried to join, between step 1 and the removal: the backup would be out of date or what was
+    // played there would be lost. Parking it (Park) is not enough: when the backup's reservation is released it is recreated and started.
     if (spec.router?.enabled && this.app.routerService.autoscaleOn(row.node_id)) {
       const source = this.nodeName(row.node_id);
-      throw new HttpError(409, `«${row.name}» tiene hostname y el router de «${source}» tiene el autoscale activo: mc-router podría arrancarlo en el origen ` +
-        `durante la migración. Quita el autoscale del router de «${source}» o desactiva el hostname del servidor antes de migrarlo`);
+      throw new HttpError(409, `“${row.name}” has a hostname and the router of “${source}” has autoscale enabled: mc-router could start it on the source ` +
+        `during the migration. Remove autoscale from the router of “${source}” or disable the server's hostname before migrating it`);
     }
-    // Plan 8: el hostname del router, libre también en el destino (contando las migraciones abiertas hacia él).
+    // Plan 8: the router hostname, free on the target too (counting open migrations towards it).
     this.app.routerService.checkHostname(targetNodeId, spec, row.id, target.name);
     const targetServers: TargetServer[] = this.app.servers.list(targetNodeId).map((r) => ({ slug: r.slug, spec: JSON.parse(r.spec) as Spec }));
-    // Lo que ya reservan otras migraciones sin confirmar hacia ese nodo y, si el nodo es el origen de una migración
-    // confirmada con la retirada pendiente, su slug: <DATA_ROOT>/<slug> sigue allí hasta MigrateRetire, que lo
-    // aparta sin spec (sus puertos no: ese servidor está parado y ya vive en otro nodo).
+    // What other unconfirmed migrations towards that node already reserve and, if the node is the source of a confirmed
+    // migration with the removal pending, its slug: <DATA_ROOT>/<slug> is still there until MigrateRetire, which
+    // sets it aside without a spec (its ports are not: that server is stopped and already lives on another node).
     const reservedSlugs: string[] = [];
     for (const m of this.app.migrations.listOpen()) {
       if (m.target_node_id === targetNodeId && m.phase !== "committed" && m.server_id !== row.id) {
@@ -216,12 +216,12 @@ export class MigrationService {
   }
 
   private openMessage(m: MigrationRow): string {
-    if (m.phase === "running") return "Ya hay una migración en curso de este servidor";
+    if (m.phase === "running") return "There is already a migration in progress for this server";
     if (m.phase === "rolling_back") {
-      const parts = [m.target_pending ? `limpiar «${this.nodeName(m.target_node_id)}»` : "", m.source_pending ? `arrancar en «${this.nodeName(m.source_node_id)}»` : ""].filter(Boolean);
-      return `Se está deshaciendo una migración anterior (pendiente: ${parts.join(" y ")}); espera a que vuelvan los nodos`;
+      const parts = [m.target_pending ? `clean up “${this.nodeName(m.target_node_id)}”` : "", m.source_pending ? `start on “${this.nodeName(m.source_node_id)}”` : ""].filter(Boolean);
+      return `A previous migration is being rolled back (pending: ${parts.join(" and ")}); wait for the nodes to come back`;
     }
-    return `La migración anterior aún tiene que retirar el servidor del nodo «${this.nodeName(m.source_node_id)}»; espera a que vuelva a conectar`;
+    return `The previous migration still has to remove the server from node “${this.nodeName(m.source_node_id)}”; wait for it to reconnect`;
   }
 
   private async run(id: string): Promise<void> {
@@ -233,35 +233,35 @@ export class MigrationService {
     try {
       try {
         const m = this.app.migrations.get(id)!;
-        report.step(1, m.was_running ? "parando el servidor" : "comprobando que está parado");
+        report.step(1, m.was_running ? "stopping the server" : "checking that it is stopped");
         await stopSource(d, m);
         step = 2;
-        report.step(2, "pidiendo la copia al nodo origen");
+        report.step(2, "requesting the backup from the source node");
         const made = await backupSource(d, m);
         step = 3;
         report.step(3, made.filename);
         const pushed = await pushToPanel(d, m, made);
         staged = pushed.staged;
         step = 4;
-        report.step(4, `enviando la copia a «${this.nodeName(m.target_node_id)}»`);
+        report.step(4, `sending the backup to “${this.nodeName(m.target_node_id)}”`);
         await receiveOnTarget(d, m, pushed, made);
         await this.app.staging.remove(pushed.staged);
         staged = null;
         step = 5;
-        report.step(5, `slug ${m.target_slug}, puerto ${m.target_port}, versión ${m.target_version}`);
+        report.step(5, `slug ${m.target_slug}, port ${m.target_port}, version ${m.target_version}`);
         await applyOnTarget(d, m);
         step = 6;
-        report.step(6, "arrancando");
+        report.step(6, "starting");
         let observed: ObservedDto | null = await startAndVerify(d, m);
         if (!m.was_running) {
-          report.within(6, 0.9, "estaba parado: se vuelve a parar");
+          report.within(6, 0.9, "it was stopped: stopping it again");
           await stopTarget(d, m);
-          observed = null; // el próximo ServerObserved del destino lo rellena
+          observed = null; // the target's next ServerObserved fills it in
         }
         step = 7;
-        report.step(7, "confirmando el cambio de nodo");
+        report.step(7, "confirming the node change");
         this.commit(id, observed);
-        // Desde aquí el servidor vive en el destino: nada de lo que siga puede deshacer (ver rollback).
+        // From here the server lives on the target: nothing that follows can undo (see rollback).
         this.afterCommit(id, observed);
       } catch (e) {
         if (staged) await this.app.staging.remove(staged).catch(() => {});
@@ -270,86 +270,86 @@ export class MigrationService {
       }
       await this.finishCommitted(id, report);
     } catch (e) {
-      // Ni rollback ni finishCommitted deberían lanzar; si pasa, que no quede un rechazo sin manejar.
-      this.app.log.error({ err: e, migrationId: id }, "fallo inesperado gestionando una migración");
+      // Neither rollback nor finishCommitted should throw; if it happens, do not leave an unhandled rejection.
+      this.app.log.error({ err: e, migrationId: id }, "unexpected failure managing a migration");
     } finally {
       this.busy.delete(id);
     }
   }
 
-  /** Commit: la fila pasa al destino en una transacción (si la versión no cambió). Lanza StepError si no se pudo. */
+  /** Commit: the row moves to the target in one transaction (if the version did not change). Throws StepError if it could not. */
   private commit(id: string, observed: ObservedDto | null): void {
     const m = this.app.migrations.get(id)!;
-    this.checkRouterOnCommit(m); // síncrono, sin await hasta la transacción
+    this.checkRouterOnCommit(m); // synchronous, no await until the transaction
     if (!this.app.migrations.commit(m, m.was_running ? "running" : "stopped", observed)) {
-      throw new StepError("No se pudo confirmar: la configuración del servidor cambió durante la migración, o su slug o su puerto dejaron de estar libres en el destino");
+      throw new StepError("Could not confirm: the server's configuration changed during the migration, or its slug or port stopped being free on the target");
     }
   }
 
   /**
-   * Plan 8, justo antes del commit: durante la migración otro servidor del destino pudo coger el hostname del router, o
-   * activarse allí el router en uno de sus puertos (la API ya lo impide; esto cubre lo que se cuele). Lanza StepError.
+   * Plan 8, just before the commit: during the migration another server on the target may have taken the router hostname, or
+   * the router may have been enabled there on one of its ports (the API already prevents it; this covers whatever slips through). Throws StepError.
    */
   private checkRouterOnCommit(m: MigrationRow): void {
     const spec = JSON.parse(m.target_spec) as Spec;
     const target = this.nodeName(m.target_node_id);
     const user = this.app.routerService.hostnameUser(m.target_node_id, spec, m.server_id);
-    if (user) throw new StepError(`No se pudo confirmar: el hostname «${spec.router!.hostname}» lo usa ya «${user.name}» en «${target}»`);
+    if (user) throw new StepError(`Could not confirm: hostname “${spec.router!.hostname}” is already used by “${user.name}” on “${target}”`);
     const port = this.app.routerService.reservedPort(m.target_node_id);
     if (port !== null && (spec.ports.game === port || spec.ports.extra.some((e) => e.host === port))) {
-      throw new StepError(`No se pudo confirmar: el puerto ${port} lo usa ahora el router (mc-router) de «${target}»`);
+      throw new StepError(`Could not confirm: port ${port} is now used by the router (mc-router) of “${target}”`);
     }
   }
 
   /**
-   * Tras el commit: aviso del último observado e inventario de copias del destino (da de alta la copia pre_migration
-   * recibida; las del origen se dan por borradas). Nunca lanza: un fallo aquí no puede deshacer una migración ya
-   * confirmada.
+   * After the commit: notice of the last observed state and backup inventory of the target (registers the received pre_migration
+   * backup; those on the source are given up as deleted). Never throws: a failure here cannot undo an already
+   * confirmed migration.
    */
   private afterCommit(id: string, observed: ObservedDto | null): void {
     const m = this.app.migrations.get(id);
     if (!m) return;
     try {
       if (observed) this.app.events.emit("observed", m.server_id, observed);
-      void Promise.resolve(this.app.backupsService.sync(m.target_node_id)).catch((e: unknown) => this.app.log.warn({ err: e, migrationId: id }, "inventario de copias del destino fallido tras la migración"));
+      void Promise.resolve(this.app.backupsService.sync(m.target_node_id)).catch((e: unknown) => this.app.log.warn({ err: e, migrationId: id }, "target backup inventory failed after the migration"));
     } catch (e) {
-      this.app.log.error({ err: e, migrationId: id }, "fallo tras confirmar una migración (no se deshace)");
+      this.app.log.error({ err: e, migrationId: id }, "failure after confirming a migration (it is not undone)");
     }
   }
 
   private async finishCommitted(id: string, report: Reporter): Promise<void> {
-    report.within(7, 0.5, "confirmando en el destino y retirando el servidor del nodo origen");
+    report.within(7, 0.5, "confirming on the target and removing the server from the source node");
     const m = await this.settle(id, (line) => report.log(line));
     if (!m) {
-      this.app.jobs.finish(id, "ok", "Migración completada; se borró uno de los nodos antes de terminar lo pendiente");
+      this.app.jobs.finish(id, "ok", "Migration completed; one of the nodes was deleted before the pending work finished");
       return;
     }
     this.app.jobs.finish(id, "ok", this.committedText(m));
   }
 
-  /** Mensaje final de una migración confirmada, con lo que falte y por qué (sin suponer que el nodo está caído). */
+  /** Final message of a confirmed migration, with whatever is missing and why (without assuming the node is down). */
   private committedText(m: MigrationRow): string {
-    const name = this.app.servers.get(m.server_id)?.name ?? "El servidor";
+    const name = this.app.servers.get(m.server_id)?.name ?? "The server";
     const src = this.nodeName(m.source_node_id);
     const dst = this.nodeName(m.target_node_id);
     const notes: string[] = [];
     if (m.source_pending) {
-      const kept = m.delete_source ? "sus datos se borrarán" : `sus datos quedarán en ${m.source_slug}.migrated-…`;
+      const kept = m.delete_source ? "its data will be deleted" : `its data will be left in ${m.source_slug}.migrated-…`;
       notes.push(this.app.agents.isOnline(m.source_node_id)
-        ? `No se pudo retirar el servidor de «${src}»${this.errorFor(m, "retire")}: se reintentará cada 30 s (${kept})`
-        : `«${src}» está desconectado: el servidor se retirará de allí (${kept}) cuando vuelva a conectar`);
+        ? `Could not remove the server from “${src}”${this.errorFor(m, "retire")}: it will be retried every 30 s (${kept})`
+        : `“${src}” is offline: the server will be removed from there (${kept}) when it reconnects`);
     }
     if (m.target_confirm_pending) {
       notes.push(this.app.agents.isOnline(m.target_node_id)
-        ? `No se pudo confirmar la migración en «${dst}»${this.errorFor(m, "confirm")}: se reintentará cada 30 s`
-        : `«${dst}» está desconectado: la migración se confirmará allí cuando vuelva a conectar`);
+        ? `Could not confirm the migration on “${dst}”${this.errorFor(m, "confirm")}: it will be retried every 30 s`
+        : `“${dst}” is offline: the migration will be confirmed there when it reconnects`);
     }
-    if (this.definitive(m, "retire")) notes.push(`El servidor no se retiró de «${src}»: ${this.errorText(m, "retire")}`);
-    if (this.definitive(m, "confirm")) notes.push(`La migración no se confirmó en «${dst}»: ${this.errorText(m, "confirm")}`);
-    return [`Migración completada: «${name}» está en «${dst}», puerto ${m.target_port}`, ...notes].join(". ");
+    if (this.definitive(m, "retire")) notes.push(`The server was not removed from “${src}”: ${this.errorText(m, "retire")}`);
+    if (this.definitive(m, "confirm")) notes.push(`The migration was not confirmed on “${dst}”: ${this.errorText(m, "confirm")}`);
+    return [`Migration completed: “${name}” is on “${dst}”, port ${m.target_port}`, ...notes].join(". ");
   }
 
-  /** « (motivo)» del último fallo de ese pendiente, o "". */
+  /** " (reason)" of the last failure of that pending item, or "". */
   private errorFor(m: MigrationRow, kind: PendingKind): string {
     const t = this.errorText(m, kind);
     return t ? ` (${t})` : "";
@@ -366,56 +366,56 @@ export class MigrationService {
 
   private async rollback(id: string, step: MigrationStep, err: unknown, report: Reporter): Promise<void> {
     const msg = errorText(err);
-    if (!isKnownError(err)) this.app.log.error({ err, migrationId: id }, "fallo inesperado en una migración");
-    // Solo se deshace lo que sigue en curso: si ya se confirmó, el servidor vive en el destino y deshacer lo borraría.
-    if (!this.app.migrations.startRollback(id, `Paso ${step}: ${msg}`)) {
+    if (!isKnownError(err)) this.app.log.error({ err, migrationId: id }, "unexpected failure in a migration");
+    // Only what is still in progress is rolled back: if it was already confirmed, the server lives on the target and undoing would delete it.
+    if (!this.app.migrations.startRollback(id, `Step ${step}: ${msg}`)) {
       const cur = this.app.migrations.get(id);
       if (cur && (cur.phase === "committed" || cur.phase === "done")) {
-        this.app.log.error({ err, migrationId: id }, "fallo tras confirmar una migración: no se deshace");
+        this.app.log.error({ err, migrationId: id }, "failure after confirming a migration: it is not undone");
         await this.finishCommitted(id, report);
         return;
       }
-      this.app.jobs.finish(id, "failed", `Paso ${step}/7 (${MIGRATION_STEPS[step - 1]}): ${msg}. La migración ya no existe (¿se borró un nodo?): revisa el servidor en su nodo de origen`);
+      this.app.jobs.finish(id, "failed", `Step ${step}/7 (${MIGRATION_STEPS[step - 1]}): ${msg}. The migration no longer exists (was a node deleted?): check the server on its source node`);
       return;
     }
-    report.log(`ERROR en el paso ${step}: ${msg}`);
-    report.message(step, "deshaciendo la migración");
+    report.log(`ERROR in step ${step}: ${msg}`);
+    report.message(step, "rolling back the migration");
     const m = await this.settle(id, (line) => report.log(line));
-    this.app.jobs.finish(id, "failed", `Paso ${step}/7 (${MIGRATION_STEPS[step - 1]}): ${msg}. ${m ? this.originText(m) : GONE}`);
+    this.app.jobs.finish(id, "failed", `Step ${step}/7 (${MIGRATION_STEPS[step - 1]}): ${msg}. ${m ? this.originText(m) : GONE}`);
   }
 
   private originText(m: MigrationRow): string {
     const src = this.nodeName(m.source_node_id);
     const dst = this.nodeName(m.target_node_id);
     if (m.phase === "failed") {
-      const base = m.was_running ? `El servidor sigue en «${src}» con su mundo intacto` : `El servidor sigue en «${src}» con su mundo intacto (parado, como estaba)`;
-      if (m.pending_error) return `${base}. Queda algo por resolver a mano: ${m.pending_error}`;
-      return m.was_running ? `${base} y se ha vuelto a arrancar` : base;
+      const base = m.was_running ? `The server remains on “${src}” with its world intact` : `The server remains on “${src}” with its world intact (stopped, as it was)`;
+      if (m.pending_error) return `${base}. Something remains to be resolved manually: ${m.pending_error}`;
+      return m.was_running ? `${base} and it has been started again` : base;
     }
     const parts: string[] = [];
     if (m.target_pending) {
       parts.push(this.app.agents.isOnline(m.target_node_id)
-        ? `no se pudo borrar aún la copia a medias de «${dst}»${this.errorFor(m, "abort")}: se reintentará cada 30 s`
-        : `la copia a medias de «${dst}» se borrará cuando vuelva a conectar`);
+        ? `the half-made copy on “${dst}” could not be deleted yet${this.errorFor(m, "abort")}: it will be retried every 30 s`
+        : `the half-made copy on “${dst}” will be deleted when it reconnects`);
     }
     if (m.source_pending) {
       if (m.target_started && m.target_pending) {
-        parts.push(`el servidor está parado: se arrancará cuando se haya retirado la copia de «${dst}» (para no tener dos servidores vivos con el mismo mundo)`);
+        parts.push(`the server is stopped: it will be started once the copy on “${dst}” has been removed (to avoid having two live servers with the same world)`);
       } else {
         parts.push(this.app.agents.isOnline(m.source_node_id)
-          ? `no se pudo volver a arrancar${this.errorFor(m, "restart")}: se reintentará cada 30 s`
-          : `se volverá a arrancar cuando «${src}» vuelva a conectar`);
+          ? `could not be started again${this.errorFor(m, "restart")}: it will be retried every 30 s`
+          : `it will be started again when “${src}” reconnects`);
       }
     }
-    return `El servidor sigue en «${src}» con su mundo intacto; ${parts.join("; ")}`;
+    return `The server remains on “${src}” with its world intact; ${parts.join("; ")}`;
   }
 
   /**
-   * Intenta lo pendiente de una migración que se deshace o ya se confirmó y devuelve la fila resultante (null si
-   * desapareció: borrar un nodo borra sus migraciones en cascada). Deshacer: primero el destino (MigrateAbort) y después
-   * el origen; si el destino llegó a arrancarse y no se ha podido limpiar, el origen NO se arranca (nunca dos servidores
-   * vivos con el mismo mundo). Confirmada: MigrateConfirm en el destino y MigrateRetire en el origen, cada uno por su
-   * lado. Un rechazo definitivo (isDefinitive) se anota y deja de reintentarse.
+   * Tries what is pending of a migration that is rolling back or was already confirmed and returns the resulting row (null if
+   * it disappeared: deleting a node deletes its migrations in cascade). Undo: first the target (MigrateAbort) and then
+   * the source; if the target did get started and could not be cleaned up, the source is NOT started (never two live servers
+   * with the same world). Confirmed: MigrateConfirm on the target and MigrateRetire on the source, each one on its
+   * own. A definitive rejection (isDefinitive) is noted and no longer retried.
    */
   private async settle(id: string, log: (line: string) => void): Promise<MigrationRow | null> {
     const repo = this.app.migrations;
@@ -426,19 +426,19 @@ export class MigrationService {
       const dst = this.nodeName(m.target_node_id);
       if (m.target_pending) {
         const cur = m;
-        // Si la copia del destino llegó a arrancar y el destino rechaza limpiarla, el origen tampoco se arranca solo.
+        // If the target copy did start and the target refuses to clean it up, the source is not started on its own either.
         const stop = cur.target_started === 1 && cur.source_pending === 1;
         m = await this.tryPending(id, "abort", () => abortTarget(d, cur), log, {
-          done: { target_pending: 0 }, ok: `Destino limpio: se borró lo que la migración dejó en «${dst}»`,
+          done: { target_pending: 0 }, ok: `Target clean: what the migration left on “${dst}” was deleted`,
           definitive: stop ? { target_pending: 0, source_pending: 0 } : { target_pending: 0 },
-          hint: stop ? `el servidor no se arranca solo en «${src}»: comprueba «${dst}» y arráncalo a mano` : `comprueba ${cur.target_slug} en «${dst}»`,
+          hint: stop ? `the server is not started automatically on “${src}”: check “${dst}” and start it manually` : `check ${cur.target_slug} on “${dst}”`,
         });
       }
       if (m && m.source_pending && !(m.target_started && m.target_pending)) {
         const cur = m;
         m = await this.tryPending(id, "restart", () => restartSource(d, cur), log, {
-          done: { source_pending: 0 }, ok: `Servidor arrancado de nuevo en «${src}»`,
-          definitive: { source_pending: 0 }, hint: `arráncalo a mano en «${src}»`,
+          done: { source_pending: 0 }, ok: `Server started again on “${src}”`,
+          definitive: { source_pending: 0 }, hint: `start it manually on “${src}”`,
         });
       }
       if (m && !m.target_pending && !m.source_pending) m = repo.update(id, { phase: "failed" });
@@ -448,12 +448,12 @@ export class MigrationService {
       const dst = this.nodeName(cur.target_node_id);
       await Promise.all([
         cur.target_confirm_pending ? this.tryPending(id, "confirm", () => confirmTarget(d, cur), log, {
-          done: { target_confirm_pending: 0 }, ok: `Migración confirmada en «${dst}»`,
-          definitive: { target_confirm_pending: 0 }, hint: "no restaures la base de datos del panel a una copia anterior a esta migración",
+          done: { target_confirm_pending: 0 }, ok: `Migration confirmed on “${dst}”`,
+          definitive: { target_confirm_pending: 0 }, hint: "do not restore the panel database to a copy from before this migration",
         }) : null,
         cur.source_pending ? this.tryPending(id, "retire", () => retireSource(d, cur), log, {
-          done: { source_pending: 0 }, ok: `Servidor retirado de «${src}» (${cur.delete_source ? "datos borrados" : `datos en ${cur.source_slug}.migrated-…`})`,
-          definitive: { source_pending: 0 }, hint: `revisa ${cur.source_slug} en el DATA_ROOT de «${src}» y apártalo o bórralo a mano`,
+          done: { source_pending: 0 }, ok: `Server removed from “${src}” (${cur.delete_source ? "data deleted" : `data in ${cur.source_slug}.migrated-…`})`,
+          definitive: { source_pending: 0 }, hint: `check ${cur.source_slug} in the DATA_ROOT of “${src}” and set it aside or delete it manually`,
         }) : null,
       ]);
       m = repo.get(id);
@@ -463,8 +463,8 @@ export class MigrationService {
   }
 
   /**
-   * Un pendiente. Bien: aplica `done` (y borra su último fallo). Rechazo definitivo: aplica `definitive` y deja el motivo
-   * («… no se reintenta: hint»). Otro fallo: lo anota en pending_error y se reintentará. Relee la fila (null si desapareció).
+   * One pending item. OK: applies `done` (and clears its last failure). Definitive rejection: applies `definitive` and leaves the reason
+   * (“… is not retried: hint”). Other failure: notes it in pending_error and it will be retried. Rereads the row (null if it disappeared).
    */
   private async tryPending(id: string, kind: PendingKind, fn: () => Promise<void>, log: (line: string) => void,
     o: { done: MigrationPatch; ok: string; definitive: MigrationPatch; hint: string }): Promise<MigrationRow | null> {
@@ -484,7 +484,7 @@ export class MigrationService {
         log(note);
         return repo.update(id, { ...o.definitive, pending_error: note });
       }
-      log(`${label}: ${text} (se reintentará)`);
+      log(`${label}: ${text} (it will be retried)`);
       return repo.update(id, { pending_error: `${label}: ${text}` });
     }
   }

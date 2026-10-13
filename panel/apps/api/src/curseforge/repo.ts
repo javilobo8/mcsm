@@ -1,12 +1,12 @@
 import type { Db } from "../db/db.js";
 
-/** Clave de la tabla settings donde vive la API key global de CurseForge (spec §4 settings). */
+/** Key of the settings table where the global CurseForge API key lives (spec §4 settings). */
 export const CURSEFORGE_KEY_SETTING = "curseforge_api_key";
 
 /**
- * API key global de CurseForge. Se guarda en claro (hay que enviarla a los agentes), nunca se
- * devuelve por la API y nunca se copia a servers.spec: se añade a la spec solo en el mensaje
- * hacia el agente (toServerSpecMessage) y solo si la spec usa CurseForge.
+ * Global CurseForge API key. Stored in plain text (it has to be sent to the agents), never
+ * returned by the API and never copied to servers.spec: it is added to the spec only in the message
+ * to the agent (toServerSpecMessage) and only if the spec uses CurseForge.
  */
 export class CurseForgeKeyRepo {
   constructor(private db: Db) {}
@@ -16,7 +16,7 @@ export class CurseForgeKeyRepo {
     return row?.value || null;
   }
 
-  /** Guarda la key ("" la borra). Devuelve true si el valor cambió. */
+  /** Saves the key ("" deletes it). Returns true if the value changed. */
   set(apiKey: string): boolean {
     if ((this.get() ?? "") === apiKey) return false;
     if (apiKey === "") this.db.prepare("DELETE FROM settings WHERE key = ?").run(CURSEFORGE_KEY_SETTING);

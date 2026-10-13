@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decideTabChange, tabGuardText } from "./tab-guard";
 
 describe("decideTabChange", () => {
-  it("confirma solo si hay cambios sin guardar y se cambia de pestaña", () => {
+  it("confirms only if there are unsaved changes and the tab is switched", () => {
     expect(decideTabChange(true, "files", "console")).toBe("confirm");
     expect(decideTabChange(true, "files", "files")).toBe("switch");
     expect(decideTabChange(false, "files", "console")).toBe("switch");
@@ -10,11 +10,11 @@ describe("decideTabChange", () => {
 });
 
 describe("tabGuardText", () => {
-  it("sin texto propio, el genérico de cambios sin guardar", () => {
-    expect(tabGuardText(null)).toEqual({ title: "Cambios sin guardar", description: "Hay cambios sin guardar en esta pestaña. Si cambias de pestaña se perderán.", confirmLabel: "Descartar y cambiar" });
+  it("without its own text, the generic unsaved-changes one", () => {
+    expect(tabGuardText(null)).toEqual({ title: "Unsaved changes", description: "There are unsaved changes in this tab. If you switch tabs they will be lost.", confirmLabel: "Discard and switch" });
   });
-  it("con texto propio (p. ej. una subida en curso), ese", () => {
-    const w = { title: "Subida en curso", description: "Hay una subida en curso. Si sales, se cancelará la subida.", confirmLabel: "Salir y cancelar la subida" };
+  it("with its own text (e.g. an upload in progress), that one", () => {
+    const w = { title: "Upload in progress", description: "There is an upload in progress. If you leave, the upload will be cancelled.", confirmLabel: "Leave and cancel the upload" };
     expect(tabGuardText(w)).toEqual(w);
   });
 });

@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { applyError, pruneErrors } from "./form-errors";
 
-describe("errores agregados del formulario", () => {
-  it("fusiona, sustituye y limpia sin cambiar la identidad si no hay cambio", () => {
-    const a = applyError({}, "sf-env", "mal");
-    expect(a).toEqual({ "sf-env": "mal" });
-    expect(applyError(a, "sf-env", "mal")).toBe(a);
-    expect(applyError(a, "sf-otro", null)).toBe(a);
+describe("aggregated form errors", () => {
+  it("merges, replaces and clears without changing identity if nothing changes", () => {
+    const a = applyError({}, "sf-env", "bad");
+    expect(a).toEqual({ "sf-env": "bad" });
+    expect(applyError(a, "sf-env", "bad")).toBe(a);
+    expect(applyError(a, "sf-other", null)).toBe(a);
     expect(applyError(a, "sf-env", null)).toEqual({});
   });
-  it("tipo cambiado: el error de un campo oculto se purga, el de uno visible y los calculados se conservan", () => {
-    const errors = { "sf-mods-urls": "URL mala", "sf-env": "mal", "sf-memlimit-rel": "limite", "sf-extra-ports": "rcon" };
-    const mounted = new Set(["sf-env"]); // al pasar a Paper desaparece el fieldset de mods
-    expect(pruneErrors(errors, (f) => mounted.has(f))).toEqual({ "sf-env": "mal", "sf-memlimit-rel": "limite", "sf-extra-ports": "rcon" });
+  it("type changed: the error of a hidden field is purged, that of a visible one and the computed ones are kept", () => {
+    const errors = { "sf-mods-urls": "bad URL", "sf-env": "bad", "sf-memlimit-rel": "limit", "sf-extra-ports": "rcon" };
+    const mounted = new Set(["sf-env"]); // switching to Paper removes the mods fieldset
+    expect(pruneErrors(errors, (f) => mounted.has(f))).toEqual({ "sf-env": "bad", "sf-memlimit-rel": "limit", "sf-extra-ports": "rcon" });
   });
 });

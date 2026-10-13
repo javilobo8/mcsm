@@ -7,7 +7,7 @@ import {
 import { HttpError } from "../servers/service.js";
 import { toTemplateDto, type TemplateRow } from "./repo.js";
 
-/** Valida una spec de plantilla; los errores salen como 400 con la ruta del campo. Mismo tope de 64 KiB que un servidor. */
+/** Validates a template spec; errors come out as 400 with the field path. Same 64 KiB cap as a server. */
 function toTemplateSpec(raw: Record<string, unknown>): TemplateSpec {
   let spec: TemplateSpec;
   try {
@@ -26,12 +26,12 @@ export async function templateRoutes(app: FastifyInstance) {
 
   const requireTemplate = (id: string): TemplateRow => {
     const row = repo.get(id);
-    if (!row) throw new HttpError(404, "Plantilla no encontrada");
+    if (!row) throw new HttpError(404, "Template not found");
     return row;
   };
   const ensureFreeName = (name: string, selfId?: string) => {
     const other = repo.getByName(name);
-    if (other && other.id !== selfId) throw new HttpError(409, `Ya existe una plantilla llamada «${name}»`);
+    if (other && other.id !== selfId) throw new HttpError(409, `A template named “${name}” already exists`);
   };
 
   app.get("/api/templates", async () => repo.list().map(toTemplateDto));
@@ -45,7 +45,7 @@ export async function templateRoutes(app: FastifyInstance) {
     let sourceServerId: string | null = null;
     if (input.fromServerId) {
       const server = app.servers.get(input.fromServerId);
-      if (!server) throw new HttpError(404, "Servidor no encontrado");
+      if (!server) throw new HttpError(404, "Server not found");
       spec = toTemplateSpec(JSON.parse(server.spec) as Spec);
       sourceServerId = server.id;
     } else {
@@ -75,11 +75,11 @@ export async function templateRoutes(app: FastifyInstance) {
   });
 
   app.delete<{ Params: { id: string } }>("/api/templates/:id", async (req, reply) => {
-    if (!repo.delete(req.params.id)) throw new HttpError(404, "Plantilla no encontrada");
+    if (!repo.delete(req.params.id)) throw new HttpError(404, "Template not found");
     return reply.code(204).send();
   });
 
-  /** Crea un servidor idéntico a la plantilla salvo nombre, puertos y rconPassword (los pone el panel). */
+  /** Creates a server identical to the template except name, ports and rconPassword (set by the panel). */
   app.post<{ Params: { id: string } }>("/api/templates/:id/servers", async (req, reply) => {
     const row = requireTemplate(req.params.id);
     const input = templateInstantiateSchema.parse(req.body);

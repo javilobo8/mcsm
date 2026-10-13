@@ -2,27 +2,27 @@ import type { ServerMessage } from "./api";
 
 type Handler = (msg: ServerMessage) => void;
 
-/** Cierre por falta de sesión (política/no autorizado) */
+/** Close due to lack of a session (policy/unauthorized) */
 const AUTH_CLOSE_CODES = new Set([1008, 4401]);
 
 /**
- * Qué hacer al terminar una mutación que cambia la sesión (cambio de contraseña): el servidor cierra con
- * 4401 los WS de las sesiones revocadas, también el de quien la cambia, y le emite una cookie nueva.
- * Éxito: se reconecta con la cookie nueva. Fallo tras haber visto un 4401: la sesión se da por perdida.
+ * What to do when a mutation that changes the session (password change) ends: the server closes with
+ * 4401 the WS of the revoked sessions, including that of whoever changes it, and issues a new cookie to them.
+ * Success: reconnect with the new cookie. Failure after seeing a 4401: the session is considered lost.
  */
 export function settleSessionChange(sawAuthClose: boolean, ok: boolean): "reconnect" | "lose" | "none" {
   if (ok) return "reconnect";
   return sawAuthClose ? "lose" : "none";
 }
 
-// Topics del panel: "servers", "nodes", "jobs" y "server:<id>:logs".
+// Panel topics: "servers", "nodes", "jobs" and "server:<id>:logs".
 export function topicOf(msg: ServerMessage): string | null {
   switch (msg.type) {
     case "job":
     case "backups": return "jobs"; // plan-4
     case "node":
     case "node_metrics":
-    case "router": return "nodes"; // plan-8: faltaba; el estado del router no llegaba en vivo
+    case "router": return "nodes"; // plan-8: it was missing; the router state did not arrive live
     case "event": return "events"; // plan-9
     case "observed": return "servers";
     case "log":
@@ -45,7 +45,7 @@ export interface SocketLike {
 
 export interface RealtimeDeps {
   createSocket: () => SocketLike;
-  /** Comprueba si la sesión sigue viva (el navegador no expone el 401 del upgrade). */
+  /** Checks whether the session is still alive (the browser does not expose the upgrade's 401). */
   checkAuthenticated: () => Promise<boolean>;
   random: () => number;
 }
@@ -62,10 +62,10 @@ export class Realtime {
   private everOpened = false;
   private authLost = false;
   private current: SocketLike | null = null;
-  /** Cambios de sesión en curso (pueden solaparse) y si alguno del lote terminó bien. */
+  /** Session changes in progress (they can overlap) and whether any of the batch ended well. */
   private expecting = 0;
   private batchOk = false;
-  /** Sube con cada settle(true): una comprobación de sesión lanzada antes ya no vale (cookie vieja). */
+  /** Goes up with each settle(true): a session check launched earlier no longer counts (old cookie). */
   private generation = 0;
   private sawAuthClose = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -104,7 +104,7 @@ export class Realtime {
       if (AUTH_CLOSE_CODES.has(ev.code ?? 0)) return this.authFailed();
       if (this.handlers.size === 0) return;
       if (!opened) {
-        // El upgrade pudo fallar por 401: lo confirmamos antes de reintentar.
+        // The upgrade may have failed because of a 401: we confirm before retrying.
         const gen = this.generation;
         void this.deps.checkAuthenticated().then(
           (ok) => { if (gen === this.generation) { if (ok) this.scheduleRetry(); else this.authFailed(); } },
@@ -118,7 +118,7 @@ export class Realtime {
   }
 
   private safe(fn: () => void) {
-    try { fn(); } catch (err) { console.error("Error en un manejador de tiempo real", err); }
+    try { fn(); } catch (err) { console.error("Error in a realtime handler", err); }
   }
 
   private scheduleRetry() {
@@ -128,15 +128,15 @@ export class Realtime {
     this.timer = setTimeout(() => { this.timer = null; this.ensure(); }, delay);
   }
 
-  /** Sesión rechazada: mientras se cambia a propósito (contraseña) solo se anota; lo decide `expectSessionChange`. */
+  /** Session rejected: while it is being changed on purpose (password) it is only noted; `expectSessionChange` decides. */
   private authFailed() {
     if (this.expecting > 0) { this.sawAuthClose = true; return; }
     this.loseAuth();
   }
 
   /**
-   * Avisa de que la mutación en curso cambia la sesión (cambio de contraseña): un 4401 del WS no cuenta como
-   * sesión perdida. Devuelve la función a llamar al terminar con `true` (éxito) o `false` (fallo).
+   * Signals that the mutation in progress changes the session (password change): a WS 4401 does not count as
+   * a lost session. Returns the function to call when it ends with `true` (success) or `false` (failure).
    */
   expectSessionChange(): (ok: boolean) => void {
     if (this.expecting === 0) { this.sawAuthClose = false; this.batchOk = false; }
@@ -150,10 +150,10 @@ export class Realtime {
       const last = this.expecting === 0;
       const saw = this.sawAuthClose;
       if (last) { this.sawAuthClose = false; }
-      // Con solapes, la sesión solo se da por perdida al acabar el último y si ninguno del lote tuvo éxito.
+      // With overlaps, the session is only considered lost when the last one ends and none of the batch succeeded.
       if (last && !this.batchOk && settleSessionChange(saw, false) === "lose") return this.loseAuth();
       if (!ok || this.authLost) return;
-      // La cookie nueva ya está puesta: se abre un socket nuevo y el viejo (si sigue) se descarta sin escuchar su cierre.
+      // The new cookie is already set: a new socket is opened and the old one (if still there) is discarded without listening to its close.
       this.generation++;
       const old = this.current;
       if (old) { old.onopen = old.onmessage = old.onclose = old.onerror = null; old.close(); }
@@ -169,7 +169,7 @@ export class Realtime {
     for (const cb of [...this.authLostCbs]) this.safe(cb);
   }
 
-  /** Reanuda las conexiones tras volver a iniciar sesión. */
+  /** Resumes the connections after signing in again. */
   resume() {
     this.authLost = false;
     this.retry = 1000;
@@ -177,16 +177,16 @@ export class Realtime {
   }
 
   /**
-   * Se invoca en cada RE-conexión (no en la primera). Durante la desconexión se pierden
-   * eventos `observed`/`node`: los consumidores (listas de servidores/nodos) deben
-   * invalidar sus queries aquí.
+   * Called on every RE-connection (not the first). During the disconnection
+   * `observed`/`node` events are lost: the consumers (server/node lists) must
+   * invalidate their queries here.
    */
   onReconnect(cb: () => void): () => void {
     this.reconnectCbs.add(cb);
     return () => { this.reconnectCbs.delete(cb); };
   }
 
-  /** Se invoca cuando el panel rechaza la sesión del WebSocket; no se reintenta. */
+  /** Called when the panel rejects the WebSocket session; it is not retried. */
   onAuthLost(cb: () => void): () => void {
     this.authLostCbs.add(cb);
     return () => { this.authLostCbs.delete(cb); };

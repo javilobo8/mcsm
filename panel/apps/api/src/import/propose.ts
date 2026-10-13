@@ -6,17 +6,17 @@ import {
 } from "@mcsm/shared";
 
 /**
- * Candidato del agente → spec propuesta (spec §6.7). Pura: la usan el listado y la adopción (que
- * vuelve a escanear y recalcula, para no fiarse del navegador). Tabla de reglas: «Mapeo contenedor →
- * spec candidata» del Plan 6. Los secretos (RCON_PASSWORD, CF_API_KEY) solo salen en rconPassword y
- * curseforgeApiKey, que nunca van al navegador (toCandidateDto), y ningún aviso repite valores.
+ * Agent candidate → proposed spec (spec §6.7). Pure: used by the listing and the adoption (which
+ * scans again and recomputes, so as not to trust the browser). Rules table: “Container →
+ * candidate spec mapping” of Plan 6. The secrets (RCON_PASSWORD, CF_API_KEY) only come out in rconPassword and
+ * curseforgeApiKey, which never go to the browser (toCandidateDto), and no warning repeats values.
  */
 export interface ProposeContext {
-  /** DATA_ROOT del agente (ImportScanResult.dataRoot). */
+  /** The agent's DATA_ROOT (ImportScanResult.dataRoot). */
   dataRoot: string;
-  /** Slugs ya usados en el nodo. */
+  /** Slugs already used on the node. */
   takenSlugs: ReadonlySet<string>;
-  /** Hay API key de CurseForge en Ajustes. */
+  /** There is a CurseForge API key in Settings. */
   curseforgeConfigured: boolean;
 }
 
@@ -41,19 +41,19 @@ const PLUGIN_TYPES = new Set(["PAPER", "PURPUR", "SPIGOT", "FOLIA", "BUKKIT", "P
 const PLATFORMS = new Set(["MODRINTH", "AUTO_CURSEFORGE", "FTBA"]);
 const RESTART = new Set(["no", "always", "unless-stopped", "on-failure"]);
 const SECRET_ENV = ["RCON_PASSWORD", "CF_API_KEY"] as const;
-/** Variables de itzg que leen un secreto de un fichero montado (Docker secrets): el montaje no se conserva. */
+/** itzg variables that read a secret from a mounted file (Docker secrets): the mount is not kept. */
 const SECRET_FILE_ENV = ["RCON_PASSWORD_FILE", "CF_API_KEY_FILE"] as const;
-/** Carpetas que el sistema vacía (tmpfs al reiniciar, systemd-tmpfiles). */
+/** Folders the system empties (tmpfs on reboot, systemd-tmpfiles). */
 const TEMP_DIRS = ["/tmp", "/var/tmp"] as const;
 export const COMPOSE_PROJECT = "com.docker.compose.project";
 export const COMPOSE_SERVICE = "com.docker.compose.service";
 const SLUG_DATA_RE = /^\/([a-z0-9][a-z0-9-]{0,39})\/data$/;
 
-/** "" (por defecto), 0.0.0.0 y :: publican en todas las interfaces. */
+/** "" (default), 0.0.0.0 and :: publish on all interfaces. */
 const anyIp = (ip: string) => ip === "" || ip === "0.0.0.0" || ip === "::";
 const truthy = (v: string | undefined) => v !== undefined && /^(true|1|yes|on)$/i.test(v.trim());
 const falsy = (v: string | undefined) => v !== undefined && /^(false|0|no|off)$/i.test(v.trim());
-/** Lista de itzg: separada por comas o saltos de línea. */
+/** itzg list: separated by commas or line breaks. */
 const splitList = (v: string) => v.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
 
 function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
@@ -68,13 +68,13 @@ function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
 function imageTag(ref: string, warn: (m: string) => void): string {
   const rest = ref.replace(/^docker\.io\//, "").slice("itzg/minecraft-server".length);
   if (rest.startsWith("@")) {
-    warn("La imagen está fijada por digest: al recrearlo se usará la etiqueta latest (revisa la versión de Java en «Versión y mods»)");
+    warn("The image is pinned by digest: on recreation the latest tag will be used (check the Java version in “Version and mods”)");
     return "latest";
   }
   if (rest.startsWith(":")) {
     const tag = rest.slice(1).split("@")[0] ?? "";
     if (IMAGE_TAG_RE.test(tag)) return tag;
-    warn(`La etiqueta de imagen «${tag}» no es válida para el panel: al recrearlo se usará latest`);
+    warn(`The image tag “${tag}” is not valid for the panel: on recreation latest will be used`);
   }
   return "latest";
 }
@@ -97,7 +97,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   // Red.
   const mode = c.networkMode;
   if (mode === "host" || mode === "none" || mode.startsWith("container:")) {
-    blockers.push(`Usa la red «${mode}»: solo se importan contenedores con red propia (bridge o una red de usuario)`);
+    blockers.push(`It uses the “${mode}” network: only containers with their own network (bridge or a user network) are imported`);
   }
 
   // /data.
@@ -105,9 +105,9 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   let lockedSlug = "";
   let dataPath: string | null = null;
   const data = c.mounts.find((m) => m.destination === "/data");
-  if (!data) blockers.push("No monta /data: el mundo vive dentro del contenedor y se perdería al recrearlo. Monta una carpeta del host en /data y vuelve a buscar");
-  else if (data.type !== "bind") blockers.push(`Su /data es un volumen de Docker («${data.name || data.source}»): solo se importan carpetas del host montadas en /data`);
-  else if (!data.readWrite) blockers.push("Su /data es de solo lectura");
+  if (!data) blockers.push("It does not mount /data: the world lives inside the container and would be lost on recreation. Mount a host folder at /data and search again");
+  else if (data.type !== "bind") blockers.push(`Its /data is a Docker volume (“${data.name || data.source}”): only host folders mounted at /data are imported`);
+  else if (!data.readWrite) blockers.push("Its /data is read-only");
   else {
     const src = data.source;
     const m = pathWithin(src, root) ? SLUG_DATA_RE.exec(src.slice(root === "/" ? 0 : root.length)) : null;
@@ -115,15 +115,15 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
       slugLocked = true;
       lockedSlug = m[1]!;
     } else if (pathWithin(src, root) || pathWithin(root, src)) {
-      blockers.push(`Los datos están en ${src}, que ${pathWithin(src, root) ? "está dentro de" : "contiene"} DATA_ROOT (${root}) sin ser ${root}/<slug>/data: muévelos a ${root}/<slug>/data o fuera de DATA_ROOT y vuelve a buscar`);
+      blockers.push(`The data is in ${src}, which ${pathWithin(src, root) ? "is inside" : "contains"} DATA_ROOT (${root}) without being ${root}/<slug>/data: move it to ${root}/<slug>/data or outside DATA_ROOT and search again`);
     } else {
       const err = dataPathError(src);
-      if (err) blockers.push(`No se puede usar ${src} como carpeta de datos: ${err}`);
+      if (err) blockers.push(`${src} cannot be used as the data folder: ${err}`);
       else {
         dataPath = src;
-        warn(`Los datos quedan fuera de DATA_ROOT (${src}): este servidor no tendrá copias de seguridad ni navegador de archivos. Para tenerlos, para el contenedor y mueve la carpeta a ${root}/<slug>/data antes de importar`);
+        warn(`The data is outside DATA_ROOT (${src}): this server will have no backups or file browser. To get them, stop the container and move the folder to ${root}/<slug>/data before importing`);
         if (TEMP_DIRS.some((d) => pathWithin(src, d))) {
-          warn(`${src} es una carpeta temporal: el sistema puede vaciarla (tmpfs al reiniciar, systemd-tmpfiles) y se perdería el mundo. Muévela a una carpeta estable antes de importar`);
+          warn(`${src} is a temporary folder: the system may empty it (tmpfs on reboot, systemd-tmpfiles) and the world would be lost. Move it to a stable folder before importing`);
         }
       }
     }
@@ -131,16 +131,16 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   for (const m of c.mounts) {
     const dest = m.destination.replace(/\/+$/, "");
     if (dest === "/data") continue;
-    // Al recrearlo solo se monta /data: lo montado debajo sería la carpeta (vacía) del punto de montaje,
-    // y el mundo de /data/world sería otro. Igual que verifyAdoptable en el agente.
+    // On recreation only /data is mounted: whatever is mounted below would be the (empty) folder of the mount point,
+    // and the world in /data/world would be a different one. Same as verifyAdoptable in the agent.
     if (dest.startsWith("/data/")) {
-      blockers.push(`Monta ${m.source || m.name} en ${dest}, dentro de /data: al recrearlo solo se conserva /data y esa carpeta quedaría vacía. Mueve su contenido a la carpeta montada en /data (${data?.source ?? "/data"}${dest.slice("/data".length)}), quita ese montaje y vuelve a buscar`);
+      blockers.push(`Mount ${m.source || m.name} at ${dest}, inside /data: on recreation only /data is kept and that folder would be left empty. Move its contents to the folder mounted at /data (${data?.source ?? "/data"}${dest.slice("/data".length)}), remove that mount and search again`);
       continue;
     }
-    warn(`El montaje ${m.source || m.name} → ${m.destination} no se conserva al recrear el contenedor`);
+    warn(`The mount ${m.source || m.name} → ${m.destination} is not kept when the container is recreated`);
   }
 
-  // Puertos.
+  // Ports.
   let game: number | undefined;
   const extra: { host: number; container: number; proto: "tcp" | "udp"; label: string }[] = [];
   const seen = new Set<string>();
@@ -148,11 +148,11 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
     if (p.containerPort === GAME_PORT && p.proto === "tcp") {
       if (p.hostPort === 0) continue;
       game ??= p.hostPort;
-      if (!anyIp(p.hostIp)) warn(`El puerto ${p.hostPort} solo escucha en ${p.hostIp}: al recrearlo se publicará en todas las interfaces`);
+      if (!anyIp(p.hostIp)) warn(`Port ${p.hostPort} only listens on ${p.hostIp}: on recreation it will be published on all interfaces`);
       continue;
     }
     if (p.containerPort === RCON_PORT) {
-      warn("Publica RCON (25575) en el host: al recrearlo dejará de publicarse (el panel usa RCON por la red interna)");
+      warn("It publishes RCON (25575) on the host: on recreation it will no longer be published (the panel uses RCON over the internal network)");
       continue;
     }
     if (p.hostPort === 0 || (p.proto !== "tcp" && p.proto !== "udp")) continue;
@@ -161,30 +161,30 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
     seen.add(key);
     extra.push({ host: p.hostPort, container: p.containerPort, proto: p.proto as "tcp" | "udp", label: "" });
   }
-  // El panel no admite dos publicaciones con el mismo puerto del host aunque cambie el protocolo
-  // (ServersService.checkPorts compara números): se conserva la primera y se avisa de las demás.
+  // The panel does not allow two publications with the same host port even if the protocol differs
+  // (ServersService.checkPorts compares numbers): the first is kept and the others are warned about.
   const hostPorts = new Set<number>(game !== undefined ? [game] : []);
   const extraPorts = extra.filter((e) => {
     if (!hostPorts.has(e.host)) {
       hostPorts.add(e.host);
       return true;
     }
-    warn(`La publicación ${e.host}:${e.container}/${e.proto} repite el puerto ${e.host} del host: el panel solo admite una publicación por puerto y esta no se conservará al recrear`);
+    warn(`The publication ${e.host}:${e.container}/${e.proto} repeats host port ${e.host}: the panel only allows one publication per port and this one will not be kept on recreation`);
     return false;
   });
-  if (game === undefined) blockers.push("No publica el puerto 25565/tcp en un puerto fijo del host (ports: \"<puerto>:25565\"): el panel gestiona así el puerto de juego");
+  if (game === undefined) blockers.push("It does not publish port 25565/tcp on a fixed host port (ports: \"<port>:25565\"): that is how the panel manages the game port");
   const serverPort = take("SERVER_PORT");
   if (serverPort !== undefined && serverPort.trim() !== String(GAME_PORT)) {
-    blockers.push(`El servidor escucha en SERVER_PORT=${serverPort} dentro del contenedor; el panel solo gestiona 25565`);
+    blockers.push(`The server listens on SERVER_PORT=${serverPort} inside the container; the panel only manages 25565`);
   }
 
-  // RCON y secretos.
+  // RCON and secrets.
   take("EULA");
   for (const k of SECRET_FILE_ENV) {
     if (take(k) === undefined) continue;
     warn(k === "RCON_PASSWORD_FILE"
-      ? "RCON_PASSWORD_FILE lee la contraseña RCON de un fichero montado que no se conserva al recrearlo: se descarta (la contraseña RCON la gestiona el panel)"
-      : "CF_API_KEY_FILE lee la API key de CurseForge de un fichero montado que no se conserva al recrearlo: se descarta; configúrala en Ajustes");
+      ? "RCON_PASSWORD_FILE reads the RCON password from a mounted file that is not kept on recreation: it is discarded (the RCON password is managed by the panel)"
+      : "CF_API_KEY_FILE reads the CurseForge API key from a mounted file that is not kept on recreation: it is discarded; configure it in Settings");
   }
   const rconEnv = take("RCON_PASSWORD");
   const rconOk = rconEnv !== undefined && rconEnv.length >= 8 && utf8Bytes(rconEnv) <= MAX_STRING_BYTES;
@@ -192,20 +192,20 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   const rconPort = take("RCON_PORT");
   const rconPortOk = rconPort === undefined || rconPort.trim() === String(RCON_PORT);
   if (!rconOk || rconOff || !rconPortOk) {
-    const why = rconOff ? "el contenedor tiene RCON desactivado" : !rconPortOk ? `usa RCON_PORT=${rconPort}` : "no fija RCON_PASSWORD (o tiene menos de 8 caracteres)";
-    warn(`La consola de comandos (RCON) no funcionará hasta el primer «Guardar y aplicar»: ${why}. Al recrearlo el panel activa RCON con ${rconOk ? "la misma contraseña" : "una contraseña nueva"}`);
+    const why = rconOff ? "the container has RCON disabled" : !rconPortOk ? `it uses RCON_PORT=${rconPort}` : "it does not set RCON_PASSWORD (or it has fewer than 8 characters)";
+    warn(`The command console (RCON) will not work until the first “Review and apply”: ${why}. On recreation the panel enables RCON with ${rconOk ? "the same password" : "a new password"}`);
   }
   const cfKey = take("CF_API_KEY");
   let curseforgeApiKey: string | null = null;
   if (cfKey !== undefined) {
-    if (ctx.curseforgeConfigured) warn("El contenedor trae su propia CF_API_KEY: al recrearlo se usará la API key de CurseForge de Ajustes");
+    if (ctx.curseforgeConfigured) warn("The container brings its own CF_API_KEY: on recreation the CurseForge API key from Settings will be used");
     else if (CURSEFORGE_API_KEY_RE.test(cfKey)) {
       curseforgeApiKey = cfKey;
-      warn("La CF_API_KEY del contenedor se guardará en Ajustes al importarlo si el servidor usa CurseForge (no hay ninguna configurada)");
-    } else warn("La CF_API_KEY del contenedor no es válida y se descarta");
+      warn("The container's CF_API_KEY will be saved in Settings on import if the server uses CurseForge (none is configured)");
+    } else warn("The container's CF_API_KEY is not valid and is discarded");
   }
 
-  // Tipo, versión y memoria.
+  // Type, version and memory.
   let type = (take("TYPE") ?? "").trim().toUpperCase();
   const platform = env.MODPACK_PLATFORM?.trim().toUpperCase();
   if (platform && PLATFORMS.has(platform) && (type === "" || type === "VANILLA")) {
@@ -218,11 +218,11 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   let memory = "1G";
   if (memRaw) {
     if (MEMORY_RE.test(memRaw)) memory = memRaw;
-    else warn(`MEMORY=${memRaw} no tiene el formato del panel (4G, 512M): se propone 1G; revísalo en «Recursos»`);
+    else warn(`MEMORY=${memRaw} does not have the panel's format (4G, 512M): 1G is proposed; check it in “Resources”`);
   }
 
-  // plan-10: la variable de build del tipo pasa al campo build solo si vale tal cual (mismo entorno,
-  // mismo hash); con LATEST/SNAPSHOT o un valor que no cumple BUILD_RE se queda en env.
+  // plan-10: the type's build variable moves to the build field only if valid as is (same environment,
+  // same hash); with LATEST/SNAPSHOT or a value that does not satisfy BUILD_RE it stays in env.
   let build = "";
   const buildKey = buildEnvFor(type);
   const buildRaw = buildKey === undefined ? undefined : env[buildKey];
@@ -246,7 +246,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
     modpack = { platform: "FTBA", slugOrUrl: take("FTB_MODPACK_ID")!.trim(), versionId: take("FTB_MODPACK_VERSION_ID")?.trim() ?? "", loader: "" };
   }
 
-  // Mods y plugins: solo si todas las entradas valen (si no, la variable se queda en env tal cual).
+  // Mods and plugins: only if all entries are valid (otherwise the variable stays in env as is).
   const moveList = (key: string, re: RegExp): string[] | undefined => {
     const v = env[key];
     if (v === undefined) return undefined;
@@ -270,7 +270,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
     plugins = { modrinthProjects: pluginsKind ? (modrinth ?? []) : [], spigetResources: spiget ?? [], urls: pluginUrls ?? [] };
   }
 
-  // Propiedades.
+  // Properties.
   const properties: Record<string, string> = {};
   const custom = take("CUSTOM_SERVER_PROPERTIES");
   if (custom !== undefined) {
@@ -281,15 +281,15 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
       const i = line.indexOf("=");
       const k = i > 0 ? line.slice(0, i).trim() : "";
       if (!k || !PROPERTY_KEY_RE.test(k) || RESERVED_PROPS.has(k)) {
-        dropped.push(k && PROPERTY_KEY_RE.test(k) ? k : "(línea sin clave=valor válida)"); // nunca el valor: puede ser rcon.password
+        dropped.push(k && PROPERTY_KEY_RE.test(k) ? k : "(line without a valid key=value)"); // never the value: it may be rcon.password
         continue;
       }
       properties[k] = line.slice(i + 1).trim();
     }
-    if (dropped.length) warn(`De CUSTOM_SERVER_PROPERTIES se descartan: ${dropped.join(", ")}`);
+    if (dropped.length) warn(`From CUSTOM_SERVER_PROPERTIES these are discarded: ${dropped.join(", ")}`);
   }
 
-  // Jugadores: secciones solo si el contenedor ya sincroniza el fichero (si no, borrarían lo añadido desde el juego).
+  // Players: sections only if the container already syncs the file (otherwise they would delete what was added from the game).
   let whitelist: SpecInput["whitelist"];
   let ops: string[] | undefined;
   if (env.EXISTING_WHITELIST_FILE?.trim().toUpperCase() === "SYNCHRONIZE" && env.WHITELIST_FILE === undefined
@@ -315,38 +315,38 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
     }
   }
   if (env.WHITELIST !== undefined || env.OPS !== undefined) {
-    warn("La whitelist y los operadores se quedan en variables de entorno (Avanzado) porque el contenedor no sincroniza esos ficheros: así no se pierde lo añadido desde el juego");
+    warn("The whitelist and operators stay in environment variables (Advanced) because the container does not sync those files: this way what was added from the game is not lost");
   }
 
-  // Usuario (--user): al recrearlo, itzg arranca como root y cambia el propietario de /data a UID:GID
-  // (1000:1000 por defecto). Con los del contenedor, los archivos del host conservan su dueño (m7).
+  // User (--user): on recreation, itzg starts as root and changes the owner of /data to UID:GID
+  // (1000:1000 by default). With the container's, the host files keep their owner (m7).
   const user = c.user.trim();
   if (user && user !== "root") {
     const ids = /^(\d+)(?::(\d+))?$/.exec(user);
     if (!ids) {
-      warn(`El contenedor corre con el usuario «${user}» (por nombre): al recrearlo correrá con el de itzg (1000:1000) y cambiará el propietario de los archivos de /data. Pon en «Avanzado» UID y GID con los números de ese usuario`);
+      warn(`The container runs with the user “${user}” (by name): on recreation it will run with itzg's (1000:1000) and will change the owner of the /data files. Set UID and GID in “Advanced” with that user's numbers`);
     } else if (ids[1] !== "0") {
       const [, uid, gid] = ids as unknown as [string, string, string | undefined];
       env.UID = uid;
       if (gid !== undefined) env.GID = gid;
-      warn(`El contenedor corre con --user ${user}: se propone UID=${uid}${gid !== undefined ? ` y GID=${gid}` : ""} para que, al recrearlo, itzg no cambie el propietario de los archivos de /data${gid === undefined ? ". Sin grupo en --user, revisa GID en «Avanzado»" : ""}`);
+      warn(`The container runs with --user ${user}: UID=${uid}${gid !== undefined ? ` and GID=${gid}` : ""} is proposed so that, on recreation, itzg does not change the owner of the /data files${gid === undefined ? ". With no group in --user, check GID in “Advanced”" : ""}`);
     }
   }
 
-  // Resto del env.
+  // Rest of the env.
   const passEnv: Record<string, string> = {};
   for (const [k, v] of Object.entries(env)) {
     if (!ENV_KEY_RE.test(k) || RESERVED_ENV.has(k)) {
-      warn(`La variable ${k} no se puede conservar y se descarta`);
+      warn(`The variable ${k} cannot be kept and is discarded`);
       continue;
     }
     passEnv[k] = v;
   }
 
-  // Reinicio y recursos.
+  // Restart and resources.
   let restartPolicy = c.restartPolicy || "no";
   if (!RESTART.has(restartPolicy)) {
-    warn(`Política de reinicio «${restartPolicy}» desconocida: se propone unless-stopped`);
+    warn(`Unknown restart policy “${restartPolicy}”: unless-stopped is proposed`);
     restartPolicy = "unless-stopped";
   }
   const cpus = Math.round(Number(c.nanoCpus) / 1e7) / 100;
@@ -354,31 +354,31 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   if (c.memoryLimitBytes > 0n) {
     memLimit = memLimitText(c.memoryLimitBytes);
     if (memoryToBytes(memLimit) < memoryToBytes(memory)) {
-      warn(`El límite de memoria de Docker (${memLimit}) es menor que MEMORY (${memory}): se quita (el agente pone memoria + 1G)`);
+      warn(`Docker's memory limit (${memLimit}) is lower than MEMORY (${memory}): it is removed (the agent sets memory + 1G)`);
       memLimit = "";
     }
   } else {
-    warn("Docker no limita su memoria: al recrearlo se limitará a MEMORY + 1G");
+    warn("Docker does not limit its memory: on recreation it will be limited to MEMORY + 1G");
   }
 
-  // Nombre, slug y estado.
+  // Name, slug and state.
   const project = c.labels[COMPOSE_PROJECT] ?? "";
   const service = c.labels[COMPOSE_SERVICE] ?? "";
   if (project) {
-    warn(`Lo creó Docker Compose (proyecto «${project}», servicio «${service}»): antes del primer «Guardar y aplicar», quita ese servicio del compose (o no vuelvas a hacer «docker compose up»), o Compose volverá a crear el contenedor original junto al del panel`);
+    warn(`It was created by Docker Compose (project “${project}”, service “${service}”): before the first “Review and apply”, remove that service from the compose file (or do not run “docker compose up” again), or Compose will recreate the original container next to the panel's`);
   }
-  const name = (c.name || service || "Servidor importado").slice(0, 60);
+  const name = (c.name || service || "Imported server").slice(0, 60);
   let slug: string;
   if (slugLocked) {
     slug = lockedSlug;
-    if (ctx.takenSlugs.has(slug)) blockers.push(`Ya hay un servidor «${slug}» en este nodo y los datos de este contenedor están en ${root}/${slug}/data`);
+    if (ctx.takenSlugs.has(slug)) blockers.push(`There is already a server “${slug}” on this node and this container's data is in ${root}/${slug}/data`);
   } else {
     slug = uniqueSlug(slugify(c.name || service), ctx.takenSlugs);
   }
-  // En pausa cuenta como en marcha: «Adoptar sin parar» no lo para, y el agente no arranca ni reanuda
-  // un contenedor en pausa (eso lo hace quien lo pausó, con docker unpause).
+  // Paused counts as running: “Adopt without stopping” does not stop it, and the agent neither starts nor resumes
+  // a paused container (that is done by whoever paused it, with docker unpause).
   const desiredState = c.state === "running" || c.state === "restarting" || c.state === "paused" ? "running" : "stopped";
-  if (c.state === "paused") warn("El contenedor está en pausa: se importa como «en marcha» y sigue en pausa hasta que lo reanudes (docker unpause); el panel no lo reanuda");
+  if (c.state === "paused") warn("The container is paused: it is imported as “running” and stays paused until you resume it (docker unpause); the panel does not resume it");
 
   const raw = {
     imageTag: imageTag(c.image, warn), type, version, build, memory, properties, env: passEnv,
@@ -395,7 +395,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   };
 }
 
-/** DTO para el navegador: sin rconPassword ni curseforgeApiKey. */
+/** DTO for the browser: without rconPassword or curseforgeApiKey. */
 export function toCandidateDto(c: ImportCandidate, p: ImportProposal): ImportCandidateDto {
   return {
     containerId: c.containerId, containerName: c.name, image: c.image, state: c.state,

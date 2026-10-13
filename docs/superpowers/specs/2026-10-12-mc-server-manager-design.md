@@ -1,133 +1,133 @@
-# MC Server Manager — Diseño
+# MC Server Manager — Design
 
-Fecha: 2026-10-12
-Estado: borrador aprobado conversacionalmente, pendiente de revisión escrita
+Date: 2026-10-12
+Status: draft approved in conversation, pending written review
 
-## 1. Objetivo
+## 1. Goal
 
-Aplicación self-hosted, de un solo usuario (administrador), para gestionar desde una web
-interna todos los servidores de Minecraft Java que corren con la imagen
-`itzg/minecraft-server` en varias máquinas de la LAN doméstica.
+A self-hosted, single-user (administrator) application to manage from an internal web UI
+all the Minecraft Java servers running the `itzg/minecraft-server` image on several
+machines of the home LAN.
 
-Debe permitir, sin tocar nunca la línea de comandos:
+It must allow, without ever touching the command line:
 
-- Crear, editar, arrancar, parar, reiniciar y borrar servidores en cualquier nodo.
-- Configurar absolutamente todo lo que la imagen itzg permite (tipo, versión, mods,
-  modpacks, memoria, propiedades, whitelist, ops, puertos, etc.).
-- Ver estado, jugadores conectados, uso de CPU/RAM y gráficas de los últimos 7 días.
-- Ver logs en vivo y enviar comandos de consola.
-- Navegar y editar los archivos del servidor.
-- Hacer, programar, restaurar y descargar backups.
-- Guardar plantillas, clonar servidores, migrar servidores entre nodos.
-- Dar de alta nuevos nodos con un token, importar servidores itzg ya existentes.
-- Desplegar opcionalmente `mc-router` para entrar por hostname.
+- Create, edit, start, stop, restart and delete servers on any node.
+- Configure absolutely everything the itzg image allows (type, version, mods,
+  modpacks, memory, properties, whitelist, ops, ports, etc.).
+- See status, connected players, CPU/RAM usage and charts for the last 7 days.
+- See live logs and send console commands.
+- Browse and edit the server's files.
+- Make, schedule, restore and download backups.
+- Save templates, clone servers, migrate servers between nodes.
+- Enroll new nodes with a token, import existing itzg servers.
+- Optionally deploy `mc-router` to join by hostname.
 
-Fuera de alcance (YAGNI): multiusuario y permisos, acceso desde Internet, Bedrock,
-Kubernetes/Swarm, Prometheus/Grafana, backups a la nube. El diseño no los impide, pero
-no se construyen.
+Out of scope (YAGNI): multi-user and permissions, access from the Internet, Bedrock,
+Kubernetes/Swarm, Prometheus/Grafana, cloud backups. The design doesn't prevent them, but
+they are not built.
 
-## 2. Decisiones ya tomadas
+## 2. Decisions already made
 
-| Tema | Decisión |
+| Topic | Decision |
 |---|---|
-| Topología | Panel y nodos en la misma LAN. Sin TLS público. El agente inicia la conexión. |
-| Stack | Agente en Go. Panel (API + web) en TypeScript sobre Node 26 y pnpm. |
-| Modelo del agente | Reconciliador: el panel envía specs deseadas, el agente reconcilia Docker y reporta estado real. |
-| Instalación del agente | Contenedor Docker con `/var/run/docker.sock` montado. |
-| Base de datos del panel | SQLite (un fichero) vía el módulo nativo `node:sqlite` de Node 26, SQL a mano y migraciones SQL numeradas. Sin ORM ni dependencias nativas. |
-| Store local del agente | bbolt (fichero único) en un volumen del contenedor del agente. |
-| Protocolo | Protobuf definido con `buf`, binario sobre un WebSocket por agente. HTTP saliente del agente para transferencias grandes. |
-| Backups | Nativos en el agente (RCON save-off/save-all, tar.zst, save-on). Destino: disco local del nodo. |
-| Migración | Backup en origen → transferencia vía panel → restauración en destino → verificación → borrado en origen. |
-| Servidores existentes | Importación asistida: el agente detecta contenedores itzg no gestionados y el panel propone una spec. |
-| Red de jugadores | Un puerto por servidor; `mc-router` opcional desplegable por nodo. |
-| Métricas | En vivo + histórico 7 días en SQLite. Sin Prometheus. |
-| Archivos | Gestor completo confinado al directorio de datos de cada servidor. |
-| Autenticación web | Una contraseña de administrador, sesión por cookie. |
+| Topology | Panel and nodes on the same LAN. No public TLS. The agent initiates the connection. |
+| Stack | Agent in Go. Panel (API + web) in TypeScript on Node 26 and pnpm. |
+| Agent model | Reconciler: the panel sends desired specs, the agent reconciles Docker and reports the real state. |
+| Agent installation | Docker container with `/var/run/docker.sock` mounted. |
+| Panel database | SQLite (a single file) via Node 26's native `node:sqlite` module, hand-written SQL and numbered SQL migrations. No ORM or native dependencies. |
+| Agent local store | bbolt (single file) in a volume of the agent's container. |
+| Protocol | Protobuf defined with `buf`, binary over one WebSocket per agent. Outbound HTTP from the agent for large transfers. |
+| Backups | Native in the agent (RCON save-off/save-all, tar.zst, save-on). Destination: the node's local disk. |
+| Migration | Backup on the source → transfer via the panel → restore on the target → verification → deletion on the source. |
+| Existing servers | Assisted import: the agent detects unmanaged itzg containers and the panel proposes a spec. |
+| Player network | One port per server; optional `mc-router` deployable per node. |
+| Metrics | Live + 7-day history in SQLite. No Prometheus. |
+| Files | Full manager confined to each server's data directory. |
+| Web authentication | A single administrator password, cookie session. |
 
-## 3. Arquitectura
+## 3. Architecture
 
 ```
-┌─────────────────────────── Máquina principal ───────────────────────────┐
-│  panel (contenedor)                                                      │
-│   ├─ API HTTP (Fastify)        ← navegador (REST + WS)                   │
-│   ├─ WS /agent  (protobuf)     ← agentes (conexión saliente de cada nodo)│
-│   ├─ HTTP /agent/transfer      ← agentes (subida/bajada en streaming)    │
+┌─────────────────────────── Main machine ────────────────────────────────┐
+│  panel (container)                                                       │
+│   ├─ HTTP API (Fastify)        ← browser (REST + WS)                     │
+│   ├─ WS /agent  (protobuf)     ← agents (each node's outbound connection)│
+│   ├─ HTTP /agent/transfer      ← agents (streaming upload/download)      │
 │   ├─ SQLite  (/data/panel.db)                                            │
-│   └─ Web estática (React)                                                │
-│  agent (contenedor)  ── docker.sock ── contenedores itzg del nodo        │
+│   └─ Static web (React)                                                  │
+│  agent (container)  ── docker.sock ── the node's itzg containers         │
 └──────────────────────────────────────────────────────────────────────────┘
-┌──────── Nodo B ────────┐   ┌──────── Nodo C ────────┐
+┌──────── Node B ────────┐   ┌──────── Node C ────────┐
 │ agent ── docker.sock   │   │ agent ── docker.sock   │
 │   └─ itzg x N          │   │   └─ itzg x N          │
 └────────────────────────┘   └────────────────────────┘
 ```
 
-- El panel es la **única fuente de verdad** de la configuración. El agente guarda una
-  copia de las specs de su nodo solo para poder trabajar sin panel (reconciliar, hacer
-  backups programados, reiniciar). Esa copia se sobreescribe siempre con lo que diga el
-  panel al reconectar.
-- Cada nodo tiene un **agente** y solo uno. El agente gestiona únicamente los
-  contenedores que llevan sus etiquetas (`mcsm.managed=true`, `mcsm.server_id=<uuid>`).
-- El agente **nunca escucha** en la red. Todo tráfico es saliente hacia el panel.
-- La máquina principal corre también un agente para poder gestionar sus propios
-  servidores con el mismo mecanismo que el resto.
+- The panel is the **single source of truth** for configuration. The agent keeps a
+  copy of its node's specs only so it can work without the panel (reconcile, run
+  scheduled backups, restart). That copy is always overwritten with whatever the
+  panel says on reconnect.
+- Each node has **one agent** and only one. The agent manages only the
+  containers that carry its labels (`mcsm.managed=true`, `mcsm.server_id=<uuid>`).
+- The agent **never listens** on the network. All traffic is outbound to the panel.
+- The main machine also runs an agent so it can manage its own
+  servers with the same mechanism as the rest.
 
-### 3.1 Estructura del repositorio (monorepo)
+### 3.1 Repository structure (monorepo)
 
 ```
 mc-server-manager/
 ├─ agent/                    Go module `mcsm/agent`
 │  ├─ cmd/agent/             main
 │  ├─ internal/
-│  │  ├─ conn/               WebSocket cliente, reconexión, multiplexado de streams
-│  │  ├─ store/              bbolt: credenciales, specs, estado de backups
-│  │  ├─ docker/             wrapper del SDK Docker (interfaz + impl + fake)
-│  │  ├─ reconcile/          bucle de reconciliación spec↔contenedor
-│  │  ├─ mc/                 ping de estado (SLP) y cliente RCON
-│  │  ├─ logs/               seguimiento de logs y fan-out a suscriptores
-│  │  ├─ stats/              muestreo de stats de contenedor y host
-│  │  ├─ files/              operaciones de archivos confinadas
-│  │  ├─ backup/             crear, listar, restaurar, programar, podar
-│  │  ├─ importer/           detección de contenedores itzg no gestionados
-│  │  └─ jobs/               ejecución de jobs largos con progreso
+│  │  ├─ conn/               WebSocket client, reconnection, stream multiplexing
+│  │  ├─ store/              bbolt: credentials, specs, backup state
+│  │  ├─ docker/             Docker SDK wrapper (interface + impl + fake)
+│  │  ├─ reconcile/          spec↔container reconciliation loop
+│  │  ├─ mc/                 status ping (SLP) and RCON client
+│  │  ├─ logs/               log following and fan-out to subscribers
+│  │  ├─ stats/              container and host stats sampling
+│  │  ├─ files/              confined file operations
+│  │  ├─ backup/             create, list, restore, schedule, prune
+│  │  ├─ importer/           detection of unmanaged itzg containers
+│  │  └─ jobs/               long-job execution with progress
 │  └─ Dockerfile
 ├─ panel/
-│  ├─ apps/api/              Fastify + Drizzle + WS; sirve la web en producción
+│  ├─ apps/api/              Fastify + Drizzle + WS; serves the web in production
 │  ├─ apps/web/              React + Vite + Tailwind + shadcn/ui + TanStack Query/Router
-│  └─ packages/proto-ts/     tipos TS generados por buf
-├─ proto/                    ficheros .proto (fuente única del protocolo)
+│  └─ packages/proto-ts/     TS types generated by buf
+├─ proto/                    .proto files (single source of the protocol)
 ├─ buf.yaml, buf.gen.yaml
 ├─ deploy/
-│  └─ docker-compose.yml     panel + agente local
+│  └─ docker-compose.yml     panel + local agent
 ├─ docs/superpowers/specs/
 └─ README.md
 ```
 
-## 4. Modelo de datos (panel, SQLite)
+## 4. Data model (panel, SQLite)
 
-Todas las tablas usan `id` UUIDv7 como texto, `created_at`/`updated_at` en ISO 8601.
+All tables use a UUIDv7 `id` as text, `created_at`/`updated_at` in ISO 8601.
 
 **nodes**
-- `name`, `token_hash` (SHA-256 del token permanente), `data_root` (ej. `/srv/minecraft`,
-  ruta en el host del nodo), `agent_version`, `docker_version`, `last_seen_at`,
-  `status` (`online|offline|degraded`), `host_info` JSON (CPUs, RAM total, disco total
-  del `data_root`), `settings` JSON (rango de puertos permitido, intervalo de stats).
+- `name`, `token_hash` (SHA-256 of the permanent token), `data_root` (e.g. `/srv/minecraft`,
+  path on the node's host), `agent_version`, `docker_version`, `last_seen_at`,
+  `status` (`online|offline|degraded`), `host_info` JSON (CPUs, total RAM, total disk
+  of `data_root`), `settings` JSON (allowed port range, stats interval).
 
 **enrollment_tokens**
-- `token_hash`, `node_name_hint`, `expires_at` (15 min), `used_at`. Un solo uso.
+- `token_hash`, `node_name_hint`, `expires_at` (15 min), `used_at`. Single use.
 
 **servers**
-- `node_id`, `name`, `slug` (único por nodo, usado en la ruta de datos y nombre de
-  contenedor `mcsm-<slug>`), `spec` JSON (ver 4.1), `spec_version` (entero, +1 por
-  cambio), `desired_state` (`running|stopped`), `observed` JSON (último estado reportado:
-  container_id, state, health, uptime, versión MC detectada, jugadores, error de
-  reconciliación si lo hay), `observed_spec_version` (qué versión ha aplicado ya el agente),
-  `imported_from` JSON nullable (nombre y id del contenedor original).
+- `node_id`, `name`, `slug` (unique per node, used in the data path and container
+  name `mcsm-<slug>`), `spec` JSON (see 4.1), `spec_version` (integer, +1 per
+  change), `desired_state` (`running|stopped`), `observed` JSON (last reported state:
+  container_id, state, health, uptime, detected MC version, players, reconciliation
+  error if any), `observed_spec_version` (which version the agent has already applied),
+  `imported_from` JSON nullable (name and id of the original container).
 
 **templates**
-- `name`, `description`, `spec` JSON (misma forma que servers.spec pero sin puertos ni
-  rcon_password; los rellena el panel al instanciar), `source_server_id` nullable.
+- `name`, `description`, `spec` JSON (same shape as servers.spec but without ports or
+  rcon_password; the panel fills them in when instantiating), `source_server_id` nullable.
 
 **backups**
 - `server_id`, `node_id`, `filename`, `size_bytes`, `sha256`, `spec_version`,
@@ -135,380 +135,380 @@ Todas las tablas usan `id` UUIDv7 como texto, `created_at`/`updated_at` en ISO 8
   (`running|ok|failed|deleted`), `started_at`, `finished_at`, `error`.
 
 **jobs**
-- `type` (`create_server|apply_spec|backup|restore|migrate|import|...`; el router no es un
-  job: ver `router_deployments`),
+- `type` (`create_server|apply_spec|backup|restore|migrate|import|...`; the router is not a
+  job: see `router_deployments`),
   `server_id` nullable, `node_id`, `status` (`queued|running|ok|failed|cancelled`),
-  `progress` (0-100), `message`, `log` (texto acumulado), `payload` JSON,
+  `progress` (0-100), `message`, `log` (accumulated text), `payload` JSON,
   `started_at`, `finished_at`.
 
 **metric_samples**
-- `scope` (`server|node`), `scope_id`, `ts` (epoch segundos, redondeado a 10 s),
+- `scope` (`server|node`), `scope_id`, `ts` (epoch seconds, rounded to 10 s),
   `cpu_pct`, `mem_bytes`, `mem_limit_bytes`, `net_rx_bytes`, `net_tx_bytes`,
-  `disk_bytes` (solo nodo), `players_online`, `players_max`, `tps` nullable
-  (si el servidor lo expone por RCON en Paper/Purpur), `ping_ms`.
-- Índice `(scope, scope_id, ts)`. Retención: 7 días a 10 s. No se agrega en la BD;
-  la API agrega al vuelo por minuto/5 min según el rango pedido. Con ~10 servidores
-  esto son unos 600k filas, asumible en SQLite.
+  `disk_bytes` (node only), `players_online`, `players_max`, `tps` nullable
+  (if the server exposes it via RCON on Paper/Purpur), `ping_ms`.
+- Index `(scope, scope_id, ts)`. Retention: 7 days at 10 s. It is not aggregated in the DB;
+  the API aggregates on the fly per minute/5 min depending on the requested range. With ~10 servers
+  that is about 600k rows, manageable in SQLite.
 
-**settings** (clave/valor): hash de la contraseña de admin, secreto de sesión, URL del
-panel que se incrusta en el comando de alta, API key de CurseForge opcional (global, se
-inyecta como `CF_API_KEY` en los servidores que lo pidan), preferencias de UI.
+**settings** (key/value): admin password hash, session secret, the panel URL that is
+embedded in the enrollment command, optional CurseForge API key (global, injected
+as `CF_API_KEY` into servers that ask for it), UI preferences.
 
-**router_deployments** (mc-router por nodo; implementado en el Plan 8)
-- `node_id` (clave, borrado en cascada con el nodo), `spec` JSON
-  `{enabled, port (25565), autoscale, autoscaleDownAfterMinutes (1-1440, 10), autoscaleAllowPlayers: [nombre|UUID] (≤ 1000)}`,
-  `observed` JSON (último `RouterObserved`: configurado, estado, contenedor, imagen, puerto,
-  autoscale, error y la spec que tiene el agente), `observed_at`, `updated_at`.
-- Sin «default backend» ni mapeos adicionales: cada servidor entra por **un** hostname de su
-  spec (4.1). Sin fila = router sin configurar (desactivado).
-- El autoscale es **por nodo**, no por servidor: con él, mc-router arranca al entrar un jugador
-  y para tras los minutos sin jugadores **todos** los servidores del nodo con hostname activo
-  («bajo demanda»). `autoscaleAllowPlayers` limita quién los despierta
-  (`-auto-scale-allow-deny`); vacía = cualquiera que llegue al puerto.
+**router_deployments** (mc-router per node; implemented in Plan 8)
+- `node_id` (key, cascade-deleted with the node), `spec` JSON
+  `{enabled, port (25565), autoscale, autoscaleDownAfterMinutes (1-1440, 10), autoscaleAllowPlayers: [name|UUID] (≤ 1000)}`,
+  `observed` JSON (last `RouterObserved`: configured, state, container, image, port,
+  autoscale, error and the spec the agent has), `observed_at`, `updated_at`.
+- No “default backend” or additional mappings: each server is entered through **one** hostname from its
+  spec (4.1). No row = router not configured (disabled).
+- Autoscale is **per node**, not per server: with it, mc-router starts when a player joins
+  and stops after the minutes without players **all** the node's servers with an active hostname
+  (“on-demand”). `autoscaleAllowPlayers` limits who wakes them
+  (`-auto-scale-allow-deny`); empty = anyone who reaches the port.
 
-### 4.1 Forma de `spec` de servidor
+### 4.1 Shape of a server's `spec`
 
 ```jsonc
 {
   "image": "itzg/minecraft-server",
   "imageTag": "java21",                 // java8 | java17 | java21 | java25 | latest
-  "type": "PAPER",                      // VANILLA, PAPER, PURPUR, SPIGOT, FABRIC, FORGE, NEOFORGE, QUILT, ... o AUTO_CURSEFORGE/MODRINTH vía modpack
-  "version": "1.21.4",                  // o LATEST / SNAPSHOT
-  "build": "",                          // plan 10: build/loader → PAPER_BUILD, FOLIABUILD, PURPUR_BUILD, FABRIC_LOADER_VERSION, QUILT_LOADER_VERSION, FORGE_VERSION o NEOFORGE_VERSION según el tipo; vacío = el último
+  "type": "PAPER",                      // VANILLA, PAPER, PURPUR, SPIGOT, FABRIC, FORGE, NEOFORGE, QUILT, ... or AUTO_CURSEFORGE/MODRINTH via modpack
+  "version": "1.21.4",                  // or LATEST / SNAPSHOT
+  "build": "",                          // plan 10: build/loader → PAPER_BUILD, FOLIABUILD, PURPUR_BUILD, FABRIC_LOADER_VERSION, QUILT_LOADER_VERSION, FORGE_VERSION or NEOFORGE_VERSION depending on the type; empty = the latest
   "memory": "4G",
-  "modpack": {                          // opcional
+  "modpack": {                          // optional
     "platform": "MODRINTH" | "AUTO_CURSEFORGE" | "FTBA",
     "slugOrUrl": "...", "versionId": "...", "loader": "fabric"
   },
   "mods": { "modrinthProjects": ["lithium", "ferritecore:beta"], "curseforgeFiles": [], "urls": [] },
   "plugins": { "modrinthProjects": [], "spigetResources": [], "urls": [] },
-  "properties": { "motd": "...", "difficulty": "normal", "max-players": 10, ... },  // → server.properties vía env itzg
+  "properties": { "motd": "...", "difficulty": "normal", "max-players": 10, ... },  // → server.properties via itzg env
   "whitelist": { "enabled": true, "players": ["Lobo"] },
   "ops": ["Lobo"],
-  "env": { "USE_AIKAR_FLAGS": "true", "ENABLE_AUTOPAUSE": "false" },  // extra libre, gana sobre lo generado
+  "env": { "USE_AIKAR_FLAGS": "true", "ENABLE_AUTOPAUSE": "false" },  // free extras, win over what is generated
   "ports": { "game": 25565, "extra": [ { "host": 19132, "container": 19132, "proto": "udp", "label": "Geyser" } ] },
-  "resources": { "cpus": 2.0, "memLimit": "5G" },   // límites Docker; memLimit >= memory + 1G por defecto
+  "resources": { "cpus": 2.0, "memLimit": "5G" },   // Docker limits; memLimit >= memory + 1G by default
   "restartPolicy": "unless-stopped",
-  "rconPassword": "<generado por el panel>",        // RCON nunca se publica en el host
+  "rconPassword": "<generated by the panel>",        // RCON is never published on the host
   "backups": { "enabled": true, "cron": "0 4 * * *", "keepDays": 7, "keepCount": 10, "excludes": ["*.jar","cache","logs","*.tmp"], "onlyIfPlayersSince": true },
-  "router": { "enabled": true, "hostname": "survival.lan" }   // opcional; un hostname por servidor (RFC 1123, minúsculas)
+  "router": { "enabled": true, "hostname": "survival.lan" }   // optional; one hostname per server (RFC 1123, lowercase)
 }
 ```
 
-El **agente** transforma la spec en una `ContainerConfig` + `HostConfig` determinista:
-nombre `mcsm-<slug>`, etiquetas `mcsm.*`, bind `<data_root>/<slug>/data:/data`, env
-generado (TYPE, VERSION, la variable de `build` del tipo, MEMORY, EULA=TRUE, RCON_PASSWORD, MODRINTH_PROJECTS…,
-propiedades mapeadas a sus variables itzg), puertos, límites, política de reinicio, y
-etiquetas `mc-router.host=<hostname>` y `mc-router.network=<red del agente>` solo si
-`router.enabled` (sin sección, o desactivada, el contenedor y su hash no cambian). La función
-es pura y se prueba con tablas de casos. Un hash de ese resultado se guarda en la etiqueta
-`mcsm.spec_hash` para detectar drift sin comparar campo a campo.
+The **agent** transforms the spec into a deterministic `ContainerConfig` + `HostConfig`:
+name `mcsm-<slug>`, `mcsm.*` labels, bind `<data_root>/<slug>/data:/data`, generated
+env (TYPE, VERSION, the type's `build` variable, MEMORY, EULA=TRUE, RCON_PASSWORD, MODRINTH_PROJECTS…,
+properties mapped to their itzg variables), ports, limits, restart policy, and
+labels `mc-router.host=<hostname>` and `mc-router.network=<agent's network>` only if
+`router.enabled` (without a section, or disabled, the container and its hash don't change). The function
+is pure and is tested with case tables. A hash of that result is stored in the label
+`mcsm.spec_hash` to detect drift without comparing field by field.
 
-`router` (Plan 8): el hostname es único por nodo entre los servidores con el router activo
-(contando las migraciones abiertas hacia ese nodo) y el panel lo valida con la misma regex que
-el agente (fixture `router-hostname-cases.json`). Cada servidor conserva su puerto propio. Las
-plantillas no llevan `router` y la importación tampoco lo adopta: se activa después en
-Configuración → Red (un adoptado no tiene etiquetas hasta que se recrea).
+`router` (Plan 8): the hostname is unique per node among servers with the router active
+(counting open migrations towards that node) and the panel validates it with the same regex as
+the agent (fixture `router-hostname-cases.json`). Each server keeps its own port. Templates
+don't carry `router` and import doesn't adopt it either: it is enabled afterwards in
+Configuration → Network (an adopted one has no labels until it is recreated).
 
-## 5. Protocolo panel ↔ agente
+## 5. Panel ↔ agent protocol
 
-### 5.1 Transporte
+### 5.1 Transport
 
-- Un WebSocket por agente: `GET /agent/ws` con cabecera `Authorization: Bearer <node token>`.
-  Mensajes binarios protobuf. Ping/pong cada 15 s; se considera caído a los 45 s.
-- Reconexión del agente con backoff exponencial 1 s → 30 s con jitter.
-- Transferencias grandes por HTTP saliente del agente con el mismo token:
-  - `PUT /agent/transfer/{transferId}` cuerpo en streaming (subida de backup o archivo al panel).
-  - `GET /agent/transfer/{transferId}` descarga en streaming.
-  - El panel usa un directorio de *staging* para transferencias; los archivos que suben
-    los usuarios desde el navegador van navegador → panel → agente (streaming, sin
-    guardar en disco cuando es posible).
+- One WebSocket per agent: `GET /agent/ws` with header `Authorization: Bearer <node token>`.
+  Binary protobuf messages. Ping/pong every 15 s; considered down at 45 s.
+- Agent reconnection with exponential backoff 1 s → 30 s with jitter.
+- Large transfers over the agent's outbound HTTP with the same token:
+  - `PUT /agent/transfer/{transferId}` streaming body (upload of a backup or file to the panel).
+  - `GET /agent/transfer/{transferId}` streaming download.
+  - The panel uses a *staging* directory for transfers; files that users upload
+    from the browser go browser → panel → agent (streaming, without
+    saving to disk when possible).
 
 ### 5.2 Envelope
 
 ```proto
 message Envelope {
-  uint64 id = 1;            // id de petición; las respuestas lo repiten
-  uint64 stream_id = 2;     // 0 si no es un stream
-  oneof body { ...mensajes... }
+  uint64 id = 1;            // request id; responses repeat it
+  uint64 stream_id = 2;     // 0 if not a stream
+  oneof body { ...messages... }
 }
 ```
 
-Tipos de intercambio:
-- **Request/Response**: `id` nuevo, una respuesta con el mismo `id`, o `Error{code, message}`.
-- **Stream**: quien abre indica `stream_id`; los frames llevan ese `stream_id`;
-  `StreamClose{stream_id, reason}` cierra en cualquier dirección. Control de flujo
-  simple: el agente descarta frames de logs si el buffer de salida supera 1 MiB y
-  envía `StreamDropped{count}`.
+Kinds of exchange:
+- **Request/Response**: new `id`, one response with the same `id`, or `Error{code, message}`.
+- **Stream**: whoever opens indicates `stream_id`; frames carry that `stream_id`;
+  `StreamClose{stream_id, reason}` closes in either direction. Simple flow
+  control: the agent drops log frames if the output buffer exceeds 1 MiB and
+  sends `StreamDropped{count}`.
 
-### 5.3 Mensajes principales
+### 5.3 Main messages
 
-Agente → panel:
-- `Hello{agent_version, docker_version, host_info, spec_versions: map<server_id, version>}` al conectar.
-- `Enroll{enrollment_token, name_hint}` → `EnrollResult{node_token, node_id}` (solo la primera vez, por HTTP `POST /agent/enroll`, no por WS).
-- `ServerObserved{server_id, observed}` cada vez que cambia el estado real (eventos Docker) y, como mínimo, cada 30 s.
-- `MetricSample{...}` cada 10 s por servidor y por nodo (en un solo mensaje agrupado).
+Agent → panel:
+- `Hello{agent_version, docker_version, host_info, spec_versions: map<server_id, version>}` on connecting.
+- `Enroll{enrollment_token, name_hint}` → `EnrollResult{node_token, node_id}` (first time only, via HTTP `POST /agent/enroll`, not over WS).
+- `ServerObserved{server_id, observed}` whenever the real state changes (Docker events) and, at a minimum, every 30 s.
+- `MetricSample{...}` every 10 s per server and per node (in a single grouped message).
 - `JobProgress{job_id, progress, message, log_chunk, status}`.
-- `BackupCreated{...}`, `BackupDeleted{...}` para backups programados sin intervención del panel.
-- `Event{level, server_id?, kind, message, ts}` para incidencias (`crash`, `oom`, `crash_loop`, `crash_loop_failed`,
-  `drift`, `save_on_pending`, `save_on_resumed`). No hay suscripción: el agente los envía no solicitados (id = 0) por
-  su propia cola; sin conexión se pierden (lo importante queda también en `observed.error`).
+- `BackupCreated{...}`, `BackupDeleted{...}` for scheduled backups without panel intervention.
+- `Event{level, server_id?, kind, message, ts}` for incidents (`crash`, `oom`, `crash_loop`, `crash_loop_failed`,
+  `drift`, `save_on_pending`, `save_on_resumed`). There is no subscription: the agent sends them unsolicited (id = 0) through
+  its own queue; without a connection they are lost (the important part also stays in `observed.error`).
 
-Panel → agente:
-- `SyncSpecs{servers: [ServerSpec{server_id, slug, version, desired_state, spec}], removed_ids}` tras `Hello`, con solo lo que difiere, y después `ApplySpec{...}` por cada cambio.
+Panel → agent:
+- `SyncSpecs{servers: [ServerSpec{server_id, slug, version, desired_state, spec}], removed_ids}` after `Hello`, with only what differs, and then `ApplySpec{...}` for each change.
 - `PowerAction{server_id, action: start|stop|restart|kill}`.
 - `SendCommand{server_id, command}` → `CommandResult{output}` (RCON).
 - `SubscribeLogs{server_id, tail}` → stream `LogLine{ts, line}`.
 - `Files*`: `List`, `Stat`, `Read{path, max_bytes}`, `Write{path, content}`, `Mkdir`,
   `Rename`, `Delete`, `Download{path} → transfer_id`, `Upload{path, transfer_id}`.
 - `BackupNow{server_id, job_id}`, `BackupList{server_id}`, `BackupRestore{server_id, backup_id, job_id}`,
-  `BackupDelete`, `BackupPush{backup_id, transfer_id}` (sube al panel), `BackupPull{transfer_id, server_id}` (descarga desde el panel al nodo).
+  `BackupDelete`, `BackupPush{backup_id, transfer_id}` (uploads to the panel), `BackupPull{transfer_id, server_id}` (downloads from the panel to the node).
 - `ImportScan{}` → `ImportCandidates{[container_id, name, env, ports, mounts, image]}`;
   `ImportAdopt{container_id, server_id, slug}`.
-- `RouterApply{spec}` / `RouterRemove{}` (el agente responde con `RouterObserved`, no solicitado,
-  tras cada reconciliación del router).
+- `RouterApply{spec}` / `RouterRemove{}` (the agent responds with `RouterObserved`, unsolicited,
+  after each router reconciliation).
 - `PullImage{ref, job_id}`.
 
-### 5.4 Idempotencia y versiones
+### 5.4 Idempotency and versions
 
-- Toda operación mutante lleva un `job_id` o un `spec_version`. El agente guarda en
-  bbolt el último `spec_version` aplicado por servidor y el estado de cada `job_id`
-  conocido; si recibe un duplicado, responde con el resultado guardado.
-- El panel nunca asume éxito: la UI muestra `spec_version` deseada vs `observed_spec_version`
-  y marca "aplicando…" mientras difieran.
+- Every mutating operation carries a `job_id` or a `spec_version`. The agent stores in
+  bbolt the last `spec_version` applied per server and the state of every known
+  `job_id`; if it receives a duplicate, it responds with the stored result.
+- The panel never assumes success: the UI shows the desired `spec_version` vs `observed_spec_version`
+  and marks “applying…” while they differ.
 
-## 6. El agente en detalle
+## 6. The agent in detail
 
-### 6.1 Arranque
+### 6.1 Startup
 
-1. Lee config de env: `PANEL_URL`, `ENROLL_TOKEN` (solo la primera vez), `DATA_ROOT`
-   (ruta host, p. ej. `/srv/minecraft`), `AGENT_DATA=/var/lib/mcsm-agent`.
-2. Si no hay token en bbolt, hace `POST /agent/enroll`; guarda `node_token` y `node_id`.
-3. Abre el WS, envía `Hello` con las versiones de spec que tiene.
-4. Arranca en paralelo: reconciliador, observador de eventos Docker, muestreador de
-   stats, planificador de backups, gestor de logs.
+1. Reads config from env: `PANEL_URL`, `ENROLL_TOKEN` (first time only), `DATA_ROOT`
+   (host path, e.g. `/srv/minecraft`), `AGENT_DATA=/var/lib/mcsm-agent`.
+2. If there is no token in bbolt, it does `POST /agent/enroll`; stores `node_token` and `node_id`.
+3. Opens the WS, sends `Hello` with the spec versions it has.
+4. Starts in parallel: reconciler, Docker event watcher, stats sampler,
+   backup scheduler, log manager.
 
-Montajes del contenedor del agente: `/var/run/docker.sock`, `<DATA_ROOT>:<DATA_ROOT>`
-(misma ruta dentro y fuera para que los binds que crea coincidan con lo que ve), un
-volumen para `AGENT_DATA`, y `/proc:/host/proc:ro` con `HOST_PROC=/host/proc` para
-métricas de host con gopsutil.
+Mounts of the agent's container: `/var/run/docker.sock`, `<DATA_ROOT>:<DATA_ROOT>`
+(same path inside and outside so the binds it creates match what it sees), a
+volume for `AGENT_DATA`, and `/proc:/host/proc:ro` with `HOST_PROC=/host/proc` for
+host metrics with gopsutil.
 
-### 6.2 Reconciliación
+### 6.2 Reconciliation
 
-Bucle disparado por: cambio de spec, evento Docker relevante (`die`, `start`, `destroy`,
-`health_status`), y un tick cada 30 s. Para cada servidor:
+Loop triggered by: spec change, relevant Docker event (`die`, `start`, `destroy`,
+`health_status`), and a tick every 30 s. For each server:
 
-1. Buscar contenedor por etiqueta `mcsm.server_id`.
-2. No existe y `desired_state=running|stopped` → crear directorio de datos (si no
-   existe), `docker pull` si falta la imagen, crear contenedor; arrancar si `running`.
-3. Existe con `spec_hash` distinto → parada limpia (`stop` con timeout 60 s, la imagen
-   itzg hace `save-all`/`stop` por RCON al recibir SIGTERM), `rm`, recrear, arrancar
-   si procedía. Los datos no se tocan (están en el bind).
-4. Existe, hash igual, pero estado ≠ deseado → `start`/`stop`.
-5. Reportar `ServerObserved`. Si una acción falla (puerto ocupado, imagen inexistente,
-   sin espacio), guardar el error en `observed.error` y reintentar con backoff
-   (máx. cada 5 min) hasta que la spec cambie.
-   Docker 29.7.2: tras un `start` fallido por el puerto, el siguiente arranca **sin publicar
-   puertos**. Por eso un arranque que falla, o que deja el contenedor sin sus puertos, lo borra
-   (`startOrDiscard`; los datos están en el bind) y la siguiente pasada lo recrea (`Power` lo
-   recrea al momento); nunca el contenedor original de un importado (solo se informa). Uno en
-   marcha sin sus puertos (lo arrancó otro: la política de reinicio, mc-router) se informa en
-   `observed.error` y «Reiniciar» lo recrea.
+1. Look for the container by label `mcsm.server_id`.
+2. It doesn't exist and `desired_state=running|stopped` → create the data directory (if it
+   doesn't exist), `docker pull` if the image is missing, create the container; start it if `running`.
+3. It exists with a different `spec_hash` → clean stop (`stop` with a 60 s timeout, the itzg
+   image does `save-all`/`stop` via RCON on receiving SIGTERM), `rm`, recreate, start
+   if appropriate. The data isn't touched (it's in the bind).
+4. It exists, same hash, but state ≠ desired → `start`/`stop`.
+5. Report `ServerObserved`. If an action fails (port in use, nonexistent image,
+   no space), store the error in `observed.error` and retry with backoff
+   (at most every 5 min) until the spec changes.
+   Docker 29.7.2: after a `start` that failed because of the port, the next one starts **without publishing
+   ports**. Therefore a start that fails, or that leaves the container without its ports, deletes it
+   (`startOrDiscard`; the data is in the bind) and the next pass recreates it (`Power` recreates it
+   immediately); never the original container of an imported one (it is only reported). One
+   running without its ports (started by something else: the restart policy, mc-router) is reported in
+   `observed.error` and “Restart” recreates it.
 
-Los contenedores con etiquetas `mcsm.*` que no estén en ninguna spec se **paran y
-borran** solo si el panel los incluyó en `removed_ids`; nunca por iniciativa propia del
-agente, para que un store corrupto no destruya nada.
+Containers with `mcsm.*` labels that are in no spec are **stopped and
+deleted** only if the panel included them in `removed_ids`; never on the agent's own
+initiative, so that a corrupt store destroys nothing.
 
-### 6.3 Logs y consola
+### 6.3 Logs and console
 
-- Un `docker logs --follow --tail N` por servidor abierto bajo demanda al primer
-  suscriptor y cerrado 30 s después del último. Fan-out en memoria a los `stream_id`
-  suscritos; buffer circular de las últimas 500 líneas para servir el `tail` al instante.
-- Comandos por RCON nativo (cliente Go pequeño, protocolo Source RCON) contra la IP
-  interna del contenedor en la red de Docker y `RCON_PORT` 25575; no se publica en el host.
+- One `docker logs --follow --tail N` per server, opened on demand at the first
+  subscriber and closed 30 s after the last. In-memory fan-out to the subscribed
+  `stream_id`s; circular buffer of the last 500 lines to serve the `tail` instantly.
+- Commands via native RCON (small Go client, Source RCON protocol) against the
+  container's internal IP on the Docker network and `RCON_PORT` 25575; it is not published on the host.
 
-### 6.4 Métricas
+### 6.4 Metrics
 
-Cada 10 s: `docker stats` one-shot por contenedor gestionado (CPU %, memoria, red) y un
-Server List Ping al puerto de juego dentro de la red Docker (online/max/versión/latencia).
-En Paper/Purpur, `tps` vía RCON cada 30 s. Host: CPU, RAM, uso del disco donde vive
-`DATA_ROOT`. Se agrupa en un `MetricSample` por envío.
+Every 10 s: one-shot `docker stats` per managed container (CPU %, memory, network) and a
+Server List Ping to the game port inside the Docker network (online/max/version/latency).
+On Paper/Purpur, `tps` via RCON every 30 s. Host: CPU, RAM, usage of the disk where `DATA_ROOT`
+lives. Grouped into one `MetricSample` per send.
 
 ### 6.5 Backups
 
-- Formato: `<slug>-<ISO ts>-<spec_version>.tar.zst` en `<DATA_ROOT>/<slug>/backups/`.
-- Procedimiento: si el servidor está en marcha, RCON `save-off`, `save-all flush`,
-  esperar 3 s; tar con exclusiones; `save-on` (en `defer`, también si falla); sha256;
-  escribir fichero `.json` de metadatos junto al tar. Si el servidor está parado, tar directo.
-- Programación con la expresión cron de la spec, en el propio agente (librería `robfig/cron`).
-  `onlyIfPlayersSince`: se omite si nadie se ha conectado desde el último backup.
-- Poda tras cada backup según `keepDays` y `keepCount`.
-- Restauración: parar servidor, renombrar `data` a `data.pre-restore-<ts>` (se conserva
-  como seguridad y se registra como backup `pre_restore`), extraer, arrancar. Nunca se
-  borra el directorio previo automáticamente; la UI ofrece borrarlo después.
+- Format: `<slug>-<ISO ts>-<spec_version>.tar.zst` in `<DATA_ROOT>/<slug>/backups/`.
+- Procedure: if the server is running, RCON `save-off`, `save-all flush`,
+  wait 3 s; tar with exclusions; `save-on` (in `defer`, also if it fails); sha256;
+  write a `.json` metadata file next to the tar. If the server is stopped, direct tar.
+- Scheduling with the spec's cron expression, in the agent itself (`robfig/cron` library).
+  `onlyIfPlayersSince`: skipped if nobody has connected since the last backup.
+- Pruning after each backup according to `keepDays` and `keepCount`.
+- Restore: stop the server, rename `data` to `data.pre-restore-<ts>` (kept
+  as a safety net and recorded as a `pre_restore` backup), extract, start. The previous
+  directory is never deleted automatically; the UI offers to delete it afterwards.
 
-### 6.6 Archivos
+### 6.6 Files
 
-Raíz confinada: `<DATA_ROOT>/<slug>/data`. Toda ruta se resuelve con `filepath.Clean`
-y se exige que el resultado tenga la raíz como prefijo tras resolver symlinks
-(`filepath.EvalSymlinks`). Límite de 2 MiB para lectura/escritura inline; más grande,
-por transferencia. Las escrituras son atómicas (fichero temporal + rename).
+Confined root: `<DATA_ROOT>/<slug>/data`. Every path is resolved with `filepath.Clean`
+and the result is required to have the root as a prefix after resolving symlinks
+(`filepath.EvalSymlinks`). 2 MiB limit for inline read/write; larger goes
+through transfer. Writes are atomic (temporary file + rename).
 
-### 6.7 Importación
+### 6.7 Import
 
-`ImportScan` lista contenedores cuya imagen empiece por `itzg/minecraft-server` y sin
-etiqueta `mcsm.managed`. Para cada uno devuelve inspect reducido. El panel genera una
-spec candidata: env → campos conocidos, resto a `env`; puerto `25565/tcp` → `ports.game`;
-bind de `/data` → se propone `slug` y, si el bind no está bajo `DATA_ROOT`, la spec
-guarda `dataPath` explícito (campo opcional que anula la ruta por defecto). Al adoptar,
-el agente añade las etiquetas renombrando el contenedor a `mcsm-<slug>` solo cuando
-el usuario pida el primer cambio de spec; mientras tanto se gestiona por `imported_from.container_id`.
+`ImportScan` lists containers whose image starts with `itzg/minecraft-server` and without the
+`mcsm.managed` label. For each one it returns a reduced inspect. The panel generates a candidate
+spec: env → known fields, the rest to `env`; port `25565/tcp` → `ports.game`;
+`/data` bind → a `slug` is proposed and, if the bind is not under `DATA_ROOT`, the spec
+stores an explicit `dataPath` (optional field that overrides the default path). On adopting,
+the agent adds the labels by renaming the container to `mcsm-<slug>` only when
+the user requests the first spec change; in the meantime it is managed by `imported_from.container_id`.
 
-## 7. El panel en detalle
+## 7. The panel in detail
 
-- **Fastify 5** con `@fastify/websocket`, `@fastify/cookie` (cookie de sesión firmada que apunta a una fila de `sessions`),
-  `@fastify/static` para la web compilada. Validación de entrada con **zod**; los tipos de
-  spec se comparten con la web desde `packages/proto-ts` y un paquete `packages/shared`
-  con los esquemas zod de spec y la función que valida combinaciones (p. ej. `modpack`
-  solo con `type` compatible).
-- **Servicios**: `NodeRegistry` (conexiones WS activas; sin cola de mensajes para nodos
-  desconectados: la enmienda del 2026-10-12 la sustituye por `SyncSpecs` al reconectar, que
-  entrega versión y estado deseado de cada servidor), `SpecService` (versionado, diff, asignación de puertos
-  libres por nodo dentro del rango configurado), `JobService`, `BackupService`,
-  `MigrationService`, `MetricsService` (ingesta por lotes, purga cada hora, agregación
-  en consulta), `ImportService`, `RouterService`, `TemplateService`.
-- **API REST** `/api/*` para CRUD y acciones; **WS** `/ws` para el navegador con
-  suscripciones (`server:<id>:logs`, `server:<id>:observed`, `node:<id>:metrics`, `jobs`).
-- **Migración** (`MigrationService`): job con pasos visibles: (1) parar en origen si
-  el usuario lo pide o si está en marcha, (2) backup `pre_migration`, (3) `BackupPush`
-  origen→panel y `BackupPull` panel→destino en paralelo (streaming, sin tocar disco del
-  panel salvo buffer), (4) crear spec en destino con puerto libre, (5) `BackupRestore`,
-  (6) arrancar y esperar `health=healthy` o 5 min, (7) `removed_ids` en origen y borrado
-  del directorio de datos de origen **solo** si el usuario marcó "borrar origen"; por
-  defecto se conserva renombrado `data.migrated-<ts>`.
-  Con el router (Plan 8): el puerto del router del destino no se propone; el hostname tiene que
-  estar libre en el destino (al planificar y otra vez, sin `await`, justo antes del commit, igual
-  que el puerto del router); un servidor con hostname **no se migra** (409) si el router del
-  origen tiene autoscale, porque mc-router lo arrancaría en el origen entre la parada y la
-  retirada (el agente también rechaza esa copia `pre_migration`); y tras migrar el DNS del
-  hostname tiene que apuntar al destino (la pestaña Migrar lo avisa).
-- **Router** (`RouterService`, Plan 8): la fila de `router_deployments` es la verdad. Cada
-  cambio se envía al momento (`RouterApply` si está activo, `RouterRemove` si no), en cadena por
-  nodo, y tras cada handshake se reenvía; un `RouterObserved` con router que el panel no quiere
-  provoca un `RouterRemove`. No hay job `deploy_router`. Activar en un agente sin soporte
-  (`unsupported`) no se guarda (409). El puerto del router no se reparte ni se puede publicar
-  en el nodo, y no se activa en uno ocupado por un servidor o reservado por una migración hacia
-  el nodo, ni con autoscale mientras salga de él una migración de un servidor con hostname. Un
-  nodo con el router activo (o retirándose, conectado) no se borra.
-  - En el agente, un contenedor `mcsm-router` de `itzg/mc-router` **fijado por digest**
-    (`1.47.1@sha256:…`) con `-in-docker`, en la red de los servidores. Desde el Plan 9 no recibe
-    el socket de Docker: monta, de solo lectura, el directorio del socket filtrado del agente
-    (`<DATA_ROOT>/.mcsm-router/docker.sock`, `-docker-socket`), un proxy de lista blanca que solo
-    deja ping, versión, info, listar e inspeccionar (sin `Config.Env`) los contenedores con
-    `mc-router.host`, seguir sus eventos y arrancar o parar servidores de este agente con hostname
-    que no estén reservados (ni, para arrancar, retenidos por bucle de crash); nada con cuerpo ni
-    con API < 1.24. Montar el directorio (no el fichero) deja que mc-router se reconecte solo al
-    socket nuevo de cada arranque del agente; si el proxy no puede escuchar, el agente lo reintenta
-    (1–30 s) y el error se ve en el estado del router. Endurecido: usuario 65532 (dueño del socket,
-    0600), `CapDrop ALL`, `no-new-privileges`, raíz de solo lectura, 256 MiB y 256 procesos,
-    `-connection-rate-limit 10`, logs `json-file` con rotación. Hash propio en
-    `mcsm.router_hash` (independiente de `mcsm.spec_hash`): un cambio lo recrea (no tiene
-    estado). Se reconcilia al arrancar, cada 30 s y con sus eventos; un arranque fallido o en
-    marcha sin publicar su puerto (Docker 29.7.2) lo borra y lo recrea.
-  - Bajo demanda (autoscale): el reconciliador crea y recrea el contenedor pero no impone el
-    estado deseado (lo hace mc-router; `Power` sí manda), salvo que un contenedor que nunca
-    arrancó se arranca, porque mc-router no lo vería; él lo duerme tras los minutos sin
-    jugadores. La reserva (`Hold`) solo frena al agente: mientras una restauración, una copia
-    en frío o un bloqueo sin `data` reservan un servidor bajo demanda, el agente lo **aparca**
-    (`Park`: lo para y borra el contenedor; los datos están en el bind) y al liberar la reserva
-    lo recrea.
+- **Fastify 5** with `@fastify/websocket`, `@fastify/cookie` (signed session cookie pointing to a `sessions` row),
+  `@fastify/static` for the compiled web. Input validation with **zod**; spec types
+  are shared with the web from `packages/proto-ts` and a `packages/shared` package
+  with the spec zod schemas and the function that validates combinations (e.g. `modpack`
+  only with a compatible `type`).
+- **Services**: `NodeRegistry` (active WS connections; no message queue for offline
+  nodes: the 2026-10-12 amendment replaces it with `SyncSpecs` on reconnect, which
+  delivers the version and desired state of each server), `SpecService` (versioning, diff, allocation of free ports
+  per node within the configured range), `JobService`, `BackupService`,
+  `MigrationService`, `MetricsService` (batch ingestion, purge every hour, aggregation
+  at query time), `ImportService`, `RouterService`, `TemplateService`.
+- **REST API** `/api/*` for CRUD and actions; **WS** `/ws` for the browser with
+  subscriptions (`server:<id>:logs`, `server:<id>:observed`, `node:<id>:metrics`, `jobs`).
+- **Migration** (`MigrationService`): job with visible steps: (1) stop on the source if
+  the user asks or if it is running, (2) `pre_migration` backup, (3) `BackupPush`
+  source→panel and `BackupPull` panel→target in parallel (streaming, without touching the
+  panel's disk apart from a buffer), (4) create the spec on the target with a free port, (5) `BackupRestore`,
+  (6) start and wait for `health=healthy` or 5 min, (7) `removed_ids` on the source and deletion
+  of the source's data directory **only** if the user checked “delete source”; by
+  default it is kept renamed `data.migrated-<ts>`.
+  With the router (Plan 8): the target router's port is not proposed; the hostname must be
+  free on the target (when planning and again, without `await`, right before the commit, same
+  as the router port); a server with a hostname is **not migrated** (409) if the source's router
+  has autoscale, because mc-router would start it on the source between the stop and the
+  retirement (the agent also rejects that `pre_migration` backup); and after migrating, the hostname's DNS
+  must point to the target (the Migrate tab warns about it).
+- **Router** (`RouterService`, Plan 8): the `router_deployments` row is the truth. Each
+  change is sent immediately (`RouterApply` if active, `RouterRemove` if not), chained per
+  node, and resent after each handshake; a `RouterObserved` with a router the panel doesn't want
+  triggers a `RouterRemove`. There is no `deploy_router` job. Enabling on an agent without support
+  (`unsupported`) is not saved (409). The router's port is not handed out and can't be published
+  on the node, and it is not enabled on one occupied by a server or reserved by a migration towards
+  the node, nor with autoscale while a migration of a server with a hostname is leaving it. A
+  node with the router active (or being retired, connected) is not deleted.
+  - In the agent, a `mcsm-router` container of `itzg/mc-router` **pinned by digest**
+    (`1.47.1@sha256:…`) with `-in-docker`, on the servers' network. Since Plan 9 it doesn't receive
+    the Docker socket: it mounts, read-only, the directory of the agent's filtered socket
+    (`<DATA_ROOT>/.mcsm-router/docker.sock`, `-docker-socket`), an allowlist proxy that only
+    permits ping, version, info, listing and inspecting (without `Config.Env`) the containers with
+    `mc-router.host`, following their events and starting or stopping this agent's servers with a hostname
+    that are not reserved (nor, to start, held by a crash loop); nothing with a body or
+    with API < 1.24. Mounting the directory (not the file) lets mc-router reconnect on its own to the
+    new socket on every agent start; if the proxy can't listen, the agent retries
+    (1–30 s) and the error shows in the router's state. Hardened: user 65532 (owner of the socket,
+    0600), `CapDrop ALL`, `no-new-privileges`, read-only root, 256 MiB and 256 processes,
+    `-connection-rate-limit 10`, `json-file` logs with rotation. Own hash in
+    `mcsm.router_hash` (independent of `mcsm.spec_hash`): a change recreates it (it has no
+    state). It is reconciled at startup, every 30 s and on its events; a failed start or one
+    running without publishing its port (Docker 29.7.2) is deleted and recreated.
+  - On-demand (autoscale): the reconciler creates and recreates the container but doesn't enforce
+    the desired state (mc-router does; `Power` does take charge), except that a container that never
+    started is started, because mc-router wouldn't see it; it puts it to sleep after the minutes without
+    players. The reservation (`Hold`) only holds back the agent: while a restore, a cold backup
+    or a lock without `data` reserve an on-demand server, the agent **parks** it
+    (`Park`: stops it and deletes the container; the data is in the bind) and recreates it when the
+    reservation is released.
 
-## 8. Interfaz web
+## 8. Web interface
 
-Páginas:
-- **Dashboard**: tarjetas de nodos (online, CPU/RAM/disco) y tabla de servidores
-  (estado, jugadores, versión, nodo, puerto, acciones rápidas).
-- **Servidor**: pestañas *Resumen* (estado, jugadores, gráficas 1h/24h/7d, acciones),
-  *Consola* (logs en vivo + entrada de comandos, filtro), *Configuración* (formulario por
-  secciones que edita la spec: General, Versión y mods, Propiedades, Jugadores, Red,
-  Recursos, Backups, Avanzado/env libre; botón "Aplicar" muestra el diff y recrea),
-  *Archivos*, *Backups*, *Historial* (jobs y eventos).
-- **Nuevo servidor**: asistente en 3 pasos (plantilla o desde cero → nodo y nombre → revisar).
-- **Plantillas**: lista, crear, editar, duplicar, "crear servidor desde plantilla".
-- **Nodos**: lista, alta (muestra `docker run` con token), detalle con métricas,
-  servidores, mc-router (activar, puerto, autoscale con sus minutos y la lista de jugadores que
-  despiertan servidores; estado en vivo), importación de contenedores. El hostname de cada
-  servidor va en Configuración → Red.
-- **Jobs**: lista global con progreso y log.
-- **Ajustes**: contraseña, URL del panel, API key de CurseForge, rango de puertos por defecto.
+Pages:
+- **Home**: node cards (online, CPU/RAM/disk) and a servers table
+  (state, players, version, node, port, quick actions).
+- **Server**: tabs *Overview* (state, players, 1h/24h/7d charts, actions),
+  *Console* (live logs + command input, filter), *Configuration* (sectioned form that
+  edits the spec: General, Version and mods, Properties, Players, Network,
+  Resources, Backups, Advanced/free env; the “Review and apply” button shows the diff and recreates),
+  *Files*, *Backups*, *History* (jobs and events).
+- **New server**: 3-step wizard (template or from scratch → node and name → review).
+- **Templates**: list, create, edit, duplicate, “create server from template”.
+- **Nodes**: list, enrollment (shows `docker run` with token), detail with metrics,
+  servers, mc-router (enable, port, autoscale with its minutes and the list of players who
+  wake servers; live state), import of containers. Each server's hostname
+  goes in Configuration → Network.
+- **Jobs**: global list with progress and log.
+- **Settings**: password, panel URL, CurseForge API key, default port range.
 
-Estilo: shadcn/ui, modo oscuro por defecto, denso pero legible; es una herramienta de
-administración, no una landing.
+Style: shadcn/ui, dark mode by default, dense but readable; it is an administration
+tool, not a landing page.
 
-## 9. Seguridad (ámbito LAN, un usuario)
+## 9. Security (LAN scope, one user)
 
-- Login con contraseña (hash `scrypt` de `node:crypto`, sin dependencias nativas), cookie `HttpOnly`, `SameSite=Strict`. Rate-limit en login.
-- Tokens de nodo: 32 bytes aleatorios, hash SHA-256 en BD (entropía alta, no necesita KDF lento), comparación en tiempo constante.
-  Rotación desde la UI (el panel envía `RotateToken`, el agente guarda el nuevo y reconecta).
-- Tokens de alta: un solo uso, 15 min.
-- El agente valida que el `server_id` de cualquier operación de archivos/backup pertenece
-  a su nodo. Rutas confinadas (6.6). Nombres de slug restringidos a `[a-z0-9-]{1,40}`.
-- `rconPassword` no se muestra en la UI por defecto (botón revelar) y no viaja al navegador en listados.
-- El socket de Docker da root efectivo en el nodo (lo tiene el agente); se documenta claramente en el README.
-  mc-router no lo recibe: usa el socket filtrado del agente (§7).
+- Password login (`scrypt` hash from `node:crypto`, no native dependencies), `HttpOnly` cookie, `SameSite=Strict`. Login rate limit.
+- Node tokens: 32 random bytes, SHA-256 hash in the DB (high entropy, doesn't need a slow KDF), constant-time comparison.
+  Rotation from the UI (the panel sends `RotateToken`, the agent stores the new one and reconnects).
+- Enrollment tokens: single use, 15 min.
+- The agent validates that the `server_id` of any file/backup operation belongs
+  to its node. Confined paths (6.6). Slug names restricted to `[a-z0-9-]{1,40}`.
+- `rconPassword` is not shown in the UI by default (reveal button) and doesn't travel to the browser in listings.
+- The Docker socket gives effective root on the node (the agent has it); this is clearly documented in the README.
+  mc-router doesn't receive it: it uses the agent's filtered socket (§7).
 
-## 10. Manejo de errores
+## 10. Error handling
 
-- **Nodo desconectado**: la UI lo marca; los cambios de spec se guardan con versión
-  nueva y se entregan en el `SyncSpecs` al reconectar. Acciones inmediatas (power,
-  consola, archivos) fallan con mensaje claro en vez de encolarse.
-- **Fallo al aplicar spec**: `observed.error` visible en la tarjeta del servidor con el
-  texto de Docker (puerto ocupado, imagen inválida, memoria). El agente reintenta con backoff.
-- **Crash del servidor MC**: evento `die` con exit code ≠ 0 que nadie pidió → `Event` `crash` y, si
-  `restartPolicy` lo permite, Docker lo reinicia. Cada parada pedida (Stop/Kill/Remove del agente o
-  parada que el proxy deja hacer a mc-router) explica un solo `die` de ese contenedor en los 3 min
-  siguientes; no cuentan los de un servidor reservado, los de contenedores sin la spec del agente ni los de
-  un importado adoptado que aún no se ha recreado con las etiquetas `mcsm.*`.
-  Con más de 3 en una hora el agente lo para y lo **retiene** (guardado en su store): ni el
-  reconciliador, ni Docker, ni mc-router lo arrancan hasta un **Arrancar** manual o una versión
-  nueva de la spec; emite `Event` `crash_loop` y el panel pone su estado deseado en parado. Un OOM
-  emite `Event` `oom`.
-- **Backup fallido**: `save-on` garantizado en `defer`; job marcado `failed` con causa;
-  el fichero parcial se borra.
-- **Migración fallida**: cualquier paso fallido deja el origen intacto y arrancado como
-  estaba; se limpia lo creado en destino; el job lo explica paso a paso.
-- **Panel reiniciado a mitad de job**: los jobs `running` pasan a `failed` con
-  "interrumpido" al arrancar, salvo backups, que el agente reporta al reconectar.
+- **Node offline**: the UI marks it; spec changes are stored with a new version
+  and delivered in `SyncSpecs` on reconnect. Immediate actions (power,
+  console, files) fail with a clear message instead of being queued.
+- **Failure applying a spec**: `observed.error` visible on the server's card with Docker's
+  text (port in use, invalid image, memory). The agent retries with backoff.
+- **MC server crash**: a `die` event with exit code ≠ 0 that nobody requested → `Event` `crash` and, if
+  `restartPolicy` allows, Docker restarts it. Each requested stop (the agent's Stop/Kill/Remove or a
+  stop the proxy lets mc-router do) explains a single `die` of that container in the following 3 min;
+  those of a reserved server, those of containers without the agent's spec and those of
+  an adopted import that hasn't yet been recreated with the `mcsm.*` labels don't count.
+  With more than 3 in an hour the agent stops it and **holds** it (stored in its store): neither the
+  reconciler, nor Docker, nor mc-router starts it until a manual **Start** or a new spec
+  version; it emits `Event` `crash_loop` and the panel sets its desired state to stopped. An OOM
+  emits `Event` `oom`.
+- **Failed backup**: `save-on` guaranteed in `defer`; job marked `failed` with the cause;
+  the partial file is deleted.
+- **Failed migration**: any failed step leaves the source intact and running as
+  it was; whatever was created on the target is cleaned up; the job explains it step by step.
+- **Panel restarted mid-job**: `running` jobs become `failed` with
+  “interrupted” on startup, except backups, which the agent reports on reconnecting.
 
-## 11. Pruebas
+## 11. Tests
 
-- **Agente (Go)**: unitarias para `spec → ContainerConfig` (tablas), confinamiento de
-  rutas, cliente RCON (contra un servidor RCON falso), ping SLP (contra respuesta
-  grabada), reconciliador (con `docker.Fake` que simula estados), planificador de
-  backups y poda (con reloj inyectable). Integración (`go test -tags integration`)
-  contra el Docker real: crear un servidor itzg `VANILLA` pequeño, esperar healthy,
-  comando RCON, backup, restaurar, borrar.
-- **Panel (TS)**: Vitest para servicios (asignación de puertos, versionado, diff de
-  spec, migración con agentes simulados sobre el mismo protocolo), rutas HTTP con
-  `fastify.inject`, y un *agente falso en TS* que implementa el protocolo para probar
-  reconexión y `SyncSpecs`.
-- **Web**: Playwright sobre `docker-compose` de pruebas con panel + agente real + un
-  servidor itzg: login, crear servidor, ver logs, enviar comando, backup, restaurar.
-- **Protocolo**: `buf lint` y `buf breaking` en CI.
+- **Agent (Go)**: unit tests for `spec → ContainerConfig` (tables), path
+  confinement, RCON client (against a fake RCON server), SLP ping (against a
+  recorded response), reconciler (with a `docker.Fake` that simulates states), backup
+  scheduler and pruning (with an injectable clock). Integration (`go test -tags integration`)
+  against real Docker: create a small `VANILLA` itzg server, wait for healthy,
+  RCON command, backup, restore, delete.
+- **Panel (TS)**: Vitest for services (port allocation, versioning, spec
+  diff, migration with simulated agents over the same protocol), HTTP routes with
+  `fastify.inject`, and a *fake agent in TS* that implements the protocol to test
+  reconnection and `SyncSpecs`.
+- **Web**: Playwright on a test `docker-compose` with panel + real agent + an
+  itzg server: login, create server, view logs, send command, backup, restore.
+- **Protocol**: `buf lint` and `buf breaking` in CI.
 
-## 12. Despliegue
+## 12. Deployment
 
 `deploy/docker-compose.yml`:
 
 ```yaml
 services:
   panel:
-    image: mcsm-panel:latest   # construida desde panel/ con `docker compose build`
+    image: mcsm-panel:latest   # built from panel/ with `docker compose build`
     ports: ["8080:8080"]
     volumes: ["panel-data:/data"]
     environment: { PANEL_PUBLIC_URL: "http://192.168.1.10:8080" }
   agent:
-    image: mcsm-agent:latest   # construida desde agent/
+    image: mcsm-agent:latest   # built from agent/
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /srv/minecraft:/srv/minecraft
@@ -516,46 +516,46 @@ services:
       - /proc:/host/proc:ro
     environment:
       PANEL_URL: http://panel:8080
-      ENROLL_TOKEN: "<pegar de la UI>"
+      ENROLL_TOKEN: "<paste from the UI>"
       DATA_ROOT: /srv/minecraft
       HOST_PROC: /host/proc
 ```
 
-En nodos adicionales solo el servicio `agent`, con `PANEL_URL` apuntando a la IP del panel.
-La UI genera el bloque exacto con el token al dar de alta un nodo.
+On additional nodes only the `agent` service, with `PANEL_URL` pointing to the panel's IP.
+The UI generates the exact block with the token when a node is enrolled.
 
-## 13. Orden de construcción propuesto
+## 13. Proposed build order
 
-1. Protocolo (`proto/`) + esqueleto de agente y panel + alta de nodo + `Hello`.
-2. Spec → contenedor, reconciliador, power actions, estado observado. Primera UI: nodos y servidores.
-3. Logs y consola RCON.
-4. Métricas en vivo e histórico.
-5. Formulario completo de configuración de spec (todas las secciones) y plantillas.
-6. Backups (manual, programado, restaurar, descargar).
-7. Archivos.
-8. Importación de contenedores existentes.
-9. Migración entre nodos.
+1. Protocol (`proto/`) + agent and panel skeleton + node enrollment + `Hello`.
+2. Spec → container, reconciler, power actions, observed state. First UI: nodes and servers.
+3. Logs and RCON console.
+4. Live and historical metrics.
+5. Complete spec configuration form (all sections) and templates.
+6. Backups (manual, scheduled, restore, download).
+7. Files.
+8. Import of existing containers.
+9. Migration between nodes.
 10. mc-router.
-11. Compose de despliegue, imágenes, README.
+11. Deployment compose, images, README.
 
-Cada paso deja el sistema usable y probado antes del siguiente.
+Each step leaves the system usable and tested before the next.
 
-## 14. Notas de implementación verificadas (2026-10-12)
+## 14. Verified implementation notes (2026-10-12)
 
-- Cliente Docker en Go: módulos `github.com/moby/moby/client` v0.6.x y `github.com/moby/moby/api` v1.56.x
-  (el antiguo `github.com/docker/docker` está obsoleto desde Docker 29). Las llamadas toman
-  structs de opciones: `ContainerCreate(ctx, ContainerCreateOptions{...})`, `ContainerList(ctx, ContainerListOptions{All: true, Filters: ...})`.
-- Los contenedores de servidor se crean con `Tty: true` y `OpenStdin: true` (como en los ejemplos
-  oficiales de itzg). Así `ContainerLogs` devuelve texto plano sin cabeceras de multiplexado.
-- Los contenedores de servidor se conectan a una red Docker de usuario llamada `mcsm` a la que
-  también pertenece el agente; el agente alcanza RCON y el ping de estado por nombre DNS
-  `mcsm-<slug>` en el puerto interno 25565/25575. El puerto de juego interno es siempre 25565;
-  `ports.game` es el puerto del host.
-- Las `properties` de la spec se pasan a la imagen con `CUSTOM_SERVER_PROPERTIES` (pares
-  `clave=valor` separados por salto de línea), que admite cualquier clave de `server.properties`.
-- Ping de estado: `github.com/mcstatus-io/mcutil/v4` (`status.Modern` con `ReceiveLimitBytes` y `Ping: true`).
-  RCON: cliente Source RCON propio en `agent/internal/mc` (enmienda 2026-10-12: `mcutil/rcon` v4.3.1
-  tiene una carrera de datos entre `Login` y `Close`, escribe por stdout e ignora `context`).
-- WebSocket en Go: `github.com/coder/websocket`. Store del agente: `go.etcd.io/bbolt`.
-- Protobuf: `buf` 1.73 con plugins remotos `buf.build/protocolbuffers/go` y `buf.build/bufbuild/es` (v2, `@bufbuild/protobuf` 2.16).
-- Toolchain fijada en `mise.toml`: Go 1.27.2, buf 1.73.0; Node 26 y pnpm 12 ya instalados globalmente.
+- Docker client in Go: modules `github.com/moby/moby/client` v0.6.x and `github.com/moby/moby/api` v1.56.x
+  (the old `github.com/docker/docker` has been obsolete since Docker 29). Calls take option
+  structs: `ContainerCreate(ctx, ContainerCreateOptions{...})`, `ContainerList(ctx, ContainerListOptions{All: true, Filters: ...})`.
+- Server containers are created with `Tty: true` and `OpenStdin: true` (as in the official itzg
+  examples). That way `ContainerLogs` returns plain text without multiplexing headers.
+- Server containers connect to a user Docker network called `mcsm` that the agent
+  also belongs to; the agent reaches RCON and the status ping by DNS name
+  `mcsm-<slug>` on internal port 25565/25575. The internal game port is always 25565;
+  `ports.game` is the host's port.
+- The spec's `properties` are passed to the image with `CUSTOM_SERVER_PROPERTIES` (pairs
+  `key=value` separated by a newline), which accepts any `server.properties` key.
+- Status ping: `github.com/mcstatus-io/mcutil/v4` (`status.Modern` with `ReceiveLimitBytes` and `Ping: true`).
+  RCON: own Source RCON client in `agent/internal/mc` (amendment 2026-10-12: `mcutil/rcon` v4.3.1
+  has a data race between `Login` and `Close`, writes to stdout and ignores `context`).
+- WebSocket in Go: `github.com/coder/websocket`. Agent store: `go.etcd.io/bbolt`.
+- Protobuf: `buf` 1.73 with remote plugins `buf.build/protocolbuffers/go` and `buf.build/bufbuild/es` (v2, `@bufbuild/protobuf` 2.16).
+- Toolchain pinned in `mise.toml`: Go 1.27.2, buf 1.73.0; Node 26 and pnpm 12 already installed globally.

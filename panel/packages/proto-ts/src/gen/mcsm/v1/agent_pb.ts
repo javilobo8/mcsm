@@ -13,8 +13,8 @@ export const file_mcsm_v1_agent: GenFile = /*@__PURE__*/
   fileDesc("ChNtY3NtL3YxL2FnZW50LnByb3RvEgdtY3NtLnYxIr4SCghFbnZlbG9wZRIKCgJpZBgBIAEoBBIRCglzdHJlYW1faWQYAiABKAQSHwoFaGVsbG8YCiABKAsyDi5tY3NtLnYxLkhlbGxvSAASJgoJaGVsbG9fYWNrGAsgASgLMhEubWNzbS52MS5IZWxsb0Fja0gAEigKCnN5bmNfc3BlY3MYDCABKAsyEi5tY3NtLnYxLlN5bmNTcGVjc0gAEigKCmFwcGx5X3NwZWMYDSABKAsyEi5tY3NtLnYxLkFwcGx5U3BlY0gAEi4KDXJlbW92ZV9zZXJ2ZXIYDiABKAsyFS5tY3NtLnYxLlJlbW92ZVNlcnZlckgAEiwKDHBvd2VyX2FjdGlvbhgPIAEoCzIULm1jc20udjEuUG93ZXJBY3Rpb25IABIsCgxzZW5kX2NvbW1hbmQYECABKAsyFC5tY3NtLnYxLlNlbmRDb21tYW5kSAASMAoOY29tbWFuZF9yZXN1bHQYESABKAsyFi5tY3NtLnYxLkNvbW1hbmRSZXN1bHRIABIwCg5zdWJzY3JpYmVfbG9ncxgSIAEoCzIWLm1jc20udjEuU3Vic2NyaWJlTG9nc0gAEiQKCGxvZ19saW5lGBMgASgLMhAubWNzbS52MS5Mb2dMaW5lSAASLAoMc3RyZWFtX2Nsb3NlGBQgASgLMhQubWNzbS52MS5TdHJlYW1DbG9zZUgAEjIKD3NlcnZlcl9vYnNlcnZlZBgVIAEoCzIXLm1jc20udjEuU2VydmVyT2JzZXJ2ZWRIABIbCgNhY2sYFiABKAsyDC5tY3NtLnYxLkFja0gAEh8KBWVycm9yGBcgASgLMg4ubWNzbS52MS5FcnJvckgAEiwKDG1ldHJpY19iYXRjaBgeIAEoCzIULm1jc20udjEuTWV0cmljQmF0Y2hIABIoCgpiYWNrdXBfbm93GDIgASgLMhIubWNzbS52MS5CYWNrdXBOb3dIABIwCg5iYWNrdXBfcmVzdG9yZRgzIAEoCzIWLm1jc20udjEuQmFja3VwUmVzdG9yZUgAEi4KDWJhY2t1cF9kZWxldGUYNCABKAsyFS5tY3NtLnYxLkJhY2t1cERlbGV0ZUgAEioKC2JhY2t1cF9saXN0GDUgASgLMhMubWNzbS52MS5CYWNrdXBMaXN0SAASNAoQYmFja3VwX2ludmVudG9yeRg2IAEoCzIYLm1jc20udjEuQmFja3VwSW52ZW50b3J5SAASMAoOYmFja3VwX2NyZWF0ZWQYNyABKAsyFi5tY3NtLnYxLkJhY2t1cENyZWF0ZWRIABIwCg5iYWNrdXBfZGVsZXRlZBg4IAEoCzIWLm1jc20udjEuQmFja3VwRGVsZXRlZEgAEiwKDGpvYl9wcm9ncmVzcxg5IAEoCzIULm1jc20udjEuSm9iUHJvZ3Jlc3NIABIoCgpmaWxlc19saXN0GEYgASgLMhIubWNzbS52MS5GaWxlc0xpc3RIABI1ChFmaWxlc19saXN0X3Jlc3VsdBhHIAEoCzIYLm1jc20udjEuRmlsZXNMaXN0UmVzdWx0SAASKAoKZmlsZXNfc3RhdBhIIAEoCzISLm1jc20udjEuRmlsZXNTdGF0SAASNQoRZmlsZXNfc3RhdF9yZXN1bHQYSSABKAsyGC5tY3NtLnYxLkZpbGVzU3RhdFJlc3VsdEgAEigKCmZpbGVzX3JlYWQYSiABKAsyEi5tY3NtLnYxLkZpbGVzUmVhZEgAEjUKEWZpbGVzX3JlYWRfcmVzdWx0GEsgASgLMhgubWNzbS52MS5GaWxlc1JlYWRSZXN1bHRIABIqCgtmaWxlc193cml0ZRhMIAEoCzITLm1jc20udjEuRmlsZXNXcml0ZUgAEioKC2ZpbGVzX21rZGlyGE0gASgLMhMubWNzbS52MS5GaWxlc01rZGlySAASLAoMZmlsZXNfcmVuYW1lGE4gASgLMhQubWNzbS52MS5GaWxlc1JlbmFtZUgAEiwKDGZpbGVzX2RlbGV0ZRhPIAEoCzIULm1jc20udjEuRmlsZXNEZWxldGVIABIwCg5maWxlc19kb3dubG9hZBhQIAEoCzIWLm1jc20udjEuRmlsZXNEb3dubG9hZEgAEiwKDGZpbGVzX3VwbG9hZBhRIAEoCzIULm1jc20udjEuRmlsZXNVcGxvYWRIABIqCgtpbXBvcnRfc2NhbhhaIAEoCzITLm1jc20udjEuSW1wb3J0U2NhbkgAEjcKEmltcG9ydF9zY2FuX3Jlc3VsdBhbIAEoCzIZLm1jc20udjEuSW1wb3J0U2NhblJlc3VsdEgAEiwKDGltcG9ydF9hZG9wdBhcIAEoCzIULm1jc20udjEuSW1wb3J0QWRvcHRIABIqCgtiYWNrdXBfcHVzaBhkIAEoCzITLm1jc20udjEuQmFja3VwUHVzaEgAEjcKEmJhY2t1cF9wdXNoX3Jlc3VsdBhlIAEoCzIZLm1jc20udjEuQmFja3VwUHVzaFJlc3VsdEgAEjIKD21pZ3JhdGVfcmVjZWl2ZRhmIAEoCzIXLm1jc20udjEuTWlncmF0ZVJlY2VpdmVIABIuCg1taWdyYXRlX2Fib3J0GGcgASgLMhUubWNzbS52MS5NaWdyYXRlQWJvcnRIABIwCg5taWdyYXRlX3JldGlyZRhoIAEoCzIWLm1jc20udjEuTWlncmF0ZVJldGlyZUgAEjIKD21pZ3JhdGVfY29uZmlybRhpIAEoCzIXLm1jc20udjEuTWlncmF0ZUNvbmZpcm1IABIsCgxyb3V0ZXJfYXBwbHkYbiABKAsyFC5tY3NtLnYxLlJvdXRlckFwcGx5SAASLgoNcm91dGVyX3JlbW92ZRhvIAEoCzIVLm1jc20udjEuUm91dGVyUmVtb3ZlSAASMgoPcm91dGVyX29ic2VydmVkGHAgASgLMhcubWNzbS52MS5Sb3V0ZXJPYnNlcnZlZEgAEh8KBWV2ZW50GBggASgLMg4ubWNzbS52MS5FdmVudEgAEjAKDnN0cmVhbV9kcm9wcGVkGHggASgLMhYubWNzbS52MS5TdHJlYW1Ecm9wcGVkSAASLAoMcm90YXRlX3Rva2VuGHkgASgLMhQubWNzbS52MS5Sb3RhdGVUb2tlbkgAQgYKBGJvZHkiXQoISG9zdEluZm8SEAoIaG9zdG5hbWUYASABKAkSDAoEY3B1cxgCIAEoDRIXCg9tZW1fdG90YWxfYnl0ZXMYAyABKAQSCgoCb3MYBCABKAkSDAoEYXJjaBgFIAEoCSLNAgoFSGVsbG8SFQoNYWdlbnRfdmVyc2lvbhgBIAEoCRIWCg5kb2NrZXJfdmVyc2lvbhgCIAEoCRIfCgRob3N0GAMgASgLMhEubWNzbS52MS5Ib3N0SW5mbxI3Cg1zcGVjX3ZlcnNpb25zGAQgAygLMiAubWNzbS52MS5IZWxsby5TcGVjVmVyc2lvbnNFbnRyeRI5Cg5kZXNpcmVkX3N0YXRlcxgFIAMoCzIhLm1jc20udjEuSGVsbG8uRGVzaXJlZFN0YXRlc0VudHJ5GjMKEVNwZWNWZXJzaW9uc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoBDoCOAEaSwoSRGVzaXJlZFN0YXRlc0VudHJ5EgsKA2tleRgBIAEoCRIkCgV2YWx1ZRgCIAEoDjIVLm1jc20udjEuRGVzaXJlZFN0YXRlOgI4ASIbCghIZWxsb0FjaxIPCgdub2RlX2lkGAEgASgJIn8KClNlcnZlclNwZWMSEQoJc2VydmVyX2lkGAEgASgJEgwKBHNsdWcYAiABKAkSDwoHdmVyc2lvbhgDIAEoBBIsCg1kZXNpcmVkX3N0YXRlGAQgASgOMhUubWNzbS52MS5EZXNpcmVkU3RhdGUSEQoJc3BlY19qc29uGAUgASgMIkYKCVN5bmNTcGVjcxIkCgdzZXJ2ZXJzGAEgAygLMhMubWNzbS52MS5TZXJ2ZXJTcGVjEhMKC3JlbW92ZWRfaWRzGAIgAygJIjAKCUFwcGx5U3BlYxIjCgZzZXJ2ZXIYASABKAsyEy5tY3NtLnYxLlNlcnZlclNwZWMiNgoMUmVtb3ZlU2VydmVyEhEKCXNlcnZlcl9pZBgBIAEoCRITCgtkZWxldGVfZGF0YRgCIAEoCCJKCgtQb3dlckFjdGlvbhIRCglzZXJ2ZXJfaWQYASABKAkSKAoGYWN0aW9uGAIgASgOMhgubWNzbS52MS5Qb3dlckFjdGlvblR5cGUiMQoLU2VuZENvbW1hbmQSEQoJc2VydmVyX2lkGAEgASgJEg8KB2NvbW1hbmQYAiABKAkiHwoNQ29tbWFuZFJlc3VsdBIOCgZvdXRwdXQYASABKAkiMAoNU3Vic2NyaWJlTG9ncxIRCglzZXJ2ZXJfaWQYASABKAkSDAoEdGFpbBgCIAEoDSI+CgdMb2dMaW5lEhEKCXNlcnZlcl9pZBgBIAEoCRISCgp0c191bml4X21zGAIgASgDEgwKBGxpbmUYAyABKAkiHQoLU3RyZWFtQ2xvc2USDgoGcmVhc29uGAEgASgJImwKCE1jU3RhdHVzEg4KBm9ubGluZRgBIAEoCBIWCg5wbGF5ZXJzX29ubGluZRgCIAEoDRITCgtwbGF5ZXJzX21heBgDIAEoDRIPCgd2ZXJzaW9uGAQgASgJEhIKCmxhdGVuY3lfbXMYBSABKA0isgEKCE9ic2VydmVkEhQKDGNvbnRhaW5lcl9pZBgBIAEoCRINCgVzdGF0ZRgCIAEoCRIOCgZoZWFsdGgYAyABKAkSFwoPc3RhcnRlZF9hdF91bml4GAQgASgDEhEKCWV4aXRfY29kZRgFIAEoBRIXCg9hcHBsaWVkX3ZlcnNpb24YBiABKAQSDQoFZXJyb3IYByABKAkSHQoCbWMYCCABKAsyES5tY3NtLnYxLk1jU3RhdHVzIlwKDlNlcnZlck9ic2VydmVkEhEKCXNlcnZlcl9pZBgBIAEoCRIjCghvYnNlcnZlZBgCIAEoCzIRLm1jc20udjEuT2JzZXJ2ZWQSEgoKdHNfdW5peF9tcxgDIAEoAyIFCgNBY2siJgoFRXJyb3ISDAoEY29kZRgBIAEoCRIPCgdtZXNzYWdlGAIgASgJInUKC01ldHJpY0JhdGNoEg8KB3RzX3VuaXgYASABKAMSJwoEaG9zdBgCIAEoCzIZLm1jc20udjEuSG9zdE1ldHJpY1NhbXBsZRIsCgdzZXJ2ZXJzGAMgAygLMhsubWNzbS52MS5TZXJ2ZXJNZXRyaWNTYW1wbGUihwEKEEhvc3RNZXRyaWNTYW1wbGUSDwoHY3B1X3BjdBgBIAEoARIWCg5tZW1fdXNlZF9ieXRlcxgCIAEoBBIXCg9tZW1fdG90YWxfYnl0ZXMYAyABKAQSFwoPZGlza191c2VkX2J5dGVzGAQgASgEEhgKEGRpc2tfdG90YWxfYnl0ZXMYBSABKAQi+wEKElNlcnZlck1ldHJpY1NhbXBsZRIRCglzZXJ2ZXJfaWQYASABKAkSDwoHY3B1X3BjdBgCIAEoARIRCgltZW1fYnl0ZXMYAyABKAQSFwoPbWVtX2xpbWl0X2J5dGVzGAQgASgEEhQKDG5ldF9yeF9ieXRlcxgFIAEoBBIUCgxuZXRfdHhfYnl0ZXMYBiABKAQSEQoJbWNfb25saW5lGAcgASgIEhYKDnBsYXllcnNfb25saW5lGAggASgNEhMKC3BsYXllcnNfbWF4GAkgASgNEg8KB3BpbmdfbXMYCiABKA0SEAoDdHBzGAsgASgBSACIAQFCBgoEX3RwcyLHAQoKQmFja3VwSW5mbxIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkSEgoKc2l6ZV9ieXRlcxgDIAEoBBIOCgZzaGEyNTYYBCABKAkSFAoMc3BlY192ZXJzaW9uGAUgASgEEicKB3RyaWdnZXIYBiABKA4yFi5tY3NtLnYxLkJhY2t1cFRyaWdnZXISFwoPc3RhcnRlZF91bml4X21zGAcgASgDEhgKEGZpbmlzaGVkX3VuaXhfbXMYCCABKAMiVwoJQmFja3VwTm93EhEKCXNlcnZlcl9pZBgBIAEoCRIOCgZqb2JfaWQYAiABKAkSJwoHdHJpZ2dlchgDIAEoDjIWLm1jc20udjEuQmFja3VwVHJpZ2dlciJECg1CYWNrdXBSZXN0b3JlEhEKCXNlcnZlcl9pZBgBIAEoCRIQCghmaWxlbmFtZRgCIAEoCRIOCgZqb2JfaWQYAyABKAkiMwoMQmFja3VwRGVsZXRlEhEKCXNlcnZlcl9pZBgBIAEoCRIQCghmaWxlbmFtZRgCIAEoCSIfCgpCYWNrdXBMaXN0EhEKCXNlcnZlcl9pZBgBIAEoCSKBAQoPQmFja3VwSW52ZW50b3J5EhIKCnNlcnZlcl9pZHMYASADKAkSJAoHYmFja3VwcxgCIAMoCzITLm1jc20udjEuQmFja3VwSW5mbxIgCgRqb2JzGAMgAygLMhIubWNzbS52MS5Kb2JSZWNvcmQSEgoKcmVxdWVzdF9pZBgEIAEoBCJECg1CYWNrdXBDcmVhdGVkEiMKBmJhY2t1cBgBIAEoCzITLm1jc20udjEuQmFja3VwSW5mbxIOCgZqb2JfaWQYAiABKAkiRAoNQmFja3VwRGVsZXRlZBIRCglzZXJ2ZXJfaWQYASABKAkSEAoIZmlsZW5hbWUYAiABKAkSDgoGcmVhc29uGAMgASgJIqwBCgtKb2JQcm9ncmVzcxIOCgZqb2JfaWQYASABKAkSEQoJc2VydmVyX2lkGAIgASgJEgwKBHR5cGUYAyABKAkSIgoGc3RhdHVzGAQgASgOMhIubWNzbS52MS5Kb2JTdGF0dXMSEAoIcHJvZ3Jlc3MYBSABKA0SDwoHbWVzc2FnZRgGIAEoCRIRCglsb2dfY2h1bmsYByABKAkSEgoKdHNfdW5peF9tcxgIIAEoAyLDAQoJSm9iUmVjb3JkEg4KBmpvYl9pZBgBIAEoCRIRCglzZXJ2ZXJfaWQYAiABKAkSDAoEdHlwZRgDIAEoCRIiCgZzdGF0dXMYBCABKA4yEi5tY3NtLnYxLkpvYlN0YXR1cxIQCghwcm9ncmVzcxgFIAEoDRIPCgdtZXNzYWdlGAYgASgJEgsKA2xvZxgHIAEoCRIXCg9zdGFydGVkX3VuaXhfbXMYCCABKAMSGAoQZmluaXNoZWRfdW5peF9tcxgJIAEoAyJtCglGaWxlRW50cnkSDAoEbmFtZRgBIAEoCRILCgNkaXIYAiABKAgSDwoHc3ltbGluaxgDIAEoCBIMCgRzaXplGAQgASgEEhgKEG1vZF90aW1lX3VuaXhfbXMYBSABKAMSDAoEbW9kZRgGIAEoDSIsCglGaWxlc0xpc3QSEQoJc2VydmVyX2lkGAEgASgJEgwKBHBhdGgYAiABKAkiSQoPRmlsZXNMaXN0UmVzdWx0EiMKB2VudHJpZXMYASADKAsyEi5tY3NtLnYxLkZpbGVFbnRyeRIRCgl0cnVuY2F0ZWQYAiABKAgiLAoJRmlsZXNTdGF0EhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJIjQKD0ZpbGVzU3RhdFJlc3VsdBIhCgVlbnRyeRgBIAEoCzISLm1jc20udjEuRmlsZUVudHJ5Ij8KCUZpbGVzUmVhZBIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCRIRCgltYXhfYnl0ZXMYAyABKA0iMAoPRmlsZXNSZWFkUmVzdWx0Eg8KB2NvbnRlbnQYASABKAwSDAoEc2l6ZRgCIAEoBCI+CgpGaWxlc1dyaXRlEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEg8KB2NvbnRlbnQYAyABKAwiLQoKRmlsZXNNa2RpchIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCSI6CgtGaWxlc1JlbmFtZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEZnJvbRgCIAEoCRIKCgJ0bxgDIAEoCSIuCgtGaWxlc0RlbGV0ZRIRCglzZXJ2ZXJfaWQYASABKAkSDAoEcGF0aBgCIAEoCSJFCg1GaWxlc0Rvd25sb2FkEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEhMKC3RyYW5zZmVyX2lkGAMgASgJIlEKC0ZpbGVzVXBsb2FkEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRwYXRoGAIgASgJEhMKC3RyYW5zZmVyX2lkGAMgASgJEgwKBHNpemUYBCABKAMiDAoKSW1wb3J0U2NhbiJTChBJbXBvcnRTY2FuUmVzdWx0EiwKCmNhbmRpZGF0ZXMYASADKAsyGC5tY3NtLnYxLkltcG9ydENhbmRpZGF0ZRIRCglkYXRhX3Jvb3QYAiABKAki2wMKD0ltcG9ydENhbmRpZGF0ZRIUCgxjb250YWluZXJfaWQYASABKAkSDAoEbmFtZRgCIAEoCRINCgVpbWFnZRgDIAEoCRINCgVzdGF0ZRgEIAEoCRIuCgNlbnYYBSADKAsyIS5tY3NtLnYxLkltcG9ydENhbmRpZGF0ZS5FbnZFbnRyeRIiCgVwb3J0cxgGIAMoCzITLm1jc20udjEuSW1wb3J0UG9ydBIkCgZtb3VudHMYByADKAsyFC5tY3NtLnYxLkltcG9ydE1vdW50EhYKDnJlc3RhcnRfcG9saWN5GAggASgJEhoKEm1lbW9yeV9saW1pdF9ieXRlcxgJIAEoAxIRCgluYW5vX2NwdXMYCiABKAMSFAoMbmV0d29ya19tb2RlGAsgASgJEhAKCG5ldHdvcmtzGAwgAygJEjQKBmxhYmVscxgNIAMoCzIkLm1jc20udjEuSW1wb3J0Q2FuZGlkYXRlLkxhYmVsc0VudHJ5EgwKBHVzZXIYDiABKAkaKgoIRW52RW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ARotCgtMYWJlbHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIlcKCkltcG9ydFBvcnQSFgoOY29udGFpbmVyX3BvcnQYASABKA0SDQoFcHJvdG8YAiABKAkSDwoHaG9zdF9pcBgDIAEoCRIRCglob3N0X3BvcnQYBCABKA0iYgoLSW1wb3J0TW91bnQSDAoEdHlwZRgBIAEoCRIOCgZzb3VyY2UYAiABKAkSEwoLZGVzdGluYXRpb24YAyABKAkSEgoKcmVhZF93cml0ZRgEIAEoCBIMCgRuYW1lGAUgASgJIjIKC0ltcG9ydEFkb3B0EiMKBnNlcnZlchgBIAEoCzITLm1jc20udjEuU2VydmVyU3BlYyJGCgpCYWNrdXBQdXNoEhEKCXNlcnZlcl9pZBgBIAEoCRIQCghmaWxlbmFtZRgCIAEoCRITCgt0cmFuc2Zlcl9pZBgDIAEoCSJKChBCYWNrdXBQdXNoUmVzdWx0EhIKCnNpemVfYnl0ZXMYASABKAQSDgoGc2hhMjU2GAIgASgJEhIKCmRhdGFfYnl0ZXMYAyABKAQitgEKDk1pZ3JhdGVSZWNlaXZlEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEg4KBmpvYl9pZBgDIAEoCRIUCgxtaWdyYXRpb25faWQYBCABKAkSEwoLdHJhbnNmZXJfaWQYBSABKAkSEAoIZmlsZW5hbWUYBiABKAkSEgoKc2l6ZV9ieXRlcxgHIAEoBBIOCgZzaGEyNTYYCCABKAkSEgoKZGF0YV9ieXRlcxgJIAEoBCJFCgxNaWdyYXRlQWJvcnQSEQoJc2VydmVyX2lkGAEgASgJEgwKBHNsdWcYAiABKAkSFAoMbWlncmF0aW9uX2lkGAMgASgJInMKDU1pZ3JhdGVSZXRpcmUSEQoJc2VydmVyX2lkGAEgASgJEgwKBHNsdWcYAiABKAkSFAoMbWlncmF0aW9uX2lkGAMgASgJEhMKC2RlbGV0ZV9kYXRhGAQgASgIEhYKDnNvdXJjZV92ZXJzaW9uGAUgASgEIkcKDk1pZ3JhdGVDb25maXJtEhEKCXNlcnZlcl9pZBgBIAEoCRIMCgRzbHVnGAIgASgJEhQKDG1pZ3JhdGlvbl9pZBgDIAEoCSJ5CgpSb3V0ZXJTcGVjEhEKCWhvc3RfcG9ydBgBIAEoDRIRCglhdXRvc2NhbGUYAiABKAgSJAocYXV0b3NjYWxlX2Rvd25fYWZ0ZXJfbWludXRlcxgDIAEoDRIfChdhdXRvc2NhbGVfYWxsb3dfcGxheWVycxgEIAMoCSIwCgtSb3V0ZXJBcHBseRIhCgRzcGVjGAEgASgLMhMubWNzbS52MS5Sb3V0ZXJTcGVjIg4KDFJvdXRlclJlbW92ZSLEAQoOUm91dGVyT2JzZXJ2ZWQSEgoKY29uZmlndXJlZBgBIAEoCBINCgVzdGF0ZRgCIAEoCRIUCgxjb250YWluZXJfaWQYAyABKAkSDQoFaW1hZ2UYBCABKAkSEQoJaG9zdF9wb3J0GAUgASgNEhEKCWF1dG9zY2FsZRgGIAEoCBINCgVlcnJvchgHIAEoCRISCgp0c191bml4X21zGAggASgDEiEKBHNwZWMYCSABKAsyEy5tY3NtLnYxLlJvdXRlclNwZWMicQoFRXZlbnQSIgoFbGV2ZWwYASABKA4yEy5tY3NtLnYxLkV2ZW50TGV2ZWwSEQoJc2VydmVyX2lkGAIgASgJEgwKBGtpbmQYAyABKAkSDwoHbWVzc2FnZRgEIAEoCRISCgp0c191bml4X21zGAUgASgDIh4KDVN0cmVhbURyb3BwZWQSDQoFY291bnQYASABKAQiHAoLUm90YXRlVG9rZW4SDQoFdG9rZW4YASABKAkqYwoMRGVzaXJlZFN0YXRlEh0KGURFU0lSRURfU1RBVEVfVU5TUEVDSUZJRUQQABIZChVERVNJUkVEX1NUQVRFX1JVTk5JTkcQARIZChVERVNJUkVEX1NUQVRFX1NUT1BQRUQQAiqoAQoPUG93ZXJBY3Rpb25UeXBlEiEKHVBPV0VSX0FDVElPTl9UWVBFX1VOU1BFQ0lGSUVEEAASGwoXUE9XRVJfQUNUSU9OX1RZUEVfU1RBUlQQARIaChZQT1dFUl9BQ1RJT05fVFlQRV9TVE9QEAISHQoZUE9XRVJfQUNUSU9OX1RZUEVfUkVTVEFSVBADEhoKFlBPV0VSX0FDVElPTl9UWVBFX0tJTEwQBCqqAQoNQmFja3VwVHJpZ2dlchIeChpCQUNLVVBfVFJJR0dFUl9VTlNQRUNJRklFRBAAEhkKFUJBQ0tVUF9UUklHR0VSX01BTlVBTBABEhwKGEJBQ0tVUF9UUklHR0VSX1NDSEVEVUxFRBACEiAKHEJBQ0tVUF9UUklHR0VSX1BSRV9NSUdSQVRJT04QAxIeChpCQUNLVVBfVFJJR0dFUl9QUkVfUkVTVE9SRRAEKmkKCUpvYlN0YXR1cxIaChZKT0JfU1RBVFVTX1VOU1BFQ0lGSUVEEAASFgoSSk9CX1NUQVRVU19SVU5OSU5HEAESEQoNSk9CX1NUQVRVU19PSxACEhUKEUpPQl9TVEFUVVNfRkFJTEVEEAMqbAoKRXZlbnRMZXZlbBIbChdFVkVOVF9MRVZFTF9VTlNQRUNJRklFRBAAEhQKEEVWRU5UX0xFVkVMX0lORk8QARIUChBFVkVOVF9MRVZFTF9XQVJOEAISFQoRRVZFTlRfTEVWRUxfRVJST1IQA0J1Cgtjb20ubWNzbS52MUIKQWdlbnRQcm90b1ABWh1tY3NtL2FnZW50L2dlbi9tY3NtL3YxO21jc212MaICA01YWKoCB01jc20uVjHKAgdNY3NtXFYx4gITTWNzbVxWMVxHUEJNZXRhZGF0YeoCCE1jc206OlYxYgZwcm90bzM");
 
 /**
- * Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
- * petición y su respuesta; `stream_id` agrupa los frames de un stream.
+ * Envelope is the only type that travels over the WebSocket. `id` identifies a
+ * request and its response; `stream_id` groups the frames of a stream.
  *
  * @generated from message mcsm.v1.Envelope
  */
@@ -330,7 +330,7 @@ export type Envelope = Message<"mcsm.v1.Envelope"> & {
   } | {
     /**
      * ── plan-9 ──
-     * Campo 24: reservado desde el Plan 1 para Event (arreglos transversales).
+     * Field 24: reserved since Plan 1 for Event (cross-cutting fixes).
      *
      * @generated from field: mcsm.v1.Event event = 24;
      */
@@ -420,8 +420,8 @@ export type Hello = Message<"mcsm.v1.Hello"> & {
   specVersions: { [key: string]: bigint };
 
   /**
-   * Estado deseado que el agente tiene guardado por servidor. El panel reenvía en
-   * SyncSpecs las specs cuya versión o estado deseado difieren de los suyos.
+   * Desired state the agent has stored per server. The panel resends in
+   * SyncSpecs the specs whose version or desired state differ from its own.
    *
    * @generated from field: map<string, mcsm.v1.DesiredState> desired_states = 5;
    */
@@ -612,7 +612,7 @@ export const CommandResultSchema: GenMessage<CommandResult> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 10);
 
 /**
- * Respuesta: Ack con envelope.stream_id = envelope.id de la petición.
+ * Response: Ack with envelope.stream_id = the request's envelope.id.
  *
  * @generated from message mcsm.v1.SubscribeLogs
  */
@@ -813,33 +813,33 @@ export const AckSchema: GenMessage<Ack> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 17);
 
 /**
- * Respuesta de error a una petición (mismo id). Catálogo de `code`, con su traducción a
- * HTTP en el panel (agentErrorToHttp en panel/apps/api/src/lib/http.ts). Constantes:
- * agent/internal/errcode (Go) y panel/apps/api/src/agents/error-codes.ts (TS); un código
- * nuevo se añade en los tres sitios. Un código desconocido para el panel es 502.
- *   invalid_spec     spec inválida (server_id o slug)                  400
- *   invalid_request  petición mal formada                              400
- *   unknown_server   el nodo no conoce ese servidor                    404
- *   not_found        recurso inexistente (fichero, copia…)            404
- *   busy             servidor ocupado o reservado (el mensaje da el motivo)  409
- *   exists           ya existe                                         409
- *   unsupported      el agente no entiende el cuerpo: desactualizado   409
- *   too_large        demasiado grande                                  413
- *   invalid_path     ruta con «..», caracteres de control o fichero no regular   400
- *   path_outside     la ruta resuelta sale de /data del servidor        400
- *   root             operación no permitida sobre la raíz               400
- *   is_dir           era un fichero y es una carpeta                    400
- *   not_dir          era una carpeta y es un fichero                    400
- *   transfer_failed  subida/descarga fallida                            502
- *   io_error         error de E/S del host                              502
- *   external_data    los datos del servidor están fuera de DATA_ROOT (dataPath):  409
- *                    sin copias de seguridad ni archivos (Plan 6)
- *   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 con el texto
- *                    del agente o de Docker (spec §10)
- *   backup_failed    fallo de una copia, restauración o borrado de copias  502
- * Solo en el panel (AgentError local, nunca viajan): disconnected y syncing (409),
+ * Error response to a request (same id). Catalog of `code`, with its translation to
+ * HTTP in the panel (agentErrorToHttp in panel/apps/api/src/lib/http.ts). Constants:
+ * agent/internal/errcode (Go) and panel/apps/api/src/agents/error-codes.ts (TS); a new
+ * code is added in all three places. A code unknown to the panel is 502.
+ *   invalid_spec     invalid spec (server_id or slug)                  400
+ *   invalid_request  malformed request                                 400
+ *   unknown_server   the node does not know that server                404
+ *   not_found        nonexistent resource (file, backup…)             404
+ *   busy             server busy or reserved (the message gives the reason)  409
+ *   exists           already exists                                    409
+ *   unsupported      the agent does not understand the body: outdated  409
+ *   too_large        too large                                         413
+ *   invalid_path     path with "..", control characters or a non-regular file   400
+ *   path_outside     the resolved path leaves the server's /data        400
+ *   root             operation not allowed on the root                  400
+ *   is_dir           it was a file and is a folder                      400
+ *   not_dir          it was a folder and is a file                      400
+ *   transfer_failed  upload/download failed                             502
+ *   io_error         host I/O error                                     502
+ *   external_data    the server's data is outside DATA_ROOT (dataPath):  409
+ *                    no backups or files (Plan 6)
+ *   apply_failed, remove_failed, power_failed, bad_spec, rcon_failed   502 with the text
+ *                    from the agent or Docker (spec §10)
+ *   backup_failed    a backup, restore or backup deletion failed        502
+ * Only in the panel (local AgentError, never sent): disconnected and syncing (409),
  * timeout (504), protocol (502).
- * El agente nunca responde a un Ack o un Error recibidos.
+ * The agent never replies to a received Ack or Error.
  *
  * @generated from message mcsm.v1.Error
  */
@@ -863,22 +863,22 @@ export const ErrorSchema: GenMessage<Error> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 18);
 
 /**
- * MetricBatch agrupa las métricas de un ciclo de muestreo (cada 10 s, spec §6.4).
- * Agente → panel, no solicitado (Envelope.id = 0). Solo lleva servidores cuyo
- * contenedor está en marcha.
+ * MetricBatch groups the metrics of one sampling cycle (every 10 s, spec §6.4).
+ * Agent → panel, unsolicited (Envelope.id = 0). It only carries servers whose
+ * container is running.
  *
  * @generated from message mcsm.v1.MetricBatch
  */
 export type MetricBatch = Message<"mcsm.v1.MetricBatch"> & {
   /**
-   * Epoch en segundos, redondeado hacia abajo a múltiplo de 10.
+   * Epoch in seconds, rounded down to a multiple of 10.
    *
    * @generated from field: int64 ts_unix = 1;
    */
   tsUnix: bigint;
 
   /**
-   * Ausente mientras no haya dos lecturas de CPU del host.
+   * Absent until there are two host CPU readings.
    *
    * @generated from field: mcsm.v1.HostMetricSample host = 2;
    */
@@ -902,14 +902,14 @@ export const MetricBatchSchema: GenMessage<MetricBatch> = /*@__PURE__*/
  */
 export type HostMetricSample = Message<"mcsm.v1.HostMetricSample"> & {
   /**
-   * 0–100 sobre todas las CPU del host.
+   * 0–100 over all the host's CPUs.
    *
    * @generated from field: double cpu_pct = 1;
    */
   cpuPct: number;
 
   /**
-   * Total menos disponible.
+   * Total minus available.
    *
    * @generated from field: uint64 mem_used_bytes = 2;
    */
@@ -921,7 +921,7 @@ export type HostMetricSample = Message<"mcsm.v1.HostMetricSample"> & {
   memTotalBytes: bigint;
 
   /**
-   * Sistema de ficheros que contiene DATA_ROOT.
+   * Filesystem containing DATA_ROOT.
    *
    * @generated from field: uint64 disk_used_bytes = 4;
    */
@@ -950,14 +950,14 @@ export type ServerMetricSample = Message<"mcsm.v1.ServerMetricSample"> & {
   serverId: string;
 
   /**
-   * 100 = un núcleo completo (mismo criterio que `docker stats`).
+   * 100 = one full core (same criterion as `docker stats`).
    *
    * @generated from field: double cpu_pct = 2;
    */
   cpuPct: number;
 
   /**
-   * Uso sin la caché de páginas inactiva.
+   * Usage without the inactive page cache.
    *
    * @generated from field: uint64 mem_bytes = 3;
    */
@@ -969,7 +969,7 @@ export type ServerMetricSample = Message<"mcsm.v1.ServerMetricSample"> & {
   memLimitBytes: bigint;
 
   /**
-   * Acumulados desde que arrancó el contenedor (todas las interfaces).
+   * Accumulated since the container started (all interfaces).
    *
    * @generated from field: uint64 net_rx_bytes = 5;
    */
@@ -981,7 +981,7 @@ export type ServerMetricSample = Message<"mcsm.v1.ServerMetricSample"> & {
   netTxBytes: bigint;
 
   /**
-   * El Server List Ping respondió; si es false, players_* y ping_ms no significan nada.
+   * The Server List Ping responded; if false, players_* and ping_ms mean nothing.
    *
    * @generated from field: bool mc_online = 7;
    */
@@ -1003,7 +1003,7 @@ export type ServerMetricSample = Message<"mcsm.v1.ServerMetricSample"> & {
   pingMs: number;
 
   /**
-   * Solo PAPER/PURPUR: TPS del último minuto, medido en los últimos 45 s.
+   * PAPER/PURPUR only: TPS of the last minute, measured over the last 45 s.
    *
    * @generated from field: optional double tps = 11;
    */
@@ -1018,9 +1018,9 @@ export const ServerMetricSampleSchema: GenMessage<ServerMetricSample> = /*@__PUR
   messageDesc(file_mcsm_v1_agent, 21);
 
 /**
- * BackupInfo describe una copia en el disco del nodo. `filename` es el .tar.zst de
- * <DATA_ROOT>/<slug>/backups/ o, con trigger PRE_RESTORE, el directorio
- * data.pre-restore-<ts> que se conserva junto a data/.
+ * BackupInfo describes a backup on the node's disk. `filename` is the .tar.zst in
+ * <DATA_ROOT>/<slug>/backups/ or, with trigger PRE_RESTORE, the
+ * data.pre-restore-<ts> directory kept next to data/.
  *
  * @generated from message mcsm.v1.BackupInfo
  */
@@ -1041,7 +1041,7 @@ export type BackupInfo = Message<"mcsm.v1.BackupInfo"> & {
   sizeBytes: bigint;
 
   /**
-   * vacío en los directorios pre-restore
+   * empty for pre-restore directories
    *
    * @generated from field: string sha256 = 4;
    */
@@ -1076,9 +1076,9 @@ export const BackupInfoSchema: GenMessage<BackupInfo> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 22);
 
 /**
- * Panel → agente. Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error
- * (code busy | unknown_server | invalid_request | backup_failed). Un job_id repetido
- * no se ejecuta dos veces: el agente reenvía su estado guardado.
+ * Panel → agent. Response: Ack (accepted; progress arrives via JobProgress) or Error
+ * (code busy | unknown_server | invalid_request | backup_failed). A repeated job_id
+ * is not run twice: the agent resends its stored state.
  *
  * @generated from message mcsm.v1.BackupNow
  */
@@ -1094,7 +1094,7 @@ export type BackupNow = Message<"mcsm.v1.BackupNow"> & {
   jobId: string;
 
   /**
-   * MANUAL si no se indica; PRE_MIGRATION lo usará el Plan 7
+   * MANUAL if not given; PRE_MIGRATION will be used by Plan 7
    *
    * @generated from field: mcsm.v1.BackupTrigger trigger = 3;
    */
@@ -1109,8 +1109,8 @@ export const BackupNowSchema: GenMessage<BackupNow> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 23);
 
 /**
- * Panel → agente. Restaura una copia .tar.zst por nombre (el agente no conoce los ids
- * del panel). Respuesta: Ack o Error, como BackupNow.
+ * Panel → agent. Restores a .tar.zst backup by name (the agent does not know the panel's
+ * ids). Response: Ack or Error, like BackupNow.
  *
  * @generated from message mcsm.v1.BackupRestore
  */
@@ -1139,7 +1139,7 @@ export const BackupRestoreSchema: GenMessage<BackupRestore> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 24);
 
 /**
- * Panel → agente. Borra una copia o un directorio pre-restore. Respuesta: Ack o Error.
+ * Panel → agent. Deletes a backup or a pre-restore directory. Response: Ack or Error.
  *
  * @generated from message mcsm.v1.BackupDelete
  */
@@ -1163,8 +1163,8 @@ export const BackupDeleteSchema: GenMessage<BackupDelete> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 25);
 
 /**
- * Panel → agente. Respuesta: Ack y un BackupInventory no solicitado (id 0), que puede llegar
- * antes o después del Ack. server_id vacío = todos los servidores del nodo.
+ * Panel → agent. Response: Ack and an unsolicited BackupInventory (id 0), which may arrive
+ * before or after the Ack. Empty server_id = all the node's servers.
  *
  * @generated from message mcsm.v1.BackupList
  */
@@ -1183,17 +1183,17 @@ export const BackupListSchema: GenMessage<BackupList> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 26);
 
 /**
- * Agente → panel (id 0), tras cada BackupList y, sin que se lo pidan, cada 10 min. `server_ids`
- * son los servidores cuyo listado está completo. El agente lo envía en orden con BackupCreated
- * y BackupDeleted (un cambio que el listado no vio llega después), por una cola que no está
- * ligada a la sesión: puede llegar en la sesión siguiente, tras su Hello.
+ * Agent → panel (id 0), after each BackupList and, unprompted, every 10 min. `server_ids`
+ * are the servers whose listing is complete. The agent sends it in order with BackupCreated
+ * and BackupDeleted (a change the listing did not see arrives afterwards), through a queue that is not
+ * tied to the session: it may arrive in the next session, after its Hello.
  *
- * `request_id` es el id del BackupList al que contesta, o 0 si es el periódico. Solo un
- * inventario que contesta al último BackupList de la sesión vigente permite al panel la vía
- * negativa: marcar como borradas las copias de `server_ids` que no aparezcan en `backups` y
- * dar por perdidos los jobs abiertos que no aparezcan en `jobs` (en ambos casos, solo lo que
- * ya conocía antes de pedirlo). Cualquier otro (periódico o de una petición anterior) solo
- * aplica lo positivo: altas de copias y estados de jobs.
+ * `request_id` is the id of the BackupList it answers, or 0 if it is the periodic one. Only an
+ * inventory that answers the current session's last BackupList lets the panel take the
+ * negative path: mark as deleted the backups of `server_ids` that do not appear in `backups` and
+ * consider lost the open jobs that do not appear in `jobs` (in both cases, only what it
+ * already knew before asking). Any other (periodic or from an earlier request) only
+ * applies the positive: new backups and job states.
  *
  * @generated from message mcsm.v1.BackupInventory
  */
@@ -1227,7 +1227,7 @@ export const BackupInventorySchema: GenMessage<BackupInventory> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 27);
 
 /**
- * Agente → panel (id 0): copia nueva (manual, programada o datos pre-restore).
+ * Agent → panel (id 0): new backup (manual, scheduled or pre-restore data).
  *
  * @generated from message mcsm.v1.BackupCreated
  */
@@ -1238,7 +1238,7 @@ export type BackupCreated = Message<"mcsm.v1.BackupCreated"> & {
   backup?: BackupInfo | undefined;
 
   /**
-   * vacío en las pre-restore
+   * empty for pre-restore ones
    *
    * @generated from field: string job_id = 2;
    */
@@ -1253,8 +1253,8 @@ export const BackupCreatedSchema: GenMessage<BackupCreated> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 28);
 
 /**
- * Agente → panel (id 0): copia borrada en el nodo, por la poda (reason "poda") o porque la
- * pidió el panel con BackupDelete (reason "borrada").
+ * Agent → panel (id 0): backup deleted on the node, by pruning (reason "pruned") or because the
+ * panel asked for it with BackupDelete (reason "deleted").
  *
  * @generated from message mcsm.v1.BackupDeleted
  */
@@ -1283,7 +1283,7 @@ export const BackupDeletedSchema: GenMessage<BackupDeleted> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 29);
 
 /**
- * Agente → panel (id 0): avance de un job. log_chunk trae solo las líneas nuevas.
+ * Agent → panel (id 0): progress of a job. log_chunk carries only the new lines.
  *
  * @generated from message mcsm.v1.JobProgress
  */
@@ -1341,7 +1341,7 @@ export const JobProgressSchema: GenMessage<JobProgress> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 30);
 
 /**
- * Estado completo de un job guardado en el agente (inventario tras reconectar).
+ * Full state of a job stored in the agent (inventory after reconnecting).
  *
  * @generated from message mcsm.v1.JobRecord
  */
@@ -1429,7 +1429,7 @@ export type FileEntry = Message<"mcsm.v1.FileEntry"> & {
   modTimeUnixMs: bigint;
 
   /**
-   * bits de permisos (0o755…)
+   * permission bits (0o755…)
    *
    * @generated from field: uint32 mode = 6;
    */
@@ -1470,14 +1470,14 @@ export const FilesListSchema: GenMessage<FilesList> = /*@__PURE__*/
  */
 export type FilesListResult = Message<"mcsm.v1.FilesListResult"> & {
   /**
-   * carpetas primero, luego por nombre
+   * folders first, then by name
    *
    * @generated from field: repeated mcsm.v1.FileEntry entries = 1;
    */
   entries: FileEntry[];
 
   /**
-   * la carpeta tiene más entradas de las devueltas
+   * the folder has more entries than returned
    *
    * @generated from field: bool truncated = 2;
    */
@@ -1531,7 +1531,7 @@ export const FilesStatResultSchema: GenMessage<FilesStatResult> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 36);
 
 /**
- * Lectura inline: como máximo 2 MiB (o max_bytes si es menor); si no, too_large.
+ * Inline read: at most 2 MiB (or max_bytes if smaller); otherwise, too_large.
  *
  * @generated from message mcsm.v1.FilesRead
  */
@@ -1582,7 +1582,7 @@ export const FilesReadResultSchema: GenMessage<FilesReadResult> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 38);
 
 /**
- * Escritura inline atómica (temporal + rename), como máximo 2 MiB. Respuesta: Ack.
+ * Atomic inline write (temporary + rename), at most 2 MiB. Response: Ack.
  *
  * @generated from message mcsm.v1.FilesWrite
  */
@@ -1633,7 +1633,7 @@ export const FilesMkdirSchema: GenMessage<FilesMkdir> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 40);
 
 /**
- * No sobrescribe: si `to` existe responde exists.
+ * Does not overwrite: if `to` exists it responds exists.
  *
  * @generated from message mcsm.v1.FilesRename
  */
@@ -1662,7 +1662,7 @@ export const FilesRenameSchema: GenMessage<FilesRename> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 41);
 
 /**
- * Una carpeta se borra con todo su contenido; un enlace se borra a sí mismo.
+ * A folder is deleted with all its contents; a link deletes itself.
  *
  * @generated from message mcsm.v1.FilesDelete
  */
@@ -1686,8 +1686,8 @@ export const FilesDeleteSchema: GenMessage<FilesDelete> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 42);
 
 /**
- * El agente sube el fichero con PUT /agent/transfer/{transfer_id} y responde Ack
- * cuando el panel lo ha recibido entero.
+ * The agent uploads the file with PUT /agent/transfer/{transfer_id} and responds Ack
+ * when the panel has received all of it.
  *
  * @generated from message mcsm.v1.FilesDownload
  */
@@ -1716,8 +1716,8 @@ export const FilesDownloadSchema: GenMessage<FilesDownload> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 43);
 
 /**
- * El agente descarga el contenido con GET /agent/transfer/{transfer_id}, lo escribe
- * de forma atómica y responde Ack. size = -1 si el panel no conoce el tamaño.
+ * The agent downloads the content with GET /agent/transfer/{transfer_id}, writes it
+ * atomically and responds Ack. size = -1 if the panel does not know the size.
  *
  * @generated from message mcsm.v1.FilesUpload
  */
@@ -1751,8 +1751,8 @@ export const FilesUploadSchema: GenMessage<FilesUpload> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 44);
 
 /**
- * Panel → agente. Lista los contenedores cuya imagen es itzg/minecraft-server, sin la etiqueta
- * mcsm.managed y que este agente no haya adoptado ya. Respuesta: ImportScanResult, o Error.
+ * Panel → agent. Lists the containers whose image is itzg/minecraft-server, without the
+ * mcsm.managed label and that this agent has not already adopted. Response: ImportScanResult, or Error.
  *
  * @generated from message mcsm.v1.ImportScan
  */
@@ -1776,8 +1776,8 @@ export type ImportScanResult = Message<"mcsm.v1.ImportScanResult"> & {
   candidates: ImportCandidate[];
 
   /**
-   * DATA_ROOT del agente: el panel decide con él si los datos de un candidato están en
-   * <DATA_ROOT>/<slug>/data o necesitan dataPath.
+   * The agent's DATA_ROOT: the panel uses it to decide whether a candidate's data is in
+   * <DATA_ROOT>/<slug>/data or needs dataPath.
    *
    * @generated from field: string data_root = 2;
    */
@@ -1792,29 +1792,29 @@ export const ImportScanResultSchema: GenMessage<ImportScanResult> = /*@__PURE__*
   messageDesc(file_mcsm_v1_agent, 46);
 
 /**
- * Inspect reducido de un contenedor importable. `env` lleva solo lo que fijó el usuario (sin las
- * variables idénticas al ENV de la imagen) e INCLUYE secretos (RCON_PASSWORD, CF_API_KEY): el
- * panel no los reenvía al navegador ni los registra.
+ * Reduced inspect of an importable container. `env` carries only what the user set (without the
+ * variables identical to the image's ENV) and INCLUDES secrets (RCON_PASSWORD, CF_API_KEY): the
+ * panel neither forwards them to the browser nor logs them.
  *
  * @generated from message mcsm.v1.ImportCandidate
  */
 export type ImportCandidate = Message<"mcsm.v1.ImportCandidate"> & {
   /**
-   * id completo
+   * full id
    *
    * @generated from field: string container_id = 1;
    */
   containerId: string;
 
   /**
-   * sin "/" inicial
+   * without the leading "/"
    *
    * @generated from field: string name = 2;
    */
   name: string;
 
   /**
-   * Config.Image tal cual (itzg/minecraft-server:java21)
+   * Config.Image as is (itzg/minecraft-server:java21)
    *
    * @generated from field: string image = 3;
    */
@@ -1833,7 +1833,7 @@ export type ImportCandidate = Message<"mcsm.v1.ImportCandidate"> & {
   env: { [key: string]: string };
 
   /**
-   * publicaciones configuradas (HostConfig.PortBindings)
+   * configured publications (HostConfig.PortBindings)
    *
    * @generated from field: repeated mcsm.v1.ImportPort ports = 6;
    */
@@ -1852,21 +1852,21 @@ export type ImportCandidate = Message<"mcsm.v1.ImportCandidate"> & {
   restartPolicy: string;
 
   /**
-   * 0 = sin límite
+   * 0 = no limit
    *
    * @generated from field: int64 memory_limit_bytes = 9;
    */
   memoryLimitBytes: bigint;
 
   /**
-   * 0 = sin límite
+   * 0 = no limit
    *
    * @generated from field: int64 nano_cpus = 10;
    */
   nanoCpus: bigint;
 
   /**
-   * bridge|host|none|container:<id>|<red de usuario>
+   * bridge|host|none|container:<id>|<user network>
    *
    * @generated from field: string network_mode = 11;
    */
@@ -1878,14 +1878,14 @@ export type ImportCandidate = Message<"mcsm.v1.ImportCandidate"> & {
   networks: string[];
 
   /**
-   * solo com.docker.compose.project y com.docker.compose.service
+   * only com.docker.compose.project and com.docker.compose.service
    *
    * @generated from field: map<string, string> labels = 13;
    */
   labels: { [key: string]: string };
 
   /**
-   * Config.User (--user): "" = el de la imagen; "uid[:gid]" o un nombre
+   * Config.User (--user): "" = the image's; "uid[:gid]" or a name
    *
    * @generated from field: string user = 14;
    */
@@ -1916,14 +1916,14 @@ export type ImportPort = Message<"mcsm.v1.ImportPort"> & {
   proto: string;
 
   /**
-   * "" = todas las interfaces
+   * "" = all interfaces
    *
    * @generated from field: string host_ip = 3;
    */
   hostIp: string;
 
   /**
-   * 0 = efímero
+   * 0 = ephemeral
    *
    * @generated from field: uint32 host_port = 4;
    */
@@ -1949,7 +1949,7 @@ export type ImportMount = Message<"mcsm.v1.ImportMount"> & {
   type: string;
 
   /**
-   * ruta del host (bind) o del volumen
+   * host path (bind) or volume's
    *
    * @generated from field: string source = 2;
    */
@@ -1966,7 +1966,7 @@ export type ImportMount = Message<"mcsm.v1.ImportMount"> & {
   readWrite: boolean;
 
   /**
-   * nombre del volumen
+   * volume name
    *
    * @generated from field: string name = 5;
    */
@@ -1981,12 +1981,12 @@ export const ImportMountSchema: GenMessage<ImportMount> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 49);
 
 /**
- * Panel → agente. Adopta un contenedor sin recrearlo. server.spec_json lleva "adopt":
- * {"containerId", "version"} (lo añade el panel). El agente comprueba que el contenedor existe,
- * no es de MC Server Manager, usa la imagen itzg y monta en /data la carpeta de la spec; lo
- * conecta a su red con el alias mcsm-<slug> y guarda spec y adopción. Respuesta: Ack, o Error con
- * not_found (no existe), exists (gestionado o adoptado por otro servidor), invalid_request (no es
- * itzg, red host/none/container o /data distinto), invalid_spec o apply_failed (Docker).
+ * Panel → agent. Adopts a container without recreating it. server.spec_json carries "adopt":
+ * {"containerId", "version"} (added by the panel). The agent checks that the container exists,
+ * is not an MC Server Manager one, uses the itzg image and mounts the spec's folder at /data; it
+ * connects it to its network with the alias mcsm-<slug> and stores the spec and the adoption. Response: Ack, or Error with
+ * not_found (does not exist), exists (managed or adopted by another server), invalid_request (not
+ * itzg, host/none/container network or a different /data), invalid_spec or apply_failed (Docker).
  *
  * @generated from message mcsm.v1.ImportAdopt
  */
@@ -2005,11 +2005,11 @@ export const ImportAdoptSchema: GenMessage<ImportAdopt> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 50);
 
 /**
- * Panel → agente (origen). Sube una copia .tar.zst de <slug>/backups/ al panel con
- * PUT /agent/transfer/{transfer_id}. Respuesta: BackupPushResult cuando el panel la ha recibido
- * entera, o Error (unknown_server | invalid_request | busy | transfer_failed | backup_failed: la
- * copia no existe o no tiene sha256 en su .json, que se lee primero | not_found: el .json existe
- * pero el .tar.zst no).
+ * Panel → agent (source). Uploads a .tar.zst backup from <slug>/backups/ to the panel with
+ * PUT /agent/transfer/{transfer_id}. Response: BackupPushResult when the panel has received
+ * all of it, or Error (unknown_server | invalid_request | busy | transfer_failed | backup_failed: the
+ * backup does not exist or has no sha256 in its .json, which is read first | not_found: the .json exists
+ * but the .tar.zst does not).
  *
  * @generated from message mcsm.v1.BackupPush
  */
@@ -2038,8 +2038,8 @@ export const BackupPushSchema: GenMessage<BackupPush> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 51);
 
 /**
- * Metadatos de la copia enviada, de su .json: el panel compara tamaño y sha256 con lo que ha
- * recibido y con el BackupCreated del job.
+ * Metadata of the backup sent, from its .json: the panel compares size and sha256 with what it has
+ * received and with the job's BackupCreated.
  *
  * @generated from message mcsm.v1.BackupPushResult
  */
@@ -2055,7 +2055,7 @@ export type BackupPushResult = Message<"mcsm.v1.BackupPushResult"> & {
   sha256: string;
 
   /**
-   * contenido sin comprimir; 0 si la copia no lo anotó
+   * uncompressed content; 0 if the backup did not record it
    *
    * @generated from field: uint64 data_bytes = 3;
    */
@@ -2070,13 +2070,13 @@ export const BackupPushResultSchema: GenMessage<BackupPushResult> = /*@__PURE__*
   messageDesc(file_mcsm_v1_agent, 52);
 
 /**
- * Panel → agente (destino). Job (type "migrate_in"): descarga la copia con
- * GET /agent/transfer/{transfer_id} a <DATA_ROOT>/<slug>/backups/<filename>, comprueba que
- * llegan size_bytes bytes con ese sha256 y la restaura como <DATA_ROOT>/<slug>/data.
- * <DATA_ROOT>/<slug> no puede existir: lo crea con el marcador .mcsm-migration (contiene
- * migration_id) y, si algo falla, lo borra entero. El servidor no puede estar en este nodo.
- * Respuesta: Ack (aceptado; el avance llega por JobProgress) o Error (invalid_request | exists |
- * busy | too_large: no cabe con el margen). Un job_id repetido reenvía su estado.
+ * Panel → agent (target). Job (type "migrate_in"): downloads the backup with
+ * GET /agent/transfer/{transfer_id} to <DATA_ROOT>/<slug>/backups/<filename>, checks that
+ * size_bytes bytes arrive with that sha256 and restores it as <DATA_ROOT>/<slug>/data.
+ * <DATA_ROOT>/<slug> must not exist: it creates it with the .mcsm-migration marker (it contains
+ * migration_id) and, if anything fails, deletes it entirely. The server must not be on this node.
+ * Response: Ack (accepted; progress arrives via JobProgress) or Error (invalid_request | exists |
+ * busy | too_large: it does not fit with the margin). A repeated job_id resends its state.
  *
  * @generated from message mcsm.v1.MigrateReceive
  */
@@ -2087,7 +2087,7 @@ export type MigrateReceive = Message<"mcsm.v1.MigrateReceive"> & {
   serverId: string;
 
   /**
-   * slug en el destino
+   * slug on the target
    *
    * @generated from field: string slug = 2;
    */
@@ -2109,7 +2109,7 @@ export type MigrateReceive = Message<"mcsm.v1.MigrateReceive"> & {
   transferId: string;
 
   /**
-   * <slug>-<ts>-<versión>.tar.zst, con el slug del destino
+   * <slug>-<ts>-<version>.tar.zst, with the target's slug
    *
    * @generated from field: string filename = 6;
    */
@@ -2126,7 +2126,7 @@ export type MigrateReceive = Message<"mcsm.v1.MigrateReceive"> & {
   sha256: string;
 
   /**
-   * 0 = desconocido (se reserva el tamaño comprimido)
+   * 0 = unknown (the compressed size is reserved)
    *
    * @generated from field: uint64 data_bytes = 9;
    */
@@ -2141,14 +2141,14 @@ export const MigrateReceiveSchema: GenMessage<MigrateReceive> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 53);
 
 /**
- * Panel → agente (destino). Deshace lo que dejó en este nodo una migración no confirmada:
- * olvida la spec del servidor (si la tiene) y borra su contenedor y, ya sin él, borra
- * <DATA_ROOT>/<slug> solo si lleva el marcador de migration_id sin confirmar y ningún otro
- * servidor del nodo usa ese slug. El marcador se lee ANTES de tocar la spec: si el servidor está
- * en este nodo y <slug> no lleva el marcador sin confirmar de esta migración (p. ej. ya llegó
- * MigrateConfirm), no toca nada. Idempotente. Respuesta: Ack o Error (busy: hay una recepción en
- * curso o el contenedor aún no se pudo borrar; el panel reintenta. invalid_request: otro slug,
- * otro servidor lo usa, o el servidor de este nodo no es una copia sin confirmar de esta migración).
+ * Panel → agent (target). Undoes what an unconfirmed migration left on this node:
+ * forgets the server's spec (if it has one) and deletes its container and, once that is gone, deletes
+ * <DATA_ROOT>/<slug> only if it carries the unconfirmed migration_id marker and no other
+ * server on the node uses that slug. The marker is read BEFORE touching the spec: if the server is
+ * on this node and <slug> does not carry this migration's unconfirmed marker (e.g. MigrateConfirm
+ * already arrived), it touches nothing. Idempotent. Response: Ack or Error (busy: a receive is in
+ * progress or the container could not be deleted yet; the panel retries. invalid_request: another slug,
+ * another server uses it, or this node's server is not an unconfirmed copy of this migration).
  *
  * @generated from message mcsm.v1.MigrateAbort
  */
@@ -2177,15 +2177,15 @@ export const MigrateAbortSchema: GenMessage<MigrateAbort> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 54);
 
 /**
- * Panel → agente (origen), tras confirmar la migración. Comprueba que la spec guardada es la
- * versión source_version (la que se migró: un servidor que volvió después a este nodo trae otra),
- * marca <slug> con .mcsm-retiring (migration_id), para el contenedor si sigue en marcha, olvida la
- * spec y borra el contenedor y, solo entonces, aparta <DATA_ROOT>/<slug> (datos y copias) a
- * <DATA_ROOT>/<slug>.migrated-<ts> o, con delete_data, lo borra. Un reintento sin spec solo toca un
- * <slug> con el .mcsm-retiring de esta migración. Idempotente. Respuesta: Ack o Error
- * (invalid_request: otro slug, otra versión, otro servidor del nodo usa ese slug o <slug> no es el
- * de esta retirada (p. ej. una recepción en curso: marcador de migración sin confirmar); busy:
- * reintentar, p. ej. el contenedor aún no se pudo borrar).
+ * Panel → agent (source), after confirming the migration. Checks that the stored spec is
+ * version source_version (the one that was migrated: a server that later came back to this node has another),
+ * marks <slug> with .mcsm-retiring (migration_id), stops the container if it is still running, forgets the
+ * spec and deletes the container and, only then, sets <DATA_ROOT>/<slug> (data and backups) aside to
+ * <DATA_ROOT>/<slug>.migrated-<ts> or, with delete_data, deletes it. A retry without a spec only touches a
+ * <slug> with this migration's .mcsm-retiring. Idempotent. Response: Ack or Error
+ * (invalid_request: another slug, another version, another server on the node uses that slug or <slug> is not the
+ * one of this retirement (e.g. a receive in progress: unconfirmed migration marker); busy:
+ * retry, e.g. the container could not be deleted yet).
  *
  * @generated from message mcsm.v1.MigrateRetire
  */
@@ -2211,7 +2211,7 @@ export type MigrateRetire = Message<"mcsm.v1.MigrateRetire"> & {
   deleteData: boolean;
 
   /**
-   * versión de la spec en el origen al empezar la migración
+   * spec version on the source when the migration started
    *
    * @generated from field: uint64 source_version = 5;
    */
@@ -2226,11 +2226,11 @@ export const MigrateRetireSchema: GenMessage<MigrateRetire> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 55);
 
 /**
- * Panel → agente (destino), tras confirmar la migración (y reintentado hasta el Ack). Reescribe
- * el marcador <DATA_ROOT>/<slug>/.mcsm-migration de migration_id como «committed <migration_id>»:
- * desde entonces ningún MigrateAbort (p. ej. de un panel restaurado desde una foto anterior al
- * commit) borra el servidor. Idempotente. Respuesta: Ack (también si ya estaba confirmado o no
- * hay marcador) o Error (invalid_request: otro slug, o el marcador es de otra migración; busy).
+ * Panel → agent (target), after confirming the migration (and retried until the Ack). Rewrites
+ * the <DATA_ROOT>/<slug>/.mcsm-migration marker of migration_id as “committed <migration_id>”:
+ * from then on no MigrateAbort (e.g. from a panel restored from a snapshot prior to the
+ * commit) deletes the server. Idempotent. Response: Ack (also if it was already confirmed or there
+ * is no marker) or Error (invalid_request: another slug, or the marker is from another migration; busy).
  *
  * @generated from message mcsm.v1.MigrateConfirm
  */
@@ -2259,20 +2259,20 @@ export const MigrateConfirmSchema: GenMessage<MigrateConfirm> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 56);
 
 /**
- * Configuración del router de un nodo.
+ * Configuration of a node's router.
  *
  * @generated from message mcsm.v1.RouterSpec
  */
 export type RouterSpec = Message<"mcsm.v1.RouterSpec"> & {
   /**
-   * puerto TCP del host (1-65535); dentro del contenedor siempre es 25565
+   * host TCP port (1-65535); inside the container it is always 25565
    *
    * @generated from field: uint32 host_port = 1;
    */
   hostPort: number;
 
   /**
-   * mc-router arranca al entrar un jugador y para tras autoscale_down_after_minutes sin jugadores
+   * mc-router starts when a player joins and stops after autoscale_down_after_minutes without players
    *
    * @generated from field: bool autoscale = 2;
    */
@@ -2286,8 +2286,8 @@ export type RouterSpec = Message<"mcsm.v1.RouterSpec"> & {
   autoscaleDownAfterMinutes: number;
 
   /**
-   * Con autoscale, solo estos jugadores (nombre de perfil o UUID) despiertan un servidor dormido o
-   * cancelan su parada (-auto-scale-allow-deny de mc-router). Vacío = cualquiera. Máx. 1000.
+   * With autoscale, only these players (profile name or UUID) wake up a sleeping server or
+   * cancel its stop (mc-router's -auto-scale-allow-deny). Empty = anyone. Max. 1000.
    *
    * @generated from field: repeated string autoscale_allow_players = 4;
    */
@@ -2302,9 +2302,9 @@ export const RouterSpecSchema: GenMessage<RouterSpec> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 57);
 
 /**
- * Panel → agente. Guarda la spec (sobrevive a reinicios del agente) y reconcilia el contenedor en
- * segundo plano. Respuesta: Ack (guardada; el resultado llega por RouterObserved) o Error
- * (invalid_request: spec ausente o fuera de rango).
+ * Panel → agent. Stores the spec (survives agent restarts) and reconciles the container in the
+ * background. Response: Ack (stored; the result arrives via RouterObserved) or Error
+ * (invalid_request: spec missing or out of range).
  *
  * @generated from message mcsm.v1.RouterApply
  */
@@ -2323,8 +2323,8 @@ export const RouterApplySchema: GenMessage<RouterApply> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 58);
 
 /**
- * Panel → agente. Borra la spec guardada y, en segundo plano, el contenedor del router. Idempotente.
- * Respuesta: Ack, o Error (io_error) si no se pudo borrar del store del agente.
+ * Panel → agent. Deletes the stored spec and, in the background, the router container. Idempotent.
+ * Response: Ack, or Error (io_error) if it could not be deleted from the agent's store.
  *
  * @generated from message mcsm.v1.RouterRemove
  */
@@ -2339,14 +2339,14 @@ export const RouterRemoveSchema: GenMessage<RouterRemove> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 59);
 
 /**
- * Agente → panel, no solicitado (id = 0): estado del router tras cada reconciliación (al recibir
- * RouterApply/RouterRemove, cada 30 s y con los eventos de Docker de su contenedor).
+ * Agent → panel, unsolicited (id = 0): router state after each reconciliation (on receiving
+ * RouterApply/RouterRemove, every 30 s and with the Docker events of its container).
  *
  * @generated from message mcsm.v1.RouterObserved
  */
 export type RouterObserved = Message<"mcsm.v1.RouterObserved"> & {
   /**
-   * el agente tiene una spec de router guardada
+   * the agent has a stored router spec
    *
    * @generated from field: bool configured = 1;
    */
@@ -2365,14 +2365,14 @@ export type RouterObserved = Message<"mcsm.v1.RouterObserved"> & {
   containerId: string;
 
   /**
-   * imagen del contenedor, p. ej. itzg/mc-router:1.47.1
+   * container image, e.g. itzg/mc-router:1.47.1
    *
    * @generated from field: string image = 4;
    */
   image: string;
 
   /**
-   * puerto de la spec aplicada (0 sin spec)
+   * port of the applied spec (0 without a spec)
    *
    * @generated from field: uint32 host_port = 5;
    */
@@ -2384,7 +2384,7 @@ export type RouterObserved = Message<"mcsm.v1.RouterObserved"> & {
   autoscale: boolean;
 
   /**
-   * error de la última reconciliación ("" si fue bien)
+   * error of the last reconciliation ("" if it went well)
    *
    * @generated from field: string error = 7;
    */
@@ -2396,7 +2396,7 @@ export type RouterObserved = Message<"mcsm.v1.RouterObserved"> & {
   tsUnixMs: bigint;
 
   /**
-   * spec guardada en el agente (ausente sin spec): la web compara con la del panel
+   * spec stored in the agent (absent without a spec): the web compares it with the panel's
    *
    * @generated from field: mcsm.v1.RouterSpec spec = 9;
    */
@@ -2411,17 +2411,17 @@ export const RouterObservedSchema: GenMessage<RouterObserved> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 60);
 
 /**
- * Agente → panel, no solicitado (id = 0): incidencia de un servidor o del nodo. Sale por una cola propia del
- * agente que nunca bloquea a quien la emite; sin conexión se pierde (lo que importa, p. ej. un servidor parado
- * por bucle de crash, también se ve en Observed.error). kind:
- *   crash              el servidor se cerró con código ≠ 0 sin que nadie lo pidiera
- *   oom                Docker lo mató por falta de memoria
- *   crash_loop         más de 3 crashes en una hora: el agente lo ha parado y no lo arranca hasta un Power
- *                      start/restart o una versión nueva de la spec (el panel pone el deseado en parado)
- *   crash_loop_failed  bucle de crash, pero no se pudo parar (el mensaje dice por qué)
- *   drift              el contenedor no coincidía con la spec ya aplicada y se ha recreado
- *   save_on_pending    el guardado automático pudo quedar desactivado (save-on falló); el agente lo reintenta
- *   save_on_resumed    save-on volvió a funcionar
+ * Agent → panel, unsolicited (id = 0): event of a server or the node. It goes out through a queue of the
+ * agent's own that never blocks whoever emits it; without a connection it is lost (what matters, e.g. a server stopped
+ * by crash loop, also shows in Observed.error). kind:
+ *   crash              the server exited with code ≠ 0 without anyone asking for it
+ *   oom                Docker killed it for lack of memory
+ *   crash_loop         more than 3 crashes in an hour: the agent has stopped it and will not start it until a Power
+ *                      start/restart or a new spec version (the panel sets the desired state to stopped)
+ *   crash_loop_failed  crash loop, but it could not be stopped (the message says why)
+ *   drift              the container did not match the already applied spec and has been recreated
+ *   save_on_pending    autosave may have been left disabled (save-on failed); the agent retries
+ *   save_on_resumed    save-on works again
  *
  * @generated from message mcsm.v1.Event
  */
@@ -2432,7 +2432,7 @@ export type Event = Message<"mcsm.v1.Event"> & {
   level: EventLevel;
 
   /**
-   * vacío = incidencia del nodo
+   * empty = node event
    *
    * @generated from field: string server_id = 2;
    */
@@ -2444,7 +2444,7 @@ export type Event = Message<"mcsm.v1.Event"> & {
   kind: string;
 
   /**
-   * en castellano, para mostrarlo tal cual
+   * in English, to be shown as is
    *
    * @generated from field: string message = 4;
    */
@@ -2464,8 +2464,8 @@ export const EventSchema: GenMessage<Event> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 61);
 
 /**
- * Agente → panel, en un stream de logs (stream_id del SubscribeLogs): el agente descartó `count` líneas nuevas
- * de ese stream porque no se leían a tiempo (spec §5.2). El panel avisa a los navegadores con log_dropped.
+ * Agent → panel, on a log stream (the SubscribeLogs stream_id): the agent dropped `count` new lines
+ * of that stream because they were not read in time (spec §5.2). The panel notifies browsers with log_dropped.
  *
  * @generated from message mcsm.v1.StreamDropped
  */
@@ -2484,15 +2484,15 @@ export const StreamDroppedSchema: GenMessage<StreamDropped> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 62);
 
 /**
- * Panel → agente: token permanente nuevo del nodo (spec §9). El agente lo guarda y responde Ack; después cierra
- * la sesión y vuelve a conectar con él. Error: invalid_request (formato) | io_error (no se pudo guardar). Un
- * agente anterior al Plan 9 responde unsupported y conserva el token que tenía.
+ * Panel → agent: the node's new permanent token (spec §9). The agent stores it and responds Ack; then it closes
+ * the session and reconnects with it. Error: invalid_request (format) | io_error (could not be stored). An
+ * agent older than Plan 9 responds unsupported and keeps the token it had.
  *
  * @generated from message mcsm.v1.RotateToken
  */
 export type RotateToken = Message<"mcsm.v1.RotateToken"> & {
   /**
-   * 32 bytes aleatorios en base64url sin relleno (43 caracteres)
+   * 32 random bytes in unpadded base64url (43 characters)
    *
    * @generated from field: string token = 1;
    */

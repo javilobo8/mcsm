@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { importAdoptSchema } from "@mcsm/shared";
 import { ImportService } from "./service.js";
 
-/** Nodos → Importar (spec §6.7, §8). Decora el servicio en la raíz y registra las rutas encapsuladas. */
+/** Nodes → Import (spec §6.7, §8). Decorates the service at the root and registers the encapsulated routes. */
 export const importRoutes = fp(async function importRoutes(root: FastifyInstance) {
   const svc = new ImportService(root);
   root.decorate("importService", svc);

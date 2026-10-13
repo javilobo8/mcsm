@@ -1,9 +1,9 @@
 /**
- * `onSubmit` de un `<form>` dentro de un Dialog. El diálogo se pinta en un portal, pero los eventos
- * sintéticos de React suben por el árbol de componentes: sin `stopPropagation`, el submit llega también
- * al `<form>` que contiene al diálogo (p. ej. la API key de CurseForge dentro de la configuración o del
- * editor de plantillas guardaría y navegaría). Úsalo en TODO formulario de diálogo, aunque hoy no cuelgue
- * de otro formulario (lo comprueba dialog-form.test.ts).
+ * `onSubmit` of a `<form>` inside a Dialog. The dialog is rendered in a portal, but React's synthetic
+ * events bubble up the component tree: without `stopPropagation`, the submit also reaches the
+ * `<form>` that contains the dialog (e.g. the CurseForge API key inside the configuration or the
+ * template editor would save and navigate). Use it in EVERY dialog form, even if today it does not hang
+ * from another form (dialog-form.test.ts checks it).
  */
 export function dialogSubmit(action: () => void) {
   return (e: { preventDefault(): void; stopPropagation(): void }) => {
