@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ManualTimers } from "../../test/manual-timers.js";
+import { UpstreamError } from "./sources.js";
 import { BUILDS_TTL_MS, FETCH_TIMEOUT_MS, LIST_TTL_MS, MAX_BODY_BYTES, MAX_ENTRIES, VersionCatalog, type FetchFn } from "./catalog.js";
 
 const PURPUR = "https://api.purpurmc.org/v2/purpur";
@@ -146,6 +147,36 @@ describe("VersionCatalog", () => {
     expect((await t.catalog.builds("PURPUR", "26.2")).builds[0]!.id).toBe("2634");
     t.reply(`${PURPUR}/9.9.9`, JSON.stringify({ error: "version not found" }), 404);
     expect(await t.catalog.builds("PURPUR", "9.9.9")).toMatchObject({ type: "PURPUR", version: "9.9.9", builds: [], stale: false });
+  });
+
+  it("solo 400 y 404 de la fuente significan «sin builds»: 429 y 403 son un fallo (502)", async () => {
+    const t = setup();
+    t.reply(`${PURPUR}/1.0.1`, "slow down", 429);
+    await expect(t.catalog.builds("PURPUR", "1.0.1")).rejects.toMatchObject({ status: 502 });
+    t.reply(`${PURPUR}/1.0.2`, "no", 403);
+    await expect(t.catalog.builds("PURPUR", "1.0.2")).rejects.toMatchObject({ status: 502 });
+    t.reply(`${PURPUR}/1.0.3`, "bad", 400);
+    expect((await t.catalog.builds("PURPUR", "1.0.3")).builds).toEqual([]);
+  });
+
+  it("un fallo de red conserva el error original como causa", async () => {
+    const seen: unknown[] = [];
+    const f = fakeFetch();
+    const catalog = new VersionCatalog({ fetch: f.fetch, timers: new ManualTimers(), onError: (_u, e) => seen.push(e) });
+    const cause = new TypeError("getaddrinfo ENOTFOUND");
+    f.reply(PURPUR, () => Promise.reject(cause));
+    await expect(catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
+    expect(seen[0]).toBeInstanceOf(UpstreamError);
+    expect((seen[0] as UpstreamError).cause).toBe(cause);
+  });
+
+  it("libera el cuerpo sin leer de una respuesta de error", async () => {
+    const t = setup();
+    let cancelled = false;
+    const body = new ReadableStream({ cancel() { cancelled = true; } });
+    t.reply(PURPUR, () => Promise.resolve(new Response(body, { status: 500 })));
+    await expect(t.catalog.versions("PURPUR")).rejects.toMatchObject({ status: 502 });
+    expect(cancelled).toBe(true);
   });
 
   it("tipos sin lista, tipos sin build y versiones inválidas: 400 sin tocar la red", async () => {

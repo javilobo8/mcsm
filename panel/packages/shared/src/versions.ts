@@ -24,7 +24,7 @@ export const BUILD_RE = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 export const VERSION_QUERY_RE = BUILD_RE;
 
 /** LATEST / SNAPSHOT (sin distinguir mayúsculas): itzg elige la versión al arrancar. */
-export const isFloatingVersion = (v: string): boolean => /^(latest|snapshot)$/i.test(v);
+export const isFloatingVersion = (v: string): boolean => /^(latest|snapshot)$/iu.test(v);
 
 /** Estable = solo dígitos y puntos (1.21.11, 26.3). Pre-releases, rc y snapshots no lo son. */
 export const isStableVersion = (v: string): boolean => /^\d+(\.\d+)*$/.test(v);

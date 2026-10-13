@@ -15,6 +15,7 @@
   { "name": "tipo desconocido", "type": "BUKKIT", "version": "1.21.4", "build": "1", "ok": false },
   { "name": "con LATEST", "type": "PAPER", "version": "LATEST", "build": "178", "ok": false },
   { "name": "con snapshot en minúsculas", "type": "FABRIC", "version": "snapshot", "build": "0.19.5", "ok": false },
+  { "name": "snapshot con ſ (U+017F)", "type": "PAPER", "version": "ſnapshot", "build": "1", "ok": false },
   { "name": "empieza por punto", "type": "PAPER", "version": "1.20.1", "build": ".1", "ok": false },
   { "name": "espacio", "type": "PAPER", "version": "1.20.1", "build": "1 2", "ok": false },
   { "name": "barra", "type": "PAPER", "version": "1.20.1", "build": "1/2", "ok": false },

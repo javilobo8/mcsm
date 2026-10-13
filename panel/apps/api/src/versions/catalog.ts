@@ -65,8 +65,9 @@ export class VersionCatalog {
       const builds = await src.builds(run.get, version);
       return { type, version, builds, fetchedAt: run.fetchedAt(), stale: run.stale() };
     } catch (e) {
-      // La fuente no conoce esa versión (404; Fabric responde 400): no hay builds que elegir.
-      if (e instanceof UpstreamError && e.status !== null && e.status >= 400 && e.status < 500) {
+      // La fuente no conoce esa versión (404; Fabric responde 400): no hay builds que elegir. Otros 4xx
+      // (401, 403, 429…) son un fallo de la fuente, no una lista vacía.
+      if (e instanceof UpstreamError && (e.status === 400 || e.status === 404)) {
         return { type, version, builds: [], fetchedAt: new Date(this.now()).toISOString(), stale: false };
       }
       throw unavailable(src, e);
@@ -149,8 +150,14 @@ export class VersionCatalog {
         redirect: "manual",
         headers: { "user-agent": USER_AGENT, accept: kind === "json" ? "application/json" : "text/html" },
       });
-      if (res.status >= 300 && res.status < 400) throw new UpstreamError(res.status, "redirección no permitida");
-      if (!res.ok) throw new UpstreamError(res.status, `HTTP ${res.status}`);
+      if (res.status >= 300 && res.status < 400) {
+        await res.body?.cancel().catch(() => {});
+        throw new UpstreamError(res.status, "redirección no permitida");
+      }
+      if (!res.ok) {
+        await res.body?.cancel().catch(() => {});
+        throw new UpstreamError(res.status, `HTTP ${res.status}`);
+      }
       const text = await readCapped(res, MAX_BODY_BYTES);
       let doc: unknown = text;
       if (kind === "json") {
@@ -166,7 +173,7 @@ export class VersionCatalog {
       return checked.data;
     } catch (e) {
       if (e instanceof UpstreamError) throw e;
-      throw new UpstreamError(null, ctrl.signal.aborted ? "plazo agotado" : "error de red");
+      throw new UpstreamError(null, ctrl.signal.aborted ? "plazo agotado" : "error de red", { cause: e });
     } finally {
       cancel();
     }

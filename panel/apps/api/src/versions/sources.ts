@@ -10,8 +10,8 @@ import { compareVersions, isStableVersion, type BuildEntry, type VersionEntry, t
 
 export class UpstreamError extends Error {
   /** `status`: HTTP de la fuente, o null (red, plazo, tamaño, forma inesperada). */
-  constructor(public readonly status: number | null, message: string) {
-    super(message);
+  constructor(public readonly status: number | null, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "UpstreamError";
   }
 }
