@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { api, ApiError } from "@/lib/api";
 import { dialogSubmit } from "@/lib/dialog-form";
 
-interface KeyStatus { configured: boolean }
+interface KeyStatus { configured: boolean; valid?: boolean }
 
 /** Estado de la API key global de CurseForge y diálogo para cambiarla. La key nunca se lee de vuelta. */
 export function CurseForgeKeyNotice() {
@@ -35,6 +35,9 @@ export function CurseForgeKeyNotice() {
         API key de CurseForge: {status.isError ? <strong role="alert" className="text-red-400">no se pudo consultar</strong> : configured === undefined ? "…" : configured ? <strong className="text-emerald-400">configurada</strong> : <strong className="text-amber-400">sin configurar</strong>}
         {configured === false && " (las imágenes java17 o superiores traen una; con java8 es obligatoria)"}
       </span>
+      {configured && status.data?.valid === false && (
+        <span role="alert" className="text-amber-400">La key guardada no es válida (tiene espacios o caracteres no permitidos): vuelve a pegarla.</span>
+      )}
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setKey(""); save.reset(); } }}>
         <DialogTrigger asChild><Button type="button" size="sm" variant="secondary">{configured ? "Cambiar" : "Configurar"}</Button></DialogTrigger>
         <DialogContent>

@@ -12,6 +12,7 @@ import { EditTemplatePage, NewTemplatePage } from "./routes/template-edit";
 import { JobsPage } from "./routes/jobs";
 import { ImportPage } from "./routes/import";
 import { EventsPage } from "./routes/events";
+import { SettingsPage } from "./routes/settings";
 
 const getStatus = () => api.get<AuthStatus>("/api/auth/status");
 
@@ -30,7 +31,7 @@ const rootRoute = createRootRoute({ component: () => <Outlet />, errorComponent:
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute, path: "/login", component: LoginPage,
   validateSearch: (s: Record<string, unknown>): { redirect?: string } => (typeof s.redirect === "string" ? { redirect: s.redirect } : {}),
-  beforeLoad: async () => { const s = await getStatus(); if (s.authenticated) throw redirect({ to: "/" }); return { configured: s.configured }; },
+  beforeLoad: async () => { const s = await getStatus(); if (s.authenticated) throw redirect({ to: "/" }); return { configured: s.configured, setupTokenRequired: s.setupTokenRequired ?? false }; },
 });
 
 const appRoute = createRoute({
@@ -60,6 +61,7 @@ export const importRoute = createRoute({ getParentRoute: () => appRoute, path: "
 // ── plan-8 ──
 // ── plan-9 ──
 export const eventsRoute = createRoute({ getParentRoute: () => appRoute, path: "/events", component: EventsPage });
+export const settingsRoute = createRoute({ getParentRoute: () => appRoute, path: "/settings", component: SettingsPage });
 
 
 const routeTree = rootRoute.addChildren([
@@ -83,6 +85,7 @@ const routeTree = rootRoute.addChildren([
     // ── plan-8 ──
     // ── plan-9 ──
     eventsRoute,
+    settingsRoute,
   ]),
 ]);
 export const router = createRouter({ routeTree });
