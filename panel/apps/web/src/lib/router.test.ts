@@ -14,59 +14,59 @@ const base: RouterDto = {
 };
 
 describe("routerStatus", () => {
-  it("activo y en marcha", () => {
-    expect(routerStatus(base, true)).toEqual({ label: "Activo en :25565", tone: "ok", detail: null });
+  it("active and running", () => {
+    expect(routerStatus(base, true)).toEqual({ label: "Active on :25565", tone: "ok", detail: null });
   });
-  it("desactivado (y retirándose mientras el agente aún lo tiene)", () => {
+  it("disabled (and being removed while the agent still has it)", () => {
     const off = { ...base, spec: { ...base.spec, enabled: false } };
-    expect(routerStatus({ ...off, observed: null }, true).label).toBe("Desactivado");
-    expect(routerStatus(off, true).label).toBe("Retirando…");
-    expect(routerStatus(off, false).label).toBe("Desactivado");
-    expect(routerStatus({ ...off, observed: { ...base.observed!, configured: false, state: "missing" } }, true).label).toBe("Desactivado");
+    expect(routerStatus({ ...off, observed: null }, true).label).toBe("Disabled");
+    expect(routerStatus(off, true).label).toBe("Removing…");
+    expect(routerStatus(off, false).label).toBe("Disabled");
+    expect(routerStatus({ ...off, observed: { ...base.observed!, configured: false, state: "missing" } }, true).label).toBe("Disabled");
   });
-  it("nodo desconectado, error y aplicando", () => {
-    expect(routerStatus(base, false).label).toBe("Nodo desconectado");
+  it("node offline, error and applying", () => {
+    expect(routerStatus(base, false).label).toBe("Node offline");
     const err = { ...base, observed: { ...base.observed!, state: "created", error: "port is already allocated" } };
     expect(routerStatus(err, true)).toEqual({ label: "Error", tone: "bad", detail: "port is already allocated" });
-    expect(routerStatus({ ...base, observed: null }, true).label).toBe("Aplicando…");
-    expect(routerStatus({ ...base, spec: { ...base.spec, port: 25590 } }, true).label).toBe("Aplicando…");
-    expect(routerStatus({ ...base, spec: { ...base.spec, autoscale: true } }, true).label).toBe("Aplicando…");
-    expect(routerStatus({ ...base, observed: { ...base.observed!, state: "exited" } }, true)).toMatchObject({ label: "Estado: exited", tone: "warn" });
+    expect(routerStatus({ ...base, observed: null }, true).label).toBe("Applying…");
+    expect(routerStatus({ ...base, spec: { ...base.spec, port: 25590 } }, true).label).toBe("Applying…");
+    expect(routerStatus({ ...base, spec: { ...base.spec, autoscale: true } }, true).label).toBe("Applying…");
+    expect(routerStatus({ ...base, observed: { ...base.observed!, state: "exited" } }, true)).toMatchObject({ label: "State: exited", tone: "warn" });
   });
-  it("con autoscale también compara los minutos y la lista de jugadores (m6)", () => {
-    const auto = { ...base, spec: { ...base.spec, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] },
-      observed: { ...base.observed!, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo"] } };
-    expect(routerStatus(auto, true).label).toBe("Activo en :25565");
-    expect(routerStatus({ ...auto, spec: { ...auto.spec, autoscaleDownAfterMinutes: 15 } }, true).label).toBe("Aplicando…");
-    expect(routerStatus({ ...auto, spec: { ...auto.spec, autoscaleAllowPlayers: ["amigo", "otro"] } }, true).label).toBe("Aplicando…");
-    // Sin autoscale, minutos y lista no cuentan.
-    expect(routerStatus({ ...base, spec: { ...base.spec, autoscaleDownAfterMinutes: 15 } }, true).label).toBe("Activo en :25565");
+  it("with autoscale it also compares the minutes and the player list (m6)", () => {
+    const auto = { ...base, spec: { ...base.spec, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["friend"] },
+      observed: { ...base.observed!, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["friend"] } };
+    expect(routerStatus(auto, true).label).toBe("Active on :25565");
+    expect(routerStatus({ ...auto, spec: { ...auto.spec, autoscaleDownAfterMinutes: 15 } }, true).label).toBe("Applying…");
+    expect(routerStatus({ ...auto, spec: { ...auto.spec, autoscaleAllowPlayers: ["friend", "other"] } }, true).label).toBe("Applying…");
+    // Without autoscale, minutes and the list do not count.
+    expect(routerStatus({ ...base, spec: { ...base.spec, autoscaleDownAfterMinutes: 15 } }, true).label).toBe("Active on :25565");
   });
 });
 
-describe("formulario del router", () => {
-  it("ida y vuelta", () => {
-    const f = routerFormFrom({ ...base.spec, autoscaleAllowPlayers: ["amigo", "otro"] });
-    expect(f).toEqual({ enabled: true, port: "25565", autoscale: false, minutes: "10", players: "amigo\notro" });
+describe("router form", () => {
+  it("round trip", () => {
+    const f = routerFormFrom({ ...base.spec, autoscaleAllowPlayers: ["friend", "other"] });
+    expect(f).toEqual({ enabled: true, port: "25565", autoscale: false, minutes: "10", players: "friend\nother" });
     expect(routerFormErrors(f)).toEqual({});
-    expect(routerFormBody({ ...f, port: " 25590 ", autoscale: true, minutes: "30", players: "amigo\n otro ,amigo\n" }, base.spec))
-      .toEqual({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["amigo", "otro"] });
+    expect(routerFormBody({ ...f, port: " 25590 ", autoscale: true, minutes: "30", players: "friend\n other ,friend\n" }, base.spec))
+      .toEqual({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 30, autoscaleAllowPlayers: ["friend", "other"] });
   });
-  it("valida puerto y minutos (los minutos solo con autoscale)", () => {
+  it("validates port and minutes (minutes only with autoscale)", () => {
     const f = routerFormFrom(base.spec);
     for (const port of ["", "0", "65536", "25565.5", "abc", "-1"]) expect(routerFormErrors({ ...f, port }).port).toBeDefined();
     expect(routerFormErrors({ ...f, autoscale: true, minutes: "0" }).minutes).toBeDefined();
     expect(routerFormErrors({ ...f, autoscale: true, minutes: "1441" }).minutes).toBeDefined();
     expect(routerFormErrors({ ...f, autoscale: false, minutes: "" })).toEqual({});
     expect(routerFormBody({ ...f, autoscale: false, minutes: "" }, base.spec).autoscaleDownAfterMinutes).toBe(10);
-    expect(routerFormErrors({ ...f, autoscale: true, players: "amigo\nmal jugador" }).players).toMatch(/mal jugador/);
-    expect(routerFormErrors({ ...f, autoscale: false, players: "mal jugador" })).toEqual({});
+    expect(routerFormErrors({ ...f, autoscale: true, players: "friend\nbad player" }).players).toMatch(/bad player/);
+    expect(routerFormErrors({ ...f, autoscale: false, players: "bad player" })).toEqual({});
   });
-  it("desactivar se puede guardar aunque el resto no valga (m7): se envía lo guardado", () => {
-    const saved = { ...base.spec, port: 25590, autoscaleAllowPlayers: ["amigo"] };
-    const f = { ...routerFormFrom(saved), enabled: false, port: "abc", autoscale: true, minutes: "0", players: "mal jugador" };
+  it("disabling can be saved even if the rest is not valid (m7): what was saved is sent", () => {
+    const saved = { ...base.spec, port: 25590, autoscaleAllowPlayers: ["friend"] };
+    const f = { ...routerFormFrom(saved), enabled: false, port: "abc", autoscale: true, minutes: "0", players: "bad player" };
     expect(routerFormErrors(f)).toEqual({});
-    expect(routerFormBody(f, saved)).toEqual({ enabled: false, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: ["amigo"] });
+    expect(routerFormBody(f, saved)).toEqual({ enabled: false, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: ["friend"] });
   });
 });
 
@@ -84,7 +84,7 @@ describe("bindRouterLive", () => {
     };
   };
 
-  it("sustituye la caché del router de su nodo y no la de otros", () => {
+  it("replaces the router cache of its node and not that of others", () => {
     const qc = new QueryClient();
     qc.setQueryData(routerKey("n1"), base);
     qc.setQueryData(routerKey("n2"), { ...base, nodeId: "n2" });
@@ -97,7 +97,7 @@ describe("bindRouterLive", () => {
     expect(qc.getQueryData<RouterDto>(routerKey("n2"))?.observed?.state).toBe("running");
   });
 
-  it("al reconectar invalida su query", () => {
+  it("on reconnect it invalidates its query", () => {
     const qc = new QueryClient();
     qc.setQueryData(routerKey("n1"), base);
     const f = fakeLive();

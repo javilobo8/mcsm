@@ -1,23 +1,23 @@
 import { ApiError } from "./api";
 
-/** Un 401 fuera de los endpoints de auth significa sesión caducada. */
+/** A 401 outside the auth endpoints means an expired session. */
 export function isSessionExpired(status: number, path: string): boolean {
   return status === 401 && !path.startsWith("/api/auth/");
 }
 
-/** TanStack Query: no reintentar errores 4xx (incluido 401); una sola repetición para el resto. */
+/** TanStack Query: do not retry 4xx errors (401 included); a single retry for the rest. */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
   return failureCount < 1;
 }
 
-/** Destino a conservar tras el login; nada para "/" ni "/login". */
+/** Destination to keep after login; nothing for "/" or "/login". */
 export function loginRedirectFor(location: string): string | undefined {
   if (location === "/" || location === "" || location.startsWith("/login")) return undefined;
   return location;
 }
 
-/** Solo rutas internas: evita redirecciones abiertas (`//host`, `http://…`). */
+/** Internal paths only: avoids open redirects (`//host`, `http://…`). */
 export function safeRedirect(target: unknown): string {
   if (typeof target !== "string" || !target.startsWith("/") || target.startsWith("//") || target.startsWith("/\\")) return "/";
   return target;
@@ -30,8 +30,8 @@ interface HandlerDeps {
 }
 
 /**
- * Handler idempotente: varias peticiones 401 simultáneas provocan una sola navegación y,
- * si ya estamos en /login, ninguna (sin bucles).
+ * Idempotent handler: several simultaneous 401 requests cause a single navigation and,
+ * if we are already on /login, none (no loops).
  */
 export function createUnauthorizedHandler(deps: HandlerDeps) {
   let handling = false;
@@ -47,8 +47,8 @@ export function createUnauthorizedHandler(deps: HandlerDeps) {
 }
 
 /**
- * Qué hacer con un 401 REST visto mientras se cambia la sesión (cambio de contraseña) cuando acaba el cambio:
- * éxito → la petición iba con la cookie vieja, se reintenta o invalida; fallo → la sesión sí se perdió.
+ * What to do with a REST 401 seen while the session is being changed (password change) when the change ends:
+ * success → the request carried the old cookie, it is retried or invalidated; failure → the session really was lost.
  */
 export function resolveHeld401(saw401: boolean, ok: boolean): "invalidate" | "unauthorized" | "none" {
   if (!saw401) return "none";
@@ -56,8 +56,8 @@ export function resolveHeld401(saw401: boolean, ok: boolean): "invalidate" | "un
 }
 
 /**
- * Filtro de los 401 REST: mientras hay retenciones (`hold`) el 401 solo se anota. Al soltar la última se decide con
- * `resolveHeld401`; un fallo notifica con `fire` (el éxito lo resuelve quien llama, invalidando sus consultas).
+ * Filter for REST 401s: while there are holds (`hold`) the 401 is only noted. When the last one is released it is decided with
+ * `resolveHeld401`; a failure notifies with `fire` (success is resolved by the caller, invalidating its queries).
  */
 export function createUnauthorizedGate(fire: () => void) {
   let holds = 0; let saw = false; let anyOk = false;

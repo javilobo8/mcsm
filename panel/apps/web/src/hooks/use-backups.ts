@@ -7,10 +7,10 @@ export function useBackups(serverId: string) {
   return useQuery({ queryKey: backupsKey(serverId), queryFn: () => api.get<BackupDto[]>(apiPath`/api/servers/${serverId}/backups`) });
 }
 
-/** Una clave por intento del usuario (un reintento tras un fallo de red la reutiliza, no crea otra copia). */
+/** One key per user attempt (a retry after a network failure reuses it, it does not create another backup). */
 export const newIdempotencyKey = (): string => randomId();
 
-/** Crea una copia ahora. Devuelve el job (202). `idempotencyKey`: la misma para los reintentos del mismo clic. */
+/** Creates a backup now. Returns the job (202). `idempotencyKey`: the same one for retries of the same click. */
 export function createBackup(serverId: string, idempotencyKey: string): Promise<JobDto> {
   return api.post<JobDto>(apiPath`/api/servers/${serverId}/backups`, undefined, { "Idempotency-Key": idempotencyKey });
 }

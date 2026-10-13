@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-// zod 4 compila validadores con `new Function` y, para saber si puede, lo prueba al construir cada
-// z.object. Con la CSP del panel (script-src 'self') la prueba falla y zod usa la ruta lenta, pero el
-// navegador lo notifica como violación de la CSP. Sin JIT no lo prueba. Tiene que ir antes de construir
-// cualquier esquema: main.tsx lo importa el primero.
+// zod 4 compiles validators with `new Function` and, to know whether it can, probes it when building each
+// z.object. With the panel's CSP (script-src 'self') the probe fails and zod uses the slow path, but the
+// browser reports it as a CSP violation. Without JIT it does not probe. It has to go before building
+// any schema: main.tsx imports it first.
 z.config({ jitless: true });

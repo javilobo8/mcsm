@@ -5,7 +5,7 @@ import { api, apiPath, type JobDto } from "@/lib/api";
 import { backupsKey } from "@/lib/jobs";
 import { migrationKey, migrationSync, proposalKey, proposalPath, type MigrationSyncState } from "@/lib/migration";
 
-/** Última migración del servidor (o null). Mientras está abierta se refresca cada 15 s (lo pendiente cambia sin job). */
+/** Latest migration of the server (or null). While it is open it refreshes every 15 s (what is pending changes without a job). */
 export function useMigration(serverId: string) {
   return useQuery({
     queryKey: migrationKey(serverId),
@@ -14,7 +14,7 @@ export function useMigration(serverId: string) {
   });
 }
 
-/** Slug y puerto que propone el panel para el destino elegido (con el puerto escrito, si lo hay, comprueba ese). */
+/** Slug and port the panel proposes for the chosen target (with the port typed in, if any, it checks that one). */
 export function useMigrationProposal(serverId: string, targetNodeId: string | null, port: number | undefined) {
   return useQuery({
     queryKey: proposalKey(serverId, targetNodeId ?? "", port),
@@ -28,14 +28,14 @@ export function startMigration(serverId: string, body: MigrationRequestInput): P
   return api.post<JobDto>(apiPath`/api/servers/${serverId}/migration`, body);
 }
 
-/** Cierre manual de una migración atascada (deja de reintentar lo pendiente). */
+/** Manual close of a stuck migration (it stops retrying what is pending). */
 export function closeMigration(serverId: string): Promise<{ migration: MigrationDto }> {
   return api.post<{ migration: MigrationDto }>(apiPath`/api/servers/${serverId}/migration/close`);
 }
 
 /**
- * Refresca el servidor (quizá ya en otro nodo), la lista, la migración y sus copias al entrar la migración en curso en
- * el paso 7 (cambio de nodo confirmado) y al terminar.
+ * Refreshes the server (maybe already on another node), the list, the migration and its backups when the migration in progress
+ * reaches step 7 (node change confirmed) and when it ends.
  */
 export function useMigrationSync(serverId: string, jobs: JobDto[] | undefined) {
   const qc = useQueryClient();

@@ -1,21 +1,21 @@
 export interface DiffLine { label: string; before: string; after: string }
 
 const NONE = "—";
-const UNMANAGED = "(sin gestionar)";
-const MANAGED = "gestionada por el panel";
-// Secciones opcionales: ausente = el panel no las gestiona; vacía es un cambio real.
-const OPTIONAL_LABELS = new Set(["Operadores", "Whitelist", "Mods (sección)", "Plugins (sección)"]);
+const UNMANAGED = "(not managed)";
+const MANAGED = "managed by the panel";
+// Optional sections: absent = the panel does not manage them; empty is a real change.
+const OPTIONAL_LABELS = new Set(["Operators", "Whitelist", "Mods (section)", "Plugins (section)"]);
 
 const TOP_LABELS: Record<string, string> = {
-  type: "Tipo", version: "Versión de Minecraft", build: "Build / loader", imageTag: "Java (imagen)", memory: "Memoria JVM",
-  restartPolicy: "Política de reinicio", modpack: "Modpack", whitelist: "Whitelist", ops: "Operadores",
-  router: "Router (mc-router)", mods: "Mods (sección)", plugins: "Plugins (sección)",
+  type: "Type", version: "Minecraft version", build: "Build / loader", imageTag: "Java (image)", memory: "JVM memory",
+  restartPolicy: "Restart policy", modpack: "Modpack", whitelist: "Whitelist", ops: "Operators",
+  router: "Router (mc-router)", mods: "Mods (section)", plugins: "Plugins (section)",
 };
 const NESTED_LABELS: Record<string, string> = {
-  "resources.cpus": "Límite de CPUs", "resources.memLimit": "Límite de RAM del contenedor",
-  "ports.game": "Puerto de juego", "ports.extra": "Puertos extra",
-  "mods.modrinthProjects": "Mods de Modrinth", "mods.curseforgeFiles": "Mods de CurseForge", "mods.urls": "Mods por URL",
-  "plugins.modrinthProjects": "Plugins de Modrinth", "plugins.spigetResources": "Plugins de Spiget", "plugins.urls": "Plugins por URL",
+  "resources.cpus": "CPU limit", "resources.memLimit": "Container RAM limit",
+  "ports.game": "Game port", "ports.extra": "Extra ports",
+  "mods.modrinthProjects": "Modrinth mods", "mods.curseforgeFiles": "CurseForge mods", "mods.urls": "Mods by URL",
+  "plugins.modrinthProjects": "Modrinth plugins", "plugins.spigetResources": "Spiget plugins", "plugins.urls": "Plugins by URL",
 };
 
 type Obj = Record<string, unknown>;
@@ -38,9 +38,9 @@ function showModpack(v: unknown): string {
 function showWhitelist(v: unknown): string {
   if (!isObj(v)) return NONE;
   const players = Array.isArray(v.players) && v.players.length ? `: ${v.players.join(", ")}` : "";
-  // Activada y vacía: el agente sincroniza whitelist.json a [] y solo los ops (que se la saltan) pueden entrar.
-  if (v.enabled && !players) return "activada y vacía — nadie podrá entrar salvo los ops";
-  return `${v.enabled ? "activada" : "desactivada"}${players}`;
+  // Enabled and empty: the agent syncs whitelist.json to [] and only ops (who skip it) can join.
+  if (v.enabled && !players) return "enabled and empty — nobody will be able to join except ops";
+  return `${v.enabled ? "enabled" : "disabled"}${players}`;
 }
 
 function showPorts(v: unknown): string {
@@ -51,23 +51,23 @@ function showPorts(v: unknown): string {
 function showRouter(v: unknown): string {
   if (!isObj(v)) return NONE;
   const host = v.hostname ? String(v.hostname) : "";
-  if (v.enabled) return `entrada por ${host}`;
-  return host ? `desactivado (${host})` : NONE;
+  if (v.enabled) return `entry via ${host}`;
+  return host ? `disabled (${host})` : NONE;
 }
 
-/** Aplana una spec a `etiqueta → texto` para compararla línea a línea. */
+/** Flattens a spec to `label → text` to compare it line by line. */
 function flatten(spec: Obj): Map<string, string> {
   const out = new Map<string, string>();
   for (const [k, v] of Object.entries(spec)) {
     if (k === "rconPassword" || v === undefined) continue;
-    if (k === "properties" && isObj(v)) for (const [pk, pv] of Object.entries(v)) out.set(`Propiedad ${pk}`, show(pv));
+    if (k === "properties" && isObj(v)) for (const [pk, pv] of Object.entries(v)) out.set(`Property ${pk}`, show(pv));
     else if (k === "env" && isObj(v)) for (const [ek, ev] of Object.entries(v)) out.set(`Variable ${ek}`, show(ev));
     else if (k === "modpack") out.set(TOP_LABELS.modpack!, showModpack(v));
-    else if (k === "ops") out.set(TOP_LABELS.ops!, Array.isArray(v) && v.length === 0 ? "vacía — se revocarán todos" : show(v));
+    else if (k === "ops") out.set(TOP_LABELS.ops!, Array.isArray(v) && v.length === 0 ? "empty — all will be revoked" : show(v));
     else if (k === "whitelist") out.set(TOP_LABELS.whitelist!, showWhitelist(v));
     else if (k === "router") out.set(TOP_LABELS.router!, showRouter(v));
     else if ((k === "resources" || k === "ports" || k === "mods" || k === "plugins") && isObj(v)) {
-      if (k === "mods" || k === "plugins") out.set(TOP_LABELS[k]!, MANAGED); // plan-9: la sección en sí (ausente ≠ presente)
+      if (k === "mods" || k === "plugins") out.set(TOP_LABELS[k]!, MANAGED); // plan-9: the section itself (absent ≠ present)
       for (const [sk, sv] of Object.entries(v)) {
         const path = `${k}.${sk}`;
         out.set(NESTED_LABELS[path] ?? path, path === "ports.extra" ? showPorts(sv) : show(sv));
@@ -77,7 +77,7 @@ function flatten(spec: Obj): Map<string, string> {
   return out;
 }
 
-/** Cambios entre dos specs, en el orden en que aparecen; vacío si son equivalentes. */
+/** Changes between two specs, in the order they appear; empty if they are equivalent. */
 export function diffSpecs(before: Obj, after: Obj): DiffLine[] {
   const a = flatten(before);
   const b = flatten(after);

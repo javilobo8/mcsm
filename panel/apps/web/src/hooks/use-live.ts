@@ -5,7 +5,7 @@ import { bindLive } from "@/lib/live";
 import { bindNodeMetrics } from "@/lib/metrics";
 import { bindEvents } from "@/lib/events";
 
-/** Mantiene la caché de servidores y nodos sincronizada con el WS mientras el componente esté montado. */
+/** Keeps the servers and nodes cache in sync with the WS while the component is mounted. */
 export function useLive() {
   const qc = useQueryClient();
   useEffect(() => {

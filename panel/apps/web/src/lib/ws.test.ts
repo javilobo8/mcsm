@@ -29,20 +29,20 @@ beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("Realtime", () => {
-  it("suscribe al abrir y enruta mensajes por topic", () => {
+  it("subscribes on open and routes messages by topic", () => {
     const { rt, sockets } = setup();
     const logs = vi.fn(); const nodes = vi.fn();
     rt.subscribe("server:a:logs", logs); rt.subscribe("nodes", nodes);
     sockets[0]!.open();
     expect(sockets[0]!.sent).toEqual([{ type: "subscribe", topic: "server:a:logs" }, { type: "subscribe", topic: "nodes" }]);
-    sockets[0]!.recv({ type: "log", serverId: "a", ts: 1, line: "hola" });
+    sockets[0]!.recv({ type: "log", serverId: "a", ts: 1, line: "hello" });
     sockets[0]!.recv({ type: "log_reset", serverId: "a" });
     sockets[0]!.recv({ type: "node", node: { id: "n" } });
     expect(logs).toHaveBeenCalledTimes(2);
     expect(nodes).toHaveBeenCalledTimes(1);
   });
 
-  it("ignora mensajes no objeto y un handler que lanza no corta a los demás", () => {
+  it("ignores non-object messages and a handler that throws does not stop the others", () => {
     const { rt, sockets } = setup();
     vi.spyOn(console, "error").mockImplementation(() => {});
     const bad = vi.fn(() => { throw new Error("boom"); }); const good = vi.fn();
@@ -53,7 +53,7 @@ describe("Realtime", () => {
     expect(good).toHaveBeenCalledTimes(1);
   });
 
-  it("reconecta con backoff, reenvía subscribe y avisa con onReconnect (no en la primera conexión)", () => {
+  it("reconnects with backoff, resends subscribe and notifies with onReconnect (not on the first connection)", () => {
     const { rt, sockets } = setup();
     const onRe = vi.fn();
     rt.onReconnect(onRe);
@@ -69,7 +69,7 @@ describe("Realtime", () => {
     expect(onRe).toHaveBeenCalledTimes(1);
   });
 
-  it("deja de reintentar con código de cierre de auth y avisa", () => {
+  it("stops retrying on an auth close code and notifies", () => {
     const { rt, sockets } = setup();
     const lost = vi.fn(); rt.onAuthLost(lost);
     rt.subscribe("servers", () => {});
@@ -79,11 +79,11 @@ describe("Realtime", () => {
     expect(sockets).toHaveLength(1);
   });
 
-  it("si el upgrade falla y la sesión no es válida, no reintenta", async () => {
+  it("if the upgrade fails and the session is not valid, it does not retry", async () => {
     const { rt, sockets } = setup(false);
     const lost = vi.fn(); rt.onAuthLost(lost);
     rt.subscribe("servers", () => {});
-    sockets[0]!.drop(1006); // nunca abrió
+    sockets[0]!.drop(1006); // it never opened
     await vi.advanceTimersByTimeAsync(60000);
     expect(lost).toHaveBeenCalledTimes(1);
     expect(sockets).toHaveLength(1);
@@ -91,7 +91,7 @@ describe("Realtime", () => {
     expect(sockets).toHaveLength(2);
   });
 
-  it("si el upgrade falla con sesión válida, reintenta", async () => {
+  it("if the upgrade fails with a valid session, it retries", async () => {
     const { rt, sockets } = setup(true);
     rt.subscribe("servers", () => {});
     sockets[0]!.drop(1006);
@@ -101,21 +101,21 @@ describe("Realtime", () => {
 });
 
 describe("topicOf (Plan 9)", () => {
-  it("eventos al topic events y el estado del router al topic nodes", () => {
+  it("events to the events topic and the router state to the nodes topic", () => {
     expect(topicOf({ type: "event", event: { id: "e", nodeId: null, serverId: null, serverName: null, level: "info", kind: "drift", message: "m", createdAt: "", agentAt: null } })).toBe("events");
     expect(topicOf({ type: "router", nodeId: "n1", router: {} as never })).toBe("nodes");
   });
 });
 
-describe("cambio de contraseña y 4401 del WS", () => {
-  it("decisión pura al terminar la mutación", () => {
+describe("password change and WS 4401", () => {
+  it("pure decision when the mutation ends", () => {
     expect(settleSessionChange(false, true)).toBe("reconnect");
     expect(settleSessionChange(true, true)).toBe("reconnect");
     expect(settleSessionChange(true, false)).toBe("lose");
     expect(settleSessionChange(false, false)).toBe("none");
   });
 
-  it("un 4401 durante el cambio no pierde la sesión; con éxito se reconecta con la cookie nueva", () => {
+  it("a 4401 during the change does not lose the session; on success it reconnects with the new cookie", () => {
     const { rt, sockets } = setup();
     const lost = vi.fn(); rt.onAuthLost(lost);
     const onRe = vi.fn(); rt.onReconnect(onRe);
@@ -134,7 +134,7 @@ describe("cambio de contraseña y 4401 del WS", () => {
     expect(onRe).toHaveBeenCalledTimes(1);
   });
 
-  it("con éxito y sin 4401 aún, se renueva el socket y un 4401 tardío del viejo se ignora", () => {
+  it("on success and without a 4401 yet, the socket is renewed and a late 4401 from the old one is ignored", () => {
     const { rt, sockets } = setup();
     const lost = vi.fn(); rt.onAuthLost(lost);
     rt.subscribe("servers", () => {});
@@ -148,7 +148,7 @@ describe("cambio de contraseña y 4401 del WS", () => {
     expect(sockets).toHaveLength(2);
   });
 
-  it("si la mutación falla tras un 4401, se pierde la sesión; sin 4401 no pasa nada", () => {
+  it("if the mutation fails after a 4401, the session is lost; without a 4401 nothing happens", () => {
     const a = setup();
     const lostA = vi.fn(); a.rt.onAuthLost(lostA);
     a.rt.subscribe("servers", () => {});
@@ -167,7 +167,7 @@ describe("cambio de contraseña y 4401 del WS", () => {
     expect(b.sockets).toHaveLength(1);
   });
 
-  it("fuera de un cambio de sesión, 4401 sigue perdiendo la sesión", () => {
+  it("outside a session change, 4401 still loses the session", () => {
     const { rt, sockets } = setup();
     const lost = vi.fn(); rt.onAuthLost(lost);
     rt.subscribe("servers", () => {});
@@ -178,7 +178,7 @@ describe("cambio de contraseña y 4401 del WS", () => {
     expect(lost).toHaveBeenCalledTimes(1);
   });
 
-  it("un checkAuthenticated en vuelo (upgrade fallido durante la mutación) que resuelve tras settle(true) no pierde la sesión", async () => {
+  it("an in-flight checkAuthenticated (failed upgrade during the mutation) that resolves after settle(true) does not lose the session", async () => {
     const sockets: FakeSocket[] = [];
     let answer!: (ok: boolean) => void;
     const rt = new Realtime({
@@ -189,31 +189,31 @@ describe("cambio de contraseña y 4401 del WS", () => {
     const lost = vi.fn(); rt.onAuthLost(lost);
     rt.subscribe("servers", () => {});
     const settle = rt.expectSessionChange();
-    sockets[0]!.drop(); // el upgrade falla (cookie vieja) y se comprueba la sesión
-    settle(true); // la cookie nueva ya está puesta
+    sockets[0]!.drop(); // the upgrade fails (old cookie) and the session is checked
+    settle(true); // the new cookie is already set
     expect(sockets).toHaveLength(2);
-    answer(false); // la comprobación salió con la cookie vieja
+    answer(false); // the check went out with the old cookie
     await vi.advanceTimersByTimeAsync(60000);
     expect(lost).not.toHaveBeenCalled();
     expect(sockets).toHaveLength(2);
   });
 
-  it("dos expectSessionChange solapados no se pisan: el 4401 visto vale hasta que acaban los dos", () => {
+  it("two overlapping expectSessionChange do not step on each other: the 4401 seen holds until both end", () => {
     const { rt, sockets } = setup();
     const lost = vi.fn(); rt.onAuthLost(lost);
     rt.subscribe("servers", () => {});
     sockets[0]!.open();
     const a = rt.expectSessionChange();
     sockets[0]!.drop(4401);
-    const b = rt.expectSessionChange(); // no borra el 4401 ya visto ni deja de esperar
+    const b = rt.expectSessionChange(); // it neither clears the 4401 already seen nor stops waiting
     a(true);
-    sockets[1]!.drop(4401); // el socket nuevo aún con la cookie vieja: sigue esperándose
+    sockets[1]!.drop(4401); // the new socket still with the old cookie: it keeps waiting
     expect(lost).not.toHaveBeenCalled();
     b(false);
-    expect(lost).not.toHaveBeenCalled(); // hubo un éxito en el lote: la cookie es nueva
+    expect(lost).not.toHaveBeenCalled(); // there was a success in the batch: the cookie is new
   });
 
-  it("si fallan los dos solapados tras un 4401, se pierde la sesión una vez", () => {
+  it("if both overlapping ones fail after a 4401, the session is lost once", () => {
     const { rt, sockets } = setup();
     const lost = vi.fn(); rt.onAuthLost(lost);
     rt.subscribe("servers", () => {});
@@ -221,7 +221,7 @@ describe("cambio de contraseña y 4401 del WS", () => {
     const a = rt.expectSessionChange(); const b = rt.expectSessionChange();
     sockets[0]!.drop(4401);
     a(false);
-    expect(lost).not.toHaveBeenCalled(); // aún queda uno en curso
+    expect(lost).not.toHaveBeenCalled(); // one is still in progress
     b(false);
     expect(lost).toHaveBeenCalledTimes(1);
   });

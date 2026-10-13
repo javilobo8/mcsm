@@ -12,12 +12,12 @@ export function useJobs(filter: JobsFilter = {}) {
   return useQuery({ queryKey: jobsKey(filter), queryFn: () => api.get<JobDto[]>(`/api/jobs?${params}`), placeholderData: keepPreviousData });
 }
 
-/** Detalle de un job (con su log). Sin id no consulta nada. */
+/** Detail of a job (with its log). Without an id it queries nothing. */
 export function useJob(id: string | null) {
   return useQuery({ queryKey: jobKey(id ?? ""), queryFn: () => api.get<JobDetailDto>(apiPath`/api/jobs/${id ?? ""}`), enabled: id !== null });
 }
 
-/** Mantiene jobs y copias al día con el topic `jobs` mientras el componente esté montado. */
+/** Keeps jobs and backups up to date with the `jobs` topic while the component is mounted. */
 export function useJobsLive() {
   const qc = useQueryClient();
   useEffect(() => retainJobsLive(qc, realtime), [qc]);

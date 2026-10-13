@@ -5,7 +5,7 @@ import { api, apiPath } from "@/lib/api";
 import { realtime } from "@/lib/ws";
 import { bindRouterLive, routerKey } from "@/lib/router";
 
-/** Router (mc-router) de un nodo: por REST y después en vivo por el WS (evento `router`). */
+/** Router (mc-router) of a node: over REST and then live over the WS (`router` event). */
 export function useNodeRouter(nodeId: string) {
   const qc = useQueryClient();
   useEffect(() => bindRouterLive(qc, realtime, nodeId), [qc, nodeId]);

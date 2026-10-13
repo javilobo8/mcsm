@@ -3,7 +3,7 @@ import type { MetricRange, MetricSeries } from "@mcsm/shared";
 import { api, apiPath } from "@/lib/api";
 import { REFRESH_MS, entryFromSeries } from "@/lib/metrics";
 
-/** Serie histórica de un servidor; se recarga al ritmo del cubo del rango. */
+/** Historical series of a server; reloads at the pace of the range bucket. */
 export function useServerMetrics(serverId: string, range: MetricRange) {
   return useQuery({
     queryKey: ["metrics", "server", serverId, range],
@@ -12,7 +12,7 @@ export function useServerMetrics(serverId: string, range: MetricRange) {
   });
 }
 
-/** Última muestra de un nodo: la primera por REST y después en vivo por el WS (`node_metrics`, enlazado una vez en `useLive`). */
+/** Latest sample of a node: the first one over REST and then live over the WS (`node_metrics`, bound once in `useLive`). */
 export function useNodeLive(nodeId: string) {
   return useQuery({
     queryKey: ["node-live", nodeId],
@@ -21,7 +21,7 @@ export function useNodeLive(nodeId: string) {
   });
 }
 
-/** Serie histórica de un nodo (detalle de nodo). */
+/** Historical series of a node (node detail). */
 export function useNodeMetrics(nodeId: string, range: MetricRange) {
   return useQuery({
     queryKey: ["metrics", "node", nodeId, range],

@@ -2,14 +2,14 @@ import type { MetricSeries } from "@mcsm/shared";
 import type { NodeDto } from "./api";
 import { aligned, memAligned, type Aligned } from "./metrics";
 
-/** Series de las gráficas del nodo: CPU del host, memoria usada/total y disco de DATA_ROOT usado/total. */
+/** Node chart series: host CPU, used/total memory and used/total DATA_ROOT disk. */
 export function nodeChartsData(s: MetricSeries): { cpu: Aligned; mem: Aligned; disk: Aligned } {
   return { cpu: aligned(s, ["cpuPct"]), mem: memAligned(s), disk: aligned(s, ["diskBytes", "diskTotalBytes"]) };
 }
 
 export function rotationNote(n: NodeDto): string | null {
   return n.tokenRotationPending
-    ? "Rotación pendiente: el agente aún no se ha conectado con el token nuevo (el anterior sigue valiendo hasta entonces)."
+    ? "Rotation pending: the agent has not yet connected with the new token (the previous one stays valid until then)."
     : null;
 }
 

@@ -2,17 +2,17 @@ import { describe, expect, it } from "vitest";
 import { defaultSpecInput, templateSpecSchema } from "@mcsm/shared";
 import { createErrorStep, createRequest, creationSource, parseNewServerSearch, stepBlock, summarizeSpec } from "./wizard";
 
-describe("asistente de nuevo servidor", () => {
-  it("desde plantilla llama al endpoint de la plantilla y solo pasa el puerto si se dio", () => {
+describe("new server wizard", () => {
+  it("from a template calls the template endpoint and only passes the port if given", () => {
     expect(createRequest({ templateId: "t1" }, { nodeId: "n", name: " Survival ", start: true })).toEqual({
       url: "/api/templates/t1/servers", body: { nodeId: "n", name: "Survival", desiredState: "running" },
     });
     expect(createRequest({ templateId: "t1" }, { nodeId: "n", name: "S", port: 25570, start: false }).body).toMatchObject({ port: 25570, desiredState: "stopped" });
   });
-  it("codifica el id de la plantilla en la ruta", () => {
+  it("encodes the template id in the path", () => {
     expect(createRequest({ templateId: "a/b?c" }, { nodeId: "n", name: "S", start: true }).url).toBe("/api/templates/a%2Fb%3Fc/servers");
   });
-  it("desde cero envía la spec con el puerto de juego solo si se dio", () => {
+  it("from scratch sends the spec with the game port only if given", () => {
     const spec = { ...defaultSpecInput(), type: "FABRIC", mods: { modrinthProjects: ["lithium"], curseforgeFiles: [], urls: [] } };
     const r = createRequest({ spec }, { nodeId: "n", name: "Fabric", start: true });
     expect(r.url).toBe("/api/servers");
@@ -20,25 +20,25 @@ describe("asistente de nuevo servidor", () => {
     expect((r.body.spec as { ports: object }).ports).not.toHaveProperty("game");
     expect(createRequest({ spec }, { nodeId: "n", name: "F", port: 25599, start: true }).body.spec).toMatchObject({ ports: { game: 25599 } });
   });
-  it("resume la spec", () => {
+  it("summarizes the spec", () => {
     const t = templateSpecSchema.parse({ type: "MODRINTH", modpack: { platform: "MODRINTH", slugOrUrl: "cobblemon-fabric" }, memory: "6G", whitelist: { enabled: true, players: ["Lobo"] }, mods: { modrinthProjects: ["a", "b"] } });
     expect(summarizeSpec(t)).toEqual(expect.arrayContaining([
-      { label: "Tipo", value: "Modpack de Modrinth" },
+      { label: "Type", value: "Modrinth modpack" },
       { label: "Modpack", value: "cobblemon-fabric" },
-      { label: "Memoria", value: "6G" },
+      { label: "Memory", value: "6G" },
       { label: "Mods", value: "2 mods" },
-      { label: "Whitelist", value: "1 jugador" },
+      { label: "Whitelist", value: "1 player" },
     ]));
-    expect(summarizeSpec(t).map((l) => l.label)).not.toContain("Copias automáticas");
+    expect(summarizeSpec(t).map((l) => l.label)).not.toContain("Scheduled backups");
   });
-  it("la programación de copias que trae la plantilla sale en el resumen", () => {
+  it("the backup schedule that the template brings appears in the summary", () => {
     const t = templateSpecSchema.parse({ type: "PAPER", backups: { enabled: true, cron: "0 */6 * * *", keepCount: 20, keepDays: 0 } });
-    expect(summarizeSpec(t)).toContainEqual({ label: "Copias automáticas", value: "0 */6 * * * (cada 6 horas) · como máximo 20 copias" });
+    expect(summarizeSpec(t)).toContainEqual({ label: "Scheduled backups", value: "0 */6 * * * (every 6 hours) · at most 20 backups" });
   });
 });
 
 describe("?template=", () => {
-  it("acepta un id no vacío y descarta lo demás", () => {
+  it("accepts a non-empty id and discards the rest", () => {
     expect(parseNewServerSearch({ template: "t1" })).toEqual({ template: "t1" });
     expect(parseNewServerSearch({ template: "" })).toEqual({});
     expect(parseNewServerSearch({ template: 5 })).toEqual({});
@@ -47,50 +47,50 @@ describe("?template=", () => {
   });
 });
 
-describe("bloqueo de pasos", () => {
+describe("step blocking", () => {
   const ok = { source: "scratch" as const, templateLoaded: true, specError: null, fieldErrors: {}, nodeId: "n", name: "S", port: "" };
-  it("paso 1: spec inválida, errores de campo o plantilla ausente bloquean y explican", () => {
+  it("step 1: invalid spec, field errors or missing template block and explain", () => {
     expect(stepBlock(1, ok)).toBeNull();
-    expect(stepBlock(1, { ...ok, specError: "modpack.slugOrUrl: obligatorio" })).toBe("modpack.slugOrUrl: obligatorio");
-    expect(stepBlock(1, { ...ok, fieldErrors: { "sf-memory": "x" } })).toMatch(/1 campo con error/);
-    expect(stepBlock(1, { ...ok, fieldErrors: { a: "x", b: "y" } })).toMatch(/2 campos con error/);
-    expect(stepBlock(1, { ...ok, source: "t1", templateLoaded: false })).toMatch(/plantilla/i);
-    expect(stepBlock(1, { ...ok, source: "t1", templateLoaded: true, specError: "ignorado", fieldErrors: {} })).toBeNull();
+    expect(stepBlock(1, { ...ok, specError: "modpack.slugOrUrl: required" })).toBe("modpack.slugOrUrl: required");
+    expect(stepBlock(1, { ...ok, fieldErrors: { "sf-memory": "x" } })).toMatch(/1 field with an error/);
+    expect(stepBlock(1, { ...ok, fieldErrors: { a: "x", b: "y" } })).toMatch(/2 fields with errors/);
+    expect(stepBlock(1, { ...ok, source: "t1", templateLoaded: false })).toMatch(/template/i);
+    expect(stepBlock(1, { ...ok, source: "t1", templateLoaded: true, specError: "ignored", fieldErrors: {} })).toBeNull();
   });
-  it("paso 2: nodo, nombre y puerto", () => {
+  it("step 2: node, name and port", () => {
     expect(stepBlock(2, ok)).toBeNull();
-    expect(stepBlock(2, { ...ok, nodeId: "" })).toMatch(/nodo/i);
-    expect(stepBlock(2, { ...ok, name: "  " })).toMatch(/nombre/i);
-    expect(stepBlock(2, { ...ok, port: "70000" })).toMatch(/puerto/i);
-    expect(stepBlock(2, { ...ok, port: "abc" })).toMatch(/puerto/i);
+    expect(stepBlock(2, { ...ok, nodeId: "" })).toMatch(/node/i);
+    expect(stepBlock(2, { ...ok, name: "  " })).toMatch(/name/i);
+    expect(stepBlock(2, { ...ok, port: "70000" })).toMatch(/port/i);
+    expect(stepBlock(2, { ...ok, port: "abc" })).toMatch(/port/i);
     expect(stepBlock(2, { ...ok, port: "25570" })).toBeNull();
-    expect(stepBlock(2, { ...ok, source: "t1", templateLoaded: false })).toMatch(/plantilla/i);
+    expect(stepBlock(2, { ...ok, source: "t1", templateLoaded: false })).toMatch(/template/i);
   });
 });
 
-describe("error de creación", () => {
-  it("un 409 (slug o puerto en uso) vuelve al paso 2; el resto se queda en el 3", () => {
+describe("creation error", () => {
+  it("a 409 (slug or port in use) goes back to step 2; the rest stay on 3", () => {
     expect(createErrorStep(409)).toBe(2);
     expect(createErrorStep(502)).toBe(3);
     expect(createErrorStep(undefined)).toBe(3);
   });
 });
 
-describe("origen al pulsar Crear", () => {
+describe("source when pressing Create", () => {
   const spec = { ...defaultSpecInput(), type: "FABRIC" };
-  it("desde cero usa la spec; con plantilla, su id", () => {
+  it("from scratch uses the spec; with a template, its id", () => {
     expect(creationSource("scratch", undefined, spec)).toEqual({ spec });
     expect(creationSource("t1", { id: "t1" }, spec)).toEqual({ templateId: "t1" });
   });
-  it("si la plantilla elegida ya no existe NO cae a «desde cero»", () => {
+  it("if the chosen template no longer exists it does NOT fall back to “from scratch”", () => {
     expect(creationSource("t1", undefined, spec)).toBeNull();
   });
 });
 
 describe("summarizeSpec: build (plan 10)", () => {
-  it("el build fijado sale con la etiqueta de su tipo, justo tras la versión", () => {
+  it("the pinned build appears with its type's label, right after the version", () => {
     const lines = summarizeSpec({ ...defaultSpecInput(), type: "PAPER", version: "1.20.1", build: "178" });
-    expect(lines.slice(1, 3)).toEqual([{ label: "Versión de Minecraft", value: "1.20.1" }, { label: "Build de Paper", value: "178" }]);
-    expect(summarizeSpec({ ...defaultSpecInput(), type: "PAPER" }).map((l) => l.label)).not.toContain("Build de Paper");
+    expect(lines.slice(1, 3)).toEqual([{ label: "Minecraft version", value: "1.20.1" }, { label: "Paper build", value: "178" }]);
+    expect(summarizeSpec({ ...defaultSpecInput(), type: "PAPER" }).map((l) => l.label)).not.toContain("Paper build");
   });
 });

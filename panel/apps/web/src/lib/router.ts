@@ -11,23 +11,23 @@ export const routerKey = (nodeId: string) => ["router", nodeId] as const;
 export type RouterTone = "ok" | "warn" | "bad" | "muted";
 export interface RouterStatus { label: string; tone: RouterTone; detail: string | null }
 
-/** Estado legible del router de un nodo a partir de lo guardado y lo último que informó el agente. Pura. */
+/** Readable status of a node's router from what is saved and what the agent last reported. Pure. */
 export function routerStatus(r: RouterDto, nodeOnline: boolean): RouterStatus {
   const o = r.observed;
   if (!r.spec.enabled) {
-    if (o?.configured && o.state !== "missing" && nodeOnline) return { label: "Retirando…", tone: "warn", detail: null };
-    return { label: "Desactivado", tone: "muted", detail: null };
+    if (o?.configured && o.state !== "missing" && nodeOnline) return { label: "Removing…", tone: "warn", detail: null };
+    return { label: "Disabled", tone: "muted", detail: null };
   }
-  if (!nodeOnline) return { label: "Nodo desconectado", tone: "warn", detail: "Se aplicará cuando el nodo vuelva a conectar" };
+  if (!nodeOnline) return { label: "Node offline", tone: "warn", detail: "It will be applied when the node reconnects" };
   if (o?.error) return { label: "Error", tone: "bad", detail: o.error };
-  if (!o || !o.configured || o.hostPort !== r.spec.port || o.autoscale !== r.spec.autoscale) return { label: "Aplicando…", tone: "warn", detail: null };
+  if (!o || !o.configured || o.hostPort !== r.spec.port || o.autoscale !== r.spec.autoscale) return { label: "Applying…", tone: "warn", detail: null };
   if (r.spec.autoscale && (o.autoscaleDownAfterMinutes !== r.spec.autoscaleDownAfterMinutes
-    || o.autoscaleAllowPlayers.join("\n") !== r.spec.autoscaleAllowPlayers.join("\n"))) return { label: "Aplicando…", tone: "warn", detail: null };
-  if (o.state === "running") return { label: `Activo en :${r.spec.port}`, tone: "ok", detail: null };
-  return { label: `Estado: ${o.state}`, tone: "warn", detail: null };
+    || o.autoscaleAllowPlayers.join("\n") !== r.spec.autoscaleAllowPlayers.join("\n"))) return { label: "Applying…", tone: "warn", detail: null };
+  if (o.state === "running") return { label: `Active on :${r.spec.port}`, tone: "ok", detail: null };
+  return { label: `State: ${o.state}`, tone: "warn", detail: null };
 }
 
-/** Estado del formulario del router (los números y la lista como texto, tal y como se escriben). */
+/** State of the router form (numbers and the list as text, as they are typed). */
 export interface RouterForm { enabled: boolean; port: string; autoscale: boolean; minutes: string; players: string }
 
 export function routerFormFrom(spec: RouterDeploymentSpec): RouterForm {
@@ -37,7 +37,7 @@ export function routerFormFrom(spec: RouterDeploymentSpec): RouterForm {
   };
 }
 
-/** Jugadores del texto (uno por línea o separados por comas), sin repetir. */
+/** Players from the text (one per line or comma-separated), without repeats. */
 const playersOf = (text: string): string[] => [...new Set(parseList(text))];
 
 const intIn = (text: string, min: number, max: number): number | null => {
@@ -50,26 +50,26 @@ const intIn = (text: string, min: number, max: number): number | null => {
 function playersError(text: string): string | undefined {
   const list = playersOf(text);
   const bad = list.filter((p) => !PLAYER_RE.test(p));
-  if (bad.length) return `Jugador inválido: ${bad.slice(0, 3).join(", ")} (nombre de 1-16 letras, números o _, o UUID)`;
-  if (list.length > ROUTER_MAX_ALLOW_PLAYERS) return `Como mucho ${ROUTER_MAX_ALLOW_PLAYERS} jugadores`;
+  if (bad.length) return `Invalid player: ${bad.slice(0, 3).join(", ")} (name of 1-16 letters, numbers or _, or UUID)`;
+  if (list.length > ROUTER_MAX_ALLOW_PLAYERS) return `At most ${ROUTER_MAX_ALLOW_PLAYERS} players`;
   return undefined;
 }
 
 /**
- * Errores de campo del formulario (mismas reglas que la API). Vacío = se puede guardar. Desactivado
- * no hay nada que validar (m7): desactivar siempre se puede guardar.
+ * Form field errors (same rules as the API). Empty = it can be saved. When disabled
+ * there is nothing to validate (m7): disabling can always be saved.
  */
 export function routerFormErrors(f: RouterForm): { port?: string; minutes?: string; players?: string } {
   const out: { port?: string; minutes?: string; players?: string } = {};
   if (!f.enabled) return out;
-  if (intIn(f.port, 1, 65535) === null) out.port = "Puerto: un número entre 1 y 65535";
-  if (f.autoscale && intIn(f.minutes, 1, ROUTER_MAX_DOWN_AFTER_MINUTES) === null) out.minutes = `Minutos: un número entre 1 y ${ROUTER_MAX_DOWN_AFTER_MINUTES}`;
+  if (intIn(f.port, 1, 65535) === null) out.port = "Port: a number between 1 and 65535";
+  if (f.autoscale && intIn(f.minutes, 1, ROUTER_MAX_DOWN_AFTER_MINUTES) === null) out.minutes = `Minutes: a number between 1 and ${ROUTER_MAX_DOWN_AFTER_MINUTES}`;
   const players = f.autoscale ? playersError(f.players) : undefined;
   if (players) out.players = players;
   return out;
 }
 
-/** Cuerpo del PUT. Lo que no valga (desactivado o sin autoscale) vuelve a lo guardado (`saved`). */
+/** Body of the PUT. Whatever is not valid (disabled or without autoscale) goes back to what was saved (`saved`). */
 export function routerFormBody(f: RouterForm, saved: RouterDeploymentSpec): RouterDeploymentSpec {
   return {
     enabled: f.enabled, port: intIn(f.port, 1, 65535) ?? saved.port, autoscale: f.autoscale,
@@ -84,13 +84,13 @@ export function applyRouterEvent(qc: QueryClient, msg: RouterMsg): void {
   mergeIntoCached<RouterDto>(qc, routerKey(msg.nodeId), () => msg.router);
 }
 
-/** Subconjunto de `Realtime` que se usa aquí (facilita los tests). */
+/** Subset of `Realtime` used here (makes testing easier). */
 export interface RouterLiveSource {
   subscribe(topic: string, handler: (msg: ServerMessage) => void): () => void;
   onReconnect(cb: () => void): () => void;
 }
 
-/** Mantiene ["router", nodeId] al día con el topic `nodes`. Devuelve la función de limpieza. */
+/** Keeps ["router", nodeId] up to date with the `nodes` topic. Returns the cleanup function. */
 export function bindRouterLive(qc: QueryClient, live: RouterLiveSource, nodeId: string): () => void {
   const offs = [
     live.subscribe("nodes", (m) => { if (m.type === "router" && m.nodeId === nodeId) applyRouterEvent(qc, m); }),

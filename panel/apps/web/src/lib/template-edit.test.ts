@@ -4,27 +4,27 @@ import { editableFromTemplate } from "./spec-edit";
 import { REMOVE_SCHEDULE_PATCH, templateCreateBody, templatePatchBody, templateSaveBlock } from "./template-edit";
 
 describe("templateSaveBlock", () => {
-  it("exige nombre", () => {
-    expect(templateSaveBlock("  ", {})).toBe("El nombre es obligatorio");
+  it("requires a name", () => {
+    expect(templateSaveBlock("  ", {})).toBe("The name is required");
   });
-  it("bloquea mientras haya errores de campo y dice cuántos", () => {
-    expect(templateSaveBlock("a", { "sf-memory": "mal" })).toBe("Corrige 1 campo con error antes de guardar");
-    expect(templateSaveBlock("a", { x: "1", y: "2" })).toBe("Corrige 2 campos con error antes de guardar");
+  it("blocks while there are field errors and says how many", () => {
+    expect(templateSaveBlock("a", { "sf-memory": "bad" })).toBe("Fix 1 field with an error before saving");
+    expect(templateSaveBlock("a", { x: "1", y: "2" })).toBe("Fix 2 fields with errors before saving");
   });
-  it("sin bloqueo si todo está bien", () => {
+  it("no block if everything is fine", () => {
     expect(templateSaveBlock("a", {})).toBeNull();
   });
 });
 
-describe("cuerpos de plantilla", () => {
+describe("template bodies", () => {
   const base = defaultSpecInput();
-  it("crear: recorta y no envía ports", () => {
+  it("create: trims and does not send ports", () => {
     const b = templateCreateBody(" n ", " d ", { ...base, ports: { extra: [{ container: 1, host: 2, proto: "tcp", label: "x" }] } });
     expect(b.name).toBe("n");
     expect(b.description).toBe("d");
     expect("ports" in b.spec).toBe(false);
   });
-  it("editar: solo envía lo cambiado y null para borrar opcionales", () => {
+  it("edit: only sends what changed and null to remove optionals", () => {
     const orig = { ...base, memory: "2G", mods: { modrinthProjects: ["lithium"], curseforgeFiles: [], urls: [] } };
     const tpl = editableFromTemplate((({ ports: _p, ...r }) => r)(orig));
     const edited = { ...tpl, memory: "4G" };
@@ -35,6 +35,6 @@ describe("cuerpos de plantilla", () => {
   });
 });
 
-it("quitar la programación de una plantilla es un PATCH con backups: null", () => {
+it("removing a template's schedule is a PATCH with backups: null", () => {
   expect(REMOVE_SCHEDULE_PATCH).toEqual({ spec: { backups: null } });
 });

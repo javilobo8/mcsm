@@ -7,7 +7,7 @@ import { buildLabel } from "./versions";
 
 export interface WizardTarget { nodeId: string; name: string; port?: number; start: boolean }
 
-/** Petición de creación: desde plantilla (el panel copia su spec) o desde cero (spec del paso 1). */
+/** Creation request: from a template (the panel copies its spec) or from scratch (spec of step 1). */
 export function createRequest(source: { templateId: string } | { spec: EditableSpec }, t: WizardTarget): { url: string; body: Record<string, unknown> } {
   const desiredState = t.start ? "running" : "stopped";
   if ("templateId" in source) {
@@ -19,31 +19,31 @@ export function createRequest(source: { templateId: string } | { spec: EditableS
 
 const count = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
-/** Resumen legible de una spec para el paso "Revisar". */
+/** Readable summary of a spec for the "Review" step. */
 export function summarizeSpec(spec: TemplateSpec | EditableSpec): { label: string; value: string }[] {
   const mods = spec.mods ? spec.mods.modrinthProjects.length + spec.mods.curseforgeFiles.length + spec.mods.urls.length : 0;
   const plugins = spec.plugins ? spec.plugins.modrinthProjects.length + spec.plugins.spigetResources.length + spec.plugins.urls.length : 0;
   const lines = [
-    { label: "Tipo", value: typeLabel(spec.type) },
-    { label: "Versión de Minecraft", value: spec.version },
-    // plan-10: `build` falta en plantillas antiguas.
+    { label: "Type", value: typeLabel(spec.type) },
+    { label: "Minecraft version", value: spec.version },
+    // plan-10: `build` is missing in old templates.
     ...(spec.build ? [{ label: buildLabel(spec.type) ?? "Build", value: spec.build }] : []),
     { label: "Java", value: spec.imageTag },
-    { label: "Memoria", value: spec.memory + (spec.resources.memLimit ? ` (límite ${spec.resources.memLimit})` : "") },
+    { label: "Memory", value: spec.memory + (spec.resources.memLimit ? ` (limit ${spec.resources.memLimit})` : "") },
   ];
   if (spec.modpack) lines.push({ label: "Modpack", value: spec.modpack.slugOrUrl + (spec.modpack.versionId ? ` @ ${spec.modpack.versionId}` : "") });
   if (mods) lines.push({ label: "Mods", value: count(mods, "mod", "mods") });
   if (plugins) lines.push({ label: "Plugins", value: count(plugins, "plugin", "plugins") });
-  if (spec.whitelist) lines.push({ label: "Whitelist", value: spec.whitelist.enabled ? count(spec.whitelist.players.length, "jugador", "jugadores") : "desactivada" });
-  if (spec.ops?.length) lines.push({ label: "Operadores", value: spec.ops.join(", ") });
+  if (spec.whitelist) lines.push({ label: "Whitelist", value: spec.whitelist.enabled ? count(spec.whitelist.players.length, "player", "players") : "disabled" });
+  if (spec.ops?.length) lines.push({ label: "Operators", value: spec.ops.join(", ") });
   const props = Object.keys(spec.properties).length;
-  if (props) lines.push({ label: "Propiedades", value: count(props, "propiedad fijada", "propiedades fijadas") });
+  if (props) lines.push({ label: "Properties", value: count(props, "property set", "properties set") });
   const backups = scheduleSummary(spec.backups);
-  if (backups) lines.push({ label: "Copias automáticas", value: backups });
+  if (backups) lines.push({ label: "Scheduled backups", value: backups });
   return lines;
 }
 
-/** Búsqueda de `/servers/new`: `?template=<id>` (cualquier otra cosa se descarta). */
+/** Search of `/servers/new`: `?template=<id>` (anything else is discarded). */
 export function parseNewServerSearch(s: Record<string, unknown>): { template?: string } {
   return typeof s.template === "string" && s.template ? { template: s.template } : {};
 }
@@ -51,13 +51,13 @@ export function parseNewServerSearch(s: Record<string, unknown>): { template?: s
 export const SCRATCH = "scratch";
 
 export interface StepContext {
-  /** `"scratch"` o el id de la plantilla elegida. */
+  /** `"scratch"` or the id of the chosen template. */
   source: string;
-  /** La plantilla elegida existe y está cargada (solo importa si `source` no es scratch). */
+  /** The chosen template exists and is loaded (only matters if `source` is not scratch). */
   templateLoaded: boolean;
-  /** Primer error de `validateSpec` (solo desde cero). */
+  /** First error of `validateSpec` (from scratch only). */
   specError: string | null;
-  /** Errores de campo vigentes del formulario del paso 1. */
+  /** Current field errors of the step 1 form. */
   fieldErrors: Readonly<Record<string, string>>;
   nodeId: string;
   name: string;
@@ -68,34 +68,34 @@ export function parsePort(text: string): number | undefined {
   return text.trim() === "" ? undefined : Number(text);
 }
 
-/** Motivo por el que no se puede salir del paso 1 o 2 (null = se puede). Se muestra con aria-describedby. */
+/** Reason why step 1 or 2 cannot be left (null = it can). Shown with aria-describedby. */
 export function stepBlock(step: 1 | 2, c: StepContext): string | null {
   const scratch = c.source === SCRATCH;
-  if (!scratch && !c.templateLoaded) return "La plantilla elegida no está disponible (¿se ha borrado?)";
+  if (!scratch && !c.templateLoaded) return "The chosen template is not available (was it deleted?)";
   if (step === 1) {
     if (!scratch) return null;
     const n = Object.keys(c.fieldErrors).length;
-    if (n > 0) return `Corrige ${n} ${n === 1 ? "campo con error" : "campos con error"} antes de continuar`;
+    if (n > 0) return `Fix ${n} ${n === 1 ? "field with an error" : "fields with errors"} before continuing`;
     return c.specError;
   }
-  if (!c.nodeId) return "Elige un nodo";
-  if (!c.name.trim()) return "Escribe un nombre";
+  if (!c.nodeId) return "Choose a node";
+  if (!c.name.trim()) return "Enter a name";
   const p = parsePort(c.port);
-  if (p !== undefined && (!Number.isInteger(p) || p < 1 || p > 65535)) return "El puerto debe ser un número entre 1 y 65535";
+  if (p !== undefined && (!Number.isInteger(p) || p < 1 || p > 65535)) return "The port must be a number between 1 and 65535";
   return null;
 }
 
 /**
- * Qué se crea al pulsar «Crear servidor». Si la plantilla elegida ya no existe (borrada mientras se
- * rellenaba el asistente y la lista se recargó), null: NUNCA se cae a crear «desde cero» con la spec
- * por defecto, que no es lo que el usuario revisó.
+ * What is created when “Create server” is pressed. If the chosen template no longer exists (deleted while the
+ * wizard was being filled in and the list reloaded), null: it NEVER falls back to creating “from scratch” with the
+ * default spec, which is not what the user reviewed.
  */
 export function creationSource(source: string, tpl: { id: string } | undefined, spec: EditableSpec): { templateId: string } | { spec: EditableSpec } | null {
   if (source === SCRATCH) return { spec };
   return tpl ? { templateId: tpl.id } : null;
 }
 
-/** Paso donde se muestra el fallo de creación: 409 (slug o puerto en uso) se corrige en el paso 2. */
+/** Step where the creation failure is shown: 409 (slug or port in use) is fixed in step 2. */
 export function createErrorStep(status: number | undefined): 2 | 3 {
   return status === 409 ? 2 : 3;
 }
