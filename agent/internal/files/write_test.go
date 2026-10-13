@@ -21,7 +21,7 @@ func readFile(t *testing.T, p string) string {
 	return string(b)
 }
 
-// noTemps falla si quedó algún temporal de escritura en dir.
+// noTemps fails if any write temporary was left in dir.
 func noTemps(t *testing.T, dir string) {
 	t.Helper()
 	des, err := os.ReadDir(dir)
@@ -30,7 +30,7 @@ func noTemps(t *testing.T, dir string) {
 	}
 	for _, de := range des {
 		if strings.HasPrefix(de.Name(), tmpPrefix) {
-			t.Fatalf("temporal sin borrar: %s", de.Name())
+			t.Fatalf("temporary not deleted: %s", de.Name())
 		}
 	}
 }
@@ -39,7 +39,7 @@ type failingReader struct{ n int }
 
 func (f *failingReader) Read(p []byte) (int, error) {
 	if f.n <= 0 {
-		return 0, errors.New("conexión cortada")
+		return 0, errors.New("connection cut")
 	}
 	f.n -= len(p)
 	return len(p), nil
@@ -51,18 +51,18 @@ func TestWriteReplacesAtomicallyKeepingMode(t *testing.T) {
 	must(t, os.Chmod(p, 0o600))
 	must(t, fsys.Write("/server.properties", []byte("motd=adiós\n")))
 	if got := readFile(t, p); got != "motd=adiós\n" {
-		t.Fatalf("contenido = %q", got)
+		t.Fatalf("content = %q", got)
 	}
 	if st, _ := os.Stat(p); st.Mode().Perm() != 0o600 {
-		t.Fatalf("permisos = %v; deben conservarse", st.Mode().Perm())
+		t.Fatalf("permissions = %v; they must be kept", st.Mode().Perm())
 	}
 	noTemps(t, root)
 }
 
 func TestWriteNewFileGets0644(t *testing.T) {
 	fsys, root, _ := layout(t)
-	must(t, fsys.Write("config/nuevo.toml", []byte("x = 1\n")))
-	st, err := os.Stat(filepath.Join(root, "config", "nuevo.toml"))
+	must(t, fsys.Write("config/new.toml", []byte("x = 1\n")))
+	st, err := os.Stat(filepath.Join(root, "config", "new.toml"))
 	if err != nil || st.Mode().Perm() != 0o644 {
 		t.Fatalf("stat = %v, %v", st, err)
 	}
@@ -75,24 +75,24 @@ func TestWriteFailureKeepsOriginal(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if got := readFile(t, filepath.Join(root, "server.properties")); got != "motd=hola\n" {
-		t.Fatalf("el original cambió: %q", got)
+		t.Fatalf("the original changed: %q", got)
 	}
 	noTemps(t, root)
 }
 
 func TestWriteTruncatedTransferKeepsOriginal(t *testing.T) {
 	fsys, root, _ := layout(t)
-	_, err := fsys.WriteFrom("server.properties", strings.NewReader("corto"), 100)
+	_, err := fsys.WriteFrom("server.properties", strings.NewReader("short"), 100)
 	if !errors.Is(err, ErrTransfer) {
 		t.Fatalf("err = %v", err)
 	}
 	if got := readFile(t, filepath.Join(root, "server.properties")); got != "motd=hola\n" {
-		t.Fatalf("el original cambió: %q", got)
+		t.Fatalf("the original changed: %q", got)
 	}
 	noTemps(t, root)
 }
 
-// countingReader cuenta los bytes que se han leído del origen.
+// countingReader counts the bytes read from the source.
 type countingReader struct {
 	r io.Reader
 	n int64
@@ -106,17 +106,17 @@ func (c *countingReader) Read(p []byte) (int, error) {
 
 func TestWriteFromStopsReadingPastExpected(t *testing.T) {
 	fsys, root, _ := layout(t)
-	// un origen que envía de más (1 MiB cuando se esperaban 10 bytes) no puede llenar el disco
+	// a source that sends too much (1 MiB when 10 bytes were expected) cannot fill the disk
 	src := &countingReader{r: io.LimitReader(&pattern{}, 1<<20)}
 	_, err := fsys.WriteFrom("server.properties", src, 10)
 	if !errors.Is(err, ErrTransfer) || Code(err) != "transfer_failed" {
 		t.Fatalf("err = %v", err)
 	}
 	if src.n > 11 {
-		t.Fatalf("se leyeron %d bytes de un origen que debía traer 10: hay que cortar en expected+1", src.n)
+		t.Fatalf("%d bytes were read from a source that should have carried 10: it must be cut at expected+1", src.n)
 	}
 	if got := readFile(t, filepath.Join(root, "server.properties")); got != "motd=hola\n" {
-		t.Fatalf("el original cambió: %q", got)
+		t.Fatalf("the original changed: %q", got)
 	}
 	noTemps(t, root)
 }
@@ -132,21 +132,21 @@ func TestWriteErrors(t *testing.T) {
 		{"../../etc/passwd", ErrInvalidPath},
 		{"/", ErrRoot},
 		{"config", ErrIsDir},
-		{"no-existe/a.txt", ErrNotFound},
+		{"nonexistent/a.txt", ErrNotFound},
 		{"server.properties/a.txt", ErrNotDir},
 		{"evil.txt", ErrOutside},
-		{"evildir/nuevo.txt", ErrOutside},
+		{"evildir/new.txt", ErrOutside},
 	}
 	for _, c := range cases {
 		if err := fsys.Write(c.path, []byte("x")); !errors.Is(err, c.want) {
-			t.Errorf("Write(%q) = %v; quiero %v", c.path, err, c.want)
+			t.Errorf("Write(%q) = %v; want %v", c.path, err, c.want)
 		}
 		if err := fsys.CheckWrite(c.path); !errors.Is(err, c.want) {
-			t.Errorf("CheckWrite(%q) = %v; quiero %v", c.path, err, c.want)
+			t.Errorf("CheckWrite(%q) = %v; want %v", c.path, err, c.want)
 		}
 	}
-	if got := readFile(t, filepath.Join(outside, "secret.txt")); got != "SECRETO" {
-		t.Fatalf("se escribió fuera: %q", got)
+	if got := readFile(t, filepath.Join(outside, "secret.txt")); got != "SECRET" {
+		t.Fatalf("written outside: %q", got)
 	}
 	if err := fsys.Write("a.txt", bytes.Repeat([]byte("x"), InlineMax+1)); !errors.Is(err, ErrTooLarge) {
 		t.Fatalf("Write(>2 MiB) = %v", err)
@@ -158,14 +158,14 @@ func TestWriteThroughInsideSymlinkWritesTarget(t *testing.T) {
 	must(t, os.Symlink("config/a.yml", filepath.Join(root, "alias.yml")))
 	must(t, fsys.Write("alias.yml", []byte("a: 2\n")))
 	if got := readFile(t, filepath.Join(root, "config", "a.yml")); got != "a: 2\n" {
-		t.Fatalf("destino = %q", got)
+		t.Fatalf("target = %q", got)
 	}
 	if li, _ := os.Lstat(filepath.Join(root, "alias.yml")); li.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("el enlace debe seguir siendo un enlace")
+		t.Fatal("the link must remain a link")
 	}
 }
 
-// patternBlock es un ciclo de 251 bytes repetido; pattern lo copia sin reservar memoria.
+// patternBlock is a repeated 251-byte cycle; pattern copies it without reserving memory.
 var patternBlock = func() []byte {
 	b := make([]byte, 64<<10+251)
 	for i := range b {
@@ -174,7 +174,7 @@ var patternBlock = func() []byte {
 	return b
 }()
 
-// pattern genera bytes deterministas (hasta 64 KiB por lectura) sin reservar memoria.
+// pattern generates deterministic bytes (up to 64 KiB per read) without reserving memory.
 type pattern struct{ off int }
 
 func (p *pattern) Read(b []byte) (int, error) {
@@ -191,20 +191,20 @@ func TestWriteFromStreamsWithoutBuffering(t *testing.T) {
 	runtime.GC()
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
-	n, err := fsys.WriteFrom("mods/grande.jar", src, size)
+	n, err := fsys.WriteFrom("mods/big.jar", src, size)
 	runtime.ReadMemStats(&after)
 	if err != nil || n != size {
 		t.Fatalf("n=%d err=%v", n, err)
 	}
 	if alloc := after.TotalAlloc - before.TotalAlloc; alloc > 8<<20 {
-		t.Fatalf("se reservaron %d bytes para escribir 50 MiB: no está en streaming", alloc)
+		t.Fatalf("%d bytes were reserved to write 50 MiB: it is not streaming", alloc)
 	}
-	f, _ := os.Open(filepath.Join(root, "mods", "grande.jar"))
+	f, _ := os.Open(filepath.Join(root, "mods", "big.jar"))
 	defer f.Close()
 	h2 := sha256.New()
 	_, _ = io.Copy(h2, f)
 	if !bytes.Equal(h.Sum(nil), h2.Sum(nil)) {
-		t.Fatal("el contenido escrito no coincide")
+		t.Fatal("the content written does not match")
 	}
 }
 
@@ -215,17 +215,17 @@ func TestMkdir(t *testing.T) {
 		t.Fatalf("stat = %v, %v", st, err)
 	}
 	if err := fsys.Mkdir("plugins"); !errors.Is(err, ErrExists) || Code(err) != "exists" {
-		t.Fatalf("Mkdir repetido = %v", err)
+		t.Fatalf("repeated Mkdir = %v", err)
 	}
 	if err := fsys.Mkdir("a/b"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Mkdir sin padre = %v", err)
+		t.Fatalf("Mkdir without parent = %v", err)
 	}
 	must(t, os.Symlink(outside, filepath.Join(root, "evildir")))
 	if err := fsys.Mkdir("evildir/x"); !errors.Is(err, ErrOutside) {
-		t.Fatalf("Mkdir fuera = %v", err)
+		t.Fatalf("Mkdir outside = %v", err)
 	}
 	if err := fsys.Mkdir("/"); !errors.Is(err, ErrRoot) {
-		t.Fatalf("Mkdir raíz = %v", err)
+		t.Fatalf("Mkdir root = %v", err)
 	}
 }
 
@@ -236,41 +236,41 @@ func TestRename(t *testing.T) {
 		t.Fatalf("b.yml = %q", got)
 	}
 	if err := fsys.Rename("config/b.yml", "server.properties"); !errors.Is(err, ErrExists) {
-		t.Fatalf("Rename sobre existente = %v", err)
+		t.Fatalf("Rename over existing = %v", err)
 	}
 	if err := fsys.Rename("/", "x"); !errors.Is(err, ErrRoot) {
-		t.Fatalf("Rename raíz = %v", err)
+		t.Fatalf("Rename root = %v", err)
 	}
-	if err := fsys.Rename("no-existe", "x"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Rename inexistente = %v", err)
+	if err := fsys.Rename("nonexistent", "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Rename nonexistent = %v", err)
 	}
-	if err := fsys.Rename("config", "config/dentro"); !errors.Is(err, ErrInvalidPath) {
-		t.Fatalf("Rename dentro de sí misma = %v", err)
+	if err := fsys.Rename("config", "config/inside"); !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("Rename into itself = %v", err)
 	}
 	must(t, os.Symlink(outside, filepath.Join(root, "evildir")))
 	if err := fsys.Rename("server.properties", "evildir/robado"); !errors.Is(err, ErrOutside) {
-		t.Fatalf("Rename hacia fuera = %v", err)
+		t.Fatalf("Rename outwards = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outside, "robado")); !os.IsNotExist(err) {
-		t.Fatal("no debe aparecer nada fuera")
+		t.Fatal("nothing must appear outside")
 	}
 }
 
 func TestDelete(t *testing.T) {
 	fsys, root, outside := layout(t)
-	must(t, os.Symlink(outside, filepath.Join(root, "config", "enlace")))
-	must(t, fsys.Delete("config")) // carpeta con un enlace a fuera dentro
+	must(t, os.Symlink(outside, filepath.Join(root, "config", "link")))
+	must(t, fsys.Delete("config")) // folder with a link to the outside inside
 	if _, err := os.Stat(filepath.Join(root, "config")); !os.IsNotExist(err) {
-		t.Fatal("config debe desaparecer")
+		t.Fatal("config must disappear")
 	}
-	if got := readFile(t, filepath.Join(outside, "secret.txt")); got != "SECRETO" {
-		t.Fatal("borrar el enlace no debe tocar su destino")
+	if got := readFile(t, filepath.Join(outside, "secret.txt")); got != "SECRET" {
+		t.Fatal("deleting the link must not touch its target")
 	}
 	must(t, fsys.Delete("/server.properties"))
 	if err := fsys.Delete("server.properties"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Delete repetido = %v", err)
+		t.Fatalf("repeated Delete = %v", err)
 	}
 	if err := fsys.Delete("/"); !errors.Is(err, ErrRoot) || Code(err) != "root" {
-		t.Fatalf("Delete raíz = %v", err)
+		t.Fatalf("Delete root = %v", err)
 	}
 }

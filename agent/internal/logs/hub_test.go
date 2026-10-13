@@ -33,7 +33,7 @@ func recv(t *testing.T, ch <-chan Line) Line {
 		}
 		return l
 	case <-time.After(hangGuard):
-			t.Fatal("timeout waiting for line")
+		t.Fatal("timeout waiting for line")
 	}
 	return Line{}
 }
@@ -89,7 +89,7 @@ func TestGraceClosesFollower(t *testing.T) {
 	select {
 	case <-fired:
 	case <-time.After(hangGuard):
-			t.Fatal("the grace timer did not fire")
+		t.Fatal("the grace timer did not fire")
 	}
 	h.mu.Lock()
 	_, alive := h.followers["a"]
