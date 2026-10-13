@@ -1,4 +1,4 @@
-// Package backup crea, lista, poda y restaura copias de los datos de un servidor (spec §6.5).
+// Package backup creates, lists, prunes and restores backups of a server's data (spec §6.5).
 package backup
 
 import (
@@ -20,17 +20,17 @@ import (
 	"mcsm/agent/internal/files"
 )
 
-// Excluder decide qué rutas no entran en la copia. Las rutas son relativas a la raíz de
-// datos y usan `/`. Un patrón sin `/` se compara con el nombre a cualquier profundidad
-// ("logs", "*.tmp"); uno con `/`, con la ruta relativa completa ("world/session.lock").
-// Un directorio excluido se salta entero.
+// Excluder decides which paths do not go into the backup. Paths are relative to the data
+// root and use `/`. A pattern without `/` is matched against the name at any depth
+// ("logs", "*.tmp"); one with `/`, against the full relative path ("world/session.lock").
+// An excluded directory is skipped entirely.
 //
-// Los temporales de las escrituras atómicas de archivos (files.TempGlob, a cualquier
-// profundidad) quedan fuera siempre, también con un Excluder nil: una copia durante una
-// subida metería el temporal a medias.
+// The temporaries of atomic file writes (files.TempGlob, at any
+// depth) are always left out, also with a nil Excluder: a backup during an
+// upload would include the half-written temporary.
 type Excluder struct{ base, full []string }
 
-// NewExcluder valida los patrones (sintaxis de path.Match).
+// NewExcluder validates the patterns (path.Match syntax).
 func NewExcluder(patterns []string) (*Excluder, error) {
 	e := &Excluder{}
 	for _, p := range patterns {
@@ -39,7 +39,7 @@ func NewExcluder(patterns []string) (*Excluder, error) {
 			continue
 		}
 		if _, err := path.Match(p, ""); err != nil {
-			return nil, fmt.Errorf("patrón de exclusión inválido %q: %w", p, err)
+			return nil, fmt.Errorf("invalid exclusion pattern %q: %w", p, err)
 		}
 		if strings.Contains(p, "/") {
 			e.full = append(e.full, p)
@@ -50,8 +50,8 @@ func NewExcluder(patterns []string) (*Excluder, error) {
 	return e, nil
 }
 
-// Excluded indica si la ruta relativa rel queda fuera de la copia. Con e nil solo excluye
-// los temporales de las escrituras atómicas.
+// Excluded reports whether the relative path rel is left out of the backup. With e nil it only excludes
+// the temporaries of atomic writes.
 func (e *Excluder) Excluded(rel string) bool {
 	name := path.Base(rel)
 	if files.IsTempName(name) {
@@ -73,41 +73,41 @@ func (e *Excluder) Excluded(rel string) bool {
 	return false
 }
 
-// ArchiveStats resume una copia.
+// ArchiveStats summarizes a backup.
 type ArchiveStats struct {
 	Files    int
-	Bytes    int64    // contenido sin comprimir
-	Warnings []string // entradas omitidas (borradas o que dejaron de ser ficheros durante la copia)
+	Bytes    int64    // uncompressed content
+	Warnings []string // skipped entries (deleted or no longer files during the backup)
 }
 
-// ProgressFunc recibe los bytes de contenido copiados y el total previsto.
+// ProgressFunc receives the content bytes copied and the expected total.
 type ProgressFunc func(done, total int64)
 
-// entry es una entrada del escaneo. info (Lstat) fija el tipo de la entrada y, salvo en
-// los ficheros regulares (cuya cabecera sale de lo que hay al abrirlos), su cabecera.
+// entry is a scan entry. info (Lstat) fixes the entry's type and, except for
+// regular files (whose header comes from what is there when they are opened), its header.
 type entry struct {
-	rel  string // relativa a la raíz, con `/`
+	rel  string // relative to the root, with `/`
 	info fs.FileInfo
-	link string // destino, si es un enlace simbólico
+	link string // target, if it is a symbolic link
 }
 
-// ErrSourceChanged: un fichero cambió (tamaño, mtime o bytes leídos) mientras se copiaba su
-// contenido. La copia no vale: nunca se trunca ni se rellena en silencio.
-var ErrSourceChanged = errors.New("cambió mientras se copiaba")
+// ErrSourceChanged: a file changed (size, mtime or bytes read) while its content was being
+// copied. The backup is not valid: it is never silently truncated or padded.
+var ErrSourceChanged = errors.New("changed while being copied")
 
-// copyBufSize es el búfer de copia de contenido (lectura y extracción).
+// copyBufSize is the content copy buffer (read and extract).
 const copyBufSize = 1 << 20
 
-// WriteArchive escribe el contenido de src (sin el propio directorio) como tar comprimido
-// con zstd. No sigue enlaces simbólicos: los guarda como enlace. Todo se lee a través de
-// un os.Root abierto en src: aunque un proceso del contenedor cambie un directorio por un
-// enlace a mitad de copia, el agente (root) nunca lee nada de fuera de los datos. Un
-// fichero se copia tal como está al abrirlo; si cambia mientras se lee, la copia falla con
-// ErrSourceChanged (nunca se trunca ni se rellena). Uno que desaparece antes de abrirlo se
-// omite (queda en Warnings). El sha256 lo calcula el llamante en vuelo
-// envolviendo w (io.MultiWriter). Si falla o se cancela, NO cierra el tar ni la trama
-// zstd: lo escrito queda truncado e ilegible para ExtractArchive en vez de pasar por una
-// copia completa.
+// WriteArchive writes the contents of src (without the directory itself) as a tar compressed
+// with zstd. It does not follow symbolic links: it stores them as links. Everything is read through
+// an os.Root opened at src: even if a container process swaps a directory for a
+// link midway through the backup, the agent (root) never reads anything from outside the data. A
+// file is copied as it is when opened; if it changes while being read, the backup fails with
+// ErrSourceChanged (it is never truncated or padded). One that disappears before being opened is
+// skipped (it ends up in Warnings). The sha256 is computed by the caller on the fly
+// by wrapping w (io.MultiWriter). If it fails or is cancelled, it does NOT close the tar or the
+// zstd frame: what was written is left truncated and unreadable for ExtractArchive instead of passing as a
+// complete backup.
 func WriteArchive(ctx context.Context, src string, w io.Writer, excl *Excluder, progress ProgressFunc) (ArchiveStats, error) {
 	var st ArchiveStats
 	if err := ctx.Err(); err != nil {
@@ -122,8 +122,8 @@ func WriteArchive(ctx context.Context, src string, w io.Writer, excl *Excluder, 
 	if err != nil {
 		return st, err
 	}
-	// Compresión síncrona en un solo hilo: ninguna goroutine sigue escribiendo en w si
-	// esto falla, y no roba CPU a los servidores que corren en el nodo.
+	// Synchronous compression on a single thread: no goroutine keeps writing to w if
+	// this fails, and it does not steal CPU from the servers running on the node.
 	enc, err := zstd.NewWriter(w, zstd.WithEncoderLevel(zstd.SpeedDefault), zstd.WithEncoderConcurrency(1))
 	if err != nil {
 		return st, err
@@ -160,8 +160,8 @@ func WriteArchive(ctx context.Context, src string, w io.Writer, excl *Excluder, 
 	return st, nil
 }
 
-// scan recorre la raíz en orden léxico (cada directorio antes que su contenido) aplicando
-// las exclusiones; devuelve las entradas y el tamaño total de los ficheros regulares.
+// scan walks the root in lexical order (each directory before its contents) applying
+// the exclusions; it returns the entries and the total size of the regular files.
 func scan(ctx context.Context, root *os.Root, excl *Excluder, st *ArchiveStats) ([]entry, int64, error) {
 	var out []entry
 	var total int64
@@ -172,7 +172,7 @@ func scan(ctx context.Context, root *os.Root, excl *Excluder, st *ArchiveStats) 
 			return err
 		}
 		if changed {
-			st.Warnings = append(st.Warnings, "omitido el contenido de "+dir+" (dejó de ser el mismo directorio durante la copia)")
+			st.Warnings = append(st.Warnings, "skipped the contents of "+dir+" (it stopped being the same directory during the backup)")
 			return nil
 		}
 		for _, d := range des {
@@ -212,7 +212,7 @@ func scan(ctx context.Context, root *os.Root, excl *Excluder, st *ArchiveStats) 
 					return err
 				}
 			default:
-				st.Warnings = append(st.Warnings, "omitido (no es fichero ni directorio): "+rel)
+				st.Warnings = append(st.Warnings, "skipped (not a file or directory): "+rel)
 			}
 		}
 		return nil
@@ -221,21 +221,21 @@ func scan(ctx context.Context, root *os.Root, excl *Excluder, st *ArchiveStats) 
 	return out, total, err
 }
 
-// readDirIn lista un directorio de la raíz, ordenado por nombre. want es lo que vio el
-// escaneo (nil para la propia raíz). Si entretanto lo cambiaron por un fichero, una FIFO o
-// un enlace (fuera o a otro directorio de dentro), devuelve changed sin listarlo; si
-// desapareció, nada. O_DIRECTORY hace que abrir una FIFO colada falle en vez de bloquearse.
+// readDirIn lists a root directory, sorted by name. want is what the scan saw
+// (nil for the root itself). If in the meantime it was replaced by a file, a FIFO or
+// a link (outside or to another directory inside), it returns changed without listing it; if it
+// disappeared, nothing. O_DIRECTORY makes opening a sneaked-in FIFO fail instead of blocking.
 func readDirIn(root *os.Root, dir string, want fs.FileInfo) (des []fs.DirEntry, changed bool, err error) {
 	f, err := root.OpenFile(dir, os.O_RDONLY|syscall.O_DIRECTORY, 0)
 	if err != nil {
 		if want == nil {
 			return nil, false, err
 		}
-		// Se decide por lo que hay ahora, no por el error (os.Root no exporta el de «escapa»).
+		// It is decided by what is there now, not by the error (os.Root does not export the "escapes" one).
 		now, lerr := root.Lstat(dir)
 		switch {
 		case errors.Is(lerr, fs.ErrNotExist):
-			return nil, false, nil // desapareció durante el recorrido
+			return nil, false, nil // disappeared during the walk
 		case lerr == nil && !now.IsDir():
 			return nil, true, nil
 		}
@@ -247,7 +247,7 @@ func readDirIn(root *os.Root, dir string, want fs.FileInfo) (des []fs.DirEntry, 
 		if err != nil {
 			return nil, false, err
 		}
-		if !os.SameFile(want, now) { // p. ej. un enlace a otro directorio de dentro, ya seguido
+		if !os.SameFile(want, now) { // e.g. a link to another directory inside, already followed
 			return nil, true, nil
 		}
 	}
@@ -256,10 +256,10 @@ func readDirIn(root *os.Root, dir string, want fs.FileInfo) (des []fs.DirEntry, 
 	return des, false, err
 }
 
-// writeEntry escribe una entrada. La cabecera de un fichero regular sale de lo que hay al
-// abrirlo (no del escaneo): un fichero que cambió antes se copia tal como está. Si cambia
-// mientras se lee (bytes leídos, tamaño o mtime distintos al terminar), falla con
-// ErrSourceChanged: lo escrito en el tar no se corresponde con ningún estado del fichero.
+// writeEntry writes an entry. A regular file's header comes from what is there when it is
+// opened (not from the scan): a file that changed earlier is copied as it is. If it changes
+// while being read (bytes read, size or mtime differ at the end), it fails with
+// ErrSourceChanged: what was written to the tar does not correspond to any state of the file.
 func writeEntry(ctx context.Context, tw *tar.Writer, root *os.Root, e entry, buf []byte) (n int64, skipped bool, warn string, err error) {
 	if !e.info.Mode().IsRegular() {
 		hdr, err := entryHeader(e.info, e)
@@ -268,12 +268,12 @@ func writeEntry(ctx context.Context, tw *tar.Writer, root *os.Root, e entry, buf
 		}
 		return 0, false, "", tw.WriteHeader(hdr)
 	}
-	// O_NONBLOCK: si el fichero se cambió por una FIFO tras el escaneo, abrirla no se
-	// bloquea (y se descarta abajo); en ficheros regulares no tiene efecto.
+	// O_NONBLOCK: if the file was swapped for a FIFO after the scan, opening it does not
+	// block (and it is discarded below); on regular files it has no effect.
 	f, err := root.OpenFile(e.rel, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return 0, true, "omitido (se borró durante la copia): " + e.rel, nil
+			return 0, true, "skipped (deleted during the backup): " + e.rel, nil
 		}
 		return 0, false, "", err
 	}
@@ -283,7 +283,7 @@ func writeEntry(ctx context.Context, tw *tar.Writer, root *os.Root, e entry, buf
 		return 0, false, "", err
 	}
 	if !before.Mode().IsRegular() {
-		return 0, true, "omitido (dejó de ser un fichero durante la copia): " + e.rel, nil
+		return 0, true, "skipped (stopped being a file during the backup): " + e.rel, nil
 	}
 	hdr, err := entryHeader(before, e)
 	if err != nil {
@@ -306,7 +306,7 @@ func writeEntry(ctx context.Context, tw *tar.Writer, root *os.Root, e entry, buf
 	return n, false, "", nil
 }
 
-// entryHeader construye la cabecera PAX de e a partir de info.
+// entryHeader builds e's PAX header from info.
 func entryHeader(info fs.FileInfo, e entry) (*tar.Header, error) {
 	hdr, err := tar.FileInfoHeader(info, e.link)
 	if err != nil {
@@ -317,12 +317,12 @@ func entryHeader(info fs.FileInfo, e entry) (*tar.Header, error) {
 		hdr.Name += "/"
 	}
 	hdr.Format = tar.FormatPAX
-	hdr.Uname, hdr.Gname = "", "" // solo uid/gid numéricos: la imagen itzg usa 1000
+	hdr.Uname, hdr.Gname = "", "" // numeric uid/gid only: the itzg image uses 1000
 	hdr.AccessTime, hdr.ChangeTime = time.Time{}, time.Time{}
 	return hdr, nil
 }
 
-// cancelReader corta una copia larga (un fichero de varios GiB) al cancelar ctx.
+// cancelReader cuts a long backup (a multi-GiB file) when ctx is cancelled.
 type cancelReader struct {
 	ctx context.Context
 	r   io.Reader
@@ -335,25 +335,25 @@ func (c cancelReader) Read(p []byte) (int, error) {
 	return c.r.Read(p)
 }
 
-// Límites por defecto de una extracción (ExtractLimits con ceros).
+// Default limits of an extraction (ExtractLimits with zeros).
 const (
-	DefaultMaxExtractBytes   int64 = 256 << 30 // 256 GiB sin comprimir
+	DefaultMaxExtractBytes   int64 = 256 << 30 // 256 GiB uncompressed
 	DefaultMaxExtractEntries       = 2_000_000
 
 	maxEntryName  = 4096      // PATH_MAX
-	maxZstdWindow = 128 << 20 // como `zstd --long`; acota la memoria del descompresor
-	maxTrailing   = 1 << 20   // relleno admitido tras el final del tar (GNU tar rellena a 10 KiB)
+	maxZstdWindow = 128 << 20 // like `zstd --long`; bounds the decompressor's memory
+	maxTrailing   = 1 << 20   // padding allowed after the end of the tar (GNU tar pads to 10 KiB)
 	tarBlock      = 512
 )
 
-// errExtractBytes: la extracción pasó de ExtractLimits.MaxBytes.
-var errExtractBytes = errors.New("la copia supera el límite")
+// errExtractBytes: the extraction exceeded ExtractLimits.MaxBytes.
+var errExtractBytes = errors.New("the backup exceeds the limit")
 
-// ExtractLimits acota lo que puede crear una extracción (bombas de descompresión). Un
-// campo a cero toma el valor por defecto.
+// ExtractLimits bounds what an extraction can create (decompression bombs). A
+// zero field takes the default value.
 type ExtractLimits struct {
-	MaxBytes   int64 // suma de los tamaños declarados de los ficheros regulares
-	MaxEntries int   // entradas del tar, de cualquier tipo
+	MaxBytes   int64 // sum of the declared sizes of the regular files
+	MaxEntries int   // tar entries, of any type
 }
 
 func (l ExtractLimits) withDefaults() ExtractLimits {
@@ -366,21 +366,21 @@ func (l ExtractLimits) withDefaults() ExtractLimits {
 	return l
 }
 
-// geteuid es sustituible en tests (restaurar el propietario solo se intenta como root).
+// geteuid is replaceable in tests (restoring the owner is only attempted as root).
 var geteuid = os.Geteuid
 
-// ExtractArchive extrae con los límites por defecto (ver ExtractArchiveLimits).
+// ExtractArchive extracts with the default limits (see ExtractArchiveLimits).
 func ExtractArchive(ctx context.Context, r io.Reader, dst string, warn func(string)) error {
 	return ExtractArchiveLimits(ctx, r, dst, warn, ExtractLimits{})
 }
 
-// ExtractArchiveLimits descomprime en dst, que debe existir y estar vacío. Todo se crea a
-// través de un os.Root abierto en dst: ninguna escritura sale de él, ni siquiera tras
-// resolver enlaces. Rechaza la copia entera ante una ruta absoluta, con `..` o inválida, o
-// si supera los límites; no crea enlaces simbólicos, enlaces duros ni ficheros especiales
-// (los omite avisando por warn). Restaura permisos (sin setuid, setgid ni sticky), fechas
-// y, si el agente corre como root, el propietario del tar (la imagen itzg usa uid 1000).
-// Si falla, borra lo extraído: dst queda vacío como estaba.
+// ExtractArchiveLimits decompresses into dst, which must exist and be empty. Everything is created
+// through an os.Root opened at dst: no write leaves it, not even after
+// resolving links. It rejects the whole backup on an absolute path, one with `..` or invalid, or
+// if it exceeds the limits; it creates no symbolic links, hard links or special files
+// (it skips them, warning through warn). It restores permissions (without setuid, setgid or sticky), dates
+// and, if the agent runs as root, the tar's owner (the itzg image uses uid 1000).
+// If it fails, it deletes what was extracted: dst is left empty as it was.
 func ExtractArchiveLimits(ctx context.Context, r io.Reader, dst string, warn func(string), lim ExtractLimits) error {
 	if warn == nil {
 		warn = func(string) {}
@@ -390,7 +390,7 @@ func ExtractArchiveLimits(ctx context.Context, r io.Reader, dst string, warn fun
 		return err
 	}
 	if !fi.IsDir() {
-		return fmt.Errorf("el destino %s no es un directorio", dst)
+		return fmt.Errorf("the destination %s is not a directory", dst)
 	}
 	root, err := os.OpenRoot(dst)
 	if err != nil {
@@ -402,7 +402,7 @@ func ExtractArchiveLimits(ctx context.Context, r io.Reader, dst string, warn fun
 		return err
 	}
 	if len(names) > 0 {
-		return fmt.Errorf("el destino %s no está vacío", dst)
+		return fmt.Errorf("the destination %s is not empty", dst)
 	}
 	dec, err := zstd.NewReader(r, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxWindow(maxZstdWindow))
 	if err != nil {
@@ -421,7 +421,7 @@ func ExtractArchiveLimits(ctx context.Context, r io.Reader, dst string, warn fun
 	return nil
 }
 
-// dirNames lista hasta n nombres (n < 0: todos) de la raíz.
+// dirNames lists up to n names (n < 0: all) of the root.
 func dirNames(root *os.Root, n int) ([]string, error) {
 	d, err := root.Open(".")
 	if err != nil {
@@ -453,7 +453,7 @@ type dirMeta struct {
 }
 
 func (x *extractor) run(dec io.Reader) error {
-	tail := &tailReader{r: cancelReader{x.ctx, dec}} // ctx también dentro de Next()
+	tail := &tailReader{r: cancelReader{x.ctx, dec}} // ctx also inside Next()
 	tr := tar.NewReader(tail)
 	var dirs []dirMeta
 	for {
@@ -465,34 +465,34 @@ func (x *extractor) run(dec io.Reader) error {
 			break
 		}
 		if errors.Is(err, tar.ErrInsecurePath) && hdr != nil {
-			return fmt.Errorf("entrada con ruta insegura %q: copia rechazada", hdr.Name)
+			return fmt.Errorf("entry with unsafe path %q: backup rejected", hdr.Name)
 		}
 		if err != nil {
-			return fmt.Errorf("copia ilegible o dañada: %w", err)
+			return fmt.Errorf("unreadable or corrupted backup: %w", err)
 		}
 		if x.entries++; x.entries > x.lim.MaxEntries {
-			return fmt.Errorf("la copia supera el límite de %d entradas: rechazada", x.lim.MaxEntries)
+			return fmt.Errorf("the backup exceeds the limit of %d entries: rejected", x.lim.MaxEntries)
 		}
 		if hdr.Typeflag == tar.TypeXGlobalHeader {
-			continue // metadatos PAX globales (git archive); archive/tar ya los leyó, acotados
+			continue // global PAX metadata (git archive); archive/tar already read it, bounded
 		}
 		name, err := entryName(hdr.Name)
 		if err != nil {
 			return err
 		}
-		// archive/tar solo ignora el Size de los tipos «solo cabecera»; en los demás, lo que no
-		// se lea lo descarta Next() descomprimiéndolo entero. Todo cuenta para el límite.
+		// archive/tar only ignores the Size of "header only" types; for the others, whatever is not
+		// read is discarded by Next() decompressing it in full. Everything counts toward the limit.
 		if !headerOnly(hdr.Typeflag) {
 			if hdr.Size > x.lim.MaxBytes-x.bytes {
-				return fmt.Errorf("%w de %d bytes descomprimidos: rechazada", errExtractBytes, x.lim.MaxBytes)
+				return fmt.Errorf("%w of %d decompressed bytes: rejected", errExtractBytes, x.lim.MaxBytes)
 			}
 			x.bytes += hdr.Size
 		}
-		mode := fs.FileMode(hdr.Mode).Perm() // sin setuid, setgid ni sticky
+		mode := fs.FileMode(hdr.Mode).Perm() // without setuid, setgid or sticky
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if name == "." {
-				continue // el propio destino: sus permisos los decide el llamante
+				continue // the destination itself: its permissions are decided by the caller
 			}
 			if err := x.root.MkdirAll(name, 0o755); err != nil {
 				return err
@@ -503,7 +503,7 @@ func (x *extractor) run(dec io.Reader) error {
 			dirs = append(dirs, dirMeta{name, mode, hdr.ModTime})
 		case tar.TypeReg:
 			if name == "." {
-				return fmt.Errorf("entrada con nombre inválido %q: copia rechazada", hdr.Name)
+				return fmt.Errorf("entry with invalid name %q: backup rejected", hdr.Name)
 			}
 			if dir := path.Dir(name); dir != "." {
 				if err := x.root.MkdirAll(dir, 0o755); err != nil {
@@ -514,30 +514,30 @@ func (x *extractor) run(dec io.Reader) error {
 				return err
 			}
 		default:
-			// GNU sparse, contiguos, tipos desconocidos…: no se restauran, y si traen contenido
-			// la copia no es nuestra ni de un tar corriente de un directorio de datos.
+			// GNU sparse, contiguous, unknown types…: they are not restored, and if they carry content
+			// the backup is not ours nor a plain tar of a data directory.
 			if hdr.Size > 0 {
-				return fmt.Errorf("entrada %q de tipo no admitido (%q) con contenido: copia rechazada", hdr.Name, hdr.Typeflag)
+				return fmt.Errorf("entry %q of unsupported type (%q) with content: backup rejected", hdr.Name, hdr.Typeflag)
 			}
-			x.warn(fmt.Sprintf("omitido %s: los enlaces y ficheros especiales no se restauran", hdr.Name))
+			x.warn(fmt.Sprintf("skipped %s: links and special files are not restored", hdr.Name))
 		}
 	}
-	// archive/tar da io.EOF también si el flujo acaba en el límite de una entrada: sin los
-	// dos bloques de ceros finales la copia está cortada (o vacía) y no se da por buena.
+	// archive/tar also gives io.EOF if the stream ends at an entry boundary: without the
+	// two final zero blocks the backup is cut off (or empty) and is not accepted.
 	if tail.zeros < 2*tarBlock {
-		return errors.New("copia incompleta (falta el final del tar): rechazada")
+		return errors.New("incomplete backup (the end of the tar is missing): rejected")
 	}
-	// Leer lo que quede de la trama obliga a zstd a comprobar su suma de verificación: así
-	// se detecta un dato corrupto aunque se hubiera descomprimido sin error.
+	// Reading what remains of the frame forces zstd to check its checksum: this way
+	// corrupted data is detected even if it had been decompressed without error.
 	n, err := io.Copy(io.Discard, io.LimitReader(dec, maxTrailing+1))
 	if err != nil {
-		return fmt.Errorf("copia ilegible o dañada: %w", err)
+		return fmt.Errorf("unreadable or corrupted backup: %w", err)
 	}
 	if n > maxTrailing {
-		return errors.New("copia con datos de sobra tras el final del tar: rechazada")
+		return errors.New("backup with extra data after the end of the tar: rejected")
 	}
-	// Permisos y fechas de los directorios al final (escribir dentro cambia su mtime), de
-	// los más profundos a los de arriba.
+	// Permissions and dates of the directories at the end (writing inside changes their mtime), from
+	// the deepest to the top ones.
 	for i := len(dirs) - 1; i >= 0; i-- {
 		_ = x.root.Chmod(dirs[i].name, dirs[i].mode)
 		_ = x.root.Chtimes(dirs[i].name, dirs[i].mtime, dirs[i].mtime)
@@ -545,8 +545,8 @@ func (x *extractor) run(dec io.Reader) error {
 	return nil
 }
 
-// file crea name (O_EXCL: nunca pisa ni sigue nada existente) con el contenido de r. Si
-// algo falla, borra el fichero a medias.
+// file creates name (O_EXCL: it never overwrites or follows anything existing) with r's content. If
+// anything fails, it deletes the half-written file.
 func (x *extractor) file(name string, r io.Reader, hdr *tar.Header, mode fs.FileMode) (err error) {
 	f, err := x.root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -561,15 +561,15 @@ func (x *extractor) file(name string, r io.Reader, hdr *tar.Header, mode fs.File
 			_ = x.root.Remove(name)
 		}
 	}()
-	// struct{io.Writer} oculta File.ReadFrom para que la copia use buf.
+	// struct{io.Writer} hides File.ReadFrom so that the copy uses buf.
 	if _, err = io.CopyBuffer(struct{ io.Writer }{f}, cancelReader{x.ctx, r}, x.buf); err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			err = fmt.Errorf("copia ilegible o dañada: %w", err)
+			err = fmt.Errorf("unreadable or corrupted backup: %w", err)
 		}
 		return err
 	}
-	// Sobre el descriptor (fchown/fchmod): sin carreras con la ruta. chown antes que chmod,
-	// porque chown puede limpiar bits del modo.
+	// On the descriptor (fchown/fchmod): no races with the path. chown before chmod,
+	// because chown can clear mode bits.
 	if geteuid() == 0 {
 		x.ownerErr(name, f.Chown(hdr.Uid, hdr.Gid))
 	}
@@ -584,17 +584,17 @@ func (x *extractor) file(name string, r io.Reader, hdr *tar.Header, mode fs.File
 	return nil
 }
 
-// ownerErr avisa (una sola vez por extracción) de que no se pudo restaurar un propietario:
-// la copia sigue siendo válida, pero el servidor podría no poder escribir esos ficheros.
+// ownerErr warns (only once per extraction) that an owner could not be restored:
+// the backup is still valid, but the server may not be able to write those files.
 func (x *extractor) ownerErr(name string, err error) {
 	if err == nil || x.ownerWarned {
 		return
 	}
 	x.ownerWarned = true
-	x.warn(fmt.Sprintf("aviso: no se pudo restaurar el propietario de %s (%v); puede haber más casos", name, err))
+	x.warn(fmt.Sprintf("warning: could not restore the owner of %s (%v); there may be more cases", name, err))
 }
 
-// headerOnly son los tipos cuyo Size ignora archive/tar (no tienen contenido).
+// headerOnly are the types whose Size archive/tar ignores (they have no content).
 func headerOnly(flag byte) bool {
 	switch flag {
 	case tar.TypeLink, tar.TypeSymlink, tar.TypeChar, tar.TypeBlock, tar.TypeDir, tar.TypeFifo:
@@ -603,7 +603,7 @@ func headerOnly(flag byte) bool {
 	return false
 }
 
-// tailReader cuenta la racha de bytes a cero con la que termina lo leído hasta ahora.
+// tailReader counts the run of zero bytes that ends what has been read so far.
 type tailReader struct {
 	r     io.Reader
 	zeros int64
@@ -623,23 +623,23 @@ func (t *tailReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// entryName valida el nombre de una entrada del tar y lo devuelve normalizado (relativo,
-// con `/`, sin componentes vacíos ni `.`; "." para el propio destino). Rechaza rutas
-// absolutas, cualquier componente `..` (aunque no llegue a salir del destino), NUL y
-// nombres desmesurados: una entrada así hace hostil la copia entera.
+// entryName validates a tar entry's name and returns it normalized (relative,
+// with `/`, without empty or `.` components; "." for the destination itself). It rejects absolute
+// paths, any `..` component (even if it does not leave the destination), NUL and
+// oversized names: such an entry makes the whole backup hostile.
 func entryName(raw string) (string, error) {
 	if raw == "" || len(raw) > maxEntryName || strings.ContainsRune(raw, 0) {
-		return "", fmt.Errorf("entrada con nombre inválido %q: copia rechazada", raw)
+		return "", fmt.Errorf("entry with invalid name %q: backup rejected", raw)
 	}
 	if strings.HasPrefix(raw, "/") {
-		return "", fmt.Errorf("entrada con ruta absoluta %q: copia rechazada", raw)
+		return "", fmt.Errorf("entry with absolute path %q: backup rejected", raw)
 	}
 	parts := make([]string, 0, strings.Count(raw, "/")+1)
 	for p := range strings.SplitSeq(raw, "/") {
 		switch p {
 		case "", ".":
 		case "..":
-			return "", fmt.Errorf("entrada que sale del destino %q: copia rechazada", raw)
+			return "", fmt.Errorf("entry that leaves the destination %q: backup rejected", raw)
 		default:
 			parts = append(parts, p)
 		}

@@ -18,7 +18,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// mustWrite crea p (y sus directorios) con body y permisos mode.
+// mustWrite creates p (and its directories) with body and mode permissions.
 func mustWrite(t *testing.T, p, body string, mode fs.FileMode) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -27,7 +27,7 @@ func mustWrite(t *testing.T, p, body string, mode fs.FileMode) {
 	if err := os.WriteFile(p, []byte(body), mode); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(p, mode); err != nil { // sin umask
+	if err := os.Chmod(p, mode); err != nil { // without umask
 		t.Fatal(err)
 	}
 }
@@ -51,7 +51,7 @@ type tarEntry struct {
 	body string
 }
 
-// makeArchive construye un tar.zst a mano (para probar entradas maliciosas).
+// makeArchive builds a tar.zst by hand (to test malicious entries).
 func makeArchive(t *testing.T, entries []tarEntry) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -65,7 +65,7 @@ func makeArchive(t *testing.T, entries []tarEntry) []byte {
 		if h.Typeflag == tar.TypeReg {
 			h.Size = int64(len(e.body))
 		}
-		if h.Mode == 0 && h.Typeflag != tar.TypeXGlobalHeader { // la global solo admite PAXRecords
+		if h.Mode == 0 && h.Typeflag != tar.TypeXGlobalHeader { // the global one only supports PAXRecords
 			h.Mode = 0o644
 		}
 		if err := tw.WriteHeader(&h); err != nil {
@@ -86,7 +86,7 @@ func makeArchive(t *testing.T, entries []tarEntry) []byte {
 	return buf.Bytes()
 }
 
-// assertEmpty comprueba que dir existe y no contiene nada (una extracción fallida no deja restos).
+// assertEmpty checks that dir exists and contains nothing (a failed extraction leaves no leftovers).
 func assertEmpty(t *testing.T, dir string) {
 	t.Helper()
 	des, err := os.ReadDir(dir)
@@ -98,7 +98,7 @@ func assertEmpty(t *testing.T, dir string) {
 		for _, d := range des {
 			names = append(names, d.Name())
 		}
-		t.Fatalf("%s debía quedar vacío; contiene %v", dir, names)
+		t.Fatalf("%s should have been left empty; it contains %v", dir, names)
 	}
 }
 
@@ -118,20 +118,20 @@ func TestExcluder(t *testing.T) {
 		}
 	}
 	if _, err := NewExcluder([]string{"[abc"}); err == nil {
-		t.Fatal("un patrón mal formado debe rechazarse")
+		t.Fatal("a malformed pattern must be rejected")
 	}
 	if (*Excluder)(nil).Excluded("x") {
-		t.Fatal("sin exclusiones no se excluye nada")
+		t.Fatal("without exclusions nothing is excluded")
 	}
-	// m-l: un Excluder nil excluye igualmente los temporales de las subidas (WriteArchive(…, nil, …)).
+	// m-l: a nil Excluder still excludes upload temporaries (WriteArchive(…, nil, …)).
 	if !(*Excluder)(nil).Excluded("mods/.mcsm-tmp-0123456789abcdef") {
-		t.Fatal("un Excluder nil debe excluir los temporales de las escrituras atómicas")
+		t.Fatal("a nil Excluder must exclude the temporaries of atomic writes")
 	}
 }
 
-// Los temporales de las escrituras atómicas de archivos (Plan 5) nunca entran en una copia,
-// sin que el usuario tenga que excluirlos: una copia durante una subida metería el temporal a
-// medias (hasta 4 GiB) y, al restaurarla, quedaría oculto e imposible de borrar desde la web.
+// The temporaries of atomic file writes (Plan 5) never go into a backup,
+// without the user having to exclude them: a backup during an upload would include the half-written
+// temporary (up to 4 GiB) and, when restored, it would be hidden and impossible to delete from the web.
 func TestExcluderAlwaysSkipsUploadTemps(t *testing.T) {
 	for _, patterns := range [][]string{nil, {"logs"}} {
 		e, err := NewExcluder(patterns)
@@ -143,14 +143,14 @@ func TestExcluderAlwaysSkipsUploadTemps(t *testing.T) {
 				t.Errorf("%v: Excluded(%q) = false", patterns, rel)
 			}
 		}
-		// Un fichero del usuario que solo empieza como un temporal sí entra (m-k).
-		if e.Excluded("world/level.dat") || e.Excluded("mcsm-tmp-notas.txt") || e.Excluded(".mcsm-tmp-x") || e.Excluded("plugins/.mcsm-tmp-notas.txt") {
-			t.Errorf("%v: excluye de más", patterns)
+		// A user file that merely starts like a temporary does go in (m-k).
+		if e.Excluded("world/level.dat") || e.Excluded("mcsm-tmp-notes.txt") || e.Excluded(".mcsm-tmp-x") || e.Excluded("plugins/.mcsm-tmp-notes.txt") {
+			t.Errorf("%v: excludes too much", patterns)
 		}
 	}
 	src := t.TempDir()
 	mustWrite(t, filepath.Join(src, "server.properties"), "motd=hola\n", 0o644)
-	mustWrite(t, filepath.Join(src, "mods", ".mcsm-tmp-0123456789abcdef"), "a medias", 0o600)
+	mustWrite(t, filepath.Join(src, "mods", ".mcsm-tmp-0123456789abcdef"), "half-written", 0o600)
 	excl, err := NewExcluder(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -161,12 +161,12 @@ func TestExcluderAlwaysSkipsUploadTemps(t *testing.T) {
 		t.Fatal(err)
 	}
 	if st.Files != 1 {
-		t.Fatalf("ficheros = %d; el temporal no debe copiarse", st.Files)
+		t.Fatalf("files = %d; the temporary must not be copied", st.Files)
 	}
-	// Sin Excluder (nil), igual: ningún llamador futuro (migración) puede meter temporales.
+	// Without an Excluder (nil), the same: no future caller (migration) can include temporaries.
 	buf.Reset()
 	if st, err = WriteArchive(context.Background(), src, &buf, nil, nil); err != nil || st.Files != 1 {
-		t.Fatalf("WriteArchive sin Excluder: ficheros = %d, err = %v; el temporal no debe copiarse", st.Files, err)
+		t.Fatalf("WriteArchive without Excluder: files = %d, err = %v; the temporary must not be copied", st.Files, err)
 	}
 }
 
@@ -177,7 +177,7 @@ func TestArchiveRoundTrip(t *testing.T) {
 	mustWrite(t, filepath.Join(src, "world", "region", "r.0.0.mca"), strings.Repeat("x", 200_000), 0o644)
 	mustWrite(t, filepath.Join(src, "world", "session.lock"), "lock", 0o644)
 	mustWrite(t, filepath.Join(src, "logs", "latest.log"), "log", 0o644)
-	mustWrite(t, filepath.Join(src, "plugins", "foo", "logs", "a.log"), "log anidado", 0o644)
+	mustWrite(t, filepath.Join(src, "plugins", "foo", "logs", "a.log"), "nested log", 0o644)
 	mustWrite(t, filepath.Join(src, "tmp", "file.tmp"), "tmp", 0o644)
 	mustWrite(t, filepath.Join(src, "empty.txt"), "", 0o644)
 	if err := os.Mkdir(filepath.Join(src, "emptydir"), 0o750); err != nil {
@@ -206,10 +206,10 @@ func TestArchiveRoundTrip(t *testing.T) {
 	}
 	wantBytes := int64(len("motd=hola\n") + len("LEVEL") + 200_000)
 	if lastTotal != wantBytes || lastDone != wantBytes || st.Bytes != wantBytes {
-		t.Fatalf("progreso %d/%d, bytes %d; esperaba %d", lastDone, lastTotal, st.Bytes, wantBytes)
+		t.Fatalf("progress %d/%d, bytes %d; expected %d", lastDone, lastTotal, st.Bytes, wantBytes)
 	}
 	if st.Files != 4 { // server.properties, level.dat, r.0.0.mca, empty.txt
-		t.Fatalf("ficheros = %d", st.Files)
+		t.Fatalf("files = %d", st.Files)
 	}
 
 	dst := filepath.Join(t.TempDir(), "out")
@@ -221,24 +221,24 @@ func TestArchiveRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if mustRead(t, filepath.Join(dst, "world", "level.dat")) != "LEVEL" || len(mustRead(t, filepath.Join(dst, "world", "region", "r.0.0.mca"))) != 200_000 {
-		t.Fatal("contenido distinto tras extraer")
+		t.Fatal("different content after extracting")
 	}
 	for _, gone := range []string{"logs", "plugins/foo/logs", "tmp/file.tmp", "world/session.lock", "link.properties"} {
 		if exists(filepath.Join(dst, gone)) {
-			t.Errorf("%s no debía restaurarse", gone)
+			t.Errorf("%s should not have been restored", gone)
 		}
 	}
 	if !exists(filepath.Join(dst, "tmp")) || !exists(filepath.Join(dst, "empty.txt")) {
-		t.Fatal("el directorio tmp (vacío) y empty.txt deben existir")
+		t.Fatal("the (empty) tmp directory and empty.txt must exist")
 	}
 	if fi, _ := os.Stat(filepath.Join(dst, "world", "level.dat")); fi.Mode().Perm() != 0o640 || !fi.ModTime().Equal(mtime) {
-		t.Fatalf("level.dat: modo %v, mtime %v", fi.Mode().Perm(), fi.ModTime())
+		t.Fatalf("level.dat: mode %v, mtime %v", fi.Mode().Perm(), fi.ModTime())
 	}
 	if fi, _ := os.Stat(filepath.Join(dst, "emptydir")); fi.Mode().Perm() != 0o750 {
-		t.Fatalf("emptydir: modo %v", fi.Mode().Perm())
+		t.Fatalf("emptydir: mode %v", fi.Mode().Perm())
 	}
 	if len(warns) != 1 || !strings.Contains(warns[0], "link.properties") {
-		t.Fatalf("avisos = %v", warns)
+		t.Fatalf("warnings = %v", warns)
 	}
 }
 
@@ -270,7 +270,7 @@ func TestWriteArchiveHeaders(t *testing.T) {
 		got[h.Name] = h
 	}
 	if len(got) != 3 {
-		t.Fatalf("entradas = %v", got)
+		t.Fatalf("entries = %v", got)
 	}
 	if h := got["world/"]; h == nil || h.Typeflag != tar.TypeDir {
 		t.Fatalf("world/: %+v", h)
@@ -294,7 +294,7 @@ func TestExtractRejectsPathsOutsideDestination(t *testing.T) {
 			}
 			n := name
 			if n == "ABS" {
-				n = filepath.Join(base, "evil.txt") // ruta absoluta
+				n = filepath.Join(base, "evil.txt") // absolute path
 			}
 			data := makeArchive(t, []tarEntry{
 				{hdr: tar.Header{Name: "ok.txt", Typeflag: tar.TypeReg}, body: "ok"},
@@ -302,12 +302,12 @@ func TestExtractRejectsPathsOutsideDestination(t *testing.T) {
 			})
 			err := ExtractArchive(context.Background(), bytes.NewReader(data), dst, nil)
 			if err == nil {
-				t.Fatal("debe rechazar la copia")
+				t.Fatal("it must reject the backup")
 			}
 			if exists(filepath.Join(base, "evil.txt")) {
-				t.Fatal("se escribió fuera del destino")
+				t.Fatal("something was written outside the destination")
 			}
-			assertEmpty(t, dst) // ok.txt, ya extraído, se borra al rechazar la copia
+			assertEmpty(t, dst) // ok.txt, already extracted, is deleted when the backup is rejected
 		})
 	}
 }
@@ -331,23 +331,23 @@ func TestExtractNeverFollowsLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	if exists(filepath.Join(outside, "pwned.txt")) {
-		t.Fatal("se escribió a través de un enlace simbólico")
+		t.Fatal("something was written through a symbolic link")
 	}
 	if fi, err := os.Lstat(filepath.Join(dst, "link")); err != nil || fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
-		t.Fatalf("link debe ser un directorio real dentro del destino: %v %v", fi, err)
+		t.Fatalf("link must be a real directory inside the destination: %v %v", fi, err)
 	}
 	if mustRead(t, filepath.Join(dst, "link", "pwned.txt")) != "pwned" || exists(filepath.Join(dst, "hard")) {
-		t.Fatal("contenido inesperado")
+		t.Fatal("unexpected content")
 	}
 	if len(warns) != 2 {
-		t.Fatalf("avisos = %v", warns)
+		t.Fatalf("warnings = %v", warns)
 	}
 }
 
 func TestExtractSkipsSpecialFiles(t *testing.T) {
 	dst := t.TempDir()
 	data := makeArchive(t, []tarEntry{
-		{hdr: tar.Header{Name: "pax_global_header", Typeflag: tar.TypeXGlobalHeader, PAXRecords: map[string]string{"comment": "git archive"}}}, // metadatos: se ignora sin avisar
+		{hdr: tar.Header{Name: "pax_global_header", Typeflag: tar.TypeXGlobalHeader, PAXRecords: map[string]string{"comment": "git archive"}}}, // metadata: ignored without warning
 		{hdr: tar.Header{Name: "fifo", Typeflag: tar.TypeFifo}},
 		{hdr: tar.Header{Name: "null", Typeflag: tar.TypeChar, Devmajor: 1, Devminor: 3}},
 		{hdr: tar.Header{Name: "sda", Typeflag: tar.TypeBlock, Devmajor: 8}},
@@ -359,16 +359,16 @@ func TestExtractSkipsSpecialFiles(t *testing.T) {
 	}
 	for _, n := range []string{"fifo", "null", "sda"} {
 		if exists(filepath.Join(dst, n)) {
-			t.Errorf("%s no debía crearse", n)
+			t.Errorf("%s should not have been created", n)
 		}
 	}
 	if mustRead(t, filepath.Join(dst, "ok.txt")) != "ok" || len(warns) != 3 {
-		t.Fatalf("avisos = %v", warns)
+		t.Fatalf("warnings = %v", warns)
 	}
 }
 
-// Un tipo que archive/tar no trata como solo cabecera (GNU sparse, desconocidos…) conserva
-// su Size y Next() descartaría ese contenido descomprimiéndolo entero, sin límite ni ctx.
+// A type that archive/tar does not treat as header-only (GNU sparse, unknown…) keeps
+// its Size and Next() would discard that content by decompressing it in full, without a limit or ctx.
 func TestExtractRejectsUnsupportedTypeWithContent(t *testing.T) {
 	const unknown = 'Z'
 	cases := map[string]struct {
@@ -376,8 +376,8 @@ func TestExtractRejectsUnsupportedTypeWithContent(t *testing.T) {
 		lim  ExtractLimits
 		want string
 	}{
-		"bomba de ceros": {strings.Repeat("\x00", 16<<20), ExtractLimits{MaxBytes: 1 << 20}, "límite"}, // 16 MiB que comprimen a nada
-		"tipo con datos": {"x", ExtractLimits{}, "no admitido"},
+		"zero bomb":      {strings.Repeat("\x00", 16<<20), ExtractLimits{MaxBytes: 1 << 20}, "limit"}, // 16 MiB that compress to nothing
+		"type with data": {"x", ExtractLimits{}, "unsupported"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -407,7 +407,7 @@ func TestExtractRejectsUnsupportedTypeWithContent(t *testing.T) {
 			}
 			dst := t.TempDir()
 			if err := ExtractArchiveLimits(context.Background(), &buf, dst, nil, c.lim); err == nil || !strings.Contains(err.Error(), c.want) {
-				t.Fatalf("err = %v; esperaba %q", err, c.want)
+				t.Fatalf("err = %v; expected %q", err, c.want)
 			}
 			assertEmpty(t, dst)
 		})
@@ -430,7 +430,7 @@ func TestExtractDropsSetuidSetgidSticky(t *testing.T) {
 			t.Fatal(err)
 		}
 		if fi.Mode()&special != 0 || fi.Mode().Perm() != 0o755 {
-			t.Errorf("%s: modo %v", p, fi.Mode())
+			t.Errorf("%s: mode %v", p, fi.Mode())
 		}
 	}
 }
@@ -443,7 +443,7 @@ func TestExtractAcceptsDotSlashNames(t *testing.T) {
 	if err := os.Chmod(dst, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	data := makeArchive(t, []tarEntry{ // como `tar -C data -c .`
+	data := makeArchive(t, []tarEntry{ // like `tar -C data -c .`
 		{hdr: tar.Header{Name: "./", Typeflag: tar.TypeDir, Mode: 0o700}},
 		{hdr: tar.Header{Name: "./world/", Typeflag: tar.TypeDir, Mode: 0o755}},
 		{hdr: tar.Header{Name: "./world//level.dat", Typeflag: tar.TypeReg}, body: "L"},
@@ -452,10 +452,10 @@ func TestExtractAcceptsDotSlashNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	if mustRead(t, filepath.Join(dst, "world", "level.dat")) != "L" {
-		t.Fatal("contenido inesperado")
+		t.Fatal("unexpected content")
 	}
 	if fi, _ := os.Stat(dst); fi.Mode().Perm() != 0o755 {
-		t.Fatalf("la entrada ./ no debe tocar el propio destino: %v", fi.Mode())
+		t.Fatalf("the ./ entry must not touch the destination itself: %v", fi.Mode())
 	}
 }
 
@@ -465,23 +465,23 @@ func TestExtractLimits(t *testing.T) {
 		{hdr: tar.Header{Name: "d/a.txt", Typeflag: tar.TypeReg}, body: "123456"},
 		{hdr: tar.Header{Name: "d/b.txt", Typeflag: tar.TypeReg}, body: "123456"},
 	})
-	for name, lim := range map[string]ExtractLimits{"bytes": {MaxBytes: 11}, "entradas": {MaxEntries: 2}} {
+	for name, lim := range map[string]ExtractLimits{"bytes": {MaxBytes: 11}, "entries": {MaxEntries: 2}} {
 		t.Run(name, func(t *testing.T) {
 			dst := t.TempDir()
 			if err := ExtractArchiveLimits(context.Background(), bytes.NewReader(data), dst, nil, lim); err == nil {
-				t.Fatal("debe superar el límite")
+				t.Fatal("it must exceed the limit")
 			}
 			assertEmpty(t, dst)
 		})
 	}
 	if err := ExtractArchiveLimits(context.Background(), bytes.NewReader(data), t.TempDir(), nil, ExtractLimits{MaxBytes: 12, MaxEntries: 3}); err != nil {
-		t.Fatalf("justo en el límite se acepta: %v", err)
+		t.Fatalf("right at the limit it is accepted: %v", err)
 	}
 }
 
 func TestExtractRejectsHugeDeclaredSizeBeforeWriting(t *testing.T) {
-	// Cabecera que anuncia 1 TiB sin el contenido detrás: el límite salta al leer la
-	// cabecera, sin descomprimir ni escribir nada.
+	// A header announcing 1 TiB without the content behind it: the limit trips when reading the
+	// header, without decompressing or writing anything.
 	var buf bytes.Buffer
 	enc, err := zstd.NewWriter(&buf)
 	if err != nil {
@@ -496,24 +496,24 @@ func TestExtractRejectsHugeDeclaredSizeBeforeWriting(t *testing.T) {
 	}
 	dst := t.TempDir()
 	err = ExtractArchive(context.Background(), &buf, dst, nil)
-	if err == nil || !strings.Contains(err.Error(), "límite") {
+	if err == nil || !strings.Contains(err.Error(), "limit") {
 		t.Fatalf("err = %v", err)
 	}
 	assertEmpty(t, dst)
 }
 
 func TestExtractRequiresEmptyExistingDir(t *testing.T) {
-	data := makeArchive(t, []tarEntry{{hdr: tar.Header{Name: "a.txt", Typeflag: tar.TypeReg}, body: "nuevo"}})
+	data := makeArchive(t, []tarEntry{{hdr: tar.Header{Name: "a.txt", Typeflag: tar.TypeReg}, body: "new"}})
 	dst := t.TempDir()
-	mustWrite(t, filepath.Join(dst, "a.txt"), "previo", 0o644)
+	mustWrite(t, filepath.Join(dst, "a.txt"), "previous", 0o644)
 	if err := ExtractArchive(context.Background(), bytes.NewReader(data), dst, nil); err == nil {
-		t.Fatal("un destino con contenido debe rechazarse")
+		t.Fatal("a destination with content must be rejected")
 	}
-	if mustRead(t, filepath.Join(dst, "a.txt")) != "previo" {
-		t.Fatal("no debe tocar lo que ya había")
+	if mustRead(t, filepath.Join(dst, "a.txt")) != "previous" {
+		t.Fatal("it must not touch what was already there")
 	}
-	if err := ExtractArchive(context.Background(), bytes.NewReader(data), filepath.Join(dst, "no-existe"), nil); err == nil {
-		t.Fatal("un destino inexistente debe rechazarse")
+	if err := ExtractArchive(context.Background(), bytes.NewReader(data), filepath.Join(dst, "nonexistent"), nil); err == nil {
+		t.Fatal("a nonexistent destination must be rejected")
 	}
 }
 
@@ -522,14 +522,14 @@ func TestExtractCorruptArchive(t *testing.T) {
 	dst := t.TempDir()
 	err := ExtractArchive(context.Background(), bytes.NewReader(data[:len(data)/2]), dst, nil)
 	if err == nil {
-		t.Fatal("una copia truncada debe dar error")
+		t.Fatal("a truncated backup must give an error")
 	}
-	assertEmpty(t, dst) // el fichero a medias se borra
+	assertEmpty(t, dst) // the half-written file is deleted
 }
 
 func TestExtractRejectsEmptyOrUnterminated(t *testing.T) {
-	// Trama zstd completa con un tar sin sus bloques finales (cortado en el límite de una
-	// entrada, como si tar hubiera muerto a mitad): archive/tar lo daría por terminado.
+	// Complete zstd frame with a tar without its final blocks (cut at an entry boundary,
+	// as if tar had died midway): archive/tar would consider it finished.
 	var cut bytes.Buffer
 	enc, err := zstd.NewWriter(&cut)
 	if err != nil {
@@ -548,31 +548,31 @@ func TestExtractRejectsEmptyOrUnterminated(t *testing.T) {
 	if err := enc.Close(); err != nil {
 		t.Fatal(err)
 	}
-	for name, data := range map[string][]byte{"vacía": nil, "sin final": cut.Bytes()} {
+	for name, data := range map[string][]byte{"empty": nil, "without end": cut.Bytes()} {
 		dst := t.TempDir()
 		if err := ExtractArchive(context.Background(), bytes.NewReader(data), dst, nil); err == nil {
-			t.Errorf("%s: debe rechazarse", name)
+			t.Errorf("%s: must be rejected", name)
 		}
 		assertEmpty(t, dst)
 	}
 }
 
 func TestExtractVerifiesZstdChecksum(t *testing.T) {
-	data := makeArchive(t, []tarEntry{{hdr: tar.Header{Name: "a.txt", Typeflag: tar.TypeReg}, body: "contenido"}})
-	data[len(data)-1] ^= 0xff // la suma de la trama ocupa los últimos 4 bytes
+	data := makeArchive(t, []tarEntry{{hdr: tar.Header{Name: "a.txt", Typeflag: tar.TypeReg}, body: "content"}})
+	data[len(data)-1] ^= 0xff // the frame's checksum takes up the last 4 bytes
 	dst := t.TempDir()
 	if err := ExtractArchive(context.Background(), bytes.NewReader(data), dst, nil); err == nil {
-		t.Fatal("una suma de verificación incorrecta debe dar error")
+		t.Fatal("an incorrect checksum must give an error")
 	}
 	assertEmpty(t, dst)
 }
 
 func TestExtractReadsTheWholeStream(t *testing.T) {
 	data := makeArchive(t, []tarEntry{{hdr: tar.Header{Name: "a.txt", Typeflag: tar.TypeReg}, body: "a"}})
-	data = append(data, "basura tras la trama"...)
+	data = append(data, "garbage after the frame"...)
 	dst := t.TempDir()
 	if err := ExtractArchive(context.Background(), bytes.NewReader(data), dst, nil); err == nil {
-		t.Fatal("los datos tras el final deben leerse y rechazarse")
+		t.Fatal("the data after the end must be read and rejected")
 	}
 	assertEmpty(t, dst)
 }
@@ -590,14 +590,14 @@ func TestExtractCancelled(t *testing.T) {
 
 func TestExtractRestoresOwnerAsRoot(t *testing.T) {
 	uid, gid := os.Getuid(), os.Getgid()
-	if uid != 0 { // sin root se simula: chown al propio usuario funciona, a otro falla
+	if uid != 0 { // without root it is simulated: chown to the user itself works, to another fails
 		old := geteuid
 		geteuid = func() int { return 0 }
 		t.Cleanup(func() { geteuid = old })
 	}
 	owner := uid
 	if uid == 0 {
-		owner = 1000 // uid de la imagen itzg
+		owner = 1000 // uid of the itzg image
 	}
 	data := makeArchive(t, []tarEntry{
 		{hdr: tar.Header{Name: "world/", Typeflag: tar.TypeDir, Mode: 0o755, Uid: owner, Gid: gid}},
@@ -606,7 +606,7 @@ func TestExtractRestoresOwnerAsRoot(t *testing.T) {
 	dst := t.TempDir()
 	var warns []string
 	if err := ExtractArchive(context.Background(), bytes.NewReader(data), dst, func(w string) { warns = append(warns, w) }); err != nil || len(warns) != 0 {
-		t.Fatalf("err = %v, avisos = %v", err, warns)
+		t.Fatalf("err = %v, warnings = %v", err, warns)
 	}
 	for _, p := range []string{"world", "world/level.dat"} {
 		fi, err := os.Lstat(filepath.Join(dst, p))
@@ -614,33 +614,33 @@ func TestExtractRestoresOwnerAsRoot(t *testing.T) {
 			t.Fatal(err)
 		}
 		if st := fi.Sys().(*syscall.Stat_t); int(st.Uid) != owner {
-			t.Errorf("%s: uid %d, esperaba %d", p, st.Uid, owner)
+			t.Errorf("%s: uid %d, expected %d", p, st.Uid, owner)
 		}
 	}
 	if uid == 0 {
 		return
 	}
-	// Sin privilegios, el chown a root (uid 0) falla: prueba que se intenta en ficheros y en
-	// directorios, que se avisa una sola vez y que la extracción sigue.
+	// Without privileges, the chown to root (uid 0) fails: it proves that it is attempted on files and on
+	// directories, that a warning is given only once and that the extraction continues.
 	for name, entries := range map[string][]tarEntry{
-		"ficheros": {
+		"files": {
 			{hdr: tar.Header{Name: "a.txt", Typeflag: tar.TypeReg}, body: "a"},
 			{hdr: tar.Header{Name: "b.txt", Typeflag: tar.TypeReg}, body: "b"},
 		},
-		"directorio": {{hdr: tar.Header{Name: "d/", Typeflag: tar.TypeDir, Mode: 0o755}}},
+		"directory": {{hdr: tar.Header{Name: "d/", Typeflag: tar.TypeDir, Mode: 0o755}}},
 	} {
 		dst := t.TempDir()
 		var warns []string
 		if err := ExtractArchive(context.Background(), bytes.NewReader(makeArchive(t, entries)), dst, func(w string) { warns = append(warns, w) }); err != nil {
 			t.Fatal(err)
 		}
-		if len(warns) != 1 || !strings.Contains(warns[0], "propietario") || !exists(filepath.Join(dst, strings.TrimSuffix(entries[0].hdr.Name, "/"))) {
-			t.Fatalf("%s: avisos = %v", name, warns)
+		if len(warns) != 1 || !strings.Contains(warns[0], "owner") || !exists(filepath.Join(dst, strings.TrimSuffix(entries[0].hdr.Name, "/"))) {
+			t.Fatalf("%s: warnings = %v", name, warns)
 		}
 	}
 }
 
-// failingReader entrega body y después falla, como un tar cortado a mitad de un fichero.
+// failingReader delivers body and then fails, like a tar cut off midway through a file.
 type failingReader struct{ body *strings.Reader }
 
 func (f failingReader) Read(p []byte) (int, error) {
@@ -659,8 +659,8 @@ func TestExtractFileRemovesPartialOnError(t *testing.T) {
 	defer root.Close()
 	x := &extractor{ctx: context.Background(), root: root, warn: func(string) {}, buf: make([]byte, 4)}
 	hdr := &tar.Header{Name: "a.txt", Typeflag: tar.TypeReg, Size: 100}
-	if err := x.file("a.txt", failingReader{strings.NewReader("mitad")}, hdr, 0o644); err == nil {
-		t.Fatal("debe fallar")
+	if err := x.file("a.txt", failingReader{strings.NewReader("half")}, hdr, 0o644); err == nil {
+		t.Fatal("it must fail")
 	}
 	assertEmpty(t, dst)
 }
@@ -675,7 +675,7 @@ func TestWriteArchiveCancelled(t *testing.T) {
 	}
 }
 
-// Una copia cancelada a mitad no debe quedar como un tar.zst válido con solo una parte.
+// A backup cancelled midway must not be left as a valid tar.zst with only a part.
 func TestWriteArchiveCancelledMidwayIsUnreadable(t *testing.T) {
 	src := t.TempDir()
 	mustWrite(t, filepath.Join(src, "a.txt"), "a", 0o644)
@@ -685,24 +685,24 @@ func TestWriteArchiveCancelledMidwayIsUnreadable(t *testing.T) {
 	var buf bytes.Buffer
 	if _, err := WriteArchive(ctx, src, &buf, nil, func(done, _ int64) {
 		if done > 0 {
-			cancel() // tras el primer fichero
+			cancel() // after the first file
 		}
 	}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v", err)
 	}
 	if err := ExtractArchive(context.Background(), &buf, t.TempDir(), nil); err == nil {
-		t.Fatal("la salida de una copia cancelada debe ser ilegible")
+		t.Fatal("the output of a cancelled backup must be unreadable")
 	}
 }
 
-// failingWriter acepta n bytes y luego falla (disco lleno, panel desconectado…).
+// failingWriter accepts n bytes and then fails (disk full, panel disconnected…).
 type failingWriter struct{ n int }
 
 func (f *failingWriter) Write(p []byte) (int, error) {
 	if len(p) > f.n {
 		k := f.n
 		f.n = 0
-		return k, errors.New("no queda espacio")
+		return k, errors.New("no space left")
 	}
 	f.n -= len(p)
 	return len(p), nil
@@ -710,7 +710,7 @@ func (f *failingWriter) Write(p []byte) (int, error) {
 
 func TestWriteArchiveWriterError(t *testing.T) {
 	src := t.TempDir()
-	noise := make([]byte, 1<<20) // incompresible: el compresor escribe antes del final
+	noise := make([]byte, 1<<20) // incompressible: the compressor writes before the end
 	rng := rand.New(rand.NewPCG(1, 2))
 	for i := range noise {
 		noise[i] = byte(rng.Uint32())
@@ -718,13 +718,13 @@ func TestWriteArchiveWriterError(t *testing.T) {
 	mustWrite(t, filepath.Join(src, "a.bin"), string(noise), 0o644)
 	mustWrite(t, filepath.Join(src, "b.bin"), string(noise), 0o644)
 	if _, err := WriteArchive(context.Background(), src, &failingWriter{n: 4096}, nil, nil); err == nil {
-		t.Fatal("el error del destino debe propagarse")
+		t.Fatal("the destination's error must propagate")
 	}
 }
 
-// Un fichero que cambió entre el escaneo y su lectura (p. ej. playerdata que Minecraft
-// reescribe al salir un jugador, aun con save-off) se copia tal como está al abrirlo: la
-// cabecera sale de ese momento, sin rellenos ni recortes y sin aviso.
+// A file that changed between the scan and its read (e.g. playerdata that Minecraft
+// rewrites when a player leaves, even with save-off) is copied as it is when opened: the
+// header comes from that moment, without padding or trimming and without a warning.
 func TestWriteEntryCopiesFileAsOpened(t *testing.T) {
 	dir := t.TempDir()
 	shrunk, grown := filepath.Join(dir, "shrunk.log"), filepath.Join(dir, "grown.log")
@@ -732,8 +732,8 @@ func TestWriteEntryCopiesFileAsOpened(t *testing.T) {
 	mustWrite(t, grown, "0123456789", 0o644)
 	si, _ := os.Lstat(shrunk)
 	gi, _ := os.Lstat(grown)
-	mustWrite(t, shrunk, "0123", 0o644)                // encoge tras el escaneo
-	mustWrite(t, grown, "0123456789ABCDEFGHIJ", 0o644) // crece tras el escaneo
+	mustWrite(t, shrunk, "0123", 0o644)                // shrinks after the scan
+	mustWrite(t, grown, "0123456789ABCDEFGHIJ", 0o644) // grows after the scan
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -750,7 +750,7 @@ func TestWriteEntryCopiesFileAsOpened(t *testing.T) {
 	if err != nil || n != 20 || warn != "" {
 		t.Fatalf("grown: n=%d warn=%q err=%v", n, warn, err)
 	}
-	if _, _, warn, _ = writeEntry(ctx, tw, root, entry{rel: "gone.log", info: si}, make([]byte, 64)); !strings.Contains(warn, "borró") {
+	if _, _, warn, _ = writeEntry(ctx, tw, root, entry{rel: "gone.log", info: si}, make([]byte, 64)); !strings.Contains(warn, "deleted") {
 		t.Fatalf("gone: warn=%q", warn)
 	}
 	if err := tw.Close(); err != nil {
@@ -763,13 +763,13 @@ func TestWriteEntryCopiesFileAsOpened(t *testing.T) {
 		}
 		body, _ := io.ReadAll(tr)
 		if string(body) != w {
-			t.Fatalf("contenido %q, esperaba %q", body, w)
+			t.Fatalf("content %q, expected %q", body, w)
 		}
 	}
 }
 
-// hookWriter llama a fire la primera vez que lo escrito contiene marker: así un test cambia
-// un fichero justo mientras se está copiando su contenido.
+// hookWriter calls fire the first time what is written contains marker: this way a test changes
+// a file right while its content is being copied.
 type hookWriter struct {
 	w      io.Writer
 	marker []byte
@@ -785,13 +785,13 @@ func (h *hookWriter) Write(p []byte) (int, error) {
 	return h.w.Write(p)
 }
 
-// Un fichero que cambia MIENTRAS se lee (Minecraft guardando al pararse durante una copia en
-// caliente) no se trunca ni se rellena: la entrada falla con ErrSourceChanged.
+// A file that changes WHILE it is being read (Minecraft saving when stopping during a hot
+// backup) is neither truncated nor padded: the entry fails with ErrSourceChanged.
 func TestWriteEntryFailsWhenFileChangesWhileRead(t *testing.T) {
 	body := strings.Repeat("x", 200)
-	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC) // mtime viejo: cualquier escritura lo cambia
+	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC) // old mtime: any write changes it
 	cases := map[string]func(t *testing.T, p string){
-		"crece": func(t *testing.T, p string) {
+		"grows": func(t *testing.T, p string) {
 			f, err := os.OpenFile(p, os.O_WRONLY|os.O_APPEND, 0)
 			if err != nil {
 				t.Fatal(err)
@@ -801,12 +801,12 @@ func TestWriteEntryFailsWhenFileChangesWhileRead(t *testing.T) {
 				t.Fatal(err)
 			}
 		},
-		"encoge": func(t *testing.T, p string) {
+		"shrinks": func(t *testing.T, p string) {
 			if err := os.Truncate(p, 10); err != nil {
 				t.Fatal(err)
 			}
 		},
-		"reescrito con el mismo tamaño": func(t *testing.T, p string) {
+		"rewritten with the same size": func(t *testing.T, p string) {
 			f, err := os.OpenFile(p, os.O_WRONLY, 0)
 			if err != nil {
 				t.Fatal(err)
@@ -837,19 +837,19 @@ func TestWriteEntryFailsWhenFileChangesWhileRead(t *testing.T) {
 			hw := &hookWriter{w: io.Discard, marker: []byte("xxxxxxxx"), fire: func() { change(t, p) }}
 			_, _, _, err = writeEntry(context.Background(), tar.NewWriter(hw), root, entry{rel: "level.dat", info: info}, make([]byte, 64))
 			if !hw.fired {
-				t.Fatal("el cambio debía ocurrir durante la lectura")
+				t.Fatal("the change should have happened during the read")
 			}
 			if !errors.Is(err, ErrSourceChanged) {
-				t.Fatalf("err = %v; esperaba ErrSourceChanged", err)
+				t.Fatalf("err = %v; expected ErrSourceChanged", err)
 			}
 		})
 	}
 }
 
-// Igual a través de WriteArchive: el error nombra el fichero y lo escrito no es una copia legible.
+// The same through WriteArchive: the error names the file and what was written is not a readable backup.
 func TestWriteArchiveFailsWhenFileGrowsWhileRead(t *testing.T) {
 	src := t.TempDir()
-	noise := make([]byte, 4<<20) // incompresible: el compresor escribe antes de acabar el fichero
+	noise := make([]byte, 4<<20) // incompressible: the compressor writes before finishing the file
 	rng := rand.New(rand.NewPCG(3, 4))
 	for i := range noise {
 		noise[i] = byte(rng.Uint32())
@@ -864,31 +864,31 @@ func TestWriteArchiveFailsWhenFileGrowsWhileRead(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		if _, err := f.Write([]byte("chunk guardado al parar")); err != nil {
+		if _, err := f.Write([]byte("chunk saved when stopping")); err != nil {
 			t.Fatal(err)
 		}
 	}
-	hw := &hookWriter{w: &out, marker: nil, fire: grow} // la primera escritura del compresor
+	hw := &hookWriter{w: &out, marker: nil, fire: grow} // the compressor's first write
 	_, err := WriteArchive(context.Background(), src, hw, nil, nil)
 	if !hw.fired {
-		t.Fatal("el compresor no escribió nada antes del final")
+		t.Fatal("the compressor wrote nothing before the end")
 	}
 	if !errors.Is(err, ErrSourceChanged) || !strings.Contains(err.Error(), "world/region/r.0.0.mca") {
-		t.Fatalf("err = %v; esperaba ErrSourceChanged con el nombre del fichero", err)
+		t.Fatalf("err = %v; expected ErrSourceChanged with the file name", err)
 	}
 	if err := ExtractArchive(context.Background(), &out, t.TempDir(), nil); err == nil {
-		t.Fatal("lo escrito por una copia fallida debe ser ilegible")
+		t.Fatal("what a failed backup wrote must be unreadable")
 	}
 }
 
-// Un proceso del contenedor cambia un directorio por un enlace a fuera entre el escaneo y
-// la lectura: el agente (root) nunca debe leer ficheros del anfitrión a través de él.
+// A container process swaps a directory for a link to the outside between the scan and
+// the read: the agent (root) must never read host files through it.
 func TestWriteEntryNeverReadsOutsideSource(t *testing.T) {
 	for _, target := range []string{"ABS", "../outside"} {
 		t.Run(target, func(t *testing.T) {
 			base := t.TempDir()
 			src, outside := filepath.Join(base, "src"), filepath.Join(base, "outside")
-			mustWrite(t, filepath.Join(outside, "secret"), "SECRETO", 0o644)
+			mustWrite(t, filepath.Join(outside, "secret"), "SECRET", 0o644)
 			mustWrite(t, filepath.Join(src, "world", "secret"), "publico", 0o644)
 			info, err := os.Lstat(filepath.Join(src, "world", "secret"))
 			if err != nil {
@@ -912,16 +912,16 @@ func TestWriteEntryNeverReadsOutsideSource(t *testing.T) {
 			var buf bytes.Buffer
 			tw := tar.NewWriter(&buf)
 			if _, _, _, err := writeEntry(context.Background(), tw, root, entry{rel: "world/secret", info: info}, make([]byte, 64)); err == nil {
-				t.Fatal("debe fallar en vez de seguir el enlace")
+				t.Fatal("it must fail instead of following the link")
 			}
-			if strings.Contains(buf.String(), "SECRETO") {
-				t.Fatal("se leyó un fichero de fuera de los datos")
+			if strings.Contains(buf.String(), "SECRET") {
+				t.Fatal("a file from outside the data was read")
 			}
 		})
 	}
 }
 
-// Una FIFO colada en lugar de un fichero no puede bloquear la copia (con save-off activo).
+// A FIFO sneaked in instead of a file cannot block the backup (with save-off active).
 func TestWriteEntrySkipsFifoSwappedIn(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "x.dat")
@@ -954,43 +954,43 @@ func TestWriteEntrySkipsFifoSwappedIn(t *testing.T) {
 	select {
 	case r := <-done:
 		if r.err != nil || !r.skipped || !strings.Contains(r.warn, "x.dat") {
-			t.Fatalf("resultado = %+v", r)
+			t.Fatalf("result = %+v", r)
 		}
 	case <-time.After(10 * time.Second):
-		t.Fatal("writeEntry se bloqueó abriendo una FIFO")
+		t.Fatal("writeEntry blocked opening a FIFO")
 	}
 }
 
-// Si un directorio deja de serlo entre el listado de su padre y su apertura (fichero, FIFO,
-// enlace a fuera o a otro directorio de dentro), se omite su contenido con aviso en vez de
-// abortar la copia o listar otra cosa bajo su nombre.
+// If a directory stops being one between its parent's listing and its opening (file, FIFO,
+// link to the outside or to another directory inside), its content is skipped with a warning instead of
+// aborting the backup or listing something else under its name.
 func TestReadDirInDetectsDirectoryThatChanged(t *testing.T) {
-	for _, swap := range []string{"fichero", "fifo", "enlace fuera", "enlace dentro", "borrado", "igual"} {
+	for _, swap := range []string{"file", "fifo", "link outside", "link inside", "deleted", "same"} {
 		t.Run(swap, func(t *testing.T) {
 			base := t.TempDir()
 			src := filepath.Join(base, "src")
 			mustWrite(t, filepath.Join(src, "d", "x.txt"), "x", 0o644)
-			mustWrite(t, filepath.Join(src, "otro", "y.txt"), "y", 0o644)
-			mustWrite(t, filepath.Join(base, "fuera", "z.txt"), "z", 0o644)
+			mustWrite(t, filepath.Join(src, "other", "y.txt"), "y", 0o644)
+			mustWrite(t, filepath.Join(base, "outside", "z.txt"), "z", 0o644)
 			d := filepath.Join(src, "d")
 			want, err := os.Lstat(d)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if swap != "igual" {
+			if swap != "same" {
 				if err := os.RemoveAll(d); err != nil {
 					t.Fatal(err)
 				}
 			}
 			switch swap {
-			case "fichero":
-				mustWrite(t, d, "ya no es un directorio", 0o644)
+			case "file":
+				mustWrite(t, d, "no longer a directory", 0o644)
 			case "fifo":
 				err = syscall.Mkfifo(d, 0o644)
-			case "enlace fuera":
-				err = os.Symlink("../fuera", d)
-			case "enlace dentro":
-				err = os.Symlink("otro", d)
+			case "link outside":
+				err = os.Symlink("../outside", d)
+			case "link inside":
+				err = os.Symlink("other", d)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -1005,11 +1005,11 @@ func TestReadDirInDetectsDirectoryThatChanged(t *testing.T) {
 				t.Fatalf("err = %v", err)
 			}
 			switch swap {
-			case "igual":
+			case "same":
 				if changed || len(des) != 1 || des[0].Name() != "x.txt" {
 					t.Fatalf("des = %v, changed = %v", des, changed)
 				}
-			case "borrado":
+			case "deleted":
 				if changed || len(des) != 0 {
 					t.Fatalf("des = %v, changed = %v", des, changed)
 				}
