@@ -51,8 +51,9 @@ type Reconciler struct {
 	lastErr map[string]string
 	held    map[string]string // plan-4: servidores reservados por Hold (backup/restore) y su motivo
 	heldErr map[string]string // plan-4: error visible en Observed de un servidor reservado (HoldError)
-	// startGen cuenta los Power start/restart de cada servidor (plan-9): un CrashLoopStop decidido antes de uno no
-	// retiene el servidor que el usuario acaba de arrancar (CrashLoopStopUnlessStarted).
+	// startGen cuenta, por servidor, los Power start/restart y las versiones nuevas de su spec (plan-9): un
+	// CrashLoopStop decidido antes de uno de ellos no retiene el servidor que el usuario acaba de arrancar ni una
+	// configuración nueva (CrashLoopStopUnlessStarted).
 	startGen map[string]uint64
 	adoptMu  sync.Mutex // plan-6: comprobar y registrar adopciones (un contenedor, un servidor); tras el lock por servidor
 	now      func() time.Time
@@ -81,6 +82,16 @@ func (r *Reconciler) lock(id string) func() {
 	r.mu.Unlock()
 	m.Lock()
 	return m.Unlock
+}
+
+// bumpStartGen incrementa la generación de arranques de id (con el lock del servidor tomado).
+func (r *Reconciler) bumpStartGen(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.startGen == nil {
+		r.startGen = map[string]uint64{}
+	}
+	r.startGen[id]++
 }
 
 // tryLock toma el lock de id solo si está libre (plan-9: TryHold).
@@ -173,6 +184,9 @@ func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 	if err := r.st.PutSpec(sp); err != nil { // anula la lápida del id, si la hay
 		return err
 	}
+	if stored == nil || stored.Version != sp.Version {
+		r.bumpStartGen(sp.ServerId) // plan-9: una versión nueva se prueba aunque hubiera una parada por bucle en cola
+	}
 	return r.reconcileLocked(ctx, sp.ServerId)
 }
 
@@ -183,8 +197,15 @@ func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 func (r *Reconciler) StoreForce(sp *mcsmv1.ServerSpec) error {
 	unlock := r.lock(sp.ServerId)
 	defer unlock()
+	stored, err := r.st.GetSpec(sp.ServerId)
+	if err != nil {
+		return err
+	}
 	if err := r.st.PutSpec(sp); err != nil { // anula la lápida del id, si la hay
 		return err
+	}
+	if stored == nil || stored.Version != sp.Version {
+		r.bumpStartGen(sp.ServerId) // plan-9: como en Apply
 	}
 	r.clearFailure(sp.ServerId)
 	return nil
@@ -500,12 +521,7 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	// plan-9: arrancar o reiniciar a mano levanta la retención por bucle de crash y deja sin efecto las paradas por
 	// bucle decididas antes.
 	if action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
-		r.mu.Lock()
-		if r.startGen == nil {
-			r.startGen = map[string]uint64{}
-		}
-		r.startGen[serverID]++
-		r.mu.Unlock()
+		r.bumpStartGen(serverID)
 		if err := r.st.DeleteCrashLatch(serverID); err != nil {
 			return err
 		}

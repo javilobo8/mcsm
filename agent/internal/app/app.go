@@ -89,6 +89,10 @@ type App struct {
 	events  *outbox
 	crashes *crashloop.Tracker
 	intents *crashloop.Intents
+	// stopMu protege crashStops: la última parada por bucle decidida por servidor, pendiente de ejecutar. dispatch
+	// fusiona los disparos de un mismo servidor; la ejecución lee siempre la última decisión (plan-9, N1).
+	stopMu     sync.Mutex
+	crashStops map[string]crashStop
 	// plan-9: RotateToken. Run los conecta al cliente WS; en tests son no-ops o fakes.
 	setToken  func(string)
 	reconnect func()
@@ -103,7 +107,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	eng = crashloop.Engine{Engine: eng, Intents: intents}
 	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{},
 		flights: map[string]*flight{}, forced: map[string]bool{}, sem: make(chan struct{}, maxConcurrent), life: context.Background(),
-		intents: intents, crashes: crashloop.NewTracker(time.Now), setToken: func(string) {}, reconnect: func() {}}
+		intents: intents, crashes: crashloop.NewTracker(time.Now), crashStops: map[string]crashStop{}, setToken: func(string) {}, reconnect: func() {}}
 	a.send = func(*mcsmv1.Envelope) error { return conn.ErrNotConnected }
 	a.rec = reconcile.New(st, eng, cfg.DataRoot, cfg.Network, func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		return a.status(ctx, host, port)
@@ -390,13 +394,14 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		_ = send(ack(env.Id))
 
 	case *mcsmv1.Envelope_PowerAction:
+		// plan-9: arrancar a mano empieza la cuenta de crashes de cero (el reconciliador borra la retención). Antes del
+		// Power: un cierre con error que llegue mientras arranca no debe sumarse a los de antes.
+		if act := b.PowerAction.Action; act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
+			a.crashes.Reset(b.PowerAction.ServerId)
+		}
 		if err := a.rec.Power(life, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
 			_ = send(errMsg(env.Id, busyOr(err, errcode.PowerFailed), err))
 			return
-		}
-		// plan-9: arrancar a mano empieza la cuenta de crashes de cero (el reconciliador ya borró la retención).
-		if act := b.PowerAction.Action; act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
-			a.crashes.Reset(b.PowerAction.ServerId)
 		}
 		_ = send(ack(env.Id))
 

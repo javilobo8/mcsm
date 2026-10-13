@@ -36,7 +36,15 @@ func eventsOf(t *testing.T, a *App, s *sink) []*mcsmv1.Event {
 // crashApp: agente con el servidor "a" en marcha y su cola de eventos funcionando.
 func crashApp(t *testing.T) (*App, *docker.Fake, *sink, string) {
 	t.Helper()
-	a, fake, _ := newApp(t)
+	fake := docker.NewFake()
+	a, s, cid := crashAppEngine(t, fake)
+	return a, fake, s, cid
+}
+
+// crashAppEngine es crashApp sobre un Engine cualquiera (envoltorios del fake).
+func crashAppEngine(t *testing.T, eng docker.Engine) (*App, *sink, string) {
+	t.Helper()
+	a, _ := newAppEngine(t, eng)
 	s := newSink()
 	s.ch = make(chan *mcsmv1.Envelope, 1024)
 	a.send = s.send
@@ -49,7 +57,7 @@ func crashApp(t *testing.T) (*App, *docker.Fake, *sink, string) {
 	if cid == "" {
 		t.Fatal("sin contenedor")
 	}
-	return a, fake, s, cid
+	return a, s, cid
 }
 
 func die(cid string, code string) docker.Event {
@@ -189,5 +197,102 @@ func TestQueuedCrashLoopStopYieldsToAManualStart(t *testing.T) {
 		if e.Kind == KindCrashLoop || e.Kind == KindCrashLoopFailed {
 			t.Fatalf("evento %s de una parada que ya no toca", e.Kind)
 		}
+	}
+}
+
+// N1: si una parada por bucle sigue en cola cuando llega otro disparo (tras un Arrancar del usuario), la fusión de
+// dispatch no la ejecuta con lo decidido la primera vez (gen viejo, descartado): usa la última decisión.
+func TestCoalescedCrashLoopStopUsesTheLatestDecision(t *testing.T) {
+	a, fake, s, cid := crashApp(t)
+	for i := 0; i < cap(a.sem); i++ {
+		a.sem <- struct{}{}
+	}
+	for i := 0; i < crashloop.MaxCrashes+1; i++ { // primer disparo: queda en cola
+		a.onDie("a", die(cid, "1"))
+	}
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART}}}, s.send)
+	cid = a.rec.ContainerID(context.Background(), "a")
+	for i := 0; i < crashloop.MaxCrashes+1; i++ { // el servidor arrancado a mano vuelve a entrar en bucle
+		// Otro id en el evento: el die de la parada del reinicio queda anotado en Intents con el id del contenedor.
+		a.onDie("a", die("tras-arrancar", "1"))
+	}
+	for i := 0; i < cap(a.sem); i++ {
+		<-a.sem
+	}
+	waitBackground(t, a)
+	if l, _ := a.st.CrashLatch("a"); l == nil {
+		t.Fatal("el segundo bucle (posterior al Arrancar) retiene el servidor")
+	}
+	if ins, err := fake.Inspect(context.Background(), cid); err != nil || ins.Running {
+		t.Fatalf("y lo para: %+v %v", ins, err)
+	}
+	loops := 0
+	for _, e := range eventsOf(t, a, s) {
+		if e.Kind == KindCrashLoop {
+			loops++
+		}
+	}
+	if loops != 1 {
+		t.Fatalf("eventos crash_loop = %d", loops)
+	}
+}
+
+// startHook llama a onStart antes de cada Start del motor de debajo.
+type startHook struct {
+	docker.Engine
+	onStart func()
+}
+
+func (e *startHook) Start(ctx context.Context, id string) error {
+	if f := e.onStart; f != nil {
+		f()
+	}
+	return e.Engine.Start(ctx, id)
+}
+
+// OOS1: la cuenta de crashes empieza de cero ANTES del arranque manual: un cierre con error que llegue mientras el
+// Power está en curso no se suma a los de antes (no dispararía con la generación nueva y retendría el servidor que
+// el usuario acaba de arrancar).
+func TestManualStartResetsTheCountBeforeStarting(t *testing.T) {
+	hook := &startHook{Engine: docker.NewFake()}
+	a, s, cid := crashAppEngine(t, hook)
+	for i := 0; i < crashloop.MaxCrashes; i++ {
+		a.onDie("a", die(cid, "1"))
+	}
+	hook.onStart = func() { a.onDie("a", die("durante-el-arranque", "1")) }
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART}}}, s.send)
+	hook.onStart = nil
+	waitBackground(t, a)
+	if l, _ := a.st.CrashLatch("a"); l != nil {
+		t.Fatalf("retención del servidor recién arrancado = %+v", l)
+	}
+	if n, _ := a.crashes.Record("a"); n != 2 {
+		t.Fatalf("la cuenta tras Arrancar = %d (el cierre durante el arranque y este)", n)
+	}
+}
+
+// OOS2: una parada por bucle decidida antes de que llegue una versión nueva de la spec (p. ej. más memoria) no
+// retiene esa versión nueva: la configuración nueva se prueba.
+func TestQueuedCrashLoopStopYieldsToANewSpecVersion(t *testing.T) {
+	a, fake, s, cid := crashApp(t)
+	for i := 0; i < cap(a.sem); i++ {
+		a.sem <- struct{}{}
+	}
+	for i := 0; i < crashloop.MaxCrashes+1; i++ {
+		a.onDie("a", die(cid, "1"))
+	}
+	v2 := specMsg("a", "alpha", 2)
+	v2.SpecJson = []byte(strings.Replace(specJSON, `"2G"`, `"3G"`, 1))
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: v2}}}, s.send)
+	for i := 0; i < cap(a.sem); i++ {
+		<-a.sem
+	}
+	waitBackground(t, a)
+	if l, _ := a.st.CrashLatch("a"); l != nil {
+		t.Fatalf("retención de la versión nueva = %+v", l)
+	}
+	ins, err := fake.Inspect(context.Background(), a.rec.ContainerID(context.Background(), "a"))
+	if err != nil || !ins.Running {
+		t.Fatalf("la versión nueva sigue en marcha: %+v %v", ins, err)
 	}
 }
