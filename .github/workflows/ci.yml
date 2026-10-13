@@ -1,5 +1,5 @@
-# Comprobaciones del monorepo: la «Verificación completa» de CLAUDE.md salvo la integración con Docker real y la E2E.
-# Corre en cada push a main y en cada PR, y release.yml la llama antes de publicar las imágenes.
+# Monorepo checks: the “Full verification” from CLAUDE.md except the real-Docker integration tests and the E2E.
+# Runs on every push to main and every PR, and release.yml calls it before publishing the images.
 name: CI
 
 on:
@@ -13,34 +13,34 @@ permissions:
 
 jobs:
   proto:
-    name: Protocolo (buf)
+    name: Protocol (buf)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # buf (y Go) en las versiones de mise.toml.
+      # buf (and Go) at the versions in mise.toml.
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           install_args: buf
       - run: buf lint
-      - name: buf breaking contra la rama destino del PR
+      - name: buf breaking against the PR's target branch
         if: github.event_name == 'pull_request'
         env:
           BASE: ${{ github.server_url }}/${{ github.repository }}.git#branch=${{ github.base_ref }}
         run: buf breaking --against "$BASE"
-      - name: El código generado está al día (buf generate)
+      - name: Generated code is up to date (buf generate)
         run: |
           buf generate
           if [ -n "$(git status --porcelain)" ]; then
             git status --porcelain
-            echo "::error::El código generado no coincide con proto/: ejecuta pnpm gen y commitea el resultado."
+            echo "::error::Generated code does not match proto/: run pnpm gen and commit the result."
             exit 1
           fi
 
   agent:
-    name: Agente (Go)
+    name: Agent (Go)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
@@ -55,7 +55,7 @@ jobs:
           go-version-file: agent/go.mod
           cache-dependency-path: agent/go.sum
       - run: go vet ./...
-      # Los tests de integración no compilan con go vet normal: así salen sus errores sin Docker.
+      # Integration tests don't compile under plain go vet: this surfaces their errors without Docker.
       - run: go vet -tags integration ./...
       - run: go test -race ./...
 
@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Sin versión: la de packageManager en package.json.
+      # No version: the one from packageManager in package.json.
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           cache: true
