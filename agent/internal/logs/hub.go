@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -114,17 +115,36 @@ func (h *Hub) secretsOf(serverID string) []string {
 			out = append(out, s)
 		}
 	}
+	// Los largos primero: si uno contiene a otro, ocultar antes el corto dejaría a la vista el resto del largo.
+	slices.SortStableFunc(out, func(a, b string) int { return len(b) - len(a) })
 	return out
 }
 
-// redact sustituye cada aparición de un secreto por [oculto].
+// redact sustituye cada aparición de un secreto por [oculto] (secrets, de más largo a más corto). En una línea
+// truncada (acaba en truncMarker), el principio de un secreto cortado por el truncado también se oculta.
 func redact(text string, secrets []string) string {
 	for _, s := range secrets {
 		if strings.Contains(text, s) {
 			text = strings.ReplaceAll(text, s, redacted)
 		}
 	}
-	return text
+	body, truncated := strings.CutSuffix(text, truncMarker)
+	if !truncated {
+		return text
+	}
+	cut := 0 // el prefijo de secreto más largo con el que acaba la línea
+	for _, s := range secrets {
+		for k := len(s) - 1; k > cut; k-- {
+			if strings.HasSuffix(body, s[:k]) {
+				cut = k
+				break
+			}
+		}
+	}
+	if cut == 0 {
+		return text
+	}
+	return body[:len(body)-cut] + redacted + truncMarker
 }
 
 // Subscribe es SubscribeSub sin contador de descartes.

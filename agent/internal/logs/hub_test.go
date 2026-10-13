@@ -316,3 +316,28 @@ func TestSecretsAreRedactedBeforeTheRing(t *testing.T) {
 		t.Fatalf("replay %q", got)
 	}
 }
+
+// Un secreto que contiene a otro se oculta entero (los largos primero), y uno cortado al truncar una línea larga no
+// deja su principio a la vista.
+func TestSecretsOverlappingAndTruncated(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	h.SetSecrets(func(string) []string { return []string{"abcdefgh", "abcdefghXYZ12345"} })
+	ch, unsub, err := h.Subscribe("a", id, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unsub()
+	f.WriteLog(id, "2026-10-12T10:00:00Z pw=abcdefghXYZ12345 y abcdefgh\n")
+	if got := recv(t, ch).Text; got != "pw=[oculto] y [oculto]" {
+		t.Fatalf("solapados: %q", got)
+	}
+	// La línea se trunca en maxLineBytes justo a mitad del secreto largo.
+	ts := "2026-10-12T10:00:01Z "
+	pad := strings.Repeat("x", maxLineBytes-len(ts)-5)
+	f.WriteLog(id, ts+pad+"abcdefghXYZ12345 resto\n")
+	got := recv(t, ch).Text
+	if !strings.HasSuffix(got, redacted+truncMarker) || strings.Contains(got, "abcde") {
+		t.Fatalf("truncada: …%q", got[len(got)-40:])
+	}
+}
