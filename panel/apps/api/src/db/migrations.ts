@@ -257,4 +257,21 @@ CREATE UNIQUE INDEX nodes_pending_token_idx ON nodes(pending_token_hash) WHERE p
     name: "082_servers_desired_changed_at",
     sql: `ALTER TABLE servers ADD COLUMN desired_changed_at TEXT;`,
   },
+  {
+    // The UI was translated to English: pending_error starts with the pending item's label (PENDING_LABEL in
+    // migration/service.ts) and may carry the "not retried" mark; rewrite the Spanish ones saved before.
+    name: "083_migrations_pending_english",
+    sql: `
+UPDATE migrations SET pending_error = 'Clean up the target: ' || substr(pending_error, length('Limpiar el destino: ') + 1)
+  WHERE pending_error LIKE 'Limpiar el destino: %';
+UPDATE migrations SET pending_error = 'Start the source again: ' || substr(pending_error, length('Volver a arrancar el origen: ') + 1)
+  WHERE pending_error LIKE 'Volver a arrancar el origen: %';
+UPDATE migrations SET pending_error = 'Confirm on the target: ' || substr(pending_error, length('Confirmar en el destino: ') + 1)
+  WHERE pending_error LIKE 'Confirmar en el destino: %';
+UPDATE migrations SET pending_error = 'Remove the source: ' || substr(pending_error, length('Retirar el origen: ') + 1)
+  WHERE pending_error LIKE 'Retirar el origen: %';
+UPDATE migrations SET pending_error = replace(pending_error, '; no se reintenta: ', '; not retried: ')
+  WHERE pending_error LIKE '%; no se reintenta: %';
+`,
+  },
 ];

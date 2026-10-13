@@ -275,7 +275,7 @@ know.)
   `desired_state` updates that column).
 - `Event` (Envelope 24) is unsolicited (id = 0) and goes out through the `App.events` queue (outbox): without a
   connection it is lost; the important part also stays in `Observed.error`. Kinds in `agent.proto`;
-  the panel adds `token_rotated`. Envelope 24/120/121 and migrations 080–082 are already used.
+  the panel adds `token_rotated`. Envelope 24/120/121 and migrations 080–083 are already used.
 - mc-router never receives the Docker socket: it mounts read-only the DIRECTORY
   `<DATA_ROOT>/.mcsm-router/` and talks to the agent's filtered socket (`dockerproxy`: only
   containers with `mc-router.host`, no bodies, API ≥ 1.24, start/stop by `routerPolicy`) and
