@@ -391,7 +391,7 @@ Para publicar una versión:
 2. Crea la Release con el tag `v` + esa versión: `gh release create v0.10.0 --generate-notes` (o desde la web). Si es una prerelease (`--prerelease` o un sufijo como `-rc.1`), no mueve `latest` ni `X.Y`.
 3. `.github/workflows/release.yml` comprueba que el tag coincide con `agent/VERSION`, repite las comprobaciones de la CI, construye las dos imágenes para `linux/amd64` y `linux/arm64` en runners nativos y las publica en `ghcr.io/javilobo8/` con atestación de procedencia y SBOM. La imagen del panel lleva fijada la del agente de su misma versión (el `docker run` de **Añadir nodo**).
 
-La primera vez que se publican, GitHub crea los paquetes `mcsm-panel` y `mcsm-agent` como **privados**: en GitHub → tu perfil → **Packages** → cada paquete → **Package settings** → **Change visibility** → **Public**. Solo hace falta una vez por paquete (y no se puede deshacer).
+Los paquetes `mcsm-panel` y `mcsm-agent` quedan enlazados al repositorio y, como es público, también lo son (se descargan sin `docker login`). En un fork privado saldrían privados: se cambia en GitHub → **Packages** → cada paquete → **Package settings** → **Change visibility**.
 
 ## Seguridad
 
