@@ -92,8 +92,25 @@ describe("MetricsService.ingest", () => {
 
   it("acepta el ts del agente hasta MAX_CLOCK_SKEW_SECONDS en el futuro (45 s) y no más allá", () => {
     const now = T0 + 5; // el panel está en T0 + 5 (ver nowSec del servicio)
-    expect(svc.slotOf(now + 40)).toBe(T0 + 40);
-    expect(svc.slotOf(now + 50)).toBe(T0);
+    expect(svc.slotOf("n1", now + 40)).toBe(T0 + 40);
+    expect(svc.slotOf("n1", now + 50)).toBe(T0);
+  });
+
+  it("con el reloj del nodo desfasado, el retraso variable de llegada no junta dos lotes en una ventana", () => {
+    const agentT = T0 - 7_200; // nodo 2 h atrasado (múltiplo de 10)
+    nowMs = (T0 + 8) * 1000;
+    expect(svc.slotOf("n1", agentT)).toBe(T0);
+    nowMs = (T0 + 21) * 1000; // el segundo lote llega tarde
+    expect(svc.slotOf("n1", agentT + 10)).toBe(T0 + 10);
+    nowMs = (T0 + 28) * 1000; // y el tercero pronto: con la hora del panel caerían los dos en T0 + 20
+    expect(svc.slotOf("n1", agentT + 20)).toBe(T0 + 20);
+    expect(svc.slotOf("n2", T0 + 20)).toBe(T0 + 20); // cada nodo con su desfase
+    nowMs = (T0 + 31) * 1000; // el nodo corrige su reloj
+    expect(svc.slotOf("n1", T0 + 30)).toBe(T0 + 30);
+  });
+
+  it("la serie lleva la hora del panel", () => {
+    expect(svc.series("server", "s1", "1h").now).toBe(T0 + 5);
   });
 
   it("un CPU no finito (agente defectuoso) se guarda como 0", () => {

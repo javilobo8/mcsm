@@ -40,20 +40,37 @@ export class MetricsService {
     this.now = deps.now ?? Date.now;
   }
 
+  private offsets = new Map<string, number>(); // desfase fijo (s) de cada nodo con el reloj fuera de tolerancia
+
   private nowSec(): number {
     return Math.floor(this.now() / 1000);
   }
 
-  /** Ventana de 10 s del lote: la del agente si su reloj es razonable; si no, la del panel. */
-  slotOf(agentTs: number): number {
+  /**
+   * Ventana de 10 s del lote. Con el reloj del agente razonable (±MAX_CLOCK_SKEW_SECONDS), la suya. Si no, la del
+   * agente más un desfase FIJO por nodo, calculado con el primer lote desfasado para que caiga en la ventana actual
+   * del panel: así el retraso variable de llegada no junta dos lotes en la misma ventana ni deja huecos (m-3 del
+   * Plan 2). Si el nodo corrige su reloj o el desfase deja de cuadrar (±45 s), se recalcula.
+   */
+  slotOf(nodeId: string, agentTs: number): number {
     const now = this.nowSec();
-    const ts = Number.isFinite(agentTs) && Math.abs(agentTs - now) <= MAX_CLOCK_SKEW_SECONDS ? agentTs : now;
+    if (!Number.isFinite(agentTs)) return now - (now % 10);
+    if (Math.abs(agentTs - now) <= MAX_CLOCK_SKEW_SECONDS) {
+      this.offsets.delete(nodeId);
+      return agentTs - (agentTs % 10);
+    }
+    let offset = this.offsets.get(nodeId);
+    if (offset === undefined || Math.abs(agentTs + offset - now) > MAX_CLOCK_SKEW_SECONDS) {
+      offset = now - (now % 10) - agentTs;
+      this.offsets.set(nodeId, offset);
+    }
+    const ts = agentTs + offset;
     return ts - (ts % 10);
   }
 
   /** Guarda un MetricBatch del agente. Devuelve cuántas filas escribió. */
   ingest(nodeId: string, batch: MetricBatch): number {
-    const ts = this.slotOf(Number(batch.tsUnix));
+    const ts = this.slotOf(nodeId, Number(batch.tsUnix));
     const rows: MetricRow[] = [];
     const h = batch.host;
     if (h) {
@@ -113,7 +130,7 @@ export class MetricsService {
   }
 
   series(scope: MetricScope, scopeId: string, range: MetricRange): MetricSeries {
-    return this.deps.repo.series(scope, scopeId, range, this.nowSec());
+    return { ...this.deps.repo.series(scope, scopeId, range, this.nowSec()), now: this.nowSec() };
   }
 
   private safePurge() {
