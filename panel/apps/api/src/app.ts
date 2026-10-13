@@ -25,6 +25,7 @@ import { errorHandler } from "./lib/http.js";
 import { routerRoutes } from "./router/routes.js";
 import { backupRoutes } from "./backups/routes.js";
 import { jobRoutes } from "./jobs/routes.js";
+import { eventsRoutes } from "./events/routes.js";
 import { importRoutes } from "./import/routes.js";
 import { migrationGuard } from "./migration/guard.js";
 import { migrationRoutes } from "./migration/routes.js";
@@ -78,6 +79,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // ── plan-8 ──
   await app.register(routerRoutes);
   // ── plan-9 ──
+  await app.register(eventsRoutes);
   if (cfg.webDist) {
     await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
     // El notFoundHandler no pasa por el guard de sesión (no hay ruta enrutada): solo debe servir
