@@ -7,7 +7,7 @@ const MANAGED = "gestionada por el panel";
 const OPTIONAL_LABELS = new Set(["Operadores", "Whitelist", "Mods (sección)", "Plugins (sección)"]);
 
 const TOP_LABELS: Record<string, string> = {
-  type: "Tipo", version: "Versión de Minecraft", imageTag: "Java (imagen)", memory: "Memoria JVM",
+  type: "Tipo", version: "Versión de Minecraft", build: "Build / loader", imageTag: "Java (imagen)", memory: "Memoria JVM",
   restartPolicy: "Política de reinicio", modpack: "Modpack", whitelist: "Whitelist", ops: "Operadores",
   router: "Router (mc-router)", mods: "Mods (sección)", plugins: "Plugins (sección)",
 };

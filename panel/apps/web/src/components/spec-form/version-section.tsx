@@ -1,10 +1,13 @@
 import { MODRINTH_LOADERS, usesCurseForge } from "@mcsm/shared";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { JAVA_TAGS, SERVER_TYPES, typeKind } from "@/lib/spec-catalog";
-import { typeChangeNotice, withType, type EditableSpec } from "@/lib/spec-edit";
+import { typeChangeNotice, withType, withVersion, type EditableSpec } from "@/lib/spec-edit";
+import { blurVersionAction, hasVersionList, specChanged } from "@/lib/versions";
 import { Field, ListField, OptionalSelect, RequiredSelect, type ReportError } from "./fields";
 import { CurseForgeKeyNotice } from "./curseforge-key";
+import { BuildPicker } from "./build-picker";
+import { VersionPicker } from "./version-picker";
 
 type Mods = NonNullable<EditableSpec["mods"]>;
 type Plugins = NonNullable<EditableSpec["plugins"]>;
@@ -26,9 +29,19 @@ const MODPACK_HELP: Record<string, { slug: string; slugHint: string; version: st
   },
 };
 
+const JAVA_HINT = "java25 para 26.x; java21 para 1.20.5–1.21.x; java17 para 1.17–1.20.4; java8 para anteriores. Se ajusta sola al cambiar la versión.";
+
 /** Sección "Versión y mods": tipo, versión, Java, modpack, mods y plugins. */
 export function VersionSection({ spec, onChange, onError }: { spec: EditableSpec; onChange: (s: EditableSpec) => void; onError?: ReportError }) {
   const [notice, setNotice] = useState<string | null>(null);
+  const [javaNotice, setJavaNotice] = useState<string | null>(null);
+  // Elegir versión vacía el build y ajusta la Java (withVersion); escrita a mano, al salir del campo.
+  const setVersion = (v: string) => {
+    const r = withVersion(spec, v);
+    setJavaNotice(r.notice);
+    if (specChanged(spec, r.spec)) onChange(r.spec);
+  };
+  const versionAtFocus = useRef(spec.version);
   const kind = typeKind(spec.type);
   const mods = spec.mods ?? EMPTY_MODS;
   const plugins = spec.plugins ?? EMPTY_PLUGINS;
@@ -47,19 +60,39 @@ export function VersionSection({ spec, onChange, onError }: { spec: EditableSpec
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field id="sf-type" label="Tipo">
-          <RequiredSelect id="sf-type" value={spec.type} options={SERVER_TYPES} onChange={(t) => { setNotice(typeChangeNotice(spec, t)); onChange(withType(spec, t)); }} />
+          <RequiredSelect id="sf-type" value={spec.type} options={SERVER_TYPES} onChange={(t) => { setNotice(typeChangeNotice(spec, t)); setJavaNotice(null); onChange(withType(spec, t)); }} />
           {notice && <p role="status" className="text-xs text-amber-400">{notice}</p>}
         </Field>
-        <Field id="sf-version" label="Versión de Minecraft" hint="LATEST, SNAPSHOT o una versión como 1.21.4.">
-          <Input id="sf-version" value={spec.version} onChange={(e) => onChange({ ...spec, version: e.target.value })}
-            onBlur={(e) => { if (e.target.value !== e.target.value.trim()) onChange({ ...spec, version: e.target.value.trim() }); }} />
-        </Field>
-        <Field id="sf-java" label="Java (etiqueta de la imagen)" hint="java21 para 1.20.5+; java17 para 1.17–1.20.4; java8 para versiones antiguas.">
-          <RequiredSelect id="sf-java" value={spec.imageTag} options={JAVA_TAGS.map((t) => ({ value: t, label: t }))} onChange={(t) => onChange({ ...spec, imageTag: t })} />
-        </Field>
+        {hasVersionList(spec.type) ? (
+          <Field id="sf-version" label="Versión de Minecraft" hint="Elige de la lista o escribe una versión.">
+            <VersionPicker id="sf-version" type={spec.type} value={spec.version} onChange={setVersion} />
+          </Field>
+        ) : (
+          <Field id="sf-version" label="Versión de Minecraft" hint="LATEST, SNAPSHOT o una versión como 1.21.4.">
+            <Input id="sf-version" value={spec.version} onChange={(e) => onChange({ ...spec, version: e.target.value })}
+              onFocus={() => { versionAtFocus.current = spec.version; }}
+              onBlur={(e) => {
+                const action = blurVersionAction(versionAtFocus.current, e.target.value);
+                if (action === "apply") setVersion(e.target.value.trim());
+                else if (action === "trim") onChange({ ...spec, version: e.target.value.trim() });
+              }} />
+          </Field>
+        )}
+        <div className="flex flex-col gap-1.5">
+          <Field id="sf-java" label="Java (etiqueta de la imagen)" hint={JAVA_HINT}>
+            <RequiredSelect id="sf-java" value={spec.imageTag} options={JAVA_TAGS.map((t) => ({ value: t, label: t }))}
+              onChange={(t) => { setJavaNotice(null); onChange({ ...spec, imageTag: t }); }} />
+          </Field>
+          {javaNotice && <p role="status" className="text-xs text-amber-400">{javaNotice}</p>}
+        </div>
+        {/* `build` falta en specs antiguas: se lee como vacío. */}
+        <BuildPicker type={spec.type} version={spec.version} value={spec.build ?? ""} onChange={(build) => { if ((spec.build ?? "") !== build) onChange({ ...spec, build }); }} />
       </div>
+      {spec.type === "SPIGOT" && (
+        <p className="text-xs text-amber-400">itzg ya no descarga Spigot automáticamente: añade BUILD_FROM_SOURCE=true en las variables de entorno (Avanzado) o usa Paper.</p>
+      )}
 
       {mp && help && (
         <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-3">

@@ -52,3 +52,28 @@ describe("VersionSection: aria-describedby heredado de Field", () => {
     expect(html).toContain('id="sf-version-hint"');
   });
 });
+
+describe("VersionSection: selector de versión y build (plan 10)", () => {
+  it("Paper: combobox de versión con su hint, build de Paper y la pista de Java nueva", () => {
+    const html = render({ ...defaultSpecInput(), type: "PAPER", version: "1.20.1" });
+    expect(html).toMatch(/<button[^>]*role="combobox"[^>]*id="sf-version"|<button[^>]*id="sf-version"[^>]*role="combobox"/);
+    expect(html).toMatch(/id="sf-version"[^>]*aria-describedby="sf-version-hint"|aria-describedby="sf-version-hint"[^>]*id="sf-version"/);
+    expect(html).toContain("Build de Paper");
+    expect(html).toContain('id="sf-build"');
+    expect(html).toContain("java25 para 26.x");
+  });
+  it("modpack: versión como texto libre y sin build", () => {
+    const html = render({ ...withType(defaultSpecInput(), "MODRINTH"), modpack: { platform: "MODRINTH", slugOrUrl: "x", versionId: "", loader: "" } });
+    expect(html).toMatch(/<input[^>]*id="sf-version"/);
+    expect(html).not.toContain('id="sf-build"');
+  });
+  it("Vanilla sin build; Spigot avisa de BUILD_FROM_SOURCE", () => {
+    expect(render({ ...defaultSpecInput(), type: "VANILLA" })).not.toContain('id="sf-build"');
+    const spigot = render({ ...defaultSpecInput(), type: "SPIGOT", version: "1.21.4" });
+    expect(spigot).toContain("BUILD_FROM_SOURCE=true");
+    expect(spigot).not.toContain('id="sf-build"');
+  });
+  it("con LATEST el build pide una versión concreta", () => {
+    expect(render({ ...defaultSpecInput(), type: "FABRIC", version: "LATEST" })).toContain("Elige una versión concreta de Minecraft para fijar el build");
+  });
+});
