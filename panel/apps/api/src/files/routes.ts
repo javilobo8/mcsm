@@ -84,6 +84,11 @@ async function fileRoutesInner(app: FastifyInstance) {
 
   app.get<P>("/api/servers/:id/files", async (req) => svc.list(req.params.id, pathQuery.parse(req.query).path));
 
+  app.get<P>("/api/servers/:id/files/upload-check", async (req, reply) => {
+    svc.uploadCheck(req.params.id);
+    return reply.code(204).send();
+  });
+
   app.get<P>("/api/servers/:id/files/stat", async (req) => svc.stat(req.params.id, pathQuery.parse(req.query).path));
 
   app.get<P>("/api/servers/:id/files/content", async (req) => svc.read(req.params.id, pathQuery.parse(req.query).path));

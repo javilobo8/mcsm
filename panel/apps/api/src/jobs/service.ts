@@ -98,6 +98,11 @@ export class JobService {
     return ids.length;
   }
 
+  /** Jobs abiertos de un servidor (plan-9: comprobación previa de una subida). */
+  activeForServer(serverId: string): JobDto[] {
+    return this.repo.openForServer(serverId).map(toJobDto);
+  }
+
   /** Jobs del agente (backup, restore) de un nodo, aún abiertos y creados antes de `createdBefore`. */
   openAgentJobs(nodeId: string, createdBefore: string): JobRow[] {
     return this.repo.openForNode(nodeId, AGENT_JOB_TYPES, createdBefore);

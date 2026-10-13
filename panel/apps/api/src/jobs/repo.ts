@@ -72,6 +72,12 @@ export class JobsRepo {
     return rows.map((r) => r.id);
   }
 
+  /** Jobs abiertos (en cola o en curso) de un servidor. */
+  openForServer(serverId: string): JobRow[] {
+    return this.db.prepare("SELECT * FROM jobs WHERE server_id = ? AND status IN ('queued', 'running') ORDER BY created_at")
+      .all(serverId) as unknown as JobRow[];
+  }
+
   /** Jobs abiertos de un nodo, de los tipos dados, creados antes de `createdBefore`. */
   openForNode(nodeId: string, types: readonly string[], createdBefore: string): JobRow[] {
     const ph = types.map(() => "?").join(", ");
