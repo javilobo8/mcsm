@@ -203,9 +203,10 @@ know.)
   26600–26620, node B in `docker:dind` joined to the servers' network, Playwright
   in its own container) runs the `panel/apps/e2e` suite and leaves screenshots in
   `panel/apps/e2e/screenshots/` (that is how visual checks are done: Claude in Chrome can't
-  open `localhost:8080`). On this machine there is the user's PRODUCTION (`mcsm-panel-1`,
-  `mcsm-agent-1`, `mcsm-agent`, network `mcsm`, volumes `mcsm_*`, ports 8080 and 25565–25600):
-  compare `docker ps -a`/`network ls`/`volume ls` before and after any test.
+  open `localhost:8080`). This is the development machine (production runs elsewhere), but it
+  has the user's own local deployment (`mcsm-panel-1`, `mcsm-agent-1`, `mcsm-agent`, network
+  `mcsm`, volumes `mcsm_*`, ports 8080 and 25565–25600) that tests must not touch: compare
+  `docker ps -a`/`network ls`/`volume ls` before and after any test.
 - After every merge look for duplicates git doesn't flag: repeated YAML keys (`docker compose
   config`), repeated flags in snippets, same-named `var`/`const` in a Go package, duplicated
   tests; and compare `pnpm gen` with what is committed.
@@ -305,8 +306,8 @@ know.)
   base images (an amd64-only digest breaks arm64). The panel image pins `MCSM_AGENT_IMAGE`
   (build-arg `AGENT_IMAGE`) to the agent of its version; `config.agentImage` goes in the `docker run` from “Add node”.
 - The `deploy/` composes use the GHCR images (`MCSM_VERSION`, empty = latest); building from source =
-  add `-f deploy/docker-compose.build.yml` (the E2E does). Production on this machine is updated with that
-  override until a published release exists.
+  add `-f deploy/docker-compose.build.yml` (the E2E does). The local deployment on this machine is updated
+  with that override until a published release exists.
 - Go tests that start the event loop: `runEventLoop(t, a)`, never `go a.eventLoop(ctx)` (it must exit before the
   `bg.Wait` of `newApp`'s cleanup, or `-race` trips). CI runs on 4-CPU runners: a test that depends on
   the scheduler letting another goroutine run fails; try it with `GOMAXPROCS=1`.
