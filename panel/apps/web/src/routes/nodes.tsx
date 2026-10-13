@@ -47,22 +47,22 @@ export function NodesPage() {
         <h1 className="text-xl font-semibold">Nodes</h1>
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setResult(null); setCopied(null); gen.reset(); } }}>
           <DialogTrigger asChild><Button>Add node</Button></DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Add node</DialogTitle>
               <DialogDescription>Generates a single-use enrollment command for the new machine.</DialogDescription>
             </DialogHeader>
             {!result ? (
-              <form className="flex flex-col gap-3" onSubmit={dialogSubmit(() => { if (!rootError) gen.mutate(); })}>
+              <form className="flex min-w-0 flex-col gap-3" onSubmit={dialogSubmit(() => { if (!rootError) gen.mutate(); })}>
                 <div className="flex flex-col gap-1.5"><Label htmlFor="node-name">Name</Label><Input id="node-name" value={nameHint} onChange={(e) => setNameHint(e.target.value)} placeholder="nas, lounge, tower…" maxLength={40} />{!nameHint.trim() && <p className="text-xs text-amber-400">Without a name “node” will be used; choose a different one if you already have other nodes.</p>}</div>
                 <div className="flex flex-col gap-1.5"><Label htmlFor="node-root">Data directory on that machine</Label><Input id="node-root" value={dataRoot} onChange={(e) => setDataRoot(e.target.value)} className="font-mono" aria-invalid={!!rootError} />{rootError ? <p role="alert" className="text-xs text-red-400">{rootError}</p> : <p className="text-xs text-muted-foreground">Absolute path; it is mounted at the same path inside the agent.</p>}</div>
                 <Button type="submit" disabled={gen.isPending || !!rootError}>{gen.isPending ? "Generating…" : "Generate command"}</Button>
                 {gen.error && <p role="alert" className="text-sm text-red-400">{gen.error.message}</p>}
               </form>
             ) : (
-              <div className="flex flex-col gap-3">
+              <div className="flex min-w-0 flex-col gap-3">
                 <p className="text-sm text-zinc-400">Run this on the new machine. The token expires at {new Date(result.expiresAt).toLocaleTimeString()} and only works once. The node will appear here as soon as it connects.</p>
-                <pre data-testid="docker-run" className="overflow-x-auto rounded-md bg-zinc-900 p-3 text-xs">{result.dockerRun}</pre>
+                <pre data-testid="docker-run" className="whitespace-pre-wrap break-all rounded-md bg-zinc-900 p-3 text-xs">{result.dockerRun}</pre>
                 <Button variant="secondary" onClick={() => void copy(result.dockerRun)}>
                   {copied === "ok" ? <Check className="size-4" /> : <Copy className="size-4" />} {copied === "ok" ? "Copied" : "Copy"}
                 </Button>

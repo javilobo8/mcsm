@@ -110,7 +110,7 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
       </div>
 
       <Dialog open={pending !== null} onOpenChange={(o) => { if (!o && !save.isPending) setPending(null); }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Apply changes to “{base.name}”</DialogTitle>
             <DialogDescription>
