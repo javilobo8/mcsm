@@ -41,6 +41,7 @@ type Reconciler struct {
 	observer Observer
 	log      *slog.Logger
 	onDemand func(spec.Spec) bool // plan-8: servidores que arranca y para mc-router (SetOnDemand)
+	events   EventSink            // plan-9: incidencias (drift); nil = ninguna (SetEventSink)
 
 	mu      sync.Mutex
 	locks   map[string]*sync.Mutex
@@ -225,6 +226,15 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 		return err
 	}
 	wantRunning := sp.DesiredState == mcsmv1.DesiredState_DESIRED_STATE_RUNNING
+	// plan-9: retenido por bucle de crash (CrashLoopStop) en esta versión: no se arranca hasta un Power
+	// start/restart o una spec nueva.
+	latch, err := r.crashLatched(serverID, sp.Version)
+	if err != nil {
+		return err
+	}
+	if latch != nil {
+		wantRunning = false
+	}
 
 	existing, err := r.find(ctx, serverID)
 	if err != nil {
@@ -257,6 +267,10 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 	case existing != nil && existing.Labels[spec.LabelHash] != build.Hash:
 		r.log.Info("spec cambiada, recreando contenedor", "server", sp.Slug)
 		recreate = true
+		// plan-9: con la versión ya aplicada, el contenedor cambió fuera del agente (o el agente se actualizó).
+		if applied, aerr := r.st.Applied(serverID); aerr == nil && applied == sp.Version && r.events != nil {
+			r.events(serverID, KindDrift, "El contenedor no coincidía con su configuración (cambio fuera del panel o agente actualizado): se ha recreado")
+		}
 	}
 	// plan-6 (M2): antes de crear el gestionado de un importado (y antes de parar el que se sustituye),
 	// ningún otro contenedor itzg puede montar ya su carpeta de datos.
@@ -301,7 +315,7 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 	// al liberar una reserva tras Park) se arranca: mc-router no ve los contenedores que nunca
 	// arrancaron, así que no lo podría despertar; él lo duerme tras los minutos sin jugadores.
 	if r.onDemand != nil && r.onDemand(parsed) {
-		if existing.State == "created" {
+		if existing.State == "created" && latch == nil {
 			if err := r.startOrDiscard(ctx, existing); err != nil {
 				return fmt.Errorf("arrancar: %w", err)
 			}
@@ -458,6 +472,12 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	if sp == nil {
 		return fmt.Errorf("servidor %s desconocido", serverID)
 	}
+	// plan-9: arrancar o reiniciar a mano levanta la retención por bucle de crash.
+	if action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
+		if err := r.st.DeleteCrashLatch(serverID); err != nil {
+			return err
+		}
+	}
 	var desired mcsmv1.DesiredState
 	switch action {
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_START, mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART:
@@ -569,6 +589,13 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 		obs.Error = msg // plan-4: reservado y sin poder arrancar (HoldError)
 	}
 	r.mu.Unlock()
+	if obs.Error == "" { // plan-9: retenido por bucle de crash
+		if sp, err := r.st.GetSpec(serverID); err == nil && sp != nil {
+			if l, err := r.st.CrashLatch(serverID); err == nil && l != nil && l.Version == sp.Version {
+				obs.Error = CrashLoopMessage(l.Crashes)
+			}
+		}
+	}
 	c, err := r.find(ctx, serverID)
 	if err != nil {
 		obs.Error = err.Error()
