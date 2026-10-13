@@ -25,7 +25,7 @@ const defaultSchedule = (fn: () => void, ms: number): Cancel => {
   return () => clearTimeout(t);
 };
 
-const TOPIC = /^(servers|nodes|jobs|server:[^:\s]{1,64}:logs)$/;
+const TOPIC = /^(servers|nodes|jobs|events|server:[^:\s]{1,64}:logs)$/;
 const LOG_TOPIC = /^server:([^:]+):logs$/;
 const clientMessage = z.object({ type: z.enum(["subscribe", "unsubscribe"]), topic: z.string().max(100).regex(TOPIC) });
 
@@ -63,6 +63,10 @@ export class BrowserHub {
     const onRouter = (nodeId: unknown, router: unknown) => this.publish("nodes", { type: "router", nodeId, router });
     app.events.on("router", onRouter);
     this.offs.push(() => app.events.off("router", onRouter));
+    // plan-9: incidencias de los agentes y del panel, en el topic "events".
+    const onServerEvent = (event: unknown) => this.publish("events", { type: "event", event });
+    app.events.on("server_event", onServerEvent);
+    this.offs.push(() => app.events.off("server_event", onServerEvent));
   }
 
   dispose() {
@@ -260,6 +264,10 @@ class LogRelay {
       const stream = await conn.openStream(
         { case: "subscribeLogs", value: { serverId, tail: LOG_TAIL } },
         (env: Envelope) => {
+          if (env.body.case === "streamDropped") { // plan-9: el agente descartó líneas de este stream (spec §5.2)
+            this.hub.publish(`server:${serverId}:logs`, { type: "log_dropped", serverId, count: Number(env.body.value.count) });
+            return;
+          }
           if (env.body.case !== "logLine") return;
           entry.attempt = 0; // el stream funciona: el backoff vuelve a empezar
           const msg = { type: "log", serverId, ts: Number(env.body.value.tsUnixMs), line: env.body.value.line };

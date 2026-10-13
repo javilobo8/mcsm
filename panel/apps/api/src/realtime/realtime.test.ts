@@ -38,6 +38,31 @@ function browser(withCookie = true, origin?: string): Promise<{ ws: WebSocket; n
 }
 
 describe("realtime", () => {
+  it("topic events: reenvía los eventos que se guardan", async () => {
+    const b = await browser();
+    b.ws.send(JSON.stringify({ type: "subscribe", topic: "events" }));
+    b.ws.send("{"); // los mensajes se procesan en orden: cuando llega este error, la suscripción ya está
+    expect(await b.next()).toEqual({ type: "error", message: "JSON inválido" });
+    app.eventsService.record({ nodeId, serverId: null, level: "warn", kind: "drift", message: "recreado" });
+    expect(await b.next()).toMatchObject({ type: "event", event: { nodeId, kind: "drift", level: "warn", message: "recreado" } });
+    b.ws.close();
+  });
+
+  it("StreamDropped del agente llega a los navegadores como log_dropped", async () => {
+    const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
+    const agent = new FakeAgent(url, nodeToken);
+    await agent.connect({ specVersions: { [s.id]: 1n } });
+    await agent.handshake();
+    const b = await browser();
+    b.ws.send(JSON.stringify({ type: "subscribe", topic: `server:${s.id}:logs` }));
+    const sub = await agent.waitFor("subscribeLogs");
+    agent.ack(sub.id, sub.id);
+    expect(await b.next()).toEqual({ type: "log_reset", serverId: s.id });
+    agent.send({ streamId: sub.id, body: { case: "streamDropped", value: { count: 3n } } });
+    expect(await b.next()).toEqual({ type: "log_dropped", serverId: s.id, count: 3 });
+    b.ws.close();
+    agent.close();
+  });
   it("exige sesión", async () => {
     await expect(browser(false)).rejects.toThrow(/401/);
   });
