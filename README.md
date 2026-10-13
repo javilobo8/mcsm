@@ -7,7 +7,7 @@ Panel self-hosted para gestionar servidores de Minecraft (imagen `itzg/minecraft
 1. `docker network create mcsm 2>/dev/null || true` (red compartida por el agente y los servidores; los compose la declaran como externa).
 2. `cp deploy/.env.example deploy/.env` y edita `PANEL_PUBLIC_URL` (`http://<ip-de-esta-máquina>:8080`, con el puerto: es la dirección que se pone en el `docker run` de los demás nodos; si lo dejas vacío, el panel usa la dirección con la que lo abres en el navegador) y `DATA_ROOT` (ruta absoluta).
 3. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build panel`
-4. Abre `http://<ip>:8080` **en cuanto arranque** y crea la contraseña (mínimo 8 caracteres): el primer visitante la fija. Ve a **Nodos → Añadir nodo**, pon en «Directorio de datos» el mismo `DATA_ROOT` del `.env` y copia el token en `ENROLL_TOKEN` del `.env`. El token caduca a los 15 minutos y sirve una sola vez.
+4. Abre `http://<ip>:8080` y crea la contraseña (mínimo 8 caracteres). El panel recién instalado escribe en su log un **token de configuración inicial** (`docker compose -f deploy/docker-compose.yml logs panel`, línea «Token de configuración inicial») y la web lo pide para crear la contraseña; o fíjalo tú con `PANEL_SETUP_TOKEN` en `deploy/.env`. Así cierra la ventana del «primer visitante» (una web de Internet no puede fijar la contraseña por DNS rebinding). Ve a **Nodos → Añadir nodo**, pon en «Directorio de datos» el mismo `DATA_ROOT` del `.env` y copia el token en `ENROLL_TOKEN` del `.env`. El token caduca a los 15 minutos y sirve una sola vez.
 5. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build agent`. El nodo aparece como conectado. Este agente llega al panel por la red interna del compose (`http://panel:8080`). El alta queda guardada en el volumen `mcsm_agent-data`: a partir de ahí `ENROLL_TOKEN` se ignora.
 
 ## Añadir otra máquina
@@ -15,6 +15,19 @@ Panel self-hosted para gestionar servidores de Minecraft (imagen `itzg/minecraft
 Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → Añadir nodo** copia el `docker run` que se muestra y ejecútalo allí antes de 15 minutos (necesita la imagen `mcsm-agent`: constrúyela con `docker build -t mcsm-agent:latest agent/` con el repositorio clonado allí, o cópiala desde la principal con `docker save mcsm-agent:latest | ssh <usuario>@<nodo> docker load`; o usa `deploy/docker-compose.node.yml` con `PANEL_URL` y `ENROLL_TOKEN`).
 
 `DATA_ROOT` se monta en el agente **con la misma ruta dentro y fuera** (`-v /srv/minecraft:/srv/minecraft`): el agente lo comprueba al arrancar y no arranca si no está montado desde el host.
+
+### Rotar el token de un nodo
+
+**Nodos →** detalle del nodo **→ Rotar token.** El agente tiene que estar conectado. El token viejo sigue valiendo hasta que el agente se reconecta con el nuevo; si no lo confirma, el panel espera 2 min antes de reintentar. Los agentes anteriores al Plan 9 no admiten la rotación: actualízalos primero.
+
+Si sospechas que el token de un nodo se ha filtrado, rotarlo no basta: borra el nodo y vuelve a darlo de alta.
+
+## Ajustes
+
+- **Contraseña.** Al cambiarla se cierran todas las sesiones, también las de otros navegadores.
+- **URL del panel.** La guardada manda sobre `PANEL_PUBLIC_URL`; es la del comando de alta de nodos y el `Origin` que acepta el WebSocket. Detrás de un proxy inverso que reescriba `Host`, configúrala aquí: las escrituras (`POST`/`PUT`/`PATCH`/`DELETE` bajo `/api/`) con un `Origin` que no sea el del panel dan 403.
+- **Rango de puertos de juego.** Solo se usa para servidores nuevos sin puerto.
+- **API key de CurseForge.** Si la guardada no es válida, la página lo avisa.
 
 ## Puertos y cortafuegos
 
@@ -37,6 +50,10 @@ Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → A
    - En los nodos con compose: `docker compose -f deploy/docker-compose.node.yml --env-file deploy/.env up -d --build`.
    - En los nodos con `docker run`: `docker build -t mcsm-agent:latest agent/`, luego `docker stop mcsm-agent && docker rm mcsm-agent` (con `stop` tiene sus 30 s para terminar; `rm -f` lo mata en el acto) y vuelve a lanzar el mismo `docker run`. El volumen `mcsm-agent-data` conserva el alta, así que el `ENROLL_TOKEN` caducado da igual.
 2. Panel: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --no-deps panel`.
+
+El agente muestra su versión (`agent/VERSION`) en **Nodos**. Las imágenes base (Node, `docker:dind`, Playwright…) van fijadas por digest; para subirlas de versión, consulta el nuevo con `docker buildx imagetools inspect <imagen>:<tag>` y cambia tag y digest a la vez.
+
+**Router.** Tras actualizar el agente, el contenedor de mc-router se recrea una vez (ahora monta el socket filtrado del agente en vez del de Docker) y se reinicia cada vez que el agente arranca.
 
 Los servidores de Minecraft siguen en marcha mientras se actualizan el agente y el panel. Algunas actualizaciones del agente cambian cómo construye los contenedores y los recrean (cada servidor se reinicia) al volver a arrancar.
 
@@ -84,11 +101,13 @@ La pestaña **Backups** de cada servidor hace copias al momento, programa copias
 
 - **Dónde:** `DATA_ROOT/<slug>/backups/<slug>-<fecha>-<versión de la spec>.tar.zst` (tar + zstd), con un `.json` al lado (sha256, tamaño). Con el servidor en marcha la copia es en caliente (`save-off`, `save-all flush`, copia, `save-on`, que se envía aunque la copia falle); parado, directa. Los temporales de las subidas de Archivos nunca entran.
 - **Retención:** solo poda las copias programadas, y nunca la más reciente. Las manuales y los datos pre-restore se borran a mano.
+- **Descargar una copia:** desde la pestaña Backups; el fichero pasa por el panel en streaming. Los datos pre-restore no se descargan.
+- **`save-on` fallido:** si tras una copia en caliente no se pudo reactivar el guardado automático, el agente lo reintenta solo cada 15 s y lo registra como evento «Guardado automático desactivado».
 - **Las plantillas se llevan la programación.** «Guardar como plantilla» la incluye y cada servidor creado con la plantilla la hereda; el editor de plantillas y el asistente la enseñan, pero se cambia en la pestaña Backups de cada servidor.
 
 ### Restaurar y los datos pre-restore
 
-Restaurar **no borra nada**: para el servidor, extrae la copia en `data.restoring-<fecha>`, aparta los datos actuales en `DATA_ROOT/<slug>/data.pre-restore-<fecha>` y pone la copia en `data`. Después lo vuelve a arrancar si su estado deseado es «en marcha»; si no, se queda parado.
+Restaurar **no borra nada**: para el servidor, extrae la copia en `data.restoring-<fecha>`, aparta los datos actuales en `DATA_ROOT/<slug>/data.pre-restore-<fecha>` y pone la copia en `data`. Después lo vuelve a arrancar si su estado deseado es «en marcha»; si no, se queda parado. Si el agente cae justo al final de una restauración, el trabajo puede quedar «interrumpido» con los datos ya restaurados: comprueba el mundo antes de repetirla.
 
 El pre-restore aparece en la lista de copias. No se restaura desde la web: bórralo cuando ya no lo necesites (es un mundo entero, así que puede tardar). Para volver a esos datos a mano, para el servidor desde el panel y, en el host del nodo:
 
@@ -121,6 +140,21 @@ El agente lo revisa cada 15 s: en cuanto hay `data`, libera el servidor y lo dev
 ### Parar el agente
 
 Al parar el agente (`docker stop`, actualizarlo), espera **a la vez** hasta 20 s a las operaciones de archivos y hasta 25 s a las copias y restauraciones en curso: una copia en caliente se cancela y envía su `save-on`. Docker lo mataría a los 10 s, así que los compose le dan `stop_grace_period: 30s` y el `docker run` de **Añadir nodo** lleva `--stop-timeout 30`. Si arrancas el agente de otra forma, dale al menos 30 s. Si aun así muere a mitad, al volver a arrancar borra los restos (copias `.partial`, `data.restoring-*`) y, si una restauración se quedó a medias, devuelve los datos originales a `data` o bloquea el servidor (ver arriba).
+
+## Eventos y bucles de crash
+
+La página **Eventos** y el **Historial** de cada servidor registran: cierre con error, falta de memoria, bucle de crash, contenedor recreado, guardado automático desactivado/reactivado y token rotado. Se conservan 30 días o 10 000 eventos. Si el panel estaba desconectado, el evento puede perderse, pero el error se sigue viendo en la cabecera del servidor.
+
+**Bucle de crash:** más de 3 cierres con error en una hora y el agente para el servidor y no lo vuelve a arrancar (ni Docker, ni el panel al reconectar, ni mc-router) hasta que pulses **Arrancar** o guardes una configuración nueva. El panel lo deja en «parado».
+
+## Importar servidores existentes
+
+**Nodos → Importar** (o el detalle de un nodo) detecta los contenedores `itzg/minecraft-server` de esa máquina que el panel aún no gestiona. Los revisas antes de adoptarlos.
+
+- **Adoptar** no para nada: el contenedor original sigue hasta el primer **Guardar y aplicar**, que lo recrea con las etiquetas `mcsm.*` y la misma carpeta de datos. **Adoptar y aplicar** lo hace de una vez.
+- **Datos fuera de `DATA_ROOT`** (`dataPath`): sin copias ni archivos, y no se migran.
+- **Contenedores de Docker Compose:** quita el servicio del compose tras el primer «Guardar y aplicar», o Compose lo volverá a crear.
+- **Dejar de usar una carpeta externa:** no hay botón (el agente no ve carpetas fuera de `DATA_ROOT`). Elimina el servidor sin borrar datos, mueve la carpeta a `DATA_ROOT/<slug>/data` y vuelve a importarlo.
 
 ## Migración entre nodos
 
@@ -159,7 +193,7 @@ En **Nodos → Router** se activa un [mc-router](https://github.com/itzg/mc-rout
 
 - **Actualiza los agentes antes que el panel.** Un agente sin router rechaza activarlo (el panel lo dice y no guarda nada), pero ignora en silencio el hostname de la spec de un servidor.
 - **Autoscale:** mc-router arranca un servidor dormido cuando alguien intenta entrar y lo para tras los minutos configurados sin jugadores. Con él, el panel deja de arrancar y parar por su cuenta los servidores con hostname; **Parar** no impide que un jugador lo vuelva a arrancar al entrar. Sin lista de jugadores, cualquiera que llegue al puerto despierta servidores (y varios a la vez pueden dejar el nodo sin memoria): rellena **Jugadores que pueden despertar servidores** si el puerto da a Internet. Cambiar esa lista reinicia el router (desconecta a quien entró por él). Mientras una copia en frío, una restauración o un bloqueo sin `data` tienen reservado un servidor bajo demanda, el agente borra su contenedor para que mc-router no lo arranque sobre datos a medias, y al terminar lo recrea. Un contenedor recién creado o recreado (también por un cambio de configuración) se arranca aunque el servidor estuviera parado o dormido: mc-router no despierta contenedores que nunca han arrancado; él lo vuelve a dormir tras los minutos sin jugadores.
-- **mc-router descubre cualquier contenedor de la máquina** con la etiqueta `mc-router.host`, no solo los del panel, y con autoscale también los arranca y los para.
+- **mc-router solo ve, a través del proxy del agente, los contenedores con hostname de router** (ver [Seguridad](#seguridad)); con autoscale, además, los arranca y los para.
 - **Migrar un servidor con hostname:** si el router del nodo origen tiene autoscale, la migración se rechaza (mc-router lo arrancaría en el origen a mitad): quita el autoscale o el hostname, migra y vuelve a ponerlo. El hostname tiene que estar libre en el nodo destino, y tras migrar su DNS tiene que apuntar al destino, con el router de ese nodo activo; si no, los jugadores siguen llegando al router del origen, que ya no tiene el servidor.
 - **Importar:** la revisión no ofrece el hostname; actívalo después, en Configuración → Red.
 - **Borrar un nodo:** con el router activo no se puede; desactívalo antes. Si el nodo está desconectado cuando lo desactivas, el contenedor `mcsm-router` sigue en esa máquina hasta que un agente de esa máquina lo retire (uno dado de alta de nuevo lo hace al conectar; uno sin la configuración anterior, nada más arrancar) o lo borres tú con `docker rm -f mcsm-router`; el panel deja borrar el nodo igualmente para que una máquina perdida no lo bloquee.
@@ -179,14 +213,20 @@ Tests:
 - Panel: `pnpm test` (desde la raíz)
 - Integración con Docker real: `cd agent && go test -tags integration ./...`
 
+### Pruebas de interfaz (E2E)
+
+`pnpm e2e` (= `bash deploy/e2e/run.sh`) construye el compose de despliegue como proyecto `mcsm-test-e2e` (panel en el puerto 18080, servidores en 26600–26620), añade un segundo nodo en `docker:dind` y lanza Playwright en un contenedor. Las capturas quedan en `panel/apps/e2e/screenshots/` y los logs en `deploy/data/e2e/logs/`. `bash deploy/e2e/run.sh up|test|down` ejecuta cada fase por separado y `E2E_KEEP=1` deja todo levantado al terminar. Solo toca recursos `mcsm-test-e2e*`.
+
 Protocolo: edita `proto/`, luego `pnpm gen` y commitea lo generado.
 
 ## Seguridad
 
 Pensado para una LAN doméstica y un único administrador. El agente monta el socket de Docker: quien controle el panel obtiene root efectivo en el host de cada nodo (Docker equivale a root). No lo expongas a Internet.
 
-- **El primer visitante fija la contraseña.** Hasta que la crees, cualquiera que llegue al panel (incluida una web de Internet que visite alguien de tu LAN, por DNS rebinding) puede fijarla él. Configúrala nada más arrancar el panel.
+- **Token de configuración inicial.** Crear la contraseña exige el token que el panel escribe en su log (o `PANEL_SETUP_TOKEN`), así que nadie que llegue antes que tú al panel, ni una web de Internet por DNS rebinding, puede fijarla.
 - **Sin TLS.** El tráfico entre navegador, panel y agentes va en claro, y el agente no autentica al panel: un equipo de la LAN que suplante al panel (p. ej. con ARP spoofing) puede capturar la contraseña, la cookie y los tokens de nodo, y dar órdenes a los agentes (borrar mundos, lanzar servidores con código propio). Usa una red de confianza.
 - **Migrar ejecuta en el destino el mundo del origen.** Plugins, mods y jars incluidos, dentro del contenedor endurecido. Un nodo origen comprometido puede así hacer que el destino ejecute su código. El sha256 protege la copia en el transporte, no frente a un origen malicioso: migra solo desde nodos de confianza. La copia viaja sin cifrar por la LAN, `server.properties` (con la contraseña RCON) incluido.
-- **El router (mc-router) equivale a root en su nodo.** Necesita el socket de Docker para encontrar los servidores (y, con autoscale, arrancarlos y pararlos), y montarlo en solo lectura no limita la API. Va endurecido (usuario sin privilegios con solo el grupo del socket, sin capacidades, `no-new-privileges`, raíz de solo lectura, límites de memoria y procesos, imagen fijada por digest, logs con rotación), pero un fallo suyo o de su imagen da el control de la máquina. El socket tiene que dar lectura y escritura a su grupo (lo normal, `srw-rw---- root:docker`); con Docker rootless no funciona. Su puerto es el que se suele abrir a Internet para jugar con amigos: limita quién despierta servidores con la lista de jugadores del autoscale.
+- **El router (mc-router) ya no recibe el socket de Docker,** sino el socket filtrado del agente (`<DATA_ROOT>/.mcsm-router/docker.sock`, solo de su usuario). El proxy solo deja listar, inspeccionar sin variables de entorno, seguir eventos y arrancar/parar servidores con hostname de router, no reservados ni retenidos; rechaza peticiones con cuerpo y APIs de Docker < 1.24. La ruta completa del socket debe caber en 100 bytes y el sistema de ficheros de `DATA_ROOT` debe admitir sockets unix (no CIFS/SMB). El router va además endurecido (sin capacidades, `no-new-privileges`, raíz de solo lectura, límites de memoria y procesos, imagen fijada por digest, logs con rotación). Al actualizar el agente el router se recrea una vez y se reinicia cada vez que el agente arranca. Su puerto es el que se suele abrir a Internet para jugar con amigos: limita quién despierta servidores con la lista de jugadores del autoscale.
 - Los servidores corren sin privilegios extra: sin capacidades salvo las que necesita la imagen para arrancar (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`), con `no-new-privileges`, límite de procesos y límite de memoria (por defecto, memoria de la JVM + 1G). Las funciones de itzg que necesitan más capacidades (autopausa/autostop con knockd) no están soportadas.
+- **Cabeceras y límite de intentos.** La web se sirve con una CSP restrictiva y `frame-ancestors 'none'`. Los fallos de login tienen un límite global (30 por minuto): si alguien de la LAN fuerza contraseñas, también bloquea un minuto al administrador; reiniciar el panel lo vacía.
+- **Secretos en la consola.** La consola oculta la contraseña RCON y la API key de CurseForge.
