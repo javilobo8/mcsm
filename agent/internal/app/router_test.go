@@ -212,7 +212,7 @@ func TestRouterPolicyOnlyRoutedUnheldServers(t *testing.T) {
 		t.Fatal("reservado tampoco se para")
 	}
 	release(ctx)
-	if err := a.routerPolicy(ctx, dockerproxy.OpStop, ca); err != nil || !a.intents.Expected(ca) {
+	if err := a.routerPolicy(ctx, dockerproxy.OpStop, ca); err != nil || !a.intents.Consume(ca) {
 		t.Fatalf("parada permitida y anotada: %v", err)
 	}
 	// Retenido por bucle de crash: mc-router no lo despierta; pararlo sí se puede.

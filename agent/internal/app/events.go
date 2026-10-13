@@ -36,13 +36,15 @@ type crashStop struct {
 }
 
 // onDie cuenta los cierres con error que no pidió nadie (spec §10). No son crashes: la salida limpia (código 0:
-// /stop, la parada de mc-router por inactividad), una parada que pidió el agente o el proxy del router en los
-// últimos minutos (Intents), nada mientras el servidor está reservado (copia, restauración, migración) ni los
-// contenedores de servidores que este agente no conoce. Con más
-// de crashloop.MaxCrashes en una hora para y retiene el servidor en segundo plano, con el contexto de vida.
+// /stop, la parada de mc-router por inactividad), el primer die tras cada parada que pidió el agente o el proxy
+// del router en los últimos minutos (Intents), nada mientras el servidor está reservado (copia, restauración,
+// migración) ni los contenedores de servidores que este agente no conoce. Con más de crashloop.MaxCrashes en una
+// hora para y retiene el servidor en segundo plano, con el contexto de vida.
 func (a *App) onDie(serverID string, ev docker.Event) {
+	// Cada parada pedida explica un solo die, sea cual sea su código: se gasta antes de mirarlo (m6).
+	requested := a.intents.Consume(ev.ContainerID)
 	code, ok := crashloop.ExitCode(ev)
-	if !ok || code == 0 || a.intents.Expected(ev.ContainerID) || a.rec.Held(serverID) {
+	if requested || !ok || code == 0 || a.rec.Held(serverID) {
 		return
 	}
 	if sp, err := a.st.GetSpec(serverID); err != nil || sp == nil {

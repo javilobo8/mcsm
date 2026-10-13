@@ -51,21 +51,59 @@ func TestTrackerForgetsCrashesOlderThanTheWindow(t *testing.T) {
 	}
 }
 
-func TestIntentsExpireAfterTTL(t *testing.T) {
+func TestIntentsAbsorbOneDiePerRequestedStop(t *testing.T) {
 	c := &clock{t: time.Unix(1_000_000, 0)}
 	in := NewIntents(c.now)
-	if in.Expected("c1") {
+	if in.Consume("c1") {
 		t.Fatal("sin parada pedida")
 	}
 	in.Note("c1")
 	in.Note("") // ignorado
+	if !in.Consume("c1") {
+		t.Fatal("el die de la parada pedida no es un crash")
+	}
+	if in.Consume("c1") {
+		t.Fatal("el segundo die del mismo contenedor ya cuenta: cada parada absorbe uno solo")
+	}
+}
+
+func TestIntentsTwoStopsAbsorbTwoDies(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	in := NewIntents(c.now)
+	in.Note("c1")
+	in.Note("c2") // otro contenedor: no se mezcla
+	c.t = c.t.Add(time.Minute)
+	in.Note("c1")
+	for i := 0; i < 2; i++ {
+		if !in.Consume("c1") {
+			t.Fatalf("die %d: dos paradas absorben dos", i+1)
+		}
+	}
+	if in.Consume("c1") {
+		t.Fatal("el tercero ya cuenta")
+	}
+	if !in.Consume("c2") {
+		t.Fatal("la parada de c2 sigue anotada")
+	}
+}
+
+func TestIntentsExpireAfterTTL(t *testing.T) {
+	c := &clock{t: time.Unix(1_000_000, 0)}
+	in := NewIntents(c.now)
+	in.Note("c1")
 	c.t = c.t.Add(IntentTTL)
-	if !in.Expected("c1") {
+	if !in.Consume("c1") {
 		t.Fatal("dentro del plazo cuenta como pedida")
 	}
-	c.t = c.t.Add(time.Second)
-	if in.Expected("c1") {
+	in.Note("c1")
+	c.t = c.t.Add(IntentTTL + time.Second)
+	if in.Consume("c1") {
 		t.Fatal("pasado el plazo ya no")
+	}
+	// Una anotación caducada no se queda: una nueva vale y es la única.
+	in.Note("c1")
+	if !in.Consume("c1") || in.Consume("c1") {
+		t.Fatal("solo la anotación vigente absorbe un die")
 	}
 }
 
@@ -95,7 +133,7 @@ func TestEngineNotesStopKillAndRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{a, b, c} {
-		if !in.Expected(id) {
+		if !in.Consume(id) {
 			t.Fatalf("%s: la parada pedida debe quedar anotada", id)
 		}
 	}

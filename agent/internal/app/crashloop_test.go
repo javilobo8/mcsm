@@ -82,6 +82,22 @@ func TestOnDieIgnoresCleanExitsRequestedStopsAndHeldServers(t *testing.T) {
 	}
 }
 
+// m6: cada parada pedida explica un solo die del contenedor (también uno limpio); los siguientes son crashes. Así
+// un bucle que empieza justo tras un Reiniciar se cuenta desde el primer cierre con error.
+func TestRequestedStopAbsorbsOnlyOneDie(t *testing.T) {
+	a, _, s, cid := crashApp(t)
+	a.intents.Note(cid)
+	a.onDie("a", die(cid, "143")) // la parada pedida
+	a.onDie("a", die(cid, "1"))   // el siguiente ya es un crash
+	a.intents.Note(cid)
+	a.onDie("a", die(cid, "0")) // parada pedida con salida limpia: gasta la anotación igualmente
+	a.onDie("a", die(cid, "1"))
+	evs := eventsOf(t, a, s)
+	if len(evs) != 2 || evs[0].Kind != KindCrash || evs[1].Kind != KindCrash || !strings.Contains(evs[1].Message, "2 en la última hora") {
+		t.Fatalf("eventos = %+v", evs)
+	}
+}
+
 func TestFourCrashesInAnHourStopAndRetainTheServer(t *testing.T) {
 	a, fake, s, cid := crashApp(t)
 	for i := 0; i < crashloop.MaxCrashes+1; i++ {

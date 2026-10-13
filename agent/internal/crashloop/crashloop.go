@@ -1,5 +1,5 @@
 // Package crashloop detecta bucles de crash de los servidores (spec §10): un servidor que se cierra con error
-// más de MaxCrashes veces en Window se para. Intents distingue las paradas que pidió alguien (el agente al
+// más de MaxCrashes veces en Window se para. Intents distingue las paradas que pidió alguien (cada una explica un die) (el agente al
 // parar, recrear o borrar; mc-router a través del proxy del socket) de los crashes.
 package crashloop
 
@@ -17,7 +17,7 @@ const (
 	Window = time.Hour
 	// MaxCrashes: con más de estos crashes en Window el servidor está en bucle.
 	MaxCrashes = 3
-	// IntentTTL: un die hasta este tiempo después de un Stop/Kill/Remove pedido no es un crash. Cubre la
+	// IntentTTL: el primer die hasta este tiempo después de un Stop/Kill/Remove pedido no es un crash. Cubre la
 	// espera de una parada limpia (reconcile.StopTimeout, 60 s) con margen.
 	IntentTTL = 3 * time.Minute
 )
@@ -65,11 +65,13 @@ func (t *Tracker) Reset(serverID string) {
 	delete(t.hits, serverID)
 }
 
-// Intents recuerda, por contenedor, la última parada pedida (Stop, Kill, Remove). Seguro para uso concurrente.
+// Intents recuerda, por contenedor, las paradas pedidas (Stop, Kill, Remove) de los últimos IntentTTL. Cada una
+// explica un solo die: un bucle que empieza justo después de un Reiniciar se cuenta desde el primer crash.
+// Seguro para uso concurrente.
 type Intents struct {
 	mu  sync.Mutex
 	now func() time.Time
-	at  map[string]time.Time
+	at  map[string][]time.Time // por contenedor, de la más antigua a la más reciente
 }
 
 // NewIntents crea el registro con el reloj dado (time.Now si es nil).
@@ -77,10 +79,11 @@ func NewIntents(now func() time.Time) *Intents {
 	if now == nil {
 		now = time.Now
 	}
-	return &Intents{now: now, at: map[string]time.Time{}}
+	return &Intents{now: now, at: map[string][]time.Time{}}
 }
 
-// Note anota que alguien pidió parar (o matar, o borrar) el contenedor id. Poda las anotaciones caducadas.
+// Note anota que alguien pidió parar (o matar, o borrar) el contenedor id. Poda las anotaciones caducadas de
+// todos los contenedores (una parada sin die, p. ej. sobre uno ya parado o borrado, no se queda para siempre).
 func (i *Intents) Note(id string) {
 	if id == "" {
 		return
@@ -88,27 +91,44 @@ func (i *Intents) Note(id string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	now := i.now()
-	for k, at := range i.at {
-		if now.Sub(at) > IntentTTL {
-			delete(i.at, k)
-		}
+	for k := range i.at {
+		i.pruneLocked(k, now)
 	}
-	i.at[id] = now
+	i.at[id] = append(i.at[id], now)
 }
 
-// Expected indica si un die de id lo explica una parada pedida hace como mucho IntentTTL.
-func (i *Intents) Expected(id string) bool {
+// Consume indica si un die de id lo explica una parada pedida hace como mucho IntentTTL y, si es así, la gasta.
+func (i *Intents) Consume(id string) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	at, ok := i.at[id]
-	if !ok {
+	pending := i.pruneLocked(id, i.now())
+	if len(pending) == 0 {
 		return false
 	}
-	if i.now().Sub(at) > IntentTTL {
+	if len(pending) == 1 {
 		delete(i.at, id)
-		return false
+	} else {
+		i.at[id] = pending[1:]
 	}
 	return true
+}
+
+// pruneLocked quita las anotaciones caducadas de id y devuelve las que quedan.
+func (i *Intents) pruneLocked(id string, now time.Time) []time.Time {
+	list := i.at[id]
+	n := 0
+	for n < len(list) && now.Sub(list[n]) > IntentTTL {
+		n++
+	}
+	if n == len(list) {
+		delete(i.at, id)
+		return nil
+	}
+	if n > 0 {
+		list = list[n:]
+		i.at[id] = list
+	}
+	return list
 }
 
 // Engine envuelve un docker.Engine y anota en Intents cada parada, muerte o borrado que pide el agente. Todo
