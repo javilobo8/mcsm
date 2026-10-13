@@ -1,7 +1,7 @@
 import type { ImportCandidate } from "@mcsm/proto";
 import {
-  CURSEFORGE_API_KEY_RE, DIGITS_RE, ENTRY_RE, ENV_KEY_RE, IMAGE_TAG_RE, MAX_STRING_BYTES, MEMORY_RE, PLAYER_RE, PROPERTY_KEY_RE,
-  RESERVED_ENV, RESERVED_PROPS, URL_RE, dataPathError, formatZodError, memoryToBytes, pathWithin, slugify, specInputSchema, utf8Bytes,
+  BUILD_RE, CURSEFORGE_API_KEY_RE, DIGITS_RE, ENTRY_RE, ENV_KEY_RE, IMAGE_TAG_RE, MAX_STRING_BYTES, MEMORY_RE, PLAYER_RE, PROPERTY_KEY_RE,
+  RESERVED_ENV, RESERVED_PROPS, URL_RE, dataPathError, buildEnvFor, formatZodError, isFloatingVersion, memoryToBytes, pathWithin, slugify, specInputSchema, utf8Bytes,
   type ImportCandidateDto, type SpecInput,
 } from "@mcsm/shared";
 
@@ -221,6 +221,16 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
     else warn(`MEMORY=${memRaw} no tiene el formato del panel (4G, 512M): se propone 1G; revísalo en «Recursos»`);
   }
 
+  // plan-10: la variable de build del tipo pasa al campo build solo si vale tal cual (mismo entorno,
+  // mismo hash); con LATEST/SNAPSHOT o un valor que no cumple BUILD_RE se queda en env.
+  let build = "";
+  const buildKey = buildEnvFor(type);
+  const buildRaw = buildKey === undefined ? undefined : env[buildKey];
+  if (buildKey !== undefined && buildRaw !== undefined && BUILD_RE.test(buildRaw) && !isFloatingVersion(version)) {
+    build = buildRaw;
+    delete env[buildKey];
+  }
+
   // Modpack.
   let modpack: SpecInput["modpack"];
   if (type === "MODRINTH" && env.MODRINTH_MODPACK !== undefined) {
@@ -371,7 +381,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   if (c.state === "paused") warn("El contenedor está en pausa: se importa como «en marcha» y sigue en pausa hasta que lo reanudes (docker unpause); el panel no lo reanuda");
 
   const raw = {
-    imageTag: imageTag(c.image, warn), type, version, memory, properties, env: passEnv,
+    imageTag: imageTag(c.image, warn), type, version, build, memory, properties, env: passEnv,
     resources: { cpus, memLimit }, restartPolicy, ports: { ...(game !== undefined ? { game } : {}), extra: extraPorts },
     ...(modpack ? { modpack } : {}), ...(mods ? { mods } : {}), ...(plugins ? { plugins } : {}),
     ...(whitelist ? { whitelist } : {}), ...(ops ? { ops } : {}),

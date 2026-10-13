@@ -51,6 +51,24 @@ describe("proposeImport", () => {
     expect(p.warnings.join(" ")).toMatch(/25575/);
   });
 
+  it("plan-10: la variable de build del tipo pasa a build (mismo entorno); si no vale, se queda en env", () => {
+    const fabric = proposeImport(cand({ env: env({ TYPE: "FABRIC", FABRIC_LOADER_VERSION: "0.16.9", PAPER_BUILD: "100" }) }), ctx());
+    expect(fabric.specError).toBeNull();
+    expect(fabric.spec.build).toBe("0.16.9");
+    expect(fabric.spec.env).not.toHaveProperty("FABRIC_LOADER_VERSION");
+    expect(fabric.spec.env).toHaveProperty("PAPER_BUILD", "100");
+
+    const latest = proposeImport(cand({ env: env({ VERSION: "LATEST", PAPER_BUILD: "100" }) }), ctx());
+    expect(latest.spec.build).toBe("");
+    expect(latest.spec.env).toHaveProperty("PAPER_BUILD", "100");
+
+    const spaced = proposeImport(cand({ env: env({ PAPER_BUILD: " 100" }) }), ctx());
+    expect(spaced.spec.build).toBe("");
+    expect(spaced.spec.env).toHaveProperty("PAPER_BUILD", " 100");
+
+    expect(proposeImport(cand({ env: env({ TYPE: "FOLIA", FOLIABUILD: "12" }) }), ctx()).spec.build).toBe("12");
+  });
+
   it("datos en <DATA_ROOT>/<slug>/data: sin dataPath y slug fijo; ocupado = bloqueo", () => {
     const c = cand({ mounts: [{ type: "bind", source: `${ROOT}/survival/data`, destination: "/data", readWrite: true }] });
     const p = proposeImport(c, ctx());
