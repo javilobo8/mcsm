@@ -8,7 +8,9 @@
 // (65532) con solo el grupo del socket, CapDrop ALL, no-new-privileges, raíz de solo lectura,
 // límites de memoria y procesos, sin API HTTP de mc-router y sin más montajes. El «:ro» del
 // montaje NO limita la API de Docker (connect() sobre un socket no comprueba el montaje): solo
-// documenta la intención. Aislarlo de verdad exigiría un proxy del socket (no incluido).
+// documenta la intención. Desde el Plan 9 el router no recibe el socket de Docker: monta el del proxy del
+// agente (paquete dockerproxy), que solo deja listar, inspeccionar sin entorno, seguir eventos y arrancar o
+// parar servidores con hostname no reservados.
 package router
 
 import (
@@ -45,8 +47,10 @@ const (
 	LabelHash = "mcsm.router_hash"
 	// ListenPort es el puerto de mc-router dentro del contenedor.
 	ListenPort = 25565
-	// HostSocket es el socket de Docker del host: el agente lo tiene montado en la misma ruta.
+	// HostSocket es el socket real de Docker del host: el upstream del proxy del agente.
 	HostSocket = "/var/run/docker.sock"
+	// RouterSocket es donde ve el router el socket del proxy: el cliente de Docker de mc-router lo usa por defecto.
+	RouterSocket = "/var/run/docker.sock"
 	// User es el usuario no root de la imagen (chainguard static).
 	User = "65532:65532"
 
@@ -61,7 +65,7 @@ const (
 
 	memoryLimit = 256 << 20
 	pidsLimit   = 256
-	hashSchema  = 1
+	hashSchema  = 2 // plan-9: el socket del proxy en vez del de Docker (el router se recrea una vez al actualizar)
 	// connectionRateLimit: conexiones nuevas por segundo (global). El 1 por defecto de mc-router hace
 	// esperar a varios jugadores que refrescan la lista de servidores a la vez.
 	connectionRateLimit = 10
@@ -159,11 +163,14 @@ func args(sp *mcsmv1.RouterSpec) []string {
 }
 
 // BuildContainer traduce la spec a la configuración del contenedor. Pura: misma entrada, mismo Hash.
-// socketGID es el grupo propietario del socket de Docker del host (GroupAdd) y filesDir el
+// proxySocket es la ruta del host del socket del proxy de Docker del agente (dockerproxy) y filesDir el
 // directorio del host donde el agente deja los ficheros del router (la lista del autoscale).
-func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName string, socketGID uint32, filesDir string) (*Build, error) {
+func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName, proxySocket, filesDir string) (*Build, error) {
 	if err := Validate(sp); err != nil {
 		return nil, err
+	}
+	if proxySocket == "" {
+		return nil, errors.New("router: falta el socket del proxy de Docker del agente")
 	}
 	allow := allowDeny(sp)
 	if allow != nil && filesDir == "" {
@@ -178,12 +185,11 @@ func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName string, socketGID u
 		Labels:       map[string]string{spec.LabelManaged: "true", LabelRouter: "true"},
 	}
 	host := &container.HostConfig{
-		Binds:          []string{HostSocket + ":" + HostSocket + ":ro"},
+		Binds:          []string{proxySocket + ":" + RouterSocket},
 		PortBindings:   network.PortMap{port: {{HostPort: strconv.FormatUint(uint64(sp.HostPort), 10)}}},
 		RestartPolicy:  container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
 		SecurityOpt:    []string{"no-new-privileges:true"},
 		CapDrop:        []string{"ALL"},
-		GroupAdd:       []string{strconv.FormatUint(uint64(socketGID), 10)},
 		ReadonlyRootfs: true,
 		LogConfig:      logConfig(),
 	}

@@ -8,10 +8,15 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"io"
+	"log/slog"
 	"net"
+	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,6 +26,7 @@ import (
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/docker"
+	"mcsm/agent/internal/dockerproxy"
 	"mcsm/agent/internal/spec"
 	"mcsm/agent/internal/store"
 )
@@ -91,6 +97,24 @@ func loginRouter(t *testing.T, port int, host, player string) string {
 	return string(b)
 }
 
+// syncBuffer es un bytes.Buffer seguro para el log del proxy (lo escriben sus goroutines).
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func freePort(t *testing.T) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -153,7 +177,28 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	}
 	defer st.Close()
 	name := "mcsm-test-router-" + tag
-	m := New(eng, st, Options{Name: name, Network: netName, FilesDir: t.TempDir()})
+	// plan-9: mc-router habla con Docker a través del proxy de lista blanca del agente.
+	sock := filepath.Join(t.TempDir(), "docker.sock")
+	var proxyLog syncBuffer
+	px := dockerproxy.New(dockerproxy.Options{Listen: sock, Upstream: HostSocket, UID: 65532, GID: 65532,
+		Log: slog.New(slog.NewTextHandler(&proxyLog, nil)),
+		Policy: func(ctx context.Context, op dockerproxy.Op, c string) error {
+			ins, err := eng.Inspect(ctx, c)
+			if err != nil {
+				return err
+			}
+			if ins.Labels[spec.LabelRouterHost] == "" {
+				return errors.New("sin hostname de router")
+			}
+			return nil
+		}})
+	if err := px.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	pctx, pcancel := context.WithCancel(ctx)
+	defer pcancel()
+	go px.Serve(pctx)
+	m := New(eng, st, Options{Name: name, Network: netName, FilesDir: t.TempDir(), ProxySocket: sock, ProxyReady: px.Ready, ProxySince: px.Since})
 	port := freePort(t)
 	if err := m.Apply(&mcsmv1.RouterSpec{HostPort: uint32(port)}); err != nil {
 		t.Fatal(err)
@@ -270,6 +315,31 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	}
 	if !wake("nuevo.lan", "amigo", fresh) {
 		t.Fatal("y después lo despierta un jugador de la lista")
+	}
+
+	// Lo que mc-router pidió y el proxy denegó (si algo le faltara, aparecería aquí).
+	if strings.Contains(proxyLog.String(), "denegada") {
+		t.Logf("peticiones de mc-router denegadas por el proxy:\n%s", proxyLog.String())
+	}
+
+	// Por el proxy no se puede crear nada ni ver el entorno de un contenedor.
+	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", sock)
+	}}}
+	res, err := hc.Post("http://docker/v1.47/containers/create", "application/json", strings.NewReader(`{"Image":"alpine:3.22"}`))
+	if err != nil || res.StatusCode != http.StatusForbidden {
+		t.Fatalf("create por el proxy: %v %v", res, err)
+	}
+	res.Body.Close()
+	res, err = hc.Get("http://docker/v1.47/containers/" + created[0] + "/json")
+	if err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("inspect por el proxy: %v %v", res, err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if strings.Contains(string(body), `"Env"`) {
+		t.Fatal("el inspect por el proxy no lleva el entorno")
 	}
 
 	if err := m.Clear(); err != nil {

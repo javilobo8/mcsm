@@ -3,13 +3,18 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/moby/moby/api/types/container"
+
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/docker"
+	"mcsm/agent/internal/dockerproxy"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/router"
+	"mcsm/agent/internal/spec"
 	"mcsm/agent/internal/store"
 )
 
@@ -17,7 +22,7 @@ import (
 func newRouterApp(t *testing.T) (*App, *docker.Fake, *store.Store, *sink) {
 	t.Helper()
 	a, fake, st := newApp(t)
-	a.router = router.New(fake, st, router.Options{Network: "mcsm", SocketGID: func() (uint32, error) { return 967, nil }})
+	a.router = router.New(fake, st, router.Options{Network: "mcsm", ProxySocket: "/srv/minecraft/.mcsm-router/docker.sock"})
 	s := newSink()
 	a.send = s.send
 	return a, fake, st, s
@@ -171,10 +176,72 @@ func (failingRouterStore) PutRouterSpec(*mcsmv1.RouterSpec) error {
 // m5: una spec inválida es invalid_request; un fallo del store, io_error.
 func TestRouterApplyStoreFailureIsIOError(t *testing.T) {
 	a, fake, st, s := newRouterApp(t)
-	a.router = router.New(fake, failingRouterStore{st}, router.Options{Network: "mcsm", SocketGID: func() (uint32, error) { return 967, nil }})
+	a.router = router.New(fake, failingRouterStore{st}, router.Options{Network: "mcsm", ProxySocket: "/srv/minecraft/.mcsm-router/docker.sock"})
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_RouterApply{RouterApply: &mcsmv1.RouterApply{Spec: &mcsmv1.RouterSpec{HostPort: 25565}}}}, s.send)
 	if e := s.waitID(t, 9); e.GetError().GetCode() != errcode.IOError {
 		t.Fatalf("respuesta = %v", e)
 	}
 	waitBackground(t, a)
+}
+
+func TestRouterPolicyOnlyRoutedUnheldServers(t *testing.T) {
+	a, _, _, s := newRouterApp(t)
+	routed := strings.Replace(specJSON, `"rconPassword"`, `"router":{"enabled":true,"hostname":"a.lan"},"rconPassword"`, 1)
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 1, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(routed)}}}}, s.send)
+	other := strings.Replace(specJSON, "25565", "25566", 1) // otro puerto: el fake no deja dos en el mismo
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 2, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: &mcsmv1.ServerSpec{ServerId: "b", Slug: "beta", Version: 1, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(other)}}}}, s.send)
+	ctx := context.Background()
+	ca, cb := a.rec.ContainerID(ctx, "a"), a.rec.ContainerID(ctx, "b")
+	if err := a.routerPolicy(ctx, dockerproxy.OpStart, ca); err != nil {
+		t.Fatalf("con hostname: %v", err)
+	}
+	if err := a.routerPolicy(ctx, dockerproxy.OpStop, cb); err == nil {
+		t.Fatal("sin hostname de router no se toca")
+	}
+	if err := a.routerPolicy(ctx, dockerproxy.OpStart, "no-existe"); err == nil {
+		t.Fatal("un contenedor desconocido no se arranca")
+	}
+	release, err := a.rec.Hold("a", "restauración")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.routerPolicy(ctx, dockerproxy.OpStart, ca); err == nil || !strings.Contains(err.Error(), "restauración") {
+		t.Fatalf("reservado: %v", err)
+	}
+	if err := a.routerPolicy(ctx, dockerproxy.OpStop, ca); err == nil {
+		t.Fatal("reservado tampoco se para")
+	}
+	release(ctx)
+	if err := a.routerPolicy(ctx, dockerproxy.OpStop, ca); err != nil || !a.intents.Expected(ca) {
+		t.Fatalf("parada permitida y anotada: %v", err)
+	}
+	// Retenido por bucle de crash: mc-router no lo despierta; pararlo sí se puede.
+	if err := a.rec.CrashLoopStop(ctx, "a", 4); err != nil {
+		t.Fatal(err)
+	}
+	ca = a.rec.ContainerID(ctx, "a")
+	if err := a.routerPolicy(ctx, dockerproxy.OpStart, ca); err == nil || !strings.Contains(err.Error(), "bucle de crash") {
+		t.Fatalf("retenido: %v", err)
+	}
+}
+
+// Las etiquetas mcsm las puede poner cualquiera que cree contenedores en el mismo Docker: mc-router no para un
+// contenedor de un servidor que este agente no conoce.
+func TestRouterPolicyDoesNotStopUnknownServers(t *testing.T) {
+	a, fake, _, _ := newRouterApp(t)
+	ctx := context.Background()
+	id, err := fake.Create(ctx, "mcsm-ajeno", &container.Config{Labels: map[string]string{
+		spec.LabelManaged: "true", spec.LabelServerID: "ajeno", spec.LabelRouterHost: "ajeno.lan"}}, &container.HostConfig{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fake.Start(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.routerPolicy(ctx, dockerproxy.OpStop, id); err == nil {
+		t.Fatal("un servidor que el agente no conoce no se para")
+	}
+	if err := a.routerPolicy(ctx, dockerproxy.OpStart, id); err == nil {
+		t.Fatal("ni se arranca")
+	}
 }

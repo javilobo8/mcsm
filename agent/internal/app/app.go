@@ -20,6 +20,7 @@ import (
 	"mcsm/agent/internal/conn"
 	"mcsm/agent/internal/crashloop"
 	"mcsm/agent/internal/docker"
+	"mcsm/agent/internal/dockerproxy"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/logs"
 	"mcsm/agent/internal/mc"
@@ -83,6 +84,7 @@ type App struct {
 	bk         *backupService // plan-4: copias, restauraciones, jobs y programación
 	// plan-8: mc-router del nodo (router.go).
 	router *router.Manager
+	proxy  *dockerproxy.Proxy // plan-9: socket filtrado de Docker para el router
 	// plan-9: incidencias para el panel (Event), en su propia cola FIFO; bucles de crash.
 	events  *outbox
 	crashes *crashloop.Tracker
@@ -110,7 +112,11 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	a.hub.SetSecrets(a.logSecrets)               // plan-9
 	a.bk = newBackupService(a, backup.RealClock) // plan-4
 	// plan-8: mc-router del nodo; con su autoscale, los servidores con hostname van bajo demanda.
-	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot)})
+	// plan-9 (fuera de ancla): el router monta el socket del proxy, no el de Docker.
+	a.proxy = dockerproxy.New(dockerproxy.Options{Listen: proxySocketPath(cfg.DataRoot), Upstream: router.HostSocket,
+		Policy: a.routerPolicy, UID: 65532, GID: 65532, Log: log})
+	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot),
+		ProxySocket: proxySocketPath(cfg.DataRoot), ProxyReady: a.proxy.Ready, ProxySince: a.proxy.Since})
 	a.rec.SetOnDemand(a.onDemand)
 	// plan-9: cola de Event (a.send se lee al entregar) y el drift del reconciliador, sin bloquear su lock.
 	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log, "eventos para el panel (Event)")
@@ -182,6 +188,10 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// arrancaría con un mundo nuevo.
 	a.bk.recoverAtStart(ctx)
 
+	if err := a.proxy.Listen(); err != nil { // plan-9: sin proxy el router no se despliega (error en su estado)
+		log.Error("proxy del socket de Docker para el router", "err", err)
+	}
+	go a.proxy.Serve(ctx)
 	go a.eventLoop(ctx)
 	go a.tickers(ctx)
 	// §6.1: primero el WS; la primera pasada de reconciliación va en segundo plano.
