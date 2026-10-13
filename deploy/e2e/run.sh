@@ -68,7 +68,9 @@ up() {
   local panel_ip
   panel_ip="$(docker inspect -f "{{(index .NetworkSettings.Networks \"$DEFNET\").IPAddress}}" "$P-panel-1")"
   # Dentro de dind el DNS de la red del compose no llega: el agente B va al panel por IP.
-  docker exec "$NODEB" docker run -d --name "$P-agent-b" --restart unless-stopped --stop-timeout 30 \
+  # El agente B se une a la red de los servidores (como el agente del compose en el nodo A): sondea a cada servidor por su nombre.
+  docker exec "$NODEB" docker network inspect "$NET" >/dev/null 2>&1 || docker exec "$NODEB" docker network create "$NET" >/dev/null
+  docker exec "$NODEB" docker run -d --name "$P-agent-b" --network "$NET" --restart unless-stopped --stop-timeout 30 \
     -v /var/run/docker.sock:/var/run/docker.sock -v "$DATA/b:$DATA/b" -v agent-b-data:/var/lib/mcsm-agent \
     -e PANEL_URL="http://$panel_ip:8080" -e ENROLL_TOKEN="$(token e2e-b "$DATA/b")" -e DATA_ROOT="$DATA/b" \
     -e MCSM_NETWORK="$NET" -e MCSM_ROUTER_NAME="$P-router-b" "$P-agent:latest" >/dev/null
