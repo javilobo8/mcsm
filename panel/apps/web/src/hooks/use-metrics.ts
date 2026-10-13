@@ -16,7 +16,16 @@ export function useServerMetrics(serverId: string, range: MetricRange) {
 export function useNodeLive(nodeId: string) {
   return useQuery({
     queryKey: ["node-live", nodeId],
-    queryFn: async () => entryFromSeries(await api.get<MetricSeries>(`${apiPath`/api/nodes/${nodeId}/metrics`}?range=1h`)),
+    queryFn: async () => entryFromSeries(await api.get<MetricSeries>(`${apiPath`/api/nodes/${nodeId}/metrics`}?range=1h`), Date.now()),
     staleTime: Infinity,
+  });
+}
+
+/** Serie histórica de un nodo (detalle de nodo). */
+export function useNodeMetrics(nodeId: string, range: MetricRange) {
+  return useQuery({
+    queryKey: ["metrics", "node", nodeId, range],
+    queryFn: () => api.get<MetricSeries>(`${apiPath`/api/nodes/${nodeId}/metrics`}?range=${range}`),
+    refetchInterval: REFRESH_MS[range],
   });
 }

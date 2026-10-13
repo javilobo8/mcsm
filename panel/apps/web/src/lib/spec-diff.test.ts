@@ -51,4 +51,11 @@ describe("diffSpecs", () => {
     ]);
     expect(diffSpecs({ type: "PAPER" }, { type: "PAPER", whitelist: { enabled: false, players: [] } })[0]?.after).toBe("desactivada");
   });
+  it("mods/plugins: pasar de ausente a presente (aunque vacía) es un cambio; igual a igual no", () => {
+    const empty = { modrinthProjects: [], curseforgeFiles: [], urls: [] };
+    expect(diffSpecs({}, { mods: empty })).toEqual([{ label: "Mods (sección)", before: "(sin gestionar)", after: "gestionada por el panel" }]);
+    expect(diffSpecs({ mods: empty }, { mods: empty })).toEqual([]);
+    expect(diffSpecs({ plugins: { modrinthProjects: [], spigetResources: [], urls: [] } }, {}))
+      .toEqual([{ label: "Plugins (sección)", before: "gestionada por el panel", after: "(sin gestionar)" }]);
+  });
 });

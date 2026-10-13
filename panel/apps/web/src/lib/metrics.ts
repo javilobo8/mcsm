@@ -43,12 +43,15 @@ export interface NodeLiveEntry {
 }
 
 /**
- * Entrada de caché para la última muestra de una serie REST. Aún no hay hora de llegada propia, así
- * que se toma el `ts` de la muestra; el primer evento en vivo la sustituye por la hora de llegada.
+ * Entrada de caché para la última muestra de una serie REST. Su antigüedad la mide el panel (`s.now − ts`, su reloj)
+ * y se resta a la hora de llegada de la respuesta en el navegador (el suyo): ni un agente ni un navegador desfasados
+ * dejan la tarjeta «sin datos» hasta el primer evento en vivo. Sin `s.now` (panel anterior), el `ts` de la muestra.
  */
-export function entryFromSeries(s: MetricSeries): NodeLiveEntry | null {
+export function entryFromSeries(s: MetricSeries, fetchedAtMs: number): NodeLiveEntry | null {
   const sample = latestNodeSample(s);
-  return sample && { sample, receivedAt: sample.ts * 1000 };
+  if (!sample) return null;
+  const receivedAt = s.now !== undefined ? fetchedAtMs - Math.max(0, s.now - sample.ts) * 1000 : sample.ts * 1000;
+  return { sample, receivedAt };
 }
 
 /**

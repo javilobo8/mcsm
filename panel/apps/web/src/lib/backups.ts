@@ -1,5 +1,6 @@
 import { backupsSchema, type BackupsConfig } from "@mcsm/shared";
-import { ApiError, type BackupDto, type JobDto } from "./api";
+import { ApiError, apiPath, type BackupDto, type JobDto } from "./api";
+import type { GuardText } from "./tab-guard";
 
 export const CRON_PRESETS = [
   { value: "daily", label: "Cada día a las 4:00", cron: "0 4 * * *" },
@@ -56,6 +57,16 @@ export function parseRetention(s: string): number | null {
   return /^\d+$/.test(t) ? Number(t) : null;
 }
 
+export function scheduleDirty(f: ScheduleForm, base: ScheduleForm): boolean {
+  return JSON.stringify(f) !== JSON.stringify(base);
+}
+
+export function scheduleLeaveWarning(dirty: boolean): GuardText | null {
+  return dirty
+    ? { title: "Programación sin guardar", description: "Hay cambios sin guardar en la programación de copias. Si sales, se perderán.", confirmLabel: "Descartar y salir" }
+    : null;
+}
+
 const sameForm = (a: ScheduleForm, b: ScheduleForm) => JSON.stringify(a) === JSON.stringify(b);
 
 /** Al cambiar la spec del servidor: se adopta solo si el formulario no tiene cambios sin guardar. `base` = último valor del servidor visto. */
@@ -85,13 +96,20 @@ export function toggleBusyReason(nodeOnline: boolean | undefined, active: JobDto
   return null;
 }
 
-export interface BackupActions { restore: boolean; showDownload: boolean; download: false; remove: boolean }
+export interface BackupActions { restore: boolean; showDownload: boolean; download: boolean; remove: boolean }
 
 /** Qué botones de una fila están activos. `busy`: nodo caído o job en curso; `offline`: nodo caído. */
 export function backupActions(b: Pick<BackupDto, "kind" | "status">, busy: boolean, offline: boolean): BackupActions {
   const isArchive = b.kind === "archive";
-  return { restore: isArchive && b.status === "ok" && !busy, showDownload: isArchive, download: false, remove: !offline && !busy };
+  return {
+    restore: isArchive && b.status === "ok" && !busy, showDownload: isArchive,
+    download: isArchive && b.status === "ok" && !offline, // plan-9: el agente la sube con BackupPush
+    remove: !offline && !busy,
+  };
 }
+
+export const backupDownloadUrl = (serverId: string, backupId: string): string =>
+  apiPath`/api/servers/${serverId}/backups/${backupId}/download`;
 
 export function deleteDialogText(b: Pick<BackupDto, "kind" | "filename">): { title: string; description: string } {
   return b.kind === "directory"

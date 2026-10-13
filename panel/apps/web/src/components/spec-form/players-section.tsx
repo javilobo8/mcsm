@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { offlineModeWarning } from "@/lib/players";
 import { playersEnvErrors, type EditableSpec } from "@/lib/spec-edit";
 import { ListField, type ReportError } from "./fields";
 
@@ -20,6 +21,7 @@ export function PlayersSection({ spec, onChange, onError }: { spec: EditableSpec
   useEffect(() => { onError?.("sf-ops-env", opsEnvErr); }, [opsEnvErr, onError]);
   useEffect(() => { onError?.("sf-whitelist-env", wlEnvErr); }, [wlEnvErr, onError]);
   useEffect(() => () => { onError?.("sf-ops-env", null); onError?.("sf-whitelist-env", null); }, [onError]);
+  const offline = offlineModeWarning(spec);
   const clear = (key: "whitelist" | "ops", ids: string[]) => {
     for (const id of ids) onError?.(id, null);
     setResets((r) => ({ ...r, [key === "ops" ? "ops" : "wl"]: r[key === "ops" ? "ops" : "wl"] + 1 }));
@@ -28,6 +30,7 @@ export function PlayersSection({ spec, onChange, onError }: { spec: EditableSpec
   };
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      {offline && <p role="note" className="text-xs text-amber-400 sm:col-span-2">{offline}</p>}
       <div className="flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" checked={wl?.enabled ?? false}

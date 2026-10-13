@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError, type BackupDto, type JobDto } from "./api";
 import { backupsSchema } from "@mcsm/shared";
-import { backupActions, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, restoreDialogText, scheduleSummary, scheduleToForm, templateScheduleNote, toggleBusyReason } from "./backups";
+import { backupActions, backupDownloadUrl, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, restoreDialogText, scheduleSummary, scheduleToForm, templateScheduleNote, toggleBusyReason, scheduleDirty, scheduleLeaveWarning } from "./backups";
 
 const base: BackupDto = {
   id: "b1", serverId: "s1", nodeId: "n1", filename: "x.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
@@ -45,12 +45,19 @@ describe("estado de los botones", () => {
     expect(toggleBusyReason(false, undefined)).toMatch(/desconectado/);
     expect(toggleBusyReason(true, job({}))).toMatch(/en curso/);
   });
-  it("restaurar solo en archivos y sin ocupado; descargar siempre deshabilitado", () => {
-    expect(backupActions(base, false, false)).toMatchObject({ restore: true, download: false, remove: true });
+  it("restaurar solo en archivos y sin ocupado", () => {
+    expect(backupActions(base, false, false)).toMatchObject({ restore: true, download: true, remove: true });
     expect(backupActions(base, true, false).restore).toBe(false);
     expect(backupActions({ ...base, kind: "directory" }, false, false)).toMatchObject({ restore: false, showDownload: false });
     expect(backupActions(base, false, true).remove).toBe(false);
     expect(backupActions(base, true, false).remove).toBe(false);
+  });
+  it("descarga: solo copias .tar.zst correctas y con el nodo conectado; url codificada", () => {
+    expect(backupActions({ kind: "archive", status: "ok" }, true, false).download).toBe(true); // un job en curso no impide leerla
+    expect(backupActions({ kind: "archive", status: "ok" }, false, true).download).toBe(false);
+    expect(backupActions({ kind: "archive", status: "failed" }, false, false).download).toBe(false);
+    expect(backupActions({ kind: "directory", status: "ok" }, false, false).download).toBe(false);
+    expect(backupDownloadUrl("s/1", "b?2")).toBe("/api/servers/s%2F1/backups/b%3F2/download");
   });
   it("las copias que no están ok no se restauran", () => {
     expect(backupActions({ ...base, status: "failed" }, false, false).restore).toBe(false);
@@ -142,5 +149,15 @@ describe("templateScheduleNote («Guardar como plantilla»)", () => {
   });
   it("sin programación, nada", () => {
     expect(templateScheduleNote(undefined)).toBeNull();
+  });
+});
+
+describe("guarda de la programación", () => {
+  it("sucio si cambia cualquier campo; aviso propio", () => {
+    const base = scheduleToForm(undefined);
+    expect(scheduleDirty(base, { ...base })).toBe(false);
+    expect(scheduleDirty({ ...base, cron: "0 5 * * *" }, base)).toBe(true);
+    expect(scheduleLeaveWarning(false)).toBeNull();
+    expect(scheduleLeaveWarning(true)?.title).toBe("Programación sin guardar");
   });
 });

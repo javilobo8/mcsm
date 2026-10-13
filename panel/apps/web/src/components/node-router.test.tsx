@@ -7,7 +7,7 @@ import { NodeRouterForm } from "./node-router";
 
 const node: NodeDto = {
   id: "n1", name: "nas", dataRoot: "/srv/minecraft", status: "online", agentVersion: "1", dockerVersion: "29",
-  hostInfo: null, lastSeenAt: null, createdAt: "2026-10-12T00:00:00.000Z",
+  hostInfo: null, lastSeenAt: null, createdAt: "2026-10-12T00:00:00.000Z", tokenRotationPending: false,
 };
 const router: RouterDto = {
   nodeId: "n1", spec: { enabled: true, port: 25565, autoscale: true, autoscaleDownAfterMinutes: 15, autoscaleAllowPlayers: ["amigo"] },

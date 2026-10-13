@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Realtime, type SocketLike } from "./ws";
+import { Realtime, settleSessionChange, topicOf, type SocketLike } from "./ws";
 
 class FakeSocket implements SocketLike {
   readyState = 0;
@@ -97,5 +97,84 @@ describe("Realtime", () => {
     sockets[0]!.drop(1006);
     await vi.advanceTimersByTimeAsync(1000);
     expect(sockets).toHaveLength(2);
+  });
+});
+
+describe("topicOf (Plan 9)", () => {
+  it("eventos al topic events y el estado del router al topic nodes", () => {
+    expect(topicOf({ type: "event", event: { id: "e", nodeId: null, serverId: null, serverName: null, level: "info", kind: "drift", message: "m", createdAt: "", agentAt: null } })).toBe("events");
+    expect(topicOf({ type: "router", nodeId: "n1", router: {} as never })).toBe("nodes");
+  });
+});
+
+describe("cambio de contraseña y 4401 del WS", () => {
+  it("decisión pura al terminar la mutación", () => {
+    expect(settleSessionChange(false, true)).toBe("reconnect");
+    expect(settleSessionChange(true, true)).toBe("reconnect");
+    expect(settleSessionChange(true, false)).toBe("lose");
+    expect(settleSessionChange(false, false)).toBe("none");
+  });
+
+  it("un 4401 durante el cambio no pierde la sesión; con éxito se reconecta con la cookie nueva", () => {
+    const { rt, sockets } = setup();
+    const lost = vi.fn(); rt.onAuthLost(lost);
+    const onRe = vi.fn(); rt.onReconnect(onRe);
+    rt.subscribe("servers", () => {});
+    sockets[0]!.open();
+    const settle = rt.expectSessionChange();
+    sockets[0]!.drop(4401);
+    vi.advanceTimersByTime(60000);
+    expect(lost).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
+    settle(true);
+    expect(lost).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(2);
+    sockets[1]!.open();
+    expect(sockets[1]!.sent).toEqual([{ type: "subscribe", topic: "servers" }]);
+    expect(onRe).toHaveBeenCalledTimes(1);
+  });
+
+  it("con éxito y sin 4401 aún, se renueva el socket y un 4401 tardío del viejo se ignora", () => {
+    const { rt, sockets } = setup();
+    const lost = vi.fn(); rt.onAuthLost(lost);
+    rt.subscribe("servers", () => {});
+    sockets[0]!.open();
+    const settle = rt.expectSessionChange();
+    settle(true);
+    expect(sockets).toHaveLength(2);
+    sockets[0]!.drop(4401);
+    sockets[1]!.open();
+    expect(lost).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(2);
+  });
+
+  it("si la mutación falla tras un 4401, se pierde la sesión; sin 4401 no pasa nada", () => {
+    const a = setup();
+    const lostA = vi.fn(); a.rt.onAuthLost(lostA);
+    a.rt.subscribe("servers", () => {});
+    a.sockets[0]!.open();
+    const settleA = a.rt.expectSessionChange();
+    a.sockets[0]!.drop(4401);
+    settleA(false);
+    expect(lostA).toHaveBeenCalledTimes(1);
+
+    const b = setup();
+    const lostB = vi.fn(); b.rt.onAuthLost(lostB);
+    b.rt.subscribe("servers", () => {});
+    b.sockets[0]!.open();
+    b.rt.expectSessionChange()(false);
+    expect(lostB).not.toHaveBeenCalled();
+    expect(b.sockets).toHaveLength(1);
+  });
+
+  it("fuera de un cambio de sesión, 4401 sigue perdiendo la sesión", () => {
+    const { rt, sockets } = setup();
+    const lost = vi.fn(); rt.onAuthLost(lost);
+    rt.subscribe("servers", () => {});
+    sockets[0]!.open();
+    const settle = rt.expectSessionChange();
+    settle(false);
+    sockets[0]!.drop(4401);
+    expect(lost).toHaveBeenCalledTimes(1);
   });
 });

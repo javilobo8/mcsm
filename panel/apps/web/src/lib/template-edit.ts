@@ -22,3 +22,6 @@ export function templateCreateBody(name: string, description: string, spec: Edit
 export function templatePatchBody(original: EditableSpec, edited: EditableSpec, name: string, description: string): { name: string; description: string; spec: SpecPatch } {
   return { name: name.trim(), description: description.trim(), spec: buildSpecPatch(original, edited, TEMPLATE_KEYS) };
 }
+
+/** PATCH que quita la programación de copias de una plantilla (los servidores nuevos dejan de heredarla). */
+export const REMOVE_SCHEDULE_PATCH = { spec: { backups: null } } as const;

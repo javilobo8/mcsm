@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBlocker } from "@tanstack/react-router";
 import type { BackupsConfig } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useTabGuard } from "@/components/guarded-tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api, apiPath, type ServerDto } from "@/lib/api";
-import { CRON_PRESETS, formToSchedule, presetFor, resyncSchedule, scheduleToForm, type ScheduleForm } from "@/lib/backups";
+import { CRON_PRESETS, formToSchedule, presetFor, resyncSchedule, scheduleDirty, scheduleLeaveWarning, scheduleToForm, type ScheduleForm } from "@/lib/backups";
 
 /** Programación y retención de copias: PATCH de `spec.backups` (no forma parte del formulario de configuración). */
 export function BackupScheduleForm({ server }: { server: ServerDto }) {
@@ -22,11 +25,21 @@ export function BackupScheduleForm({ server }: { server: ServerDto }) {
     setBase({ form: r.base, json: incomingJson });
   }
   const [localErr, setLocalErr] = useState<string | null>(null);
+
+  // ★ del Plan 4: cambios sin guardar protegidos como en Configuración y Archivos.
+  const leave = scheduleLeaveWarning(scheduleDirty(f, base.form));
+  const guarded = leave !== null;
+  const lastLeave = useRef(leave);
+  if (leave) lastLeave.current = leave;
+  const blocker = useBlocker({ shouldBlockFn: () => true, disabled: !guarded, enableBeforeUnload: () => guarded, withResolver: true });
+  useTabGuard(guarded, leave ?? undefined);
+
   const set = <K extends keyof ScheduleForm>(k: K, v: ScheduleForm[K]) => { if (save.isSuccess) save.reset(); setF((o) => ({ ...o, [k]: v })); };
   const save = useMutation({
     mutationFn: (cfg: BackupsConfig) => api.patch<ServerDto>(apiPath`/api/servers/${server.id}/backups/schedule`, cfg),
     onSuccess: (dto) => {
       qc.setQueryData(["server", server.id], dto);
+      const saved = scheduleToForm(dto.spec.backups); setF(saved); setBase({ form: saved, json: JSON.stringify(saved) });
       void qc.invalidateQueries({ queryKey: ["servers"] });
     },
   });
@@ -82,6 +95,8 @@ export function BackupScheduleForm({ server }: { server: ServerDto }) {
       {(localErr || save.error) && <p role="alert" className="text-sm text-red-400">{localErr ?? save.error?.message}</p>}
       {save.isSuccess && <p className="text-sm text-emerald-400">Programación guardada (spec v{save.data.specVersion}).</p>}
       <div><Button type="submit" disabled={save.isPending}>Guardar programación</Button></div>
+      <ConfirmDialog open={blocker.status === "blocked"} title={lastLeave.current?.title ?? "Salir"} description={lastLeave.current?.description ?? ""}
+        confirmLabel={lastLeave.current?.confirmLabel ?? "Salir"} cancelLabel="Quedarme" onConfirm={() => blocker.proceed?.()} onCancel={() => blocker.reset?.()} />
     </form>
   );
 }

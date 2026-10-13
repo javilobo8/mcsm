@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { afterEach, vi } from "vitest";
-import { breadcrumbs, canEdit, canStartSave, downloadBlocker, entryOpenKind, filesApi, isClean, isSaveShortcut, leaveWarning, progressPct, sortEntries, uploadClashes, uploadFile, validateNewName } from "./files";
+import { breadcrumbs, canEdit, canStartSave, downloadBlocker, entryOpenKind, filesApi, isClean, isSaveShortcut, leaveWarning, progressPct, sortEntries, uploadClashes, uploadCutMessage, uploadFile, validateNewName } from "./files";
 import { ApiError } from "./api";
 
 describe("breadcrumbs", () => {
@@ -175,4 +175,10 @@ describe("filesApi.stat", () => {
     await filesApi.stat("s1", "/mundo ñ.zip");
     expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe("/api/servers/s1/files/stat?path=%2Fmundo%20%C3%B1.zip");
   });
+});
+
+it("una subida grande cortada explica las causas probables", () => {
+  expect(uploadCutMessage(1024)).toBe("Error de red: la subida se cortó");
+  expect(uploadCutMessage(9 * 1024 * 1024)).toMatch(/copia, restauración o migración/);
+  expect(uploadCutMessage(9 * 1024 * 1024)).toMatch(/UPLOAD_MAX_BYTES/);
 });

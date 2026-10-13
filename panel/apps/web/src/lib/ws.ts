@@ -5,13 +5,25 @@ type Handler = (msg: ServerMessage) => void;
 /** Cierre por falta de sesión (política/no autorizado) */
 const AUTH_CLOSE_CODES = new Set([1008, 4401]);
 
+/**
+ * Qué hacer al terminar una mutación que cambia la sesión (cambio de contraseña): el servidor cierra con
+ * 4401 los WS de las sesiones revocadas, también el de quien la cambia, y le emite una cookie nueva.
+ * Éxito: se reconecta con la cookie nueva. Fallo tras haber visto un 4401: la sesión se da por perdida.
+ */
+export function settleSessionChange(sawAuthClose: boolean, ok: boolean): "reconnect" | "lose" | "none" {
+  if (ok) return "reconnect";
+  return sawAuthClose ? "lose" : "none";
+}
+
 // Topics del panel: "servers", "nodes", "jobs" y "server:<id>:logs".
 export function topicOf(msg: ServerMessage): string | null {
   switch (msg.type) {
     case "job":
     case "backups": return "jobs"; // plan-4
     case "node":
-    case "node_metrics": return "nodes";
+    case "node_metrics":
+    case "router": return "nodes"; // plan-8: faltaba; el estado del router no llegaba en vivo
+    case "event": return "events"; // plan-9
     case "observed": return "servers";
     case "log":
     case "log_reset":
@@ -49,6 +61,9 @@ export class Realtime {
   private connecting = false;
   private everOpened = false;
   private authLost = false;
+  private current: SocketLike | null = null;
+  private expecting = false;
+  private sawAuthClose = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private deps: RealtimeDeps) {}
@@ -61,6 +76,7 @@ export class Realtime {
     if (this.ws || this.connecting || this.authLost || this.handlers.size === 0) return;
     this.connecting = true;
     const ws = this.deps.createSocket();
+    this.current = ws;
     let opened = false;
     ws.onopen = () => {
       opened = true;
@@ -80,13 +96,13 @@ export class Realtime {
       for (const h of [...(this.handlers.get(topic) ?? [])]) this.safe(() => h(m));
     };
     ws.onclose = (ev) => {
-      this.ws = null; this.connecting = false;
-      if (AUTH_CLOSE_CODES.has(ev.code ?? 0)) return this.loseAuth();
+      this.ws = null; this.connecting = false; this.current = null;
+      if (AUTH_CLOSE_CODES.has(ev.code ?? 0)) return this.authFailed();
       if (this.handlers.size === 0) return;
       if (!opened) {
         // El upgrade pudo fallar por 401: lo confirmamos antes de reintentar.
         void this.deps.checkAuthenticated().then(
-          (ok) => (ok ? this.scheduleRetry() : this.loseAuth()),
+          (ok) => (ok ? this.scheduleRetry() : this.authFailed()),
           () => this.scheduleRetry(),
         );
         return;
@@ -105,6 +121,33 @@ export class Realtime {
     const delay = this.retry * (0.5 + this.deps.random() * 0.5);
     this.retry = Math.min(this.retry * 2, 15000);
     this.timer = setTimeout(() => { this.timer = null; this.ensure(); }, delay);
+  }
+
+  /** Sesión rechazada: mientras se cambia a propósito (contraseña) solo se anota; lo decide `expectSessionChange`. */
+  private authFailed() {
+    if (this.expecting) { this.sawAuthClose = true; return; }
+    this.loseAuth();
+  }
+
+  /**
+   * Avisa de que la mutación en curso cambia la sesión (cambio de contraseña): un 4401 del WS no cuenta como
+   * sesión perdida. Devuelve la función a llamar al terminar con `true` (éxito) o `false` (fallo).
+   */
+  expectSessionChange(): (ok: boolean) => void {
+    this.expecting = true; this.sawAuthClose = false;
+    return (ok) => {
+      const action = settleSessionChange(this.sawAuthClose, ok);
+      this.expecting = false; this.sawAuthClose = false;
+      if (action === "lose") return this.loseAuth();
+      if (action !== "reconnect" || this.authLost) return;
+      // La cookie nueva ya está puesta: se abre un socket nuevo y el viejo (si sigue) se descarta sin escuchar su cierre.
+      const old = this.current;
+      if (old) { old.onopen = old.onmessage = old.onclose = old.onerror = null; old.close(); }
+      this.ws = null; this.current = null; this.connecting = false;
+      if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+      this.retry = 1000;
+      this.ensure();
+    };
   }
 
   private loseAuth() {

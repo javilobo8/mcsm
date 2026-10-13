@@ -13,8 +13,8 @@ const server = {
   spec: { imageTag: "java21", type: "PAPER", version: "1.21.4", memory: "2G", ports: { game: 25565, extra: [] } },
 } as unknown as ServerDto;
 const nodes: NodeDto[] = [
-  { id: "a", name: "Casa", dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "" },
-  { id: "b", name: "Garaje", dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "" },
+  { id: "a", name: "Casa", dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "", tokenRotationPending: false },
+  { id: "b", name: "Garaje", dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "", tokenRotationPending: false },
 ];
 const job = (over: Partial<JobDto>): JobDto => ({
   id: "j1", type: "migrate", serverId: "s1", nodeId: "a", status: "running", progress: 40, message: "Paso 3/7 · Subir la copia al panel: subiendo",

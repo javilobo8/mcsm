@@ -8,7 +8,7 @@ import {
 } from "./migration";
 
 const node = (id: string, name: string, status: "online" | "offline" = "online"): NodeDto => ({
-  id, name, dataRoot: "/srv/minecraft", status, agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "",
+  id, name, dataRoot: "/srv/minecraft", status, agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "", tokenRotationPending: false,
 });
 const job = (over: Partial<JobDto>): JobDto => ({
   id: "j", type: "migrate", serverId: "s1", nodeId: "n1", status: "running", progress: 0, message: "", payload: {},
