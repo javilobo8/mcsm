@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/store"
@@ -63,49 +61,32 @@ func TestRotateTokenRejectsBadTokensAndMissingCredentials(t *testing.T) {
 }
 
 // Dos RotateToken a la vez (el cliente despacha cada mensaje en su goroutine) se atienden de uno en uno: si no, el
-// store podría quedarse con un token y el cliente con el otro.
+// store podría quedarse con un token y el cliente con el otro. El handler tiene rotateMu tomado desde que guarda
+// hasta que reconecta: en cada paso, nadie más puede tomarlo (TryLock falla), sin plazos.
 func TestRotateTokenIsSerialized(t *testing.T) {
 	a, _, st := newApp(t)
 	if err := st.SaveCredentials(store.Credentials{NodeID: "n1", Token: "viejo"}); err != nil {
 		t.Fatal(err)
 	}
-	tokA, tokB := strings.Repeat("A", 43), strings.Repeat("B", 43)
-	firstIn := make(chan struct{})
-	secondAcked := make(chan struct{})
-	var mu sync.Mutex
-	var client string
-	a.setToken = func(v string) {
-		if v == tokA {
-			close(firstIn)
-			// Sin serializar, la segunda rotación termina entera mientras la primera está aquí. Con ella no
-			// puede: el plazo solo da tiempo a que se cuele si el código lo permite (nunca falla en falso).
-			select {
-			case <-secondAcked:
-				t.Error("la segunda rotación terminó en medio de la primera")
-			case <-time.After(100 * time.Millisecond):
-			}
+	held := func(step string) {
+		if a.rotateMu.TryLock() {
+			a.rotateMu.Unlock()
+			t.Errorf("%s: otra rotación podría colarse aquí", step)
 		}
-		mu.Lock()
-		client = v
-		mu.Unlock()
 	}
-	done := make(chan struct{})
-	go func() {
-		rotate(a, tokA, func(*mcsmv1.Envelope) error { return nil })
-		close(done)
-	}()
-	<-firstIn
-	rotate(a, tokB, func(e *mcsmv1.Envelope) error {
-		if e.GetAck() != nil {
-			close(secondAcked)
-		}
+	var steps []string
+	a.setToken = func(string) { held("setToken"); steps = append(steps, "setToken") }
+	a.reconnect = func() { held("reconnect"); steps = append(steps, "reconnect") }
+	rotate(a, strings.Repeat("A", 43), func(e *mcsmv1.Envelope) error {
+		held("ack")
+		steps = append(steps, "ack")
 		return nil
 	})
-	<-done
-	creds, _ := st.Credentials()
-	mu.Lock()
-	defer mu.Unlock()
-	if creds.Token != client {
-		t.Fatalf("store=%s… cliente=%s…: desincronizados", creds.Token[:1], client[:1])
+	if !slices.Equal(steps, []string{"setToken", "ack", "reconnect"}) {
+		t.Fatalf("pasos = %v", steps)
 	}
+	if !a.rotateMu.TryLock() {
+		t.Fatal("al terminar, el lock queda libre")
+	}
+	a.rotateMu.Unlock()
 }
