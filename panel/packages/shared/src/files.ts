@@ -1,24 +1,24 @@
 import { z } from "zod";
 
-/** Límite de lectura/escritura inline (spec §6.6); lo más grande va por transferencia. */
+/** Inline read/write limit (spec §6.6); anything larger goes through a transfer. */
 export const INLINE_MAX_BYTES = 2 * 1024 * 1024;
 
-/** Entrada de un listado de archivos tal y como la sirve la API. */
+/** Entry of a file listing as served by the API. */
 export interface FileEntryDto {
   name: string;
   dir: boolean;
   symlink: boolean;
   size: number;
-  /** epoch en milisegundos */
+  /** epoch in milliseconds */
   modifiedAt: number;
-  /** bits de permisos (0o644…) */
+  /** permission bits (0o644…) */
   mode: number;
 }
 
 const CONTROL = /[\u0000-\u001f\u007f]/;
-/** Igual que `files.Clean` del agente: 4096 bytes UTF-8, no unidades UTF-16. */
+/** Same as the agent's `files.Clean`: 4096 UTF-8 bytes, not UTF-16 units. */
 const MAX_PATH_BYTES = 4096;
-/** NAME_MAX de Linux: 255 bytes UTF-8. */
+/** Linux NAME_MAX: 255 UTF-8 bytes. */
 const MAX_NAME_BYTES = 255;
 const encoder = new TextEncoder();
 
@@ -26,17 +26,17 @@ function byteLength(s: string): number {
   return encoder.encode(s).length;
 }
 
-/** Motivo por el que una ruta es insegura, o null si es válida. */
+/** Reason a path is unsafe, or null if valid. */
 function pathProblem(p: string): string | null {
-  if (byteLength(p) > MAX_PATH_BYTES) return "Ruta demasiado larga (máx. 4096 bytes)";
-  if (CONTROL.test(p)) return "Ruta inválida: no se permiten caracteres de control";
-  if (p.split("/").includes("..")) return "Ruta inválida: no se permite «..»";
+  if (byteLength(p) > MAX_PATH_BYTES) return "Path too long (max. 4096 bytes)";
+  if (CONTROL.test(p)) return "Invalid path: control characters are not allowed";
+  if (p.split("/").includes("..")) return "Invalid path: “..” is not allowed";
   return null;
 }
 
 /**
- * Normaliza una ruta dentro de /data del servidor ("mods//a.jar/" → "/mods/a.jar", "" → "/").
- * Devuelve null si es insegura: ".." o caracteres de control se rechazan, nunca se arreglan.
+ * Normalizes a path inside the server's /data ("mods//a.jar/" → "/mods/a.jar", "" → "/").
+ * Returns null if unsafe: ".." or control characters are rejected, never fixed.
  */
 export function normalizePath(p: string): string | null {
   if (pathProblem(p) !== null) return null;
@@ -48,9 +48,9 @@ export function normalizePath(p: string): string | null {
   return "/" + parts.join("/");
 }
 
-/** Ruta de archivo validada y normalizada (empieza por "/"). */
+/** Validated and normalized file path (starts with "/"). */
 export const filePathSchema = z
-  .string({ error: "Falta la ruta" })
+  .string({ error: "Missing path" })
   .transform((p, ctx) => {
     const problem = pathProblem(p);
     if (problem !== null) {
@@ -60,17 +60,17 @@ export const filePathSchema = z
     return normalizePath(p) as string;
   });
 
-/** Nombre de un fichero o carpeta nuevo (crear carpeta, renombrar). */
+/** Name of a new file or folder (create folder, rename). */
 export const fileNameSchema = z
   .string()
   .trim()
-  .min(1, "El nombre no puede estar vacío")
-  .refine((n) => byteLength(n) <= MAX_NAME_BYTES, "Nombre demasiado largo (máx. 255 bytes)")
-  .refine((n) => n !== "." && n !== ".." && !n.includes("/") && !CONTROL.test(n), "Nombre inválido: sin «/», «..» ni caracteres de control");
+  .min(1, "The name cannot be empty")
+  .refine((n) => byteLength(n) <= MAX_NAME_BYTES, "Name too long (max. 255 bytes)")
+  .refine((n) => n !== "." && n !== ".." && !n.includes("/") && !CONTROL.test(n), "Invalid name: no “/”, “..” or control characters");
 
 /**
- * joinPath, parentPath y baseName esperan rutas ya normalizadas (`normalizePath` / `filePathSchema`):
- * empiezan por "/", sin "/" final ni segmentos vacíos. Con otra entrada el resultado no es fiable.
+ * joinPath, parentPath and baseName expect already normalized paths (`normalizePath` / `filePathSchema`):
+ * they start with "/", with no trailing "/" or empty segments. With other input the result is unreliable.
  */
 export function joinPath(dir: string, name: string): string {
   return dir === "/" ? `/${name}` : `${dir}/${name}`;
@@ -95,7 +95,7 @@ const LANGUAGES: Record<string, EditorLanguage> = {
   txt: "text", cfg: "text", conf: "text", log: "text", md: "text",
 };
 
-/** Lenguaje del editor según la extensión; null si el fichero no se abre en el editor. */
+/** Editor language by extension; null if the file does not open in the editor. */
 export function editorLanguage(name: string): EditorLanguage | null {
   const i = name.lastIndexOf(".");
   if (i < 0) return null;

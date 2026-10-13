@@ -4,8 +4,8 @@ import {
   type MigrationStep,
 } from "./migration.js";
 
-describe("migración", () => {
-  it("la petición: nodo obligatorio, puerto opcional y válido, «borrar origen» por defecto desactivado", () => {
+describe("migration", () => {
+  it("the request: node required, port optional and valid, “delete source” disabled by default", () => {
     expect(migrationRequestSchema.parse({ targetNodeId: "n" })).toEqual({ targetNodeId: "n", deleteSource: false });
     expect(migrationRequestSchema.parse({ targetNodeId: "n", port: 25570, deleteSource: true })).toEqual({ targetNodeId: "n", port: 25570, deleteSource: true });
     expect(migrationRequestSchema.safeParse({ targetNodeId: "" }).success).toBe(false);
@@ -19,7 +19,7 @@ describe("migración", () => {
     expect([...OPEN_PHASES].sort()).toEqual(["committed", "rolling_back", "running"]);
   });
 
-  it("7 pasos con tramos de progreso contiguos de 0 a 100", () => {
+  it("7 steps with contiguous progress ranges from 0 to 100", () => {
     expect(MIGRATION_STEPS).toHaveLength(7);
     expect(MIGRATION_PROGRESS).toHaveLength(7);
     expect(MIGRATION_PROGRESS[0]![0]).toBe(0);
@@ -27,7 +27,7 @@ describe("migración", () => {
     for (let i = 1; i < 7; i++) expect(MIGRATION_PROGRESS[i]![0]).toBe(MIGRATION_PROGRESS[i - 1]![1]);
   });
 
-  it("stepProgress se queda dentro del tramo de su paso y stepOfProgress lo recupera", () => {
+  it("stepProgress stays within its step's range and stepOfProgress recovers it", () => {
     for (let s = 1; s <= 7; s++) {
       const step = s as MigrationStep;
       for (const f of [0, 0.5, 0.99, 1, 7, -3, Number.NaN]) expect(stepOfProgress(stepProgress(step, f))).toBe(step);
@@ -40,20 +40,20 @@ describe("migración", () => {
   });
 
   it("stepMessage", () => {
-    expect(stepMessage(3, "subiendo")).toBe("Paso 3/7 · Subir la copia al panel: subiendo");
-    expect(stepMessage(1)).toBe("Paso 1/7 · Parar el servidor en el origen");
+    expect(stepMessage(3, "uploading")).toBe("Step 3/7 · Upload the backup to the panel: uploading");
+    expect(stepMessage(1)).toBe("Step 1/7 · Stop the server on the source");
   });
 
-  it("migrationLeftovers: lo que queda sin hacer al cerrar a mano", () => {
+  it("migrationLeftovers: what is left undone when closing by hand", () => {
     const names = (id: string) => ({ a: "Casa", b: "Garaje" })[id] ?? "?";
     const base = { sourceNodeId: "a", targetNodeId: "b", sourceSlug: "uno", targetSlug: "uno-2", sourcePending: false, targetPending: false, targetConfirmPending: false };
     expect(migrationLeftovers({ ...base, phase: "rolling_back", targetPending: true, sourcePending: true }, names)).toEqual([
-      expect.stringMatching(/«Garaje».*uno-2/),
-      expect.stringMatching(/no se vuelve a arrancar en «Casa»/),
+      expect.stringMatching(/“Garaje”.*uno-2/),
+      expect.stringMatching(/is not started again on “Casa”/),
     ]);
     expect(migrationLeftovers({ ...base, phase: "committed", sourcePending: true, targetConfirmPending: true }, names)).toEqual([
-      expect.stringMatching(/no se retira de «Casa».*uno sigue/),
-      expect.stringMatching(/no se confirma en «Garaje»/),
+      expect.stringMatching(/is not removed from “Casa”.*uno is still/),
+      expect.stringMatching(/is not confirmed on “Garaje”/),
     ]);
     expect(migrationLeftovers({ ...base, phase: "done" }, names)).toEqual([]);
   });

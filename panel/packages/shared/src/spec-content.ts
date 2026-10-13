@@ -2,48 +2,48 @@ import { z } from "zod";
 import { LIST_MAX_MESSAGE, MAX_LIST_ITEMS } from "./spec-limits.js";
 
 /**
- * Secciones de contenido de la spec (§4.1): modpack, mods, plugins, whitelist y ops.
- * Espejo exacto de agent/internal/spec/content.go; los casos de
- * proto/fixtures/spec-content-cases.json se prueban en los dos lados.
- * Ausente no es vacío: `ops` y `whitelist` son opcionales sin default, y un `[]`
- * explícito se conserva (sincroniza el fichero en el agente).
+ * Content sections of the spec (§4.1): modpack, mods, plugins, whitelist and ops.
+ * Exact mirror of agent/internal/spec/content.go; the cases in
+ * proto/fixtures/spec-content-cases.json are tested on both sides.
+ * Absent is not empty: `ops` and `whitelist` are optional with no default, and an explicit
+ * `[]` is kept (it syncs the file on the agent).
  */
 
 export const MODPACK_PLATFORMS = ["MODRINTH", "AUTO_CURSEFORGE", "FTBA"] as const;
 export type ModpackPlatform = (typeof MODPACK_PLATFORMS)[number];
 export const MODRINTH_LOADERS = ["", "fabric", "forge", "quilt", "neoforge"] as const;
 
-// ASCII imprimible sin espacios ni comas. No usar \s: en JS incluye espacios Unicode y en Go no.
+// Printable ASCII without spaces or commas. Do not use \s: in JS it includes Unicode spaces and in Go it does not.
 export const ENTRY_RE = /^[!-+\--~]{1,300}$/;
 export const URL_RE = /^https?:\/\/[!-+\--~]{1,1000}$/;
 export const DIGITS_RE = /^[0-9]{1,12}$/;
 export const PLAYER_RE = /^([A-Za-z0-9_]{1,16}|[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12})$/;
-/** API key de CurseForge ($2a$10$… de bcrypt): ASCII imprimible sin espacios, 1-200. Misma regex que cfAPIKeyRe (Go). */
+/** CurseForge API key ($2a$10$… from bcrypt): printable ASCII without spaces, 1-200. Same regex as cfAPIKeyRe (Go). */
 export const CURSEFORGE_API_KEY_RE = /^[\x21-\x7E]{1,200}$/;
 
-const entry = z.string().regex(ENTRY_RE, "Entrada inválida: sin espacios ni comas (máx. 300 caracteres)");
-const url = z.string().regex(URL_RE, "URL inválida: debe empezar por http:// o https:// y no tener espacios ni comas");
-const spigetId = z.string().regex(DIGITS_RE, "Los recursos de Spiget son ids numéricos");
-const player = z.string().regex(PLAYER_RE, "Jugador inválido: nombre de Java (1-16 letras, números o _) o UUID");
-/** Lista de la spec: como mucho MAX_LIST_ITEMS elementos (mismo tope en el agente). */
+const entry = z.string().regex(ENTRY_RE, "Invalid entry: no spaces or commas (max. 300 characters)");
+const url = z.string().regex(URL_RE, "Invalid URL: must start with http:// or https:// and contain no spaces or commas");
+const spigetId = z.string().regex(DIGITS_RE, "Spiget resources are numeric ids");
+const player = z.string().regex(PLAYER_RE, "Invalid player: Java name (1-16 letters, numbers or _) or UUID");
+/** Spec list: at most MAX_LIST_ITEMS elements (same cap on the agent). */
 const list = <T extends z.ZodType>(item: T) => z.array(item).max(MAX_LIST_ITEMS, LIST_MAX_MESSAGE);
 
 export const modpackSchema = z
   .object({
-    platform: z.enum(MODPACK_PLATFORMS, "Plataforma de modpack inválida (MODRINTH, AUTO_CURSEFORGE o FTBA)"),
-    slugOrUrl: z.string().regex(ENTRY_RE, "Indica el modpack (slug, id o URL) sin espacios ni comas"),
+    platform: z.enum(MODPACK_PLATFORMS, "Invalid modpack platform (MODRINTH, AUTO_CURSEFORGE or FTBA)"),
+    slugOrUrl: z.string().regex(ENTRY_RE, "Specify the modpack (slug, id or URL) without spaces or commas"),
     versionId: z.union([z.literal(""), entry]).default(""),
-    loader: z.enum(MODRINTH_LOADERS, "Loader inválido (fabric, forge, quilt o neoforge)").default(""),
+    loader: z.enum(MODRINTH_LOADERS, "Invalid loader (fabric, forge, quilt or neoforge)").default(""),
   })
   .superRefine((mp, ctx) => {
     if (mp.platform !== "MODRINTH" && mp.loader !== "") {
-      ctx.addIssue({ code: "custom", path: ["loader"], message: "El loader solo se elige en modpacks de Modrinth" });
+      ctx.addIssue({ code: "custom", path: ["loader"], message: "The loader can only be chosen on Modrinth modpacks" });
     }
     if (mp.platform === "AUTO_CURSEFORGE" && mp.versionId !== "" && !DIGITS_RE.test(mp.versionId)) {
-      ctx.addIssue({ code: "custom", path: ["versionId"], message: "En CurseForge la versión es el id numérico del fichero" });
+      ctx.addIssue({ code: "custom", path: ["versionId"], message: "On CurseForge the version is the file's numeric id" });
     }
     if (mp.platform === "FTBA" && (!DIGITS_RE.test(mp.slugOrUrl) || (mp.versionId !== "" && !DIGITS_RE.test(mp.versionId)))) {
-      ctx.addIssue({ code: "custom", path: ["slugOrUrl"], message: "Los modpacks de FTB se indican con su id numérico (y versión numérica)" });
+      ctx.addIssue({ code: "custom", path: ["slugOrUrl"], message: "FTB modpacks are specified by their numeric id (and numeric version)" });
     }
   });
 
@@ -64,7 +64,7 @@ export const whitelistSchema = z.object({
   players: list(player).default([]),
 });
 
-/** Campos que se añaden a la spec (todos opcionales: sin ellos la spec es la del Plan 1). */
+/** Fields added to the spec (all optional: without them the spec is the Plan 1 one). */
 export const contentFields = {
   modpack: modpackSchema.optional(),
   mods: modsSchema.optional(),
@@ -76,25 +76,25 @@ export const contentFields = {
 const WHITELIST_PROPS = ["white-list", "enforce-whitelist"];
 
 /**
- * Variables que generan las secciones de Jugadores. Con la sección presente, el env libre (que gana
- * sobre lo generado) no puede fijarlas: revocar un op o un jugador no tendría efecto y la UI diría lo
- * contrario. EXISTING_*_FILE sí se admite (MERGE es una elección consciente). Espejo de opsEnv /
- * whitelistEnv en el agente, con los mismos mensajes.
+ * Variables generated by the Players sections. With the section present, the free env (which wins
+ * over what is generated) cannot set them: revoking an op or a player would have no effect and the UI would say the
+ * opposite. EXISTING_*_FILE is allowed (MERGE is a conscious choice). Mirror of opsEnv /
+ * whitelistEnv on the agent, with the same messages.
  */
 const SECTION_ENV = [
-  { section: "ops", keys: ["OPS", "OPS_FILE"], what: "los operadores se gestionan" },
-  { section: "whitelist", keys: ["WHITELIST", "WHITELIST_FILE", "ENABLE_WHITELIST"], what: "la whitelist se gestiona" },
+  { section: "ops", keys: ["OPS", "OPS_FILE"], what: "operators are managed" },
+  { section: "whitelist", keys: ["WHITELIST", "WHITELIST_FILE", "ENABLE_WHITELIST"], what: "the whitelist is managed" },
 ] as const;
 
 export interface EnvSectionConflict { key: string; section: "ops" | "whitelist"; message: string }
 
-/** Variables del env libre que pisarían una sección de Jugadores presente (vacío si no hay ninguna). */
+/** Free-env variables that would override a present Players section (empty if none). */
 export function envSectionConflicts(s: { env: Record<string, string>; ops?: unknown; whitelist?: unknown }): EnvSectionConflict[] {
   const out: EnvSectionConflict[] = [];
   for (const { section, keys, what } of SECTION_ENV) {
     if (s[section] === undefined) continue;
     for (const key of keys) {
-      if (Object.hasOwn(s.env, key)) out.push({ key, section, message: `Quita la variable ${key} de las variables de entorno (Avanzado): ${what} en la sección Jugadores` });
+      if (Object.hasOwn(s.env, key)) out.push({ key, section, message: `Remove the ${key} variable from the environment variables (Advanced): ${what} in the Players section` });
     }
   }
   return out;
@@ -110,26 +110,26 @@ type ContentShape = {
 };
 
 /**
- * level-name es la carpeta del mundo dentro de /data: sin separadores ni "..". Hoy solo afecta al
- * contenedor, pero un plan que construya rutas del host con ella no debe poder salirse. Mismo mensaje
- * que el agente (validLevelName).
+ * level-name is the world folder inside /data: no separators or "..". Today it only affects the
+ * container, but a plan that builds host paths with it must not be able to escape. Same message
+ * as the agent (validLevelName).
  */
-export const LEVEL_NAME_MESSAGE = "La propiedad level-name es la carpeta del mundo: no puede contener «/», «\\» ni «..»";
+export const LEVEL_NAME_MESSAGE = "The level-name property is the world folder: it cannot contain “/”, “\\” or “..”";
 export const validLevelName = (v: string) => !/[/\\]/.test(v) && !v.includes("..");
 
-/** Validación cruzada (tipo ↔ modpack, whitelist ↔ properties, env ↔ Jugadores, level-name). */
+/** Cross validation (type ↔ modpack, whitelist ↔ properties, env ↔ Players, level-name). */
 export function contentCheck(s: ContentShape, ctx: z.RefinementCtx) {
   const typeIsPlatform = (MODPACK_PLATFORMS as readonly string[]).includes(s.type);
   if (s.modpack && s.type !== s.modpack.platform) {
-    ctx.addIssue({ code: "custom", path: ["type"], message: `Un modpack de ${s.modpack.platform} requiere el tipo ${s.modpack.platform}` });
+    ctx.addIssue({ code: "custom", path: ["type"], message: `A ${s.modpack.platform} modpack requires the ${s.modpack.platform} type` });
   }
   if (!s.modpack && typeIsPlatform) {
-    ctx.addIssue({ code: "custom", path: ["modpack"], message: `El tipo ${s.type} requiere indicar el modpack` });
+    ctx.addIssue({ code: "custom", path: ["modpack"], message: `The ${s.type} type requires specifying the modpack` });
   }
   if (s.whitelist) {
     for (const k of WHITELIST_PROPS) {
       if (k in s.properties) {
-        ctx.addIssue({ code: "custom", path: ["properties", k], message: `La propiedad ${k} se gestiona desde la sección Jugadores (whitelist)` });
+        ctx.addIssue({ code: "custom", path: ["properties", k], message: `The ${k} property is managed from the Players section (whitelist)` });
       }
     }
   }
@@ -138,7 +138,7 @@ export function contentCheck(s: ContentShape, ctx: z.RefinementCtx) {
   if (level !== undefined && !validLevelName(level)) ctx.addIssue({ code: "custom", path: ["properties", "level-name"], message: LEVEL_NAME_MESSAGE });
 }
 
-/** ¿La spec descarga algo de CurseForge? Solo entonces el panel le envía CF_API_KEY. */
+/** Does the spec download anything from CurseForge? Only then does the panel send it CF_API_KEY. */
 export function usesCurseForge(s: { modpack?: { platform: string } | undefined; mods?: { curseforgeFiles: string[] } | undefined }): boolean {
   return s.modpack?.platform === "AUTO_CURSEFORGE" || (s.mods?.curseforgeFiles.length ?? 0) > 0;
 }

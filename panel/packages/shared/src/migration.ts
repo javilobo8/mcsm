@@ -1,98 +1,98 @@
 import { z } from "zod";
 
-/** Cuerpo de POST /api/servers/:id/migration. */
+/** Body of POST /api/servers/:id/migration. */
 export const migrationRequestSchema = z.object({
-  targetNodeId: z.string().min(1, "Elige el nodo destino"),
-  /** Puerto de juego en el destino. Sin él, el panel propone uno: el actual si está libre allí. */
+  targetNodeId: z.string().min(1, "Choose the target node"),
+  /** Game port on the target. Without it, the panel proposes one: the current one if free there. */
   port: z.number().int().min(1).max(65535).optional(),
-  /** Al terminar, borrar <DATA_ROOT>/<slug> del origen. Si no, se conserva como <DATA_ROOT>/<slug>.migrated-<ts>. */
+  /** When finished, delete <DATA_ROOT>/<slug> from the source. Otherwise it is kept as <DATA_ROOT>/<slug>.migrated-<ts>. */
   deleteSource: z.boolean().default(false),
 });
 export type MigrationRequest = z.infer<typeof migrationRequestSchema>;
 export type MigrationRequestInput = z.input<typeof migrationRequestSchema>;
 
-/** Query de GET /api/servers/:id/migration/proposal. */
+/** Query of GET /api/servers/:id/migration/proposal. */
 export const migrationProposalQuerySchema = z.object({
-  targetNodeId: z.string().min(1, "Elige el nodo destino"),
+  targetNodeId: z.string().min(1, "Choose the target node"),
   port: z.coerce.number().int().min(1).max(65535).optional(),
 });
 
 /**
- * running: pasos en curso. rolling_back: falló y queda algo por deshacer (destino o arrancar el origen).
- * committed: el servidor ya está en el destino y falta retirar el origen. done y failed: cerradas.
+ * running: steps in progress. rolling_back: failed and something remains to undo (target or starting the source).
+ * committed: the server is already on the target and the source still has to be removed. done and failed: closed.
  */
 export type MigrationPhase = "running" | "rolling_back" | "committed" | "done" | "failed";
-/** Fases con trabajo pendiente: el servidor tiene una migración abierta. */
+/** Phases with pending work: the server has an open migration. */
 export const OPEN_PHASES: ReadonlySet<MigrationPhase> = new Set<MigrationPhase>(["running", "rolling_back", "committed"]);
 
 export interface MigrationDto {
   id: string; serverId: string; sourceNodeId: string; targetNodeId: string; sourceSlug: string; targetSlug: string;
   targetPort: number; targetVersion: number; wasRunning: boolean; deleteSource: boolean; phase: MigrationPhase;
-  /** rolling_back: falta arrancar el origen. committed: falta retirarlo. */
+  /** rolling_back: the source still has to be started. committed: it still has to be removed. */
   sourcePending: boolean;
-  /** rolling_back: falta borrar lo que la migración dejó en el destino. */
+  /** rolling_back: what the migration left on the target still has to be deleted. */
   targetPending: boolean;
-  /** El destino recibió la orden de arrancar: el origen no arranca hasta limpiar el destino. */
+  /** The target received the start command: the source does not start until the target is cleaned. */
   targetStarted: boolean;
-  /** committed: falta confirmar la migración en el destino (MigrateConfirm). */
+  /** committed: the migration still has to be confirmed on the target (MigrateConfirm). */
   targetConfirmPending: boolean;
-  /** Por qué falló el paso. */
+  /** Why the step failed. */
   error: string | null;
-  /** Último fallo de lo pendiente (deshacer, confirmar, retirar) o por qué se dejó de reintentar. */
+  /** Last failure of what is pending (undo, confirm, remove) or why retrying stopped. */
   pendingError: string | null;
   createdAt: string; updatedAt: string;
 }
 
 export interface MigrationProposalDto { targetNodeId: string; slug: string; port: number; currentPort: number; portChanged: boolean }
 
-/** Los 7 pasos visibles del job de migración (spec §7), en orden. */
+/** The 7 visible steps of the migration job (spec §7), in order. */
 export const MIGRATION_STEPS = [
-  "Parar el servidor en el origen",
-  "Copia de seguridad previa (antes de migrar)",
-  "Subir la copia al panel",
-  "Enviar la copia al destino y restaurarla",
-  "Crear el servidor en el destino",
-  "Arrancar y comprobar en el destino",
-  "Confirmar y retirar el origen",
+  "Stop the server on the source",
+  "Pre-migration backup (before migrating)",
+  "Upload the backup to the panel",
+  "Send the backup to the target and restore it",
+  "Create the server on the target",
+  "Start and check on the target",
+  "Confirm and remove the source",
 ] as const;
 export type MigrationStep = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-/** Tramo de progreso [desde, hasta) de cada paso: el job avanza dentro del tramo de su paso. */
+/** Progress range [from, to) of each step: the job advances within its step's range. */
 export const MIGRATION_PROGRESS: readonly (readonly [number, number])[] = [[0, 5], [5, 30], [30, 50], [50, 80], [80, 83], [83, 95], [95, 100]];
 
-/** Progreso del job con el paso `step` hecho en `fraction` (0-1). Entero y siempre por debajo del paso siguiente. */
+/** Job progress with step `step` done to `fraction` (0-1). Integer and always below the next step. */
 export function stepProgress(step: MigrationStep, fraction = 0): number {
   const [from, to] = MIGRATION_PROGRESS[step - 1]!;
   const f = Number.isFinite(fraction) ? Math.max(0, Math.min(1, fraction)) : 0;
   return Math.min(to - 1, Math.floor(from + (to - from) * f));
 }
 
-/** Paso en el que está un job de migración según su progreso. */
+/** Step a migration job is in according to its progress. */
 export function stepOfProgress(progress: number): MigrationStep {
   let step = 1;
   for (let i = 0; i < MIGRATION_PROGRESS.length; i++) if (progress >= MIGRATION_PROGRESS[i]![0]) step = i + 1;
   return step as MigrationStep;
 }
 
-/** Mensaje del job: «Paso 3/7 · Subir la copia al panel: detalle». */
+/** Job message: “Step 3/7 · Upload the backup to the panel: detail”. */
 export function stepMessage(step: MigrationStep, detail = ""): string {
-  return `Paso ${step}/7 · ${MIGRATION_STEPS[step - 1]}${detail ? `: ${detail}` : ""}`;
+  return `Step ${step}/7 · ${MIGRATION_STEPS[step - 1]}${detail ? `: ${detail}` : ""}`;
 }
 
 /**
- * Lo que dejaría sin hacer cerrar a mano una migración abierta (rolling_back o committed): una frase por pendiente,
- * para el diálogo de confirmación y la nota que queda en la migración. Vacío si no queda nada.
+ * What closing an open migration by hand (rolling_back or committed) would leave undone: one sentence per pending item,
+ * for the confirmation dialog and the note left on the migration. Empty if nothing remains.
  */
 export function migrationLeftovers(m: Pick<MigrationDto, "phase" | "sourceNodeId" | "targetNodeId" | "sourceSlug" | "targetSlug" | "sourcePending" | "targetPending" | "targetConfirmPending">, nodeName: (id: string) => string): string[] {
   const src = nodeName(m.sourceNodeId);
   const dst = nodeName(m.targetNodeId);
   const out: string[] = [];
   if (m.phase === "rolling_back") {
-    if (m.targetPending) out.push(`la copia a medias de «${dst}» no se borra: si llegó a crearse, borra a mano ${m.targetSlug} en su DATA_ROOT (y su contenedor, si sigue en marcha)`);
-    if (m.sourcePending) out.push(`el servidor no se vuelve a arrancar en «${src}»: arráncalo tú cuando hayas comprobado «${dst}»`);
+    if (m.targetPending) out.push(`the half-made copy on “${dst}” is not deleted: if it was created, delete ${m.targetSlug} by hand in its DATA_ROOT (and its container, if still running)`);
+    if (m.sourcePending) out.push(`the server is not started again on “${src}”: start it yourself once you have checked “${dst}”`);
   } else if (m.phase === "committed") {
-    if (m.sourcePending) out.push(`el servidor no se retira de «${src}»: ${m.sourceSlug} sigue en su DATA_ROOT (apártalo o bórralo a mano antes de crear allí otro servidor con ese slug)`);
-    if (m.targetConfirmPending) out.push(`la migración no se confirma en «${dst}»: no restaures la base de datos del panel a una copia anterior a esta migración`);
+    if (m.sourcePending) out.push(`the server is not removed from “${src}”: ${m.sourceSlug} is still in its DATA_ROOT (set it aside or delete it by hand before creating another server there with that slug)`);
+    if (m.targetConfirmPending) out.push(`the migration is not confirmed on “${dst}”: do not restore the panel database to a copy from before this migration`);
   }
   return out;
 }

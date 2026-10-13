@@ -9,9 +9,9 @@ import { specToTemplate } from "./templates.js";
 const cases = JSON.parse(readFileSync(new URL("../../../../proto/fixtures/router-hostname-cases.json", import.meta.url), "utf8")) as { valid: string[]; invalid: string[] };
 const fixture = JSON.parse(readFileSync(new URL("../../../../proto/fixtures/spec-example.json", import.meta.url), "utf8"));
 
-describe("validHostname (mismo criterio que el agente)", () => {
-  it.each(cases.valid)("acepta %j", (h) => expect(validHostname(h)).toBe(true));
-  it.each(cases.invalid)("rechaza %j", (h) => expect(validHostname(h)).toBe(false));
+describe("validHostname (same criterion as the agent)", () => {
+  it.each(cases.valid)("accepts %j", (h) => expect(validHostname(h)).toBe(true));
+  it.each(cases.invalid)("rejects %j", (h) => expect(validHostname(h)).toBe(false));
   it("longitudes: etiqueta ≤ 63 y total ≤ 253", () => {
     const l63 = "a".repeat(63);
     expect(validHostname(`${l63}.lan`)).toBe(true);
@@ -19,18 +19,18 @@ describe("validHostname (mismo criterio que el agente)", () => {
     const long = [l63, l63, l63, l63].join(".");
     expect(validHostname(long.slice(0, 253))).toBe(true);
     expect(validHostname(long.slice(0, 254))).toBe(false);
-    expect(HOSTNAME_RE.test(long.slice(0, 254))).toBe(true); // la regex sola no limita el total
+    expect(HOSTNAME_RE.test(long.slice(0, 254))).toBe(true); // the regex alone does not limit the total
   });
-  it("explica el error en castellano", () => {
+  it("explains the error in English", () => {
     expect(hostnameError("")).toBeNull();
     expect(hostnameError("survival.lan")).toBeNull();
-    expect(hostnameError("Survival.lan")).toBe("El hostname va en minúsculas");
-    expect(hostnameError("a_b.lan")).toMatch(/Hostname inválido/);
+    expect(hostnameError("Survival.lan")).toBe("The hostname must be lowercase");
+    expect(hostnameError("a_b.lan")).toMatch(/Invalid hostname/);
   });
 });
 
 describe("serverRouterSchema", () => {
-  it("por defecto desactivado y sin hostname", () => {
+  it("disabled and without a hostname by default", () => {
     expect(serverRouterSchema.parse({})).toEqual({ enabled: false, hostname: "" });
   });
   it("activado exige hostname", () => {
@@ -39,28 +39,28 @@ describe("serverRouterSchema", () => {
     expect(r.error?.issues[0]?.path).toEqual(["hostname"]);
     expect(serverRouterSchema.safeParse({ enabled: true, hostname: "survival.lan" }).success).toBe(true);
   });
-  it("un hostname inválido no vale ni desactivado", () => {
+  it("an invalid hostname is not valid even when disabled", () => {
     expect(serverRouterSchema.safeParse({ enabled: false, hostname: "Survival.lan" }).success).toBe(false);
   });
 });
 
-describe("router en la spec del servidor", () => {
-  it("es opcional: sin sección no aparece", () => {
+describe("router in the server spec", () => {
+  it("is optional: without a section it does not appear", () => {
     expect("router" in specSchema.parse(fixture)).toBe(false);
   });
-  it("se valida dentro de la spec", () => {
+  it("is validated inside the spec", () => {
     expect(specSchema.safeParse({ ...fixture, router: { enabled: true, hostname: "survival.lan" } }).success).toBe(true);
     expect(specSchema.safeParse({ ...fixture, router: { enabled: true, hostname: "" } }).success).toBe(false);
     expect(specInputSchema.safeParse({ router: { enabled: true, hostname: "creativo.lan" } }).success).toBe(true);
   });
-  it("no viaja en plantillas (el hostname es de un servidor concreto)", () => {
+  it("does not travel in templates (the hostname belongs to a specific server)", () => {
     const tpl = specToTemplate({ ...fixture, router: { enabled: true, hostname: "survival.lan" } });
     expect("router" in tpl).toBe(false);
   });
 });
 
 describe("routerDeploymentSpecSchema", () => {
-  it("valores por defecto: desactivado, 25565, sin autoscale, 10 min", () => {
+  it("default values: disabled, 25565, no autoscale, 10 min", () => {
     expect(defaultRouterDeploymentSpec()).toEqual({ enabled: false, port: 25565, autoscale: false, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: [] });
   });
   it("rangos", () => {
@@ -69,7 +69,7 @@ describe("routerDeploymentSpecSchema", () => {
     }
     expect(routerDeploymentSpecSchema.safeParse({ enabled: true, port: 25590, autoscale: true, autoscaleDownAfterMinutes: 1440 }).success).toBe(true);
   });
-  it("lista de jugadores que despiertan servidores: nombres o UUID, como la whitelist, máx. 1000", () => {
+  it("list of players that wake servers: names or UUIDs, like the whitelist, max. 1000", () => {
     expect(routerDeploymentSpecSchema.safeParse({ autoscaleAllowPlayers: ["amigo", "0123456789abcdef0123456789abcdef"] }).success).toBe(true);
     for (const bad of [["a b"], ["demasiado_largo_17"], [""], Array.from({ length: 1001 }, (_, i) => `p${i}`)]) {
       expect(routerDeploymentSpecSchema.safeParse({ autoscaleAllowPlayers: bad }).success).toBe(false);

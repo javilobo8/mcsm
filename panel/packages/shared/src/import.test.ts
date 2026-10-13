@@ -5,11 +5,11 @@ import { defaultSpecInput } from "./spec.js";
 const ID = "a".repeat(64);
 
 describe("importAdoptSchema", () => {
-  it("acepta la petición y pone applyNow=false por defecto", () => {
+  it("accepts the request and sets applyNow=false by default", () => {
     const r = importAdoptSchema.parse({ containerId: ID, name: " Survival ", spec: { type: "PAPER" } });
     expect(r).toEqual({ containerId: ID, name: "Survival", spec: { type: "PAPER" }, applyNow: false });
   });
-  it("rechaza ids que no son de Docker y slugs inválidos", () => {
+  it("rejects ids that are not Docker's and invalid slugs", () => {
     expect(importAdoptSchema.safeParse({ containerId: "abc", name: "x", spec: {} }).success).toBe(false);
     expect(importAdoptSchema.safeParse({ containerId: ID, name: "x", slug: "Mal", spec: {} }).success).toBe(false);
     expect(importAdoptSchema.safeParse({ containerId: ID, name: "", spec: {} }).success).toBe(false);
@@ -17,14 +17,14 @@ describe("importAdoptSchema", () => {
 });
 
 describe("sameSpecInput", () => {
-  it("compara tras normalizar con zod", () => {
+  it("compares after normalizing with zod", () => {
     expect(sameSpecInput({}, defaultSpecInput())).toBe(true);
     expect(sameSpecInput({ memory: "4G" }, { ...defaultSpecInput(), memory: "4G" })).toBe(true);
   });
-  it("ignora dataPath y rconPassword (no los edita el usuario)", () => {
+  it("ignores dataPath and rconPassword (the user does not edit them)", () => {
     expect(sameSpecInput({ dataPath: "/home/lobo/mc", rconPassword: "x".repeat(10) }, {})).toBe(true);
   });
-  it("detecta un cambio real", () => {
+  it("detects a real change", () => {
     expect(sameSpecInput({ memory: "4G" }, { memory: "6G" })).toBe(false);
     expect(sameSpecInput({ env: { A: "1" } }, { env: { A: "2" } })).toBe(false);
   });

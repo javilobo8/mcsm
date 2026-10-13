@@ -2,10 +2,10 @@ import { z } from "zod";
 import { templateSpecSchema, type TemplateSpec } from "./spec.js";
 import { specPatchSchema } from "./spec-patch.js";
 
-const templateName = z.string().trim().min(1, "El nombre es obligatorio").max(60, "Máximo 60 caracteres");
-const templateDescription = z.string().trim().max(500, "Máximo 500 caracteres");
+const templateName = z.string().trim().min(1, "The name is required").max(60, "Maximum 60 characters");
+const templateDescription = z.string().trim().max(500, "Maximum 500 characters");
 
-/** Crear plantilla: desde una spec (editor de plantillas) o desde un servidor ("Guardar como plantilla"). */
+/** Create template: from a spec (template editor) or from a server ("Save as template"). */
 export const templateCreateSchema = z
   .object({
     name: templateName,
@@ -13,17 +13,17 @@ export const templateCreateSchema = z
     spec: specPatchSchema.optional(),
     fromServerId: z.string().min(1).optional(),
   })
-  .refine((t) => (t.spec === undefined) !== (t.fromServerId === undefined), { message: "Indica una spec o un servidor de origen (solo uno)" });
+  .refine((t) => (t.spec === undefined) !== (t.fromServerId === undefined), { message: "Specify a spec or a source server (only one)" });
 export type TemplateCreateInput = z.infer<typeof templateCreateSchema>;
 
-/** PATCH de plantilla: `spec` con la misma semántica de merge que el PATCH de servidor. */
+/** Template PATCH: `spec` with the same merge semantics as the server PATCH. */
 export const templatePatchSchema = z.object({
   name: templateName.optional(),
   description: templateDescription.optional(),
   spec: specPatchSchema.optional(),
 });
 
-/** Crear un servidor desde una plantilla: el panel rellena puerto (si no se da) y rconPassword. */
+/** Create a server from a template: the panel fills in the port (if not given) and rconPassword. */
 export const templateInstantiateSchema = z.object({
   nodeId: z.string().min(1),
   name: z.string().trim().min(1).max(60),
@@ -33,15 +33,15 @@ export const templateInstantiateSchema = z.object({
 });
 export type TemplateInstantiateInput = z.infer<typeof templateInstantiateSchema>;
 
-/** Quita puertos, rconPassword, el router y cualquier clave ajena a la plantilla. Lanza ZodError si no valida. */
+/** Strips ports, rconPassword, the router and any key foreign to the template. Throws ZodError if it does not validate. */
 export function specToTemplate(spec: Record<string, unknown>): TemplateSpec {
-  // plan-8: el hostname del router es de un servidor concreto (único por nodo): no viaja en plantillas.
+  // plan-8: the router hostname belongs to a specific server (unique per node): it does not travel in templates.
   const { router: _router, ...rest } = spec;
   return templateSpecSchema.parse(rest);
 }
 
-/** "Nombre (copia)", "Nombre (copia 2)"… sin pasar de 60 caracteres. */
+/** "Name (copy)", "Name (copy 2)"… without exceeding 60 characters. */
 export function copyName(name: string, n: number): string {
-  const suffix = n <= 1 ? " (copia)" : ` (copia ${n})`;
+  const suffix = n <= 1 ? " (copy)" : ` (copy ${n})`;
   return name.slice(0, 60 - suffix.length).trimEnd() + suffix;
 }

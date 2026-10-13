@@ -2,18 +2,18 @@ import { z } from "zod";
 import { canonicalJson, specPatchSchema } from "./spec-patch.js";
 import { specInputSchema, type SpecInput } from "./spec.js";
 
-/** Origen de un servidor importado (columna servers.imported_from, spec §4). */
+/** Origin of an imported server (servers.imported_from column, spec §4). */
 export interface ImportedFrom {
   containerId: string;
   containerName: string;
-  /** Versión de la spec con la que se adoptó: hasta superarla, el agente sigue el contenedor original. */
+  /** Spec version with which it was adopted: until it is exceeded, the agent follows the original container. */
   specVersion: number;
   importedAt: string;
   composeProject: string;
   composeService: string;
 }
 
-/** Candidato a importar tal y como lo ve el navegador: nunca lleva RCON_PASSWORD ni CF_API_KEY. */
+/** Import candidate as the browser sees it: it never carries RCON_PASSWORD or CF_API_KEY. */
 export interface ImportCandidateDto {
   containerId: string;
   containerName: string;
@@ -21,36 +21,36 @@ export interface ImportCandidateDto {
   state: string;
   composeProject: string;
   composeService: string;
-  /** Por qué no se puede importar (vacío = se puede). */
+  /** Why it cannot be imported (empty = it can). */
   blockers: string[];
-  /** Lo que no se conserva o cambia al recrear, y avisos de uso. */
+  /** What is not kept or changes on recreation, and usage warnings. */
   warnings: string[];
-  /** Variables del contenedor que no se muestran porque son secretos. */
+  /** Container variables that are not shown because they are secrets. */
   hiddenEnv: string[];
   proposal: {
     name: string;
     slug: string;
-    /** Los datos están en <DATA_ROOT>/<slug>/data: cambiar el slug apuntaría a otra carpeta. */
+    /** The data is in <DATA_ROOT>/<slug>/data: changing the slug would point to another folder. */
     slugLocked: boolean;
     desiredState: "running" | "stopped";
-    /** Spec deducida, sin rconPassword ni dataPath. */
+    /** Deduced spec, without rconPassword or dataPath. */
     spec: SpecInput;
-    /** Primer error de validación de la spec deducida; con él solo cabe corregirla y «Adoptar y aplicar». */
+    /** First validation error of the deduced spec; with it the only option is to fix it and “Adopt and apply”. */
     specError: string | null;
-    /** Carpeta de datos fuera de DATA_ROOT, o null si están en <DATA_ROOT>/<slug>/data. */
+    /** Data folder outside DATA_ROOT, or null if it is in <DATA_ROOT>/<slug>/data. */
     dataPath: string | null;
   };
 }
 
 export const DOCKER_ID_RE = /^[0-9a-f]{64}$/;
 
-/** POST /api/nodes/:id/import. `spec` es la SpecInput revisada; el panel ignora dataPath (lo saca del contenedor). */
+/** POST /api/nodes/:id/import. `spec` is the reviewed SpecInput; the panel ignores dataPath (it takes it from the container). */
 export const importAdoptSchema = z.object({
-  containerId: z.string().regex(DOCKER_ID_RE, "Id de contenedor inválido"),
+  containerId: z.string().regex(DOCKER_ID_RE, "Invalid container id"),
   name: z.string().trim().min(1).max(60),
   slug: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/).optional(),
   spec: specPatchSchema,
-  /** false: adopción en caliente (exige la propuesta sin cambios); true: adopta y recrea enseguida con la spec revisada. */
+  /** false: hot adoption (requires the proposal unchanged); true: adopts and recreates right away with the reviewed spec. */
   applyNow: z.boolean().default(false),
 });
 export type ImportAdoptInput = z.infer<typeof importAdoptSchema>;
@@ -62,7 +62,7 @@ function normalized(v: unknown): unknown {
   return r.success ? r.data : rest;
 }
 
-/** ¿Misma configuración? Compara tras normalizar con zod, sin dataPath ni rconPassword (no los edita el usuario). */
+/** Same configuration? Compares after normalizing with zod, without dataPath or rconPassword (the user does not edit them). */
 export function sameSpecInput(a: unknown, b: unknown): boolean {
   return canonicalJson(normalized(a)) === canonicalJson(normalized(b));
 }

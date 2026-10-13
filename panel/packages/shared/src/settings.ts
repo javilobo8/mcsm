@@ -1,14 +1,14 @@
 import { z } from "zod";
 
-/** Rango de puertos de juego que reparte el panel al crear servidores sin puerto. */
+/** Range of game ports the panel assigns when creating servers without a port. */
 export interface PortRange { from: number; to: number }
 
-const portNumber = z.number().int().min(1024, "Usa puertos a partir del 1024").max(65535, "El puerto máximo es 65535");
+const portNumber = z.number().int().min(1024, "Use ports from 1024 up").max(65535, "The maximum port is 65535");
 export const portRangeSchema = z.object({ from: portNumber, to: portNumber })
-  .refine((r) => r.from <= r.to, { message: "El primer puerto no puede ser mayor que el último", path: ["to"] })
-  .refine((r) => r.to - r.from <= 10_000, { message: "El rango no puede tener más de 10 001 puertos", path: ["to"] });
+  .refine((r) => r.from <= r.to, { message: "The first port cannot be greater than the last", path: ["to"] })
+  .refine((r) => r.to - r.from <= 10_000, { message: "The range cannot have more than 10,001 ports", path: ["to"] });
 
-/** Origen http(s) sin ruta, consulta, fragmento ni credenciales: es lo que va en PANEL_URL del comando de alta. */
+/** http(s) origin without path, query, fragment or credentials: it is what goes in the enrollment command's PANEL_URL. */
 export function isPanelOrigin(v: string): boolean {
   try {
     const u = new URL(v);
@@ -19,9 +19,9 @@ export function isPanelOrigin(v: string): boolean {
   }
 }
 
-/** URL del panel que se incrusta en el comando de alta y que el WS acepta como Origin. "" = la del entorno. */
+/** The panel URL embedded in the enrollment command and that the WS accepts as Origin. "" = the environment's. */
 export const publicUrlSchema = z.string().trim().max(200)
-  .refine((v) => v === "" || isPanelOrigin(v), "URL inválida: usa http(s)://host[:puerto], sin ruta (p. ej. http://192.168.1.10:8080)")
+  .refine((v) => v === "" || isPanelOrigin(v), "Invalid URL: use http(s)://host[:port], without a path (e.g. http://192.168.1.10:8080)")
   .transform((v) => (v === "" ? "" : new URL(v).origin));
 
 export const settingsPutSchema = z.object({
@@ -31,7 +31,7 @@ export const settingsPutSchema = z.object({
 export type SettingsPut = z.infer<typeof settingsPutSchema>;
 
 export interface SettingsDto {
-  /** La que se usa: la guardada en Ajustes o, si no hay, la del entorno (PANEL_PUBLIC_URL). "" = la del navegador. */
+  /** The one in use: the one stored in Settings or, if none, the environment's (PANEL_PUBLIC_URL). "" = the browser's. */
   publicUrl: string;
   publicUrlSource: "settings" | "env" | "request";
   envPublicUrl: string;
@@ -41,7 +41,7 @@ export interface SettingsDto {
 }
 
 export const passwordChangeSchema = z.object({
-  currentPassword: z.string().min(1, "Escribe la contraseña actual").max(200),
-  newPassword: z.string().min(8, "La contraseña nueva necesita al menos 8 caracteres").max(200),
+  currentPassword: z.string().min(1, "Enter the current password").max(200),
+  newPassword: z.string().min(8, "The new password needs at least 8 characters").max(200),
 });
 export type PasswordChange = z.infer<typeof passwordChangeSchema>;
