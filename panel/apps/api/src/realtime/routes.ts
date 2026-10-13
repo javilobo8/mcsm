@@ -27,7 +27,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: "Origen no permitido" });
     }
   });
-  app.get("/ws", { websocket: true }, (socket) => hub.add(socket));
+  app.get("/ws", { websocket: true }, (socket, req) => hub.add(socket, req.sessionId));
 }
 
 declare module "fastify" {

@@ -68,12 +68,16 @@ export async function authRoutes(app: FastifyInstance) {
     app.auth.setSetting("admin_password_hash", await hashPassword(parsed.data.newPassword));
     // Todas, también la actual (puede ser la cookie robada que motiva el cambio), y una nueva para quien cambia.
     app.auth.deleteAllSessions();
+    app.events.emit("sessions_revoked"); // cierra los WS de todas las sesiones
     setCookie(reply, app.auth.createSession(app.config.sessionTtlSeconds));
     return { ok: true };
   });
 
   app.post("/api/auth/logout", async (req, reply) => {
-    if (req.sessionId) app.auth.deleteSession(req.sessionId);
+    if (req.sessionId) {
+      app.auth.deleteSession(req.sessionId);
+      app.events.emit("sessions_revoked", req.sessionId);
+    }
     reply.clearCookie(SESSION_COOKIE, { path: "/" });
     return { ok: true };
   });

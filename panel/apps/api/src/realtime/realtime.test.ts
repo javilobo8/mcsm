@@ -38,6 +38,37 @@ function browser(withCookie = true, origin?: string): Promise<{ ws: WebSocket; n
 }
 
 describe("realtime", () => {
+  const openWs = (ck: string) => new Promise<WebSocket>((resolve, reject) => {
+    const ws = new WebSocket(url.replace("http", "ws") + "/ws", { headers: { cookie: ck } });
+    ws.on("open", () => resolve(ws));
+    ws.on("error", reject);
+  });
+  const closedWith = (ws: WebSocket) => new Promise<number>((resolve) => ws.on("close", (code) => resolve(code)));
+
+  it("cambiar la contraseña cierra con 4401 los WS de todas las sesiones", async () => {
+    const other = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
+    const oc = other.cookies.find((c) => c.name === "mcsm_session")!;
+    const ws = await openWs(`${oc.name}=${oc.value}`);
+    const mine = await openWs(cookie);
+    const closes = Promise.all([closedWith(ws), closedWith(mine)]);
+    const res = await app.inject({ method: "POST", url: "/api/auth/password", headers: { cookie }, payload: { currentPassword: "correct horse", newPassword: "nueva-larga" } });
+    expect(res.statusCode).toBe(200);
+    expect(await closes).toEqual([4401, 4401]);
+  });
+
+  it("el logout cierra con 4401 solo los WS de esa sesión", async () => {
+    const other = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
+    const oc = other.cookies.find((c) => c.name === "mcsm_session")!;
+    const otherCookie = `${oc.name}=${oc.value}`;
+    const gone = await openWs(otherCookie);
+    const kept = await openWs(cookie);
+    const closing = closedWith(gone);
+    await app.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie: otherCookie } });
+    expect(await closing).toBe(4401);
+    expect(kept.readyState).toBe(WebSocket.OPEN);
+    kept.close();
+  });
+
   it("topic events: reenvía los eventos que se guardan", async () => {
     const b = await browser();
     b.ws.send(JSON.stringify({ type: "subscribe", topic: "events" }));

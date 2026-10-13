@@ -33,6 +33,7 @@ export class BrowserHub {
   private clients = new Map<WebSocket, Set<string>>();
   private topics = new Map<string, Set<WebSocket>>();
   private dropped = new Map<WebSocket, Map<string, number>>();
+  private sessions = new Map<WebSocket, string | null>();
   private logs: LogRelay;
   private maxSubscriptions: number;
   private maxBuffered: number;
@@ -67,6 +68,10 @@ export class BrowserHub {
     const onServerEvent = (event: unknown) => this.publish("events", { type: "event", event });
     app.events.on("server_event", onServerEvent);
     this.offs.push(() => app.events.off("server_event", onServerEvent));
+    // plan-9: una sesión revocada (logout) o todas (cambio de contraseña) pierden sus sockets.
+    const onSessionsRevoked = (sessionId?: string) => this.closeSessions(sessionId);
+    app.events.on("sessions_revoked", onSessionsRevoked);
+    this.offs.push(() => app.events.off("sessions_revoked", onSessionsRevoked));
   }
 
   dispose() {
@@ -74,8 +79,16 @@ export class BrowserHub {
     this.logs.dispose();
   }
 
-  add(socket: WebSocket) {
+  /** Cierra con 4401 los sockets de esa sesión (o de todas, sin argumento). */
+  private closeSessions(sessionId?: string) {
+    for (const [ws, sid] of this.sessions) {
+      if (sessionId === undefined || sid === sessionId) ws.close(4401, "sesión cerrada");
+    }
+  }
+
+  add(socket: WebSocket, sessionId: string | null = null) {
     this.clients.set(socket, new Set());
+    this.sessions.set(socket, sessionId);
     socket.on("message", (raw) => {
       try {
         this.onMessage(socket, raw.toString());
@@ -87,6 +100,7 @@ export class BrowserHub {
     socket.on("close", () => {
       for (const t of [...(this.clients.get(socket) ?? [])]) this.unsubscribe(socket, t);
       this.clients.delete(socket);
+      this.sessions.delete(socket);
       this.dropped.delete(socket);
     });
   }
