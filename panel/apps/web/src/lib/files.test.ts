@@ -38,6 +38,19 @@ describe("filesApi", () => {
   });
 });
 
+describe("filesApi.uploadCheck", () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+  it("pide GET a la ruta upload-check con el id codificado", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await filesApi.uploadCheck("a/b?c");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [path, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(path).toBe("/api/servers/a%2Fb%3Fc/files/upload-check");
+    expect(init.method).toBe("GET");
+  });
+});
+
 describe("filesApi.downloadUrl caracteres especiales", () => {
   it("codifica # ? % & en la ruta y / en el id", () => {
     expect(filesApi.downloadUrl("s1", "/a#b?c%d&e.txt")).toBe("/api/servers/s1/files/download?path=%2Fa%23b%3Fc%25d%26e.txt");

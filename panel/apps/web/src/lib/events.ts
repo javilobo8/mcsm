@@ -7,9 +7,12 @@ export type EventsFilter = { serverId?: string; minLevel?: EventLevelName };
 
 export const eventsKey = (f: EventsFilter) => ["events", f.serverId ?? "", f.minLevel ?? ""] as const;
 
-/** GET /api/events con los filtros codificados (los 100 más recientes). */
+/** Cuántos eventos recientes muestra la lista. */
+export const EVENTS_LIMIT = 100;
+
+/** GET /api/events con los filtros codificados (los más recientes, hasta EVENTS_LIMIT). */
 export function eventsUrl(f: EventsFilter): string {
-  const p = new URLSearchParams({ limit: "100" });
+  const p = new URLSearchParams({ limit: String(EVENTS_LIMIT) });
   if (f.serverId) p.set("serverId", f.serverId);
   if (f.minLevel) p.set("minLevel", f.minLevel);
   return `/api/events?${p}`;

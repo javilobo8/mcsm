@@ -1,7 +1,6 @@
 import { pipeline, type Readable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { BackupTrigger, JobStatus, type BackupCreated, type BackupDeleted, type BackupInfo, type BackupInventory, type Envelope, type JobProgress } from "@mcsm/proto";
-import { MAX_CLOCK_SKEW_SECONDS } from "@mcsm/shared";
 import { AgentError, type AgentConn, type Body } from "../agents/hub.js";
 import { AgentErrorCode } from "../agents/error-codes.js";
 import type { JobDto, JobState } from "../jobs/repo.js";
@@ -9,7 +8,7 @@ import { AGENT_JOB_TYPES, FINAL_STATES } from "../jobs/service.js";
 import { toHttpError } from "../files/service.js";
 import { IDLE_TIMEOUT_MS, idleGuard } from "../files/stream.js";
 import { agentErrorToHttp } from "../lib/http.js";
-import { nowIso } from "../lib/time.js";
+import { agentIso, nowIso } from "../lib/time.js";
 import type { ServerRow } from "../servers/repo.js";
 import { HttpError } from "../servers/service.js";
 import { BackupsRepo, toBackupDto, type BackupDto, type BackupInput, type BackupTriggerName } from "./repo.js";
@@ -44,20 +43,13 @@ export function infoToInput(b: BackupInfo): BackupInput {
   };
 }
 
-/** Copias de seguridad (spec §7 BackupService): tabla `backups`, órdenes al agente e inventario. */
 /** Sin plazo total: dura lo que haga falta mientras pasen bytes (la cortan el vigilante, la caducidad y el WS). */
 const DOWNLOAD_DEADLINE_MS = 2 ** 31 - 1;
 
 /** Cada cuánto el panel pide el inventario a los nodos conectados (m-f: el periódico del agente no va correlacionado). */
 export const INVENTORY_EVERY_MS = 10 * 60_000;
 
-/** Hora del agente (ms) si es razonable: ni más de MAX_CLOCK_SKEW_SECONDS en el futuro ni de hace más de 30 días (m12). */
-export function agentIso(ms: bigint, now = Date.now()): string | null {
-  const n = Number(ms);
-  if (!(n > 0) || n > now + MAX_CLOCK_SKEW_SECONDS * 1000 || n < now - 30 * 86_400_000) return null;
-  return new Date(n).toISOString();
-}
-
+/** Copias de seguridad (spec §7 BackupService): tabla `backups`, órdenes al agente e inventario. */
 export class BackupService {
   /** Idempotency-Key de POST /backups → job (en memoria, acotado). */
   private keys = new Map<string, string>();

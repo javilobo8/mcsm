@@ -13,7 +13,8 @@ export const INTERRUPTED = "interrumpido: el panel se reinició durante el job";
 export interface CreateJobInput {
   id?: string; type: string; serverId?: string | null; nodeId?: string | null;
   status?: "queued" | "running"; message?: string; payload?: Record<string, unknown>;
-  /** Hora real de inicio (la del agente): fija created_at y started_at. */
+  /** Hora real de inicio (la del agente): solo fija started_at. created_at es siempre la hora del panel
+   *  (el barrido de perdidos la compara con relojes del panel). */
   startedAt?: string;
 }
 
@@ -44,7 +45,7 @@ export class JobService {
     const row: JobRow = {
       id: input.id ?? newId(), type: input.type, server_id: input.serverId ?? null, node_id: input.nodeId ?? null,
       status, progress: 0, message: input.message ?? "", log: "", payload: JSON.stringify(input.payload ?? {}),
-      created_at: started, updated_at: now, started_at: status === "running" ? started : null, finished_at: null,
+      created_at: now, updated_at: now, started_at: status === "running" ? started : null, finished_at: null,
     };
     this.repo.insert(row);
     return this.emit(row, "");

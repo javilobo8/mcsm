@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useEvents } from "@/hooks/use-events";
 import { useNodes } from "@/hooks/use-nodes";
-import { eventSubject, levelTone, type EventsFilter } from "@/lib/events";
+import { EVENTS_LIMIT, eventSubject, levelTone, type EventsFilter } from "@/lib/events";
 
 /** Tabla de eventos (incidencias de los agentes y del panel), en vivo por el topic `events`. */
 export function EventList({ filter, showSubject = true }: { filter: EventsFilter; showSubject?: boolean }) {
@@ -13,6 +13,7 @@ export function EventList({ filter, showSubject = true }: { filter: EventsFilter
   const nodeName = (id: string | null) => (id ? nodes.data?.find((n) => n.id === id)?.name : undefined);
   const cols = showSubject ? 5 : 4;
   return (
+    <>
     <Table>
       <TableHeader>
         <TableRow>
@@ -44,5 +45,7 @@ export function EventList({ filter, showSubject = true }: { filter: EventsFilter
         ))}
       </TableBody>
     </Table>
+    <p className="mt-2 text-xs text-zinc-500">Se muestran los {EVENTS_LIMIT} eventos más recientes.</p>
+    </>
   );
 }

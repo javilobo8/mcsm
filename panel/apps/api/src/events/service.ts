@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { EventLevel, type Event as AgentEvent } from "@mcsm/proto";
-import { EVENT_KIND_RE, EVENT_MESSAGE_MAX, MAX_CLOCK_SKEW_SECONDS, type EventDto, type EventLevelName, type EventsQuery } from "@mcsm/shared";
+import { EVENT_KIND_RE, EVENT_MESSAGE_MAX, type EventDto, type EventLevelName, type EventsQuery } from "@mcsm/shared";
 import { newId } from "../lib/ids.js";
+import { agentIso } from "../lib/time.js";
 import { EventsRepo, toEventDto, type EventRow } from "./repo.js";
 
 export const EVENT_RETENTION_DAYS = 30;
@@ -70,11 +71,14 @@ export class EventsService {
       serverName = row.name;
       if (e.kind === "crash_loop" && row.desired_state === "running") {
         // El evento sale por la cola del agente, sin orden respecto al Ack de un «Arrancar»: solo cuenta si es posterior.
-        const at = this.agentTime(e.tsUnixMs) ?? new Date(this.now()).toISOString();
+        // Con el reloj del agente fuera de rango (`agentIso` null) se usa la hora de llegada, que se compara con
+        // `desired_changed_at` (hora del panel): efecto residual, un crash_loop viejo y encolado que llegue tras un
+        // «Arrancar» reciente parece posterior y vuelve a parar el servidor.
+        const at = agentIso(e.tsUnixMs, this.now()) ?? new Date(this.now()).toISOString();
         if (!row.desired_changed_at || at > row.desired_changed_at) this.app.servers.setDesiredState(serverId, "stopped");
       }
     }
-    return this.record({ nodeId, serverId, serverName, level, kind: e.kind, message: e.message, agentAt: this.agentTime(e.tsUnixMs) });
+    return this.record({ nodeId, serverId, serverName, level, kind: e.kind, message: e.message, agentAt: agentIso(e.tsUnixMs, this.now()) });
   }
 
   list(q: EventsQuery): EventDto[] {
@@ -94,14 +98,6 @@ export class EventsService {
   stop(): void {
     this.stopPurge?.();
     this.stopPurge = null;
-  }
-
-  /** Hora del agente si es razonable (no en el futuro más allá del desfase tolerado, ni más vieja que la retención). */
-  private agentTime(ms: bigint): string | null {
-    const n = Number(ms);
-    const now = this.now();
-    if (!(n > 0) || n > now + MAX_CLOCK_SKEW_SECONDS * 1000 || n < now - EVENT_RETENTION_DAYS * DAY_MS) return null;
-    return new Date(n).toISOString();
   }
 
   private safePurge() {

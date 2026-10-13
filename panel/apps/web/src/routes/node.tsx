@@ -13,6 +13,7 @@ import { StateBadge } from "@/components/state-badge";
 import { useNodes } from "@/hooks/use-nodes";
 import { useServers } from "@/hooks/use-servers";
 import { api, apiPath, ApiError, type NodeDto } from "@/lib/api";
+import { mergeIntoCached } from "@/lib/live";
 import { hostLabel, rotationNote } from "@/lib/node-detail";
 
 export function NodeDetailPage() {
@@ -23,7 +24,7 @@ export function NodeDetailPage() {
   const [confirm, setConfirm] = useState(false);
   const rotate = useMutation({
     mutationFn: () => api.post<NodeDto>(apiPath`/api/nodes/${nodeId}/rotate-token`),
-    onSuccess: (n) => { setConfirm(false); qc.setQueryData<NodeDto[]>(["nodes"], (old) => old?.map((x) => (x.id === n.id ? n : x))); },
+    onSuccess: (n) => { setConfirm(false); mergeIntoCached<NodeDto[]>(qc, ["nodes"], (old) => old.map((x) => (x.id === n.id ? { ...x, tokenRotationPending: n.tokenRotationPending } : x))); }, // solo lo que cambió: la fila de la respuesta puede ir por detrás del estado en vivo
   });
   const n = nodes.data?.find((x) => x.id === nodeId);
   if (nodes.isPending) return <p className="p-6 text-muted-foreground">Cargando nodo…</p>;

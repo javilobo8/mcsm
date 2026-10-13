@@ -177,4 +177,52 @@ describe("cambio de contraseña y 4401 del WS", () => {
     sockets[0]!.drop(4401);
     expect(lost).toHaveBeenCalledTimes(1);
   });
+
+  it("un checkAuthenticated en vuelo (upgrade fallido durante la mutación) que resuelve tras settle(true) no pierde la sesión", async () => {
+    const sockets: FakeSocket[] = [];
+    let answer!: (ok: boolean) => void;
+    const rt = new Realtime({
+      createSocket: () => { const s = new FakeSocket(); sockets.push(s); return s; },
+      checkAuthenticated: () => new Promise<boolean>((r) => { answer = r; }),
+      random: () => 1,
+    });
+    const lost = vi.fn(); rt.onAuthLost(lost);
+    rt.subscribe("servers", () => {});
+    const settle = rt.expectSessionChange();
+    sockets[0]!.drop(); // el upgrade falla (cookie vieja) y se comprueba la sesión
+    settle(true); // la cookie nueva ya está puesta
+    expect(sockets).toHaveLength(2);
+    answer(false); // la comprobación salió con la cookie vieja
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(lost).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(2);
+  });
+
+  it("dos expectSessionChange solapados no se pisan: el 4401 visto vale hasta que acaban los dos", () => {
+    const { rt, sockets } = setup();
+    const lost = vi.fn(); rt.onAuthLost(lost);
+    rt.subscribe("servers", () => {});
+    sockets[0]!.open();
+    const a = rt.expectSessionChange();
+    sockets[0]!.drop(4401);
+    const b = rt.expectSessionChange(); // no borra el 4401 ya visto ni deja de esperar
+    a(true);
+    sockets[1]!.drop(4401); // el socket nuevo aún con la cookie vieja: sigue esperándose
+    expect(lost).not.toHaveBeenCalled();
+    b(false);
+    expect(lost).not.toHaveBeenCalled(); // hubo un éxito en el lote: la cookie es nueva
+  });
+
+  it("si fallan los dos solapados tras un 4401, se pierde la sesión una vez", () => {
+    const { rt, sockets } = setup();
+    const lost = vi.fn(); rt.onAuthLost(lost);
+    rt.subscribe("servers", () => {});
+    sockets[0]!.open();
+    const a = rt.expectSessionChange(); const b = rt.expectSessionChange();
+    sockets[0]!.drop(4401);
+    a(false);
+    expect(lost).not.toHaveBeenCalled(); // aún queda uno en curso
+    b(false);
+    expect(lost).toHaveBeenCalledTimes(1);
+  });
 });

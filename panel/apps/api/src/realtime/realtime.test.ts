@@ -5,7 +5,7 @@ import { create } from "@bufbuild/protobuf";
 import { LogLineSchema, ObservedSchema, ServerObservedSchema } from "@mcsm/proto";
 import { EventEmitter } from "node:events";
 import { BrowserHub } from "./hub.js";
-import { originAllowed } from "./routes.js";
+import { originAllowed } from "../lib/origin.js";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
 import { FakeAgent } from "../../test/fake-agent.js";

@@ -61,6 +61,34 @@ describe("descarga de copias", () => {
     agent.close();
   });
 
+  it("cortar el navegador a mitad de la descarga cancela la transferencia y corta el PUT del agente", async () => {
+    const { s, agent, b } = await setupBackup();
+    const ctrl = new AbortController();
+    const browser = fetch(`${url}/api/servers/${s.id}/backups/${b.id}/download`, { headers: { cookie }, signal: ctrl.signal });
+    const push = await agent.waitFor("backupPush");
+    if (push.body.case !== "backupPush") throw new Error();
+    // PUT que no termina: manda un trozo y se queda abierto.
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({ start: (c) => { body = c; } });
+    const put = fetch(`${url}/agent/transfer/${push.body.value.transferId}`, {
+      method: "PUT", headers: { authorization: `Bearer ${nodeToken}`, "content-type": "application/octet-stream" }, body: stream, duplex: "half",
+    } as RequestInit);
+    body.enqueue(new Uint8Array([1, 2]));
+    const res = await browser;
+    await res.body!.getReader().read(); // ya fluye hacia el navegador
+    ctrl.abort(); // el navegador se va
+    await expect(put).rejects.toThrow(); // el panel corta la conexión del agente
+    agent.close();
+  });
+
+  it("404 al pedir la copia de otro servidor", async () => {
+    const { agent, b } = await setupBackup();
+    const other = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Dos" } })).json();
+    const res = await app.inject({ method: "GET", url: `/api/servers/${other.id}/backups/${b.id}/download`, headers: { cookie } });
+    expect(res.statusCode).toBe(404);
+    agent.close();
+  });
+
   it("409 con el nodo desconectado", async () => {
     const { s, agent, b } = await setupBackup();
     agent.close();

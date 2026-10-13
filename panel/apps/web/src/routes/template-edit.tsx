@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { defaultSpecInput } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SpecForm, type SpecFormErrors } from "@/components/spec-form/spec-form";
@@ -22,6 +23,7 @@ function TemplateEditor({ template }: { template?: TemplateDto }) {
   const [spec, setSpec] = useState<EditableSpec>(() => (template ? editableFromTemplate(template.spec) : { ...defaultSpecInput(), ports: { extra: [] } }));
   const [errors, setErrors] = useState<SpecFormErrors>({});
   const [localErr, setLocalErr] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const save = useMutation({
     mutationFn: () => template
@@ -36,7 +38,7 @@ function TemplateEditor({ template }: { template?: TemplateDto }) {
 
   const removeSchedule = useMutation({
     mutationFn: (id: string) => api.patch<TemplateDto>(apiPath`/api/templates/${id}`, REMOVE_SCHEDULE_PATCH),
-    onSuccess: (t) => { qc.setQueryData(["template", t.id], t); void qc.invalidateQueries({ queryKey: ["templates"] }); },
+    onSuccess: (t) => { setConfirmRemove(false); qc.setQueryData(["template", t.id], t); void qc.invalidateQueries({ queryKey: ["templates"] }); },
   });
 
   // La programación de copias viaja en la plantilla pero no se edita aquí (el editor solo envía FORM_KEYS).
@@ -58,8 +60,11 @@ function TemplateEditor({ template }: { template?: TemplateDto }) {
       {schedule && template && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="tpl-backups">
           <span>Copias automáticas: {schedule}. Cada servidor creado con la plantilla las hereda; se cambian en su pestaña Backups.</span>
-          <Button type="button" size="sm" variant="ghost" disabled={removeSchedule.isPending} onClick={() => removeSchedule.mutate(template.id)}>Quitar copias automáticas</Button>
-          {removeSchedule.error && <span role="alert" className="text-red-400">{removeSchedule.error instanceof ApiError ? removeSchedule.error.message : "Error inesperado"}</span>}
+          <Button type="button" size="sm" variant="ghost" onClick={() => { removeSchedule.reset(); setConfirmRemove(true); }}>Quitar copias automáticas</Button>
+          <ConfirmDialog open={confirmRemove} title="Quitar copias automáticas" confirmLabel="Quitar" pending={removeSchedule.isPending}
+            description="Los servidores que se creen con esta plantilla dejarán de heredar la programación de copias. Los ya creados no cambian."
+            error={removeSchedule.error ? (removeSchedule.error instanceof ApiError ? removeSchedule.error.message : "Error inesperado") : null}
+            onConfirm={() => removeSchedule.mutate(template.id)} onCancel={() => setConfirmRemove(false)} />
         </div>
       )}
     </div>

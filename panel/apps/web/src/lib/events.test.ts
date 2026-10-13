@@ -3,7 +3,7 @@ import { QueryClient } from "@tanstack/react-query";
 import type { EventDto } from "@mcsm/shared";
 import type { ServerMessage } from "./api";
 import type { LiveSource } from "./live";
-import { applyServerEvent, bindEvents, eventSubject, eventsKey, eventsUrl, levelTone } from "./events";
+import { applyServerEvent, bindEvents, EVENT_FILTERS, EVENTS_LIMIT, eventSubject, eventsKey, eventsUrl, levelTone } from "./events";
 
 const ev = (over: Partial<EventDto> = {}): EventDto => ({
   id: "e1", nodeId: "n1", serverId: "s1", serverName: "Uno", level: "warn", kind: "crash", message: "m", createdAt: "2026-10-13T04:00:00.000Z", agentAt: null, ...over,
@@ -52,10 +52,15 @@ describe("eventos en la web", () => {
   });
 });
 
-import { EVENT_FILTERS } from "./events";
-
 describe("filtros de la página de eventos", () => {
   it("todos, avisos y errores, y solo errores", () => {
     expect(EVENT_FILTERS.map((f) => [f.label, f.minLevel])).toEqual([["Todos", undefined], ["Avisos y errores", "warn"], ["Errores", "error"]]);
+  });
+});
+
+describe("límite de la lista", () => {
+  it("la URL pide tantos eventos como dice la nota de la lista", () => {
+    expect(EVENTS_LIMIT).toBe(100);
+    expect(eventsUrl({})).toContain(`limit=${EVENTS_LIMIT}`);
   });
 });

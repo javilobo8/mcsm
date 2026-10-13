@@ -94,6 +94,13 @@ describe("resincronización del formulario", () => {
     const edited = { ...a, cron: "* * * * *" };
     expect(resyncSchedule(edited, a, incoming)).toEqual({ form: edited, base: incoming });
   });
+  it("lo editado mientras se guardaba sobrevive a la respuesta del PATCH", () => {
+    const sent = { ...a, keepDays: "30" };
+    const typedMeanwhile = { ...sent, keepCount: "5" };
+    const saved = { ...sent };
+    expect(resyncSchedule(typedMeanwhile, sent, saved)).toEqual({ form: typedMeanwhile, base: saved });
+    expect(resyncSchedule(sent, sent, saved)).toEqual({ form: saved, base: saved });
+  });
   it("tras el PATCH propio queda limpio", () => {
     const edited = { ...a, keepDays: "30" };
     const r = resyncSchedule(edited, a, edited);

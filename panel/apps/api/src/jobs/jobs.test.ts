@@ -17,7 +17,7 @@ function makeService() {
   const seen: unknown[][] = [];
   events.on("job", (...args: unknown[]) => seen.push(args));
   const repo = new JobsRepo(db);
-  return { svc: new JobService(repo, events), repo, seen };
+  return { svc: new JobService(repo, events), repo, seen, db };
 }
 
 describe("JobService", () => {
@@ -35,6 +35,17 @@ describe("JobService", () => {
     expect(d.finishedAt).not.toBeNull();
     expect(seen).toHaveLength(4); // create + 2 avances + finish; el aviso tardío no emite
     expect(seen[1]![1]).toBe("save-off\n");
+  });
+
+  it("created_at es la hora del panel aunque el agente informe de otra: el barrido de perdidos no mata un job vivo", () => {
+    const { svc, db } = makeService();
+    db.prepare("INSERT INTO nodes (id, name, token_hash, data_root, created_at) VALUES ('n1', 'n', 'h', '/d', ?)").run(new Date().toISOString());
+    const since = new Date().toISOString(); // inicio del BackupList del panel
+    const agentStart = new Date(Date.parse(since) - 40_000).toISOString(); // reloj del agente atrasado
+    const j = svc.create({ type: "backup", status: "running", nodeId: "n1", startedAt: agentStart });
+    expect(j.startedAt).toBe(agentStart);
+    expect(j.createdAt >= since).toBe(true);
+    expect(svc.openAgentJobs("n1", since)).toEqual([]);
   });
 
   it("un log completo sustituye al guardado", () => {
