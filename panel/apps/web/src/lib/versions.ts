@@ -53,6 +53,12 @@ export function freeTextOption(query: string, list: readonly VersionEntry[]): st
 /** ¿Abrir con «Mostrar versiones de prueba» encendido? Sí si la versión actual no es estable ni especial. */
 export const startsUnstable = (version: string): boolean => version !== "" && !isStableVersion(version) && !isFloatingVersion(version);
 
+/** Por qué no se puede fijar el build con esta versión (null si se puede): LATEST/SNAPSHOT o una versión que la API no consulta. */
+export function buildUnavailableReason(version: string): string | null {
+  if (isFloatingVersion(version)) return "Elige una versión concreta de Minecraft para fijar el build.";
+  return VERSION_QUERY_RE.test(version) ? null : "Esta versión no admite fijar el build.";
+}
+
 const BUILD_LABELS: Record<string, string> = {
   PAPER: "Build de Paper", FOLIA: "Build de Folia", PURPUR: "Build de Purpur",
   FABRIC: "Versión del loader de Fabric", QUILT: "Versión del loader de Quilt",

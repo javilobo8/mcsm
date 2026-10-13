@@ -218,6 +218,10 @@ describe("withVersion (plan 10)", () => {
     expect(withVersion(base, "1.12.2").spec.imageTag).toBe("java8");
     expect(withVersion({ ...base, imageTag: "latest" }, "1.20.1").spec.imageTag).toBe("java17");
   });
+  it("volver a elegir la versión actual no toca Java ni build", () => {
+    const cur = { ...base, imageTag: "java17" };
+    expect(withVersion(cur, "1.21.4")).toEqual({ spec: cur, notice: null });
+  });
   it("misma Java: sin aviso; versión que no se reconoce: no toca la Java", () => {
     expect(withVersion(base, "1.21.11")).toMatchObject({ notice: null, spec: { imageTag: "java21", build: "" } });
     expect(withVersion(base, "25w14craftmine")).toMatchObject({ notice: null, spec: { imageTag: "java21" } });

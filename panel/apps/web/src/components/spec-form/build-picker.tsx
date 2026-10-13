@@ -1,18 +1,18 @@
 import { useState } from "react";
-import { VERSION_QUERY_RE, isFloatingVersion } from "@mcsm/shared";
 import { useBuilds } from "@/hooks/use-versions";
-import { buildLabel, buildOptions, hasUnstableBuilds } from "@/lib/versions";
+import { buildLabel, buildOptions, buildUnavailableReason, hasUnstableBuilds } from "@/lib/versions";
 import { Field, OptionalSelect } from "./fields";
 
 /** Build o versión del loader (vacío = el último al arrancar). Solo para los tipos que lo admiten (plan 10). */
 export function BuildPicker({ type, version, value, onChange }: { type: string; version: string; value: string; onChange: (v: string) => void }) {
   const label = buildLabel(type);
-  const concrete = !isFloatingVersion(version) && VERSION_QUERY_RE.test(version);
+  const unavailable = buildUnavailableReason(version);
+  const concrete = unavailable === null;
   const [showUnstable, setShowUnstable] = useState(false);
   const builds = useBuilds(type, version, label !== null && concrete);
   if (label === null) return null;
   const list = builds.data?.builds ?? [];
-  const hint = !concrete ? "Elige una versión concreta de Minecraft para fijar el build."
+  const hint = unavailable !== null ? unavailable
     : builds.isPending ? "Cargando builds…"
     : builds.isError ? `${builds.error.message}. Se usará el último.`
     : list.length === 0 ? "La fuente no publica builds estables para esta versión: se usará el último."

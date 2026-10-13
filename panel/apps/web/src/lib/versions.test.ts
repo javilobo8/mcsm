@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { specChanged, blurVersionAction, ageText, buildLabel, buildOptions, freeTextOption, hasUnstableBuilds, hasVersionList, startsUnstable, versionOptions } from "./versions";
+import { buildUnavailableReason, specChanged, blurVersionAction, ageText, buildLabel, buildOptions, freeTextOption, hasUnstableBuilds, hasVersionList, startsUnstable, versionOptions } from "./versions";
 
 const LIST = [
   { id: "26.4-snapshot-3", stable: false }, { id: "26.3", stable: true }, { id: "26.3-rc-3", stable: false },
@@ -88,5 +88,14 @@ describe("blurVersionAction / specChanged", () => {
     expect(specChanged(a, { ...a, build: "7" })).toBe(true);
     expect(specChanged(a, { ...a, version: "2" })).toBe(true);
     expect(specChanged(a, { ...a, imageTag: "java17" })).toBe(true);
+  });
+});
+
+describe("buildUnavailableReason", () => {
+  it("LATEST/SNAPSHOT piden una versión concreta; una versión no consultable no admite build; una concreta sí", () => {
+    expect(buildUnavailableReason("LATEST")).toBe("Elige una versión concreta de Minecraft para fijar el build.");
+    expect(buildUnavailableReason("snapshot")).toBe("Elige una versión concreta de Minecraft para fijar el build.");
+    expect(buildUnavailableReason("1.14 Pre-Release 5")).toBe("Esta versión no admite fijar el build.");
+    expect(buildUnavailableReason("1.21.4")).toBeNull();
   });
 });

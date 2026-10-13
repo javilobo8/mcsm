@@ -109,8 +109,9 @@ export function withType(spec: EditableSpec, type: string): EditableSpec {
  * se pisa, solo se avisa si no basta. Devuelve el aviso a mostrar, o null.
  */
 export function withVersion(spec: EditableSpec, version: string): { spec: EditableSpec; notice: string | null } {
+  if (version === spec.version) return { spec, notice: null };
   let next: EditableSpec = { ...spec, version };
-  if (version !== spec.version && spec.build) next = { ...next, build: "" };
+  if (spec.build) next = { ...next, build: "" };
   const need = minJavaTag(version);
   if (!need || spec.imageTag === need) return { spec: next, notice: null };
   if ((JAVA_TAGS as readonly string[]).includes(spec.imageTag)) {
