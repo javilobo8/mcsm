@@ -105,7 +105,7 @@ func TestRouterRecreatedAfterManualDelete(t *testing.T) {
 	a.Handle(ctx, &mcsmv1.Envelope{Id: 5, Body: &mcsmv1.Envelope_RouterApply{RouterApply: &mcsmv1.RouterApply{Spec: &mcsmv1.RouterSpec{HostPort: 25565}}}}, s.send)
 	first := waitRouter(t, s, func(o *mcsmv1.RouterObserved) bool { return o.State == "running" }).ContainerId
 	waitBackground(t, a)
-	go a.eventLoop(ctx)
+	runEventLoop(t, a)
 	select { // el bucle de eventos ya está suscrito: el evento no se pierde
 	case <-fake.Subscribed():
 	case <-time.After(3 * time.Second):

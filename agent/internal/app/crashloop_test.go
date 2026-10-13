@@ -179,9 +179,7 @@ func TestStopRequestedThroughTheAgentIsNotACrash(t *testing.T) {
 
 func TestEventLoopTurnsOOMAndDieIntoEvents(t *testing.T) {
 	a, fake, s, cid := crashApp(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go a.eventLoop(ctx)
+	runEventLoop(t, a)
 	<-fake.Subscribed()
 	fake.EmitEvent(docker.Event{Action: "oom", ContainerID: cid, Labels: map[string]string{spec.LabelServerID: "a"}})
 	fake.EmitEvent(die(cid, "137"))

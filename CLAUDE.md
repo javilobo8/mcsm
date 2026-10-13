@@ -299,3 +299,14 @@ conocer.)
   oficiales con caché en memoria (listas 1 h, builds 15 min, stale si la fuente cae); los tests inyectan
   `fetch` y nunca tocan la red. Fuente nueva = adaptador en `versions/sources.ts` + host en
   `allowedSource`. Solo builds STABLE de Paper/Folia (los experimentales exigen `*_CHANNEL`).
+- CI y releases: `.github/workflows/ci.yml` (push a master, PR y `workflow_call`) y `release.yml` (al publicar una
+  Release; el tag debe ser `v<agent/VERSION>` o falla). Publica `ghcr.io/javilobo8/mcsm-{panel,agent}` para amd64 y
+  arm64 en runners nativos (push-by-digest + `imagetools create`). Actions fijadas por SHA con `# vX.Y.Z`; base de
+  imágenes multiarquitectura (un digest solo amd64 rompe arm64). La imagen del panel fija `MCSM_AGENT_IMAGE`
+  (build-arg `AGENT_IMAGE`) al agente de su versión; `config.agentImage` va en el `docker run` de «Añadir nodo».
+- Los compose de `deploy/` usan las imágenes de GHCR (`MCSM_VERSION`, vacío = latest); construir desde el código =
+  añadir `-f deploy/docker-compose.build.yml` (la E2E lo hace). Producción en esta máquina se actualiza con ese
+  override hasta que exista una release publicada.
+- Tests Go que arrancan el bucle de eventos: `runEventLoop(t, a)`, nunca `go a.eventLoop(ctx)` (debe salir antes del
+  `bg.Wait` de la limpieza de `newApp`, o `-race` salta). La CI corre en runners de 4 CPUs: un test que dependa de que
+  el planificador deje correr a otra goroutine falla; pruébalo con `GOMAXPROCS=1`.

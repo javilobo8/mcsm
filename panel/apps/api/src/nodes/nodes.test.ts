@@ -152,4 +152,28 @@ describe("snippet de shell", () => {
     expect(s).toContain("ENROLL_TOKEN=tok");
     expect(s).toContain("DATA_ROOT=/data/mc");
   });
+
+  it("termina con la imagen del agente: la local por defecto o la indicada, entrecomillada si hace falta", async () => {
+    const { dockerRunSnippet } = await import("./routes.js");
+    expect(dockerRunSnippet("http://p", "tok").split("\n").at(-1)).toBe("  mcsm-agent:latest");
+    const s = dockerRunSnippet("http://p", "tok", "/srv/minecraft", "ghcr.io/javilobo8/mcsm-agent:0.9.0");
+    expect(s.split("\n").at(-1)).toBe("  ghcr.io/javilobo8/mcsm-agent:0.9.0");
+    expect(dockerRunSnippet("http://p", "tok", "/srv/minecraft", "x;rm -rf /").split("\n").at(-1)).toBe("  'x;rm -rf /'");
+  });
+});
+
+describe("imagen del agente en el alta", () => {
+  it("usa config.agentImage (MCSM_AGENT_IMAGE, fijada en la imagen publicada del panel)", async () => {
+    const other = await buildApp({ db: openDb(":memory:"), config: { publicUrl: "http://panel.lan:8080", agentImage: "ghcr.io/javilobo8/mcsm-agent:1.2.3" } });
+    try {
+      await other.ready();
+      const setup = await other.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
+      const c = setup.cookies.find((c) => c.name === "mcsm_session")!;
+      const res = await other.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie: `${c.name}=${c.value}` }, payload: {} });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().dockerRun.split("\n").at(-1)).toBe("  ghcr.io/javilobo8/mcsm-agent:1.2.3");
+    } finally {
+      await other.close();
+    }
+  });
 });

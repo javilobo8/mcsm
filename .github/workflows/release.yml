@@ -1,0 +1,175 @@
+# Publica en GHCR las imágenes del panel y del agente (linux/amd64 y linux/arm64) al publicar una Release de GitHub.
+# El tag de la Release debe ser v<agent/VERSION>, p. ej. v0.9.0 → ghcr.io/<dueño>/mcsm-{panel,agent}:0.9.0, :0.9 y
+# :latest (latest y X.Y no se mueven con una prerelease, ni marcada en GitHub ni con sufijo semver como -rc.1).
+# Cada arquitectura se construye en su runner nativo y push-by-digest; después se unen en un manifiesto multiarquitectura.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  version:
+    name: Versión
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      owner: ${{ steps.v.outputs.owner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: v
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          expected="v$(tr -d '[:space:]' < agent/VERSION)"
+          if [ "$TAG" != "$expected" ]; then
+            echo "::error::El tag $TAG no coincide con agent/VERSION: debería ser $expected."
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          # Los nombres de imagen de GHCR van en minúsculas.
+          echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: Comprobaciones
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  build:
+    name: Imagen ${{ matrix.image }} (${{ matrix.platform }})
+    needs: [version, checks]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        image: [panel, agent]
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - image: panel
+            context: .
+            file: deploy/panel.Dockerfile
+          - image: agent
+            context: agent
+            file: agent/Dockerfile
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    env:
+      IMAGE: ghcr.io/${{ needs.version.outputs.owner }}/mcsm-${{ matrix.image }}
+      # El panel fija la imagen del agente de su misma versión (docker run de «Añadir nodo»); el agente, su versión.
+      BUILD_ARGS: ${{ matrix.image == 'panel' && format('AGENT_IMAGE=ghcr.io/{0}/mcsm-agent:{1}', needs.version.outputs.owner, needs.version.outputs.version) || format('VERSION={0}', needs.version.outputs.version) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          # Aquí solo para las etiquetas (org.opencontainers.image.version = 0.9.0); los tags los pone el job merge.
+          tags: type=semver,pattern={{version}}
+          labels: |
+            org.opencontainers.image.title=mcsm-${{ matrix.image }}
+            org.opencontainers.image.description=MC Server Manager: ${{ matrix.image == 'panel' && 'panel web' || 'agente de nodo' }}
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: ${{ matrix.platform }}
+          build-args: ${{ env.BUILD_ARGS }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.IMAGE }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          provenance: mode=max
+          sbom: true
+      - name: Guardar el digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+          echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digests-${{ matrix.image }}-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Publicar ${{ matrix.image }}
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image: [panel, agent]
+    env:
+      IMAGE: ghcr.io/${{ needs.version.outputs.owner }}/mcsm-${{ matrix.image }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ matrix.image }}-*
+          merge-multiple: true
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          # GHCR lee la descripción de las anotaciones del índice multiarquitectura.
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: |
+            latest=${{ github.event.release.prerelease && 'false' || 'auto' }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !github.event.release.prerelease }}
+          annotations: |
+            org.opencontainers.image.title=mcsm-${{ matrix.image }}
+            org.opencontainers.image.description=MC Server Manager: ${{ matrix.image == 'panel' && 'panel web' || 'agente de nodo' }}
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Crear el manifiesto multiarquitectura con los tags
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          args=()
+          while IFS= read -r t; do args+=(-t "$t"); done < <(jq -r '.tags[]' <<<"$DOCKER_METADATA_OUTPUT_JSON")
+          while IFS= read -r a; do args+=(--annotation "$a"); done < <(jq -r '.annotations[]' <<<"$DOCKER_METADATA_OUTPUT_JSON")
+          refs=()
+          for d in *; do refs+=("$IMAGE@sha256:$d"); done
+          docker buildx imagetools create "${args[@]}" "${refs[@]}"
+      - name: Comprobar
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: docker buildx imagetools inspect "$IMAGE:$VERSION"

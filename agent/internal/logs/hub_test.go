@@ -253,14 +253,27 @@ func TestSlowSubscriberCountsDropsAndDoesNotBlock(t *testing.T) {
 	defer unsubFast()
 	const n = subBuffer + 50
 	done := make(chan struct{})
+	read := make(chan struct{})
 	go func() {
 		defer close(done)
 		for i := 0; i < n; i++ {
 			f.WriteLog(id, "2026-10-12T10:00:00Z l\n")
+			// Relevo con el lector: sin él, si el planificador no deja correr al test (GOMAXPROCS=1, CI
+			// cargada), el búfer del rápido también se llena y descarta. Si publish se bloqueara con el
+			// lento, recv vencería igual.
+			select {
+			case <-read:
+			case <-time.After(hangGuard):
+				return
+			}
 		}
 	}()
 	for i := 0; i < n; i++ { // el rápido recibe todo aunque el lento no lea
 		recv(t, fast)
+		select {
+		case read <- struct{}{}:
+		case <-done:
+		}
 	}
 	<-done
 	// publish reparte a los suscriptores en orden de mapa con f.mu tomado: el
