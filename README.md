@@ -259,7 +259,7 @@ Fixed limits, so you know what to expect:
 
 ## Backups
 
-Each server's **Backups** tab takes backups on demand, schedules automatic backups (cron in the node's time, retention by count and by days, and “only if someone has joined since the last one”) and restores. **History** shows the jobs with their log.
+Each server's **Backups** tab takes backups on demand, schedules automatic backups (cron in the node's time, retention by count and by days, and “Only if someone has played since the last backup”) and restores. **History** shows the jobs with their log.
 
 - **Where:** `DATA_ROOT/<slug>/backups/<slug>-<date>-<spec version>.tar.zst` (tar + zstd), with a `.json` next to it (sha256, size). With the server running the backup is hot (`save-off`, `save-all flush`, copy, `save-on`, which is sent even if the copy fails); stopped, it is a direct copy. Temporary files from Files uploads are never included.
 - **Retention:** only prunes scheduled backups, and never the most recent one. Manual backups and pre-restore data are deleted by hand.
