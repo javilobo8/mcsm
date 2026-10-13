@@ -136,7 +136,7 @@ describe("agent inventory and notices", () => {
     expect(app.jobs.get("job-prog")).toMatchObject({ type: "backup", serverId: s.id, nodeId, status: "ok", payload: { trigger: "scheduled" }, log: "save-off\nsave-on\n" });
     expect(await getBackups(s.id)).toHaveLength(1);
     const gone = nextEvent(app.events, "backups", (id) => id === s.id);
-    agent.send({ body: { case: "backupDeleted", value: { serverId: s.id, filename: "uno-20261012T040000.000Z-1.tar.zst", reason: "poda" } } });
+    agent.send({ body: { case: "backupDeleted", value: { serverId: s.id, filename: "uno-20261012T040000.000Z-1.tar.zst", reason: "pruned" } } });
     await gone;
     expect(await getBackups(s.id)).toEqual([]);
     agent.close();
