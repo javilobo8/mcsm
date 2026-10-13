@@ -80,6 +80,21 @@ func (r *Reconciler) lock(id string) func() {
 	return m.Unlock
 }
 
+// tryLock toma el lock de id solo si está libre (plan-9: TryHold).
+func (r *Reconciler) tryLock(id string) (func(), bool) {
+	r.mu.Lock()
+	m, ok := r.locks[id]
+	if !ok {
+		m = &sync.Mutex{}
+		r.locks[id] = m
+	}
+	r.mu.Unlock()
+	if !m.TryLock() {
+		return nil, false
+	}
+	return m.Unlock, true
+}
+
 func isActive(state string) bool {
 	return state == "running" || state == "restarting" || state == "paused"
 }

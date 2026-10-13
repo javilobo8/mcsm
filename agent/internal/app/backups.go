@@ -124,6 +124,9 @@ type backupService struct {
 	closed  bool                             // wait empezó: no se lanzan tareas nuevas
 	blocked map[string]func(context.Context) // servidores sin datos → su reserva (ver block)
 
+	saveOnMu sync.Mutex
+	saveOn   map[string]*saveOnRetry // plan-9: reintentos de save-on por servidor (retrySaveOn)
+
 	wg sync.WaitGroup // copias, restauraciones y liberaciones en curso (los tests esperan con wg.Wait)
 	// plan-7: MigrateAbort, MigrateRetire y MigrateConfirm de un mismo servidor, de uno en uno.
 	migLocks keyedLocks
@@ -137,6 +140,7 @@ func newBackupService(a *App, clock backup.Clock) *backupService {
 		releaseWait: defaultReleaseWait, drainWait: fileWritesDrainWait, inventoryLimit: maxInventoryBytes,
 		blocked: map[string]func(context.Context){},
 		slots:   make(chan struct{}, maxParallelJobs),
+		saveOn:  map[string]*saveOnRetry{},
 	}
 	// a.send se lee al entregar: se fija antes de lanzar goroutines (Run o el test).
 	b.out = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, a.log, "avisos de copias y jobs")
@@ -235,7 +239,7 @@ func (b *backupService) resumeSaves(ctx context.Context, serverID string) {
 	defer cancel()
 	if _, err := b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on"); err != nil {
 		b.a.log.Error("una copia interrumpida pudo dejar el guardado automático desactivado y save-on falló: ejecuta save-on en la consola", "server", t.slug, "err", err)
-		b.markSaveOn(serverID) // plan-9 (m7): se reintenta cada 15 s
+		b.markSaveOn(serverID) // plan-9 (m7): retrySaveOn lo reintenta
 		return
 	}
 	b.a.log.Warn("copia interrumpida por el cierre del agente: guardado automático reactivado (save-on)", "server", t.slug)
@@ -1081,66 +1085,128 @@ func (b *backupService) markSaveOn(serverID string) {
 		b.a.log.Error("anotar save-on pendiente", "server", serverID, "err", err)
 	}
 	b.a.emitEvent(serverID, mcsmv1.EventLevel_EVENT_LEVEL_WARN, KindSaveOnPending,
-		"El guardado automático puede haber quedado desactivado (save-on falló). El agente lo reintenta cada 15 s; si puedes, ejecuta save-on en la consola")
+		"El guardado automático puede haber quedado desactivado (save-on falló). El agente lo reintenta (cada 30 s a 5 min); si puedes, ejecuta save-on en la consola")
 }
 
-// retrySaveOn reintenta save-on en los servidores pendientes. Un servidor retirado o parado se olvida (al arrancar,
-// Minecraft vuelve a guardar solo); uno reservado se salta: su copia o restauración gestiona su propio save-off.
+// Reintentos de save-on (plan-9, m6/m7 del Plan 4).
+const (
+	// saveOnRetryTimeout acota el RCON del reintento: el servidor está reservado mientras dura.
+	saveOnRetryTimeout = 5 * time.Second
+	// saveOnBackoffMin y saveOnBackoffMax: espera tras cada fallo de un servidor (se duplica hasta el tope). Un
+	// éxito, o el servidor parado o retirado, la reinicia.
+	saveOnBackoffMin = 30 * time.Second
+	saveOnBackoffMax = 5 * time.Minute
+)
+
+// saveOnRetry es el estado en memoria de los reintentos de un servidor.
+type saveOnRetry struct {
+	fails   int
+	next    time.Time // no antes de esto
+	running bool      // hay un reintento en curso
+}
+
+// saveOnOutcome es el resultado de un reintento.
+type saveOnOutcome int
+
+const (
+	saveOnSkipped saveOnOutcome = iota // reservado u ocupado: la siguiente pasada, sin penalización
+	saveOnFailed                       // Docker o RCON fallaron: espera creciente
+	saveOnDone                         // reactivado, o ya no hace falta (parado, retirado)
+)
+
+// retrySaveOn lanza, cada uno en su goroutine, los reintentos de save-on de los servidores pendientes que toquen
+// (ver saveOnBackoffMin). No espera a ninguno ni lanza dos del mismo servidor a la vez.
 func (b *backupService) retrySaveOn(ctx context.Context) {
 	ids, err := b.a.st.SaveOnPending()
 	if err != nil {
 		b.a.log.Warn("listar save-on pendientes", "err", err)
 		return
 	}
+	now := b.clock.Now()
 	for _, id := range ids {
-		b.retryOneSaveOn(ctx, id)
+		b.saveOnMu.Lock()
+		st := b.saveOn[id]
+		if st == nil {
+			st = &saveOnRetry{}
+			b.saveOn[id] = st
+		}
+		if st.running || now.Before(st.next) {
+			b.saveOnMu.Unlock()
+			continue
+		}
+		st.running = true
+		b.saveOnMu.Unlock()
+		if !b.spawn(func() { b.finishSaveOn(id, b.retryOneSaveOn(ctx, id)) }) {
+			b.finishSaveOn(id, saveOnSkipped)
+		}
+	}
+}
+
+// finishSaveOn anota el resultado de un reintento: el éxito olvida el estado y el fallo alarga la espera.
+func (b *backupService) finishSaveOn(id string, out saveOnOutcome) {
+	b.saveOnMu.Lock()
+	defer b.saveOnMu.Unlock()
+	st := b.saveOn[id]
+	if st == nil {
+		return
+	}
+	st.running = false
+	switch out {
+	case saveOnDone:
+		delete(b.saveOn, id)
+	case saveOnFailed:
+		wait := saveOnBackoffMin
+		for i := 0; i < st.fails && wait < saveOnBackoffMax; i++ {
+			wait *= 2
+		}
+		st.next = b.clock.Now().Add(min(wait, saveOnBackoffMax))
+		st.fails++
 	}
 }
 
 // holdSaveOn es el motivo de la reserva corta con la que retrySaveOn envía save-on.
 const holdSaveOn = "reactivando el guardado automático"
 
-// retryOneSaveOn reintenta el save-on de id con el servidor reservado (Hold) mientras dura: una copia en caliente
-// que arrancara entre la comprobación y el RCON haría save-off y este save-on le reactivaría el guardado a mitad del
-// tar. Con la reserva, esa copia recibe busy; si la reserva ya está tomada, esta pasada se salta. No usa withSlot:
-// no es un job ni escribe en disco.
-func (b *backupService) retryOneSaveOn(ctx context.Context, id string) {
-	if b.a.rec.Held(id) {
-		return // sin esperar al lock del servidor
-	}
+// retryOneSaveOn reintenta el save-on de id con el servidor reservado mientras dura el RCON (como mucho
+// saveOnRetryTimeout): una copia en caliente que arrancara entre la comprobación y el RCON haría save-off y este
+// save-on le reactivaría el guardado a mitad del tar. Con la reserva, esa copia recibe busy. TryHold no espera: si el
+// servidor está reservado u ocupado, se salta. No usa withSlot: no es un job ni escribe en disco.
+func (b *backupService) retryOneSaveOn(ctx context.Context, id string) saveOnOutcome {
 	t, err := b.target(id)
 	if errors.Is(err, errUnknownServer) {
 		_ = b.a.st.ClearSaveOnPending(id)
-		return
+		return saveOnDone
 	}
 	if err != nil {
-		return
+		return saveOnFailed
 	}
-	release, err := b.a.rec.Hold(id, holdSaveOn)
+	release, err := b.a.rec.TryHold(id, holdSaveOn)
 	if err != nil {
-		return // lo reservó otro entre medias (copia, restauración…): la siguiente pasada
+		return saveOnSkipped
 	}
 	defer release(ctx)
 	running, err := b.isRunning(ctx, id)
 	if err != nil {
-		return
+		return saveOnFailed
 	}
 	if !running {
 		_ = b.a.st.ClearSaveOnPending(id)
 		b.a.log.Info("save-on pendiente olvidado: el servidor está parado y guardará al arrancar", "server", t.slug)
-		return
+		return saveOnDone
 	}
-	cctx, cancel := context.WithTimeout(ctx, resumeOnStartTimeout)
+	cctx, cancel := context.WithTimeout(ctx, saveOnRetryTimeout)
 	_, err = b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on")
 	cancel()
 	if err != nil {
-		return
+		b.a.log.Warn("reintento de save-on fallido", "server", t.slug, "err", err)
+		return saveOnFailed
 	}
 	if err := b.a.st.ClearSaveOnPending(id); err != nil {
 		b.a.log.Warn("borrar save-on pendiente", "server", t.slug, "err", err)
 	}
 	b.a.log.Info("guardado automático reactivado (save-on)", "server", t.slug)
 	b.a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_INFO, KindSaveOnResumed, "Guardado automático reactivado (save-on)")
+	return saveOnDone
 }
 
 // outbox entrega al panel, en orden y sin bloquear a quien los emite, los avisos de copias y
