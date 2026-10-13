@@ -77,6 +77,7 @@ export async function nodeRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: "El nodo tiene servidores; bórralos o mígralos antes" });
     }
     app.agents.get(node.id)?.terminate(); // un nodo borrado no puede seguir conectado
+    app.metrics.forgetNode(node.id);
     return reply.code(204).send();
   });
 

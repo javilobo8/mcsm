@@ -68,6 +68,11 @@ export class MetricsService {
     return ts - (ts % 10);
   }
 
+  /** Olvida lo que se guarda en memoria de un nodo borrado (su desfase de reloj). */
+  forgetNode(nodeId: string): void {
+    this.offsets.delete(nodeId);
+  }
+
   /** Guarda un MetricBatch del agente. Devuelve cuántas filas escribió. */
   ingest(nodeId: string, batch: MetricBatch): number {
     const ts = this.slotOf(nodeId, Number(batch.tsUnix));

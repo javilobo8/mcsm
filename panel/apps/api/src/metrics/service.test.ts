@@ -109,6 +109,16 @@ describe("MetricsService.ingest", () => {
     expect(svc.slotOf("n1", T0 + 30)).toBe(T0 + 30);
   });
 
+  it("forgetNode olvida el desfase del nodo (borrado): el siguiente lote desfasado lo recalcula", () => {
+    nowMs = (T0 + 5) * 1000;
+    expect(svc.slotOf("n1", T0 + 1_000)).toBe(T0); // desfase fijo -1000
+    expect(svc.slotOf("n2", T0 + 2_000)).toBe(T0);
+    svc.forgetNode("n1");
+    // Con el desfase de antes caería en T0 + 30 (dentro de tolerancia); olvidado, se recalcula a -1030.
+    expect(svc.slotOf("n1", T0 + 1_030)).toBe(T0);
+    expect(svc.slotOf("n2", T0 + 2_030)).toBe(T0 + 30); // el de otro nodo sigue
+  });
+
   it("la serie lleva la hora del panel", () => {
     expect(svc.series("server", "s1", "1h").now).toBe(T0 + 5);
   });

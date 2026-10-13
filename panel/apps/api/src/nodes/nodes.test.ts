@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
@@ -62,8 +62,10 @@ describe("nodos y alta", () => {
     let res = await app.inject({ method: "PATCH", url: `/api/nodes/${nodeId}`, headers: { cookie }, payload: { name: "salon", dataRoot: "/mnt/mc" } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ name: "salon", dataRoot: "/mnt/mc" });
+    const forget = vi.spyOn(app.metrics, "forgetNode");
     res = await app.inject({ method: "DELETE", url: `/api/nodes/${nodeId}`, headers: { cookie } });
     expect(res.statusCode).toBe(204);
+    expect(forget).toHaveBeenCalledWith(nodeId); // sin fuga del desfase de reloj del nodo borrado
     res = await app.inject({ method: "GET", url: "/api/nodes", headers: { cookie } });
     expect(res.json()).toHaveLength(0);
   });
