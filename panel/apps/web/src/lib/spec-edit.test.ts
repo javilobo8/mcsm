@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { defaultSpecInput, templateSpecSchema } from "@mcsm/shared";
 import {
   buildSpecPatch, editableFromTemplate, editableSpec, kvToText, listToText, parseKv, parseList, replaceOtherProperties,
-  setProperty, splitProperties, validateSpec, withType, parseLines, validateListItems, typeChangeNotice,
+  setProperty, splitProperties, validateSpec, withType, withVersion, parseLines, validateListItems, typeChangeNotice, type EditableSpec,
 } from "./spec-edit";
 import { PROPERTY_DEFS, typeKind } from "./spec-catalog";
 
@@ -206,5 +206,35 @@ describe("Jugadores frente al env libre", () => {
       expect(VIRTUAL_ERROR_IDS.has(id)).toBe(true);
       expect(tabOfField(id)).toBe("players");
     }
+  });
+});
+
+describe("withVersion (plan 10)", () => {
+  const base: EditableSpec = { ...defaultSpecInput(), type: "PAPER", version: "1.21.4", imageTag: "java21", build: "178" };
+  it("vacía el build al cambiar de versión y ajusta la Java del catálogo", () => {
+    const r = withVersion(base, "26.3");
+    expect(r.spec).toMatchObject({ version: "26.3", build: "", imageTag: "java25" });
+    expect(r.notice).toBe("Java ajustada a java25 (la que pide 26.3)");
+    expect(withVersion(base, "1.12.2").spec.imageTag).toBe("java8");
+    expect(withVersion({ ...base, imageTag: "latest" }, "1.20.1").spec.imageTag).toBe("java17");
+  });
+  it("misma Java: sin aviso; versión que no se reconoce: no toca la Java", () => {
+    expect(withVersion(base, "1.21.11")).toMatchObject({ notice: null, spec: { imageTag: "java21", build: "" } });
+    expect(withVersion(base, "25w14craftmine")).toMatchObject({ notice: null, spec: { imageTag: "java21" } });
+  });
+  it("una etiqueta personalizada no se pisa; solo avisa si no basta", () => {
+    const custom = { ...base, imageTag: "java21-graalvm" };
+    expect(withVersion(custom, "26.3")).toMatchObject({ spec: { imageTag: "java21-graalvm" }, notice: "La imagen java21-graalvm no basta para 26.3: necesita Java 25" });
+    expect(withVersion(custom, "1.20.1")).toMatchObject({ spec: { imageTag: "java21-graalvm" }, notice: null });
+  });
+  it("una spec antigua sin build no gana la clave (sin diff fantasma)", () => {
+    const { build: _build, ...old } = base;
+    const r = withVersion(old as EditableSpec, "1.21.11");
+    expect(r.spec).not.toHaveProperty("build");
+    expect(buildSpecPatch(old as EditableSpec, r.spec)).toEqual({ version: "1.21.11" });
+  });
+  it("withType vacía el build solo al cambiar de tipo", () => {
+    expect(withType(base, "FABRIC").build).toBe("");
+    expect(withType(base, "PAPER").build).toBe("178");
   });
 });

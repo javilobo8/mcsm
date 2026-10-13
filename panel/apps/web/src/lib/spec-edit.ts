@@ -1,9 +1,9 @@
 import {
   MODPACK_PLATFORMS, DIGITS_RE, ENTRY_RE, URL_RE, PLAYER_RE, ENV_KEY_RE, MEMORY_RE, PROPERTY_KEY_RE, RESERVED_ENV, RESERVED_PROPS,
-  canonicalJson, envSectionConflicts, formatZodError, hostnameError, memoryToBytes, portMappingSchema, specInputSchema, templateSpecSchema,
+  canonicalJson, envSectionConflicts, formatZodError, hostnameError, javaMajor, memoryToBytes, minJavaTag, portMappingSchema, specInputSchema, templateSpecSchema,
   type ModpackPlatform, type ServerRouter, type SpecInput, type SpecPatch, type TemplateSpec,
 } from "@mcsm/shared";
-import { PROPERTY_DEFS, TYPED_PROPERTY_KEYS } from "./spec-catalog";
+import { JAVA_TAGS, PROPERTY_DEFS, TYPED_PROPERTY_KEYS } from "./spec-catalog";
 
 /** Estado del formulario: una SpecInput (sin rconPassword). En plantillas, `ports` se ignora. */
 export type EditableSpec = SpecInput;
@@ -13,6 +13,7 @@ export const FORM_KEYS = [
   "imageTag", "type", "version", "memory", "properties", "env", "resources", "restartPolicy", "ports",
   "modpack", "mods", "plugins", "whitelist", "ops",
   "router", // plan-8
+  "build", // plan-10
 ] as const;
 
 /** Una entrada por línea; también acepta comas (pegar "lithium,sodium"). */
@@ -89,15 +90,35 @@ export function editableSpec<T extends Record<string, unknown>>(spec: T): Omit<T
 
 const isPlatform = (t: string): t is ModpackPlatform => (MODPACK_PLATFORMS as readonly string[]).includes(t);
 
-/** Cambia el tipo manteniendo coherente el modpack (tipo de modpack ⇔ sección modpack). */
+/** Cambia el tipo manteniendo coherente el modpack (tipo de modpack ⇔ sección modpack). Cada tipo tiene sus builds: se vacía. */
 export function withType(spec: EditableSpec, type: string): EditableSpec {
+  // `build` puede faltar en specs antiguas: solo se toca si tiene valor (sin diff fantasma).
+  const base = type !== spec.type && spec.build ? { ...spec, build: "" } : spec;
   if (isPlatform(type)) {
-    const prev = spec.modpack;
+    const prev = base.modpack;
     // El slug solo se conserva dentro de la misma plataforma: un slug de Modrinth no vale en CurseForge.
-    return { ...spec, type, modpack: { platform: type, slugOrUrl: prev?.platform === type ? prev.slugOrUrl : "", versionId: prev?.platform === type ? prev.versionId : "", loader: prev?.platform === type ? prev.loader : "" } };
+    return { ...base, type, modpack: { platform: type, slugOrUrl: prev?.platform === type ? prev.slugOrUrl : "", versionId: prev?.platform === type ? prev.versionId : "", loader: prev?.platform === type ? prev.loader : "" } };
   }
-  const { modpack: _drop, ...rest } = spec;
+  const { modpack: _drop, ...rest } = base;
   return { ...rest, type };
+}
+
+/**
+ * Cambia la versión de Minecraft (plan 10): vacía el build (cada versión tiene los suyos) y pone la
+ * Java mínima que pide si la etiqueta es del catálogo; una etiqueta personalizada (java21-graalvm) no
+ * se pisa, solo se avisa si no basta. Devuelve el aviso a mostrar, o null.
+ */
+export function withVersion(spec: EditableSpec, version: string): { spec: EditableSpec; notice: string | null } {
+  let next: EditableSpec = { ...spec, version };
+  if (version !== spec.version && spec.build) next = { ...next, build: "" };
+  const need = minJavaTag(version);
+  if (!need || spec.imageTag === need) return { spec: next, notice: null };
+  if ((JAVA_TAGS as readonly string[]).includes(spec.imageTag)) {
+    return { spec: { ...next, imageTag: need }, notice: `Java ajustada a ${need} (la que pide ${version})` };
+  }
+  const have = javaMajor(spec.imageTag);
+  const needMajor = javaMajor(need) ?? 0;
+  return { spec: next, notice: have !== null && have < needMajor ? `La imagen ${spec.imageTag} no basta para ${version}: necesita Java ${needMajor}` : null };
 }
 
 /** Aviso a mostrar junto al selector de Tipo cuando cambiar a `type` descarta o crea la sección Modpack; null si no hay efecto. */
