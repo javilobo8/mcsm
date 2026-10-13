@@ -124,7 +124,7 @@ describe("token de configuración inicial (L3)", () => {
 });
 
 describe("cambio de contraseña", () => {
-  it("exige la actual, cierra las demás sesiones y mantiene la propia", async () => {
+  it("exige la actual y cierra todas las sesiones, dando una nueva a quien cambia", async () => {
     let res = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
     const mine = cookieOf(res);
     res = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
@@ -135,8 +135,13 @@ describe("cambio de contraseña", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/actual no es correcta/);
     expect((await change(mine, { currentPassword: "correct horse", newPassword: "corta" })).statusCode).toBe(400);
-    expect((await change(mine, { currentPassword: "correct horse", newPassword: "nueva-larga" })).json()).toEqual({ ok: true });
-    expect((await app.inject({ method: "GET", url: "/api/__probe", headers: { cookie: mine } })).statusCode).toBe(200);
+    res = await change(mine, { currentPassword: "correct horse", newPassword: "nueva-larga" });
+    expect(res.json()).toEqual({ ok: true });
+    const fresh = cookieOf(res); // cookie nueva para quien cambió la contraseña
+    expect(fresh).not.toBe("");
+    expect(fresh).not.toBe(mine);
+    expect((await app.inject({ method: "GET", url: "/api/__probe", headers: { cookie: fresh } })).statusCode).toBe(200);
+    expect((await app.inject({ method: "GET", url: "/api/__probe", headers: { cookie: mine } })).statusCode).toBe(401);
     expect((await app.inject({ method: "GET", url: "/api/__probe", headers: { cookie: other } })).statusCode).toBe(401);
     expect((await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } })).statusCode).toBe(401);
     expect((await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "nueva-larga" } })).statusCode).toBe(200);

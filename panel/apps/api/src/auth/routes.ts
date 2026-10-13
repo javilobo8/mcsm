@@ -66,7 +66,9 @@ export async function authRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: "La contraseña actual no es correcta" });
     }
     app.auth.setSetting("admin_password_hash", await hashPassword(parsed.data.newPassword));
-    app.auth.deleteOtherSessions(req.sessionId!);
+    // Todas, también la actual (puede ser la cookie robada que motiva el cambio), y una nueva para quien cambia.
+    app.auth.deleteAllSessions();
+    setCookie(reply, app.auth.createSession(app.config.sessionTtlSeconds));
     return { ok: true };
   });
 

@@ -25,9 +25,9 @@ export class AuthRepo {
     const row = this.db.prepare("SELECT expires_at FROM sessions WHERE id = ?").get(id) as { expires_at: string } | undefined;
     return !!row && row.expires_at > nowIso();
   }
-  /** Cierra todas las sesiones salvo `keep` (cambio de contraseña). */
-  deleteOtherSessions(keep: string): void {
-    this.db.prepare("DELETE FROM sessions WHERE id <> ?").run(keep);
+  /** Cierra todas las sesiones (cambio de contraseña). */
+  deleteAllSessions(): void {
+    this.db.prepare("DELETE FROM sessions").run();
   }
   deleteSession(id: string): void {
     this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
