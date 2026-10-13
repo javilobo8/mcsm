@@ -1,10 +1,10 @@
 # Comprobaciones del monorepo: la «Verificación completa» de CLAUDE.md salvo la integración con Docker real y la E2E.
-# Corre en cada push a master y en cada PR, y release.yml la llama antes de publicar las imágenes.
+# Corre en cada push a main y en cada PR, y release.yml la llama antes de publicar las imágenes.
 name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
   workflow_call:
 

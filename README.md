@@ -228,7 +228,7 @@ Protocolo: edita `proto/`, luego `pnpm gen` y commitea lo generado.
 
 ### CI y versiones
 
-GitHub Actions ejecuta en cada push a `master` y en cada PR `buf lint`, `buf breaking` (contra la rama destino del PR), que el código generado esté al día, `go vet` y `go test -race` del agente, y typecheck, tests y build del panel (`.github/workflows/ci.yml`). La integración con Docker real y la E2E solo se ejecutan en local.
+GitHub Actions ejecuta en cada push a `main` y en cada PR `buf lint`, `buf breaking` (contra la rama destino del PR), que el código generado esté al día, `go vet` y `go test -race` del agente, y typecheck, tests y build del panel (`.github/workflows/ci.yml`). La integración con Docker real y la E2E solo se ejecutan en local.
 
 Para publicar una versión:
 

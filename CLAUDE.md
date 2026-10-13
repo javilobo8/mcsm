@@ -241,7 +241,7 @@ conocer.)
 - Web: el contenido de cada pestaña del servidor lleva `key={s.id}`; todo formulario con
   estado sucio registra `useTabGuard` (y `useBlocker`); los diálogos con `<form>` usan
   `dialogSubmit`.
-- Verificación completa: añade `buf breaking --against ".git#ref=master"` (funciona en
+- Verificación completa: añade `buf breaking --against ".git#ref=main"` (funciona en
   worktrees) y `go vet -tags integration ./...`.
 - Docker 29.7.2: tras un `start` fallido por el puerto, el siguiente arranca **sin publicar
   puertos** (aunque se pare y se vuelva a arrancar). Por eso `startOrDiscard` (arrancar,
@@ -299,7 +299,7 @@ conocer.)
   oficiales con caché en memoria (listas 1 h, builds 15 min, stale si la fuente cae); los tests inyectan
   `fetch` y nunca tocan la red. Fuente nueva = adaptador en `versions/sources.ts` + host en
   `allowedSource`. Solo builds STABLE de Paper/Folia (los experimentales exigen `*_CHANNEL`).
-- CI y releases: `.github/workflows/ci.yml` (push a master, PR y `workflow_call`) y `release.yml` (al publicar una
+- CI y releases: `.github/workflows/ci.yml` (push a main, PR y `workflow_call`) y `release.yml` (al publicar una
   Release; el tag debe ser `v<agent/VERSION>` o falla). Publica `ghcr.io/javilobo8/mcsm-{panel,agent}` para amd64 y
   arm64 en runners nativos (push-by-digest + `imagetools create`). Actions fijadas por SHA con `# vX.Y.Z`; base de
   imágenes multiarquitectura (un digest solo amd64 rompe arm64). La imagen del panel fija `MCSM_AGENT_IMAGE`
