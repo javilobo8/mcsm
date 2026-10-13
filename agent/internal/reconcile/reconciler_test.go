@@ -83,7 +83,7 @@ func TestCreateAndStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "alpha", "data")); err != nil {
-		t.Fatal("debe crear el directorio de datos")
+		t.Fatal("it must create the data directory")
 	}
 	if fake.Pulled[0] != "itzg/minecraft-server:java21" {
 		t.Fatalf("pulled = %v", fake.Pulled)
@@ -103,7 +103,7 @@ func TestCreateStopped(t *testing.T) {
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
 	_ = r.Reconcile(context.Background(), "a")
 	if calls(fake, "Start") != 0 {
-		t.Fatal("no debe arrancar un servidor deseado parado")
+		t.Fatal("it must not start a server whose desired state is stopped")
 	}
 	if rec.get("a").State != "created" {
 		t.Fatalf("obs = %+v", rec.get("a"))
@@ -115,10 +115,10 @@ func TestNoopWhenUnchanged(t *testing.T) {
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	_ = r.Reconcile(context.Background(), "a")
 	before := len(fake.Calls)
-	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON) // misma spec, otra versión
+	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON) // same spec, another version
 	_ = r.Reconcile(context.Background(), "a")
 	if calls(fake, "Create") != 1 || calls(fake, "Remove") != 0 {
-		t.Fatalf("no debería recrear; calls tras la 1ª: %v", fake.Calls[before:])
+		t.Fatalf("it should not recreate; calls after the 1st: %v", fake.Calls[before:])
 	}
 	if v, _ := st.Applied("a"); v != 2 {
 		t.Fatalf("applied = %d, want 2", v)
@@ -137,7 +137,7 @@ func TestRecreateWhenSpecChanges(t *testing.T) {
 	joined := strings.Join(fake.Calls, ";")
 	first, second := docker.FakeID(1), docker.FakeID(2)
 	if !strings.Contains(joined, "Stop "+first+" 1m0s;Remove "+first+";EnsureImage itzg/minecraft-server:java21;Create mcsm-alpha;Start "+second) {
-		t.Fatalf("secuencia inesperada: %v", fake.Calls)
+		t.Fatalf("unexpected sequence: %v", fake.Calls)
 	}
 }
 
@@ -146,11 +146,11 @@ func TestStartWhenStoppedButDesiredRunning(t *testing.T) {
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	_ = r.Reconcile(context.Background(), "a")
 	id := r.ContainerID(context.Background(), "a")
-	_ = fake.Stop(context.Background(), id, time.Second) // alguien lo paró a mano
+	_ = fake.Stop(context.Background(), id, time.Second) // someone stopped it by hand
 	_ = r.Reconcile(context.Background(), "a")
 	ins, _ := fake.Inspect(context.Background(), id)
 	if !ins.Running {
-		t.Fatal("debe volver a arrancarlo")
+		t.Fatal("it must start it again")
 	}
 }
 
@@ -159,21 +159,21 @@ func TestErrorIsObservedAndRetriedWithBackoff(t *testing.T) {
 	fake.CreateErr = errors.New("driver failed programming external connectivity: port is already allocated")
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	if err := r.Reconcile(context.Background(), "a"); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	if !strings.Contains(rec.get("a").Error, "already allocated") || rec.get("a").State != "missing" {
 		t.Fatalf("obs = %+v", rec.get("a"))
 	}
 	n := calls(fake, "Create")
-	r.ReconcileAll(context.Background()) // dentro del backoff: no reintenta
+	r.ReconcileAll(context.Background()) // within the backoff: it does not retry
 	if calls(fake, "Create") != n {
-		t.Fatal("no debe reintentar antes de retryAt")
+		t.Fatal("it must not retry before retryAt")
 	}
 	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) }
 	fake.CreateErr = nil
 	r.ReconcileAll(context.Background())
 	if calls(fake, "Create") != n+1 || rec.get("a").Error != "" || rec.get("a").State != "running" {
-		t.Fatalf("tras el backoff debe reintentar y limpiar el error: %+v calls=%v", rec.get("a"), fake.Calls)
+		t.Fatalf("after the backoff it must retry and clear the error: %+v calls=%v", rec.get("a"), fake.Calls)
 	}
 }
 
@@ -185,16 +185,16 @@ func TestRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
-		t.Fatal("debe borrar el contenedor")
+		t.Fatal("it must delete the container")
 	}
 	if _, err := os.Stat(filepath.Join(root, "alpha")); err != nil {
-		t.Fatal("sin deleteData el directorio se conserva")
+		t.Fatal("without deleteData the directory is kept")
 	}
 	put(t, st, "b", "beta", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
 	_ = r.Reconcile(context.Background(), "b")
 	_ = r.Remove(context.Background(), "b", true)
 	if _, err := os.Stat(filepath.Join(root, "beta")); !os.IsNotExist(err) {
-		t.Fatal("con deleteData el directorio se borra")
+		t.Fatal("with deleteData the directory is deleted")
 	}
 }
 
@@ -207,9 +207,9 @@ func TestPowerUpdatesDesiredState(t *testing.T) {
 	}
 	sp, _ := st.GetSpec("a")
 	if sp.DesiredState != mcsmv1.DesiredState_DESIRED_STATE_STOPPED {
-		t.Fatal("STOP debe persistir desired=stopped")
+		t.Fatal("STOP must persist desired=stopped")
 	}
-	_ = r.Reconcile(context.Background(), "a") // no debe volver a arrancarlo
+	_ = r.Reconcile(context.Background(), "a") // it must not start it again
 	if rec.get("a").State != "exited" {
 		t.Fatalf("obs = %+v", rec.get("a"))
 	}
@@ -236,15 +236,15 @@ func TestStartPortConflictIsObservedAndRetried(t *testing.T) {
 	fake.StartErr = errors.New("port is already allocated")
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	if err := r.Reconcile(context.Background(), "a"); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	obs := rec.get("a")
-	// plan-8: el contenedor que no pudo arrancar se descarta (fallo de Docker 29.7.2) y se recrea.
+	// plan-8: the container that could not start is discarded (Docker 29.7.2 failure) and recreated.
 	if obs.State != "missing" || !strings.Contains(obs.Error, "already allocated") {
 		t.Fatalf("obs = %+v", obs)
 	}
 	if v, _ := st.Applied("a"); v != 0 {
-		t.Fatalf("no debe marcar la versión como aplicada, applied = %d", v)
+		t.Fatalf("it must not mark the version as applied, applied = %d", v)
 	}
 	fake.StartErr = nil
 	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) }
@@ -260,7 +260,7 @@ func TestBackoffGrowsAndIsCapped(t *testing.T) {
 	for i, w := range want {
 		r.markFailure("a", 1, "x")
 		if got := r.retryAt["a"].Sub(r.now()); got != w {
-			t.Fatalf("fallo %d: backoff = %v, want %v", i+1, got, w)
+			t.Fatalf("failure %d: backoff = %v, want %v", i+1, got, w)
 		}
 	}
 	for i := 0; i < 100; i++ {
@@ -277,17 +277,17 @@ func TestObserveKeepsLastErrorUntilSuccess(t *testing.T) {
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	_ = r.Reconcile(context.Background(), "a")
 	if obs := r.Observe(context.Background(), "a"); !strings.Contains(obs.Error, "already allocated") {
-		t.Fatalf("Observe debe conservar el error: %+v", obs)
+		t.Fatalf("Observe must keep the error: %+v", obs)
 	}
 	if !strings.Contains(rec.get("a").Error, "already allocated") {
-		t.Fatal("el observer también debe verlo")
+		t.Fatal("the observer must see it too")
 	}
 	fake.StartErr = nil
 	if err := r.Reconcile(context.Background(), "a"); err != nil {
 		t.Fatal(err)
 	}
 	if obs := r.Observe(context.Background(), "a"); obs.Error != "" {
-		t.Fatalf("error debe limpiarse tras éxito: %+v", obs)
+		t.Fatalf("the error must be cleared after success: %+v", obs)
 	}
 }
 
@@ -305,7 +305,7 @@ func TestApplyIgnoresOlderSpec(t *testing.T) {
 		t.Fatal(err)
 	}
 	if calls(fake, "Create") != 1 || calls(fake, "Remove") != 0 {
-		t.Fatalf("spec vieja no debe recrear: %v", fake.Calls)
+		t.Fatalf("an old spec must not recreate: %v", fake.Calls)
 	}
 	if sp, _ := st.GetSpec("a"); sp.Version != 5 {
 		t.Fatalf("version = %d", sp.Version)
@@ -337,9 +337,9 @@ func TestApplyAndPowerConcurrent(t *testing.T) {
 	wg.Wait()
 	sp, _ := st.GetSpec("a")
 	if sp.Version != n+1 {
-		t.Fatalf("versión final = %d, want %d", sp.Version, n+1)
+		t.Fatalf("final version = %d, want %d", sp.Version, n+1)
 	}
-	// Power llegado después se respeta.
+	// A Power that arrives later is respected.
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err != nil {
 		t.Fatal(err)
 	}
@@ -358,12 +358,12 @@ func TestRemoveDeletesSpecAndNoResurrection(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sp, _ := st.GetSpec("a"); sp != nil {
-		t.Fatal("Remove debe borrar la spec")
+		t.Fatal("Remove must delete the spec")
 	}
 	r.ReconcileAll(ctx)
 	_ = r.Reconcile(ctx, "a")
 	if list, _ := fake.ListManaged(ctx); len(list) != 0 || calls(fake, "Create") != 1 {
-		t.Fatalf("no debe resucitar: %v", fake.Calls)
+		t.Fatalf("it must not resurrect: %v", fake.Calls)
 	}
 }
 
@@ -382,22 +382,22 @@ func TestRemoveWithConcurrentReconcileAll(t *testing.T) {
 	}
 	wg.Wait()
 	if list, _ := fake.ListManaged(ctx); len(list) != 0 {
-		t.Fatalf("contenedor huérfano: %+v", list)
+		t.Fatalf("orphan container: %+v", list)
 	}
 }
 
 func TestRemoveRejectsUnsafeSlug(t *testing.T) {
 	for _, slug := range []string{".", "..", "", "a/../.."} {
 		r, st, _, _, root := setup(t)
-		if err := os.MkdirAll(filepath.Join(root, "otro", "data"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(root, "other", "data"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		put(t, st, "a", slug, 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
 		if err := r.Remove(context.Background(), "a", true); err == nil {
-			t.Fatalf("slug %q: esperaba error", slug)
+			t.Fatalf("slug %q: expected an error", slug)
 		}
-		if _, err := os.Stat(filepath.Join(root, "otro", "data")); err != nil {
-			t.Fatalf("slug %q: no debe borrar datos ajenos", slug)
+		if _, err := os.Stat(filepath.Join(root, "other", "data")); err != nil {
+			t.Fatalf("slug %q: it must not delete foreign data", slug)
 		}
 	}
 }
@@ -411,12 +411,12 @@ func TestBackoffResetsWhenSpecVersionChanges(t *testing.T) {
 	n := calls(fake, "Create")
 	r.ReconcileAll(ctx)
 	if calls(fake, "Create") != n {
-		t.Fatal("en backoff no debe reintentar")
+		t.Fatal("in backoff it must not retry")
 	}
 	put(t, st, "a", "alpha", 2, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	r.ReconcileAll(ctx)
 	if calls(fake, "Create") != n+1 {
-		t.Fatal("una versión nueva debe reintentar de inmediato")
+		t.Fatal("a new version must retry immediately")
 	}
 }
 
@@ -429,7 +429,7 @@ func TestNeverDeletesUnknownManagedContainer(t *testing.T) {
 	}
 	r.ReconcileAll(ctx)
 	if list, _ := fake.ListManaged(ctx); len(list) != 1 || calls(fake, "Remove") != 0 {
-		t.Fatalf("no debe tocar contenedores sin spec: %v", fake.Calls)
+		t.Fatalf("it must not touch containers without a spec: %v", fake.Calls)
 	}
 }
 
@@ -443,10 +443,10 @@ func TestRemoveIsIdempotent(t *testing.T) {
 			t.Fatalf("Remove #%d: %v", i+1, err)
 		}
 		if sp, _ := st.GetSpec("a"); sp != nil {
-			t.Fatalf("Remove #%d: queda la spec", i+1)
+			t.Fatalf("Remove #%d: the spec remains", i+1)
 		}
 		if list, _ := fake.ListManaged(ctx); len(list) != 0 {
-			t.Fatalf("Remove #%d: queda el contenedor", i+1)
+			t.Fatalf("Remove #%d: the container remains", i+1)
 		}
 	}
 }
@@ -460,10 +460,10 @@ func TestRemoveDataOfUnknownServerFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := r.Remove(ctx, "a", true); err == nil {
-		t.Fatal("deleteData sobre servidor desconocido debe devolver error, no fallar en silencio")
+		t.Fatal("deleteData on an unknown server must return an error, not fail silently")
 	}
 	if _, err := os.Stat(filepath.Join(root, "alpha", "data")); err != nil {
-		t.Fatal("el directorio de datos debe seguir intacto")
+		t.Fatal("the data directory must remain intact")
 	}
 }
 
@@ -474,13 +474,13 @@ func TestRemoveInvalidSlugTouchesNothing(t *testing.T) {
 	_ = r.Reconcile(ctx, "a")
 	put(t, st, "a", "..", 2, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	if err := r.Remove(ctx, "a", true); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil {
-		t.Fatal("no debe borrar la spec")
+		t.Fatal("it must not delete the spec")
 	}
 	if list, _ := fake.ListManaged(ctx); len(list) != 1 || calls(fake, "Remove") != 0 {
-		t.Fatalf("no debe borrar el contenedor: %v", fake.Calls)
+		t.Fatalf("it must not delete the container: %v", fake.Calls)
 	}
 }
 
@@ -493,20 +493,20 @@ func TestStoreForceSavesOlderSpecWithoutTouchingDocker(t *testing.T) {
 	if err := r.Apply(ctx, mk(5, specJSON)); err != nil {
 		t.Fatal(err)
 	}
-	r.markFailure("a", 5, "fallo previo")
+	r.markFailure("a", 5, "previous failure")
 	before := len(fake.Calls)
 	old := strings.Replace(specJSON, `"memory":"2G"`, `"memory":"3G"`, 1)
 	if err := r.StoreForce(mk(2, old)); err != nil {
 		t.Fatal(err)
 	}
 	if sp, _ := st.GetSpec("a"); sp.Version != 2 {
-		t.Fatalf("version = %d, StoreForce debe sobreescribir aunque sea más antigua", sp.Version)
+		t.Fatalf("version = %d, StoreForce must overwrite even if it is older", sp.Version)
 	}
 	if len(fake.Calls) != before {
-		t.Fatalf("StoreForce no debe tocar Docker: %v", fake.Calls[before:])
+		t.Fatalf("StoreForce must not touch Docker: %v", fake.Calls[before:])
 	}
 	if _, waiting := r.retryAt["a"]; waiting || r.lastErr["a"] != "" {
-		t.Fatal("StoreForce debe limpiar el backoff para que la reconciliación sea inmediata")
+		t.Fatal("StoreForce must clear the backoff so the reconciliation is immediate")
 	}
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
@@ -525,29 +525,29 @@ func TestForgetDeletesSpecButKeepsContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sp, _ := st.GetSpec("a"); sp != nil {
-		t.Fatal("Forget debe borrar la spec")
+		t.Fatal("Forget must delete the spec")
 	}
 	if list, _ := fake.ListManaged(ctx); len(list) != 1 {
-		t.Fatal("Forget no toca Docker")
+		t.Fatal("Forget does not touch Docker")
 	}
-	// El tick de specs no la ve: ni la recrea ni la arranca ni la borra.
+	// The specs tick does not see it: it neither recreates, starts nor deletes it.
 	if err := r.ReconcileTick(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if calls(fake, "Create") != 1 || calls(fake, "Stop") != 0 || calls(fake, "Remove") != 0 {
-		t.Fatalf("una spec olvidada no se reconcilia: %v", fake.Calls)
+		t.Fatalf("a forgotten spec is not reconciled: %v", fake.Calls)
 	}
 	if list, _ := fake.ListManaged(ctx); len(list) != 1 {
-		t.Fatal("el contenedor sigue hasta el Remove")
+		t.Fatal("the container remains until Remove")
 	}
 	if err := r.Remove(ctx, "a", false); err != nil {
 		t.Fatal(err)
 	}
 	if list, _ := fake.ListManaged(ctx); len(list) != 0 || calls(fake, "Remove") != 1 {
-		t.Fatalf("Remove tras Forget debe borrar el contenedor huérfano: %v", fake.Calls)
+		t.Fatalf("Remove after Forget must delete the orphan container: %v", fake.Calls)
 	}
 	if has, _ := st.HasTombstone("a"); has {
-		t.Fatal("Remove con éxito borra la lápida")
+		t.Fatal("a successful Remove deletes the tombstone")
 	}
 }
 
@@ -560,8 +560,8 @@ func desired(t *testing.T, st *store.Store, id string) mcsmv1.DesiredState {
 	return sp.DesiredState
 }
 
-// Si la acción Docker falla, el estado deseado no cambia (el panel tampoco lo cambia
-// sin Ack) y el error queda en Observed hasta la siguiente reconciliación con éxito.
+// If the Docker action fails, the desired state does not change (the panel does not change it
+// without an Ack either) and the error stays in Observed until the next successful reconciliation.
 func TestPowerFailureKeepsDesiredState(t *testing.T) {
 	r, st, fake, rec, _ := setup(t)
 	ctx := context.Background()
@@ -569,24 +569,24 @@ func TestPowerFailureKeepsDesiredState(t *testing.T) {
 	_ = r.Reconcile(ctx, "a")
 	fake.StartErr = errors.New("port is already allocated")
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	if d := desired(t, st, "a"); d != mcsmv1.DesiredState_DESIRED_STATE_STOPPED {
-		t.Fatalf("desired = %v: un START fallido no debe persistir running", d)
+		t.Fatalf("desired = %v: a failed START must not persist running", d)
 	}
 	if obs := r.Observe(ctx, "a"); !strings.Contains(obs.Error, "already allocated") {
-		t.Fatalf("el fallo debe verse en Observed: %+v", obs)
+		t.Fatalf("the failure must be visible in Observed: %+v", obs)
 	}
 	fake.StartErr = nil
 	n := calls(fake, "Start")
 	r.now = func() time.Time { return time.Unix(1_000_000+3600, 0) }
-	r.ReconcileAll(ctx) // el tick no arranca lo que el panel cree parado
+	r.ReconcileAll(ctx) // the tick does not start what the panel believes stopped
 	if calls(fake, "Start") != n || rec.get("a").Error != "" {
 		t.Fatalf("calls=%v obs=%+v", fake.Calls, rec.get("a"))
 	}
 }
 
-// Sin contenedor, Power fija el estado deseado y reconcilia (crea y arranca o para).
+// Without a container, Power sets the desired state and reconciles (creates and starts or stops).
 func TestPowerWithoutContainerReconciles(t *testing.T) {
 	r, st, fake, rec, _ := setup(t)
 	ctx := context.Background()
@@ -606,11 +606,11 @@ func TestPowerWithoutContainerFailureRevertsDesired(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
 	ctx := context.Background()
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_STOPPED, specJSON)
-	fake.CreateErr = errors.New("sin disco")
+	fake.CreateErr = errors.New("no disk")
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	if d := desired(t, st, "a"); d != mcsmv1.DesiredState_DESIRED_STATE_STOPPED {
-		t.Fatalf("desired = %v: el fallo no debe dejar running guardado", d)
+		t.Fatalf("desired = %v: the failure must not leave running stored", d)
 	}
 }

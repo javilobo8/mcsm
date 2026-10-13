@@ -13,11 +13,11 @@ import (
 	"mcsm/agent/internal/docker"
 )
 
-// blockPort arranca en el fake un contenedor ajeno que publica port (otro proceso en el puerto).
+// blockPort starts in the fake a foreign container that publishes port (another process on the port).
 func blockPort(t *testing.T, fake *docker.Fake, port string) string {
 	t.Helper()
 	ctx := context.Background()
-	id, err := fake.Create(ctx, "ajeno-"+port, &container.Config{Image: "x"},
+	id, err := fake.Create(ctx, "foreign-"+port, &container.Config{Image: "x"},
 		&container.HostConfig{PortBindings: network.PortMap{network.MustParsePort(port + "/tcp"): {{HostPort: port}}}}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -37,20 +37,20 @@ func serverContainer(t *testing.T, r *Reconciler, id string) *docker.Container {
 	return c
 }
 
-// Docker 29.7.2: tras un arranque fallido por el puerto, el siguiente arranca sin publicarlo. El
-// reconciliador descarta el contenedor al fallar y lo recrea en la siguiente pasada (backoff).
+// Docker 29.7.2: after a start that failed on the port, the next one starts without publishing it. The
+// reconciler discards the container on failure and recreates it on the next pass (backoff).
 func TestStartFailureDiscardsContainer(t *testing.T) {
 	r, st, fake, rec, _ := setup(t)
 	ctx := context.Background()
 	blocker := blockPort(t, fake, "25565")
 	put(t, st, "a", "alpha", 1, mcsmv1.DesiredState_DESIRED_STATE_RUNNING, specJSON)
 	if err := r.Reconcile(ctx, "a"); err == nil {
-		t.Fatal("el puerto está ocupado")
+		t.Fatal("the port is taken")
 	}
 	if c := serverContainer(t, r, "a"); c != nil {
-		t.Fatalf("el contenedor que no pudo arrancar se descarta: %+v", c)
+		t.Fatalf("the container that could not start is discarded: %+v", c)
 	}
-	if obs := rec.get("a"); obs.State != "missing" || !strings.Contains(obs.Error, "already allocated") || !strings.Contains(obs.Error, "se recreará") {
+	if obs := rec.get("a"); obs.State != "missing" || !strings.Contains(obs.Error, "already allocated") || !strings.Contains(obs.Error, "will be recreated") {
 		t.Fatalf("obs = %+v", obs)
 	}
 	_ = fake.Stop(ctx, blocker, time.Second)
@@ -59,12 +59,12 @@ func TestStartFailureDiscardsContainer(t *testing.T) {
 	c := serverContainer(t, r, "a")
 	ins, _ := fake.Inspect(ctx, c.ID)
 	if !ins.Running || ins.PortsMissing || rec.get("a").Error != "" {
-		t.Fatalf("recreado: %+v obs=%+v", ins, rec.get("a"))
+		t.Fatalf("recreated: %+v obs=%+v", ins, rec.get("a"))
 	}
 }
 
-// Un contenedor que otro (la política de reinicio, mc-router) intentó arrancar con el puerto
-// ocupado queda contaminado: «Arrancar» lo descarta y lo recrea, y arranca publicando el puerto.
+// A container that another party (the restart policy, mc-router) tried to start with the port
+// taken is left tainted: "Start" discards it and recreates it, and it starts publishing the port.
 func TestPowerStartRecreatesContainerLeftWithoutPorts(t *testing.T) {
 	r, st, fake, rec, _ := setup(t)
 	ctx := context.Background()
@@ -74,8 +74,8 @@ func TestPowerStartRecreatesContainerLeftWithoutPorts(t *testing.T) {
 	}
 	old := serverContainer(t, r, "a")
 	blocker := blockPort(t, fake, "25565")
-	if err := fake.Start(ctx, old.ID); err == nil { // arranque ajeno con el puerto ocupado
-		t.Fatal("el puerto está ocupado")
+	if err := fake.Start(ctx, old.ID); err == nil { // foreign start with the port taken
+		t.Fatal("the port is taken")
 	}
 	_ = fake.Stop(ctx, blocker, time.Second)
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_START); err != nil {
@@ -84,14 +84,14 @@ func TestPowerStartRecreatesContainerLeftWithoutPorts(t *testing.T) {
 	c := serverContainer(t, r, "a")
 	ins, _ := fake.Inspect(ctx, c.ID)
 	if c.ID == old.ID || !ins.Running || ins.PortsMissing {
-		t.Fatalf("Arrancar debe recrearlo con puertos: old=%s %+v", old.ID, ins)
+		t.Fatalf("Start must recreate it with ports: old=%s %+v", old.ID, ins)
 	}
 	if d := desired(t, st, "a"); d != mcsmv1.DesiredState_DESIRED_STATE_RUNNING || rec.get("a").Error != "" {
 		t.Fatalf("desired=%v obs=%+v", d, rec.get("a"))
 	}
 }
 
-// Si lo arrancó otro y quedó en marcha sin puertos, Observed lo dice y «Reiniciar» lo arregla.
+// If another party started it and it stayed running without ports, Observed says so and "Restart" fixes it.
 func TestRunningWithoutPortsIsObservedAndRestartFixesIt(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
 	ctx := context.Background()
@@ -101,10 +101,10 @@ func TestRunningWithoutPortsIsObservedAndRestartFixesIt(t *testing.T) {
 	blocker := blockPort(t, fake, "25565")
 	_ = fake.Start(ctx, old.ID)
 	_ = fake.Stop(ctx, blocker, time.Second)
-	if err := fake.Start(ctx, old.ID); err != nil { // p. ej. mc-router lo despierta
+	if err := fake.Start(ctx, old.ID); err != nil { // e.g. mc-router wakes it
 		t.Fatal(err)
 	}
-	if obs := r.Observe(ctx, "a"); obs.State != "running" || !strings.Contains(obs.Error, "sin publicar sus puertos") {
+	if obs := r.Observe(ctx, "a"); obs.State != "running" || !strings.Contains(obs.Error, "without publishing its ports") {
 		t.Fatalf("obs = %+v", obs)
 	}
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART); err != nil {
@@ -113,7 +113,7 @@ func TestRunningWithoutPortsIsObservedAndRestartFixesIt(t *testing.T) {
 	c := serverContainer(t, r, "a")
 	ins, _ := fake.Inspect(ctx, c.ID)
 	if c.ID == old.ID || !ins.Running || ins.PortsMissing {
-		t.Fatalf("Reiniciar debe recrearlo: %+v", ins)
+		t.Fatalf("Restart must recreate it: %+v", ins)
 	}
 	if obs := r.Observe(ctx, "a"); obs.Error != "" {
 		t.Fatalf("obs = %+v", obs)

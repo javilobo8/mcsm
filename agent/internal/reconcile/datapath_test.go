@@ -14,8 +14,8 @@ import (
 	"mcsm/agent/internal/store"
 )
 
-// H1: el agente solo monta un dataPath si es la carpeta que verificó al adoptar el contenedor de ese
-// servidor. Un panel comprometido no puede montar /root (ni nada) en un contenedor.
+// H1: the agent only mounts a dataPath if it is the folder it verified when adopting that
+// server's container. A compromised panel cannot mount /root (or anything) in a container.
 
 func TestUnverifiedDataPathCreatesNothing(t *testing.T) {
 	r, st, fake, rec, _ := setup(t)
@@ -25,7 +25,7 @@ func TestUnverifiedDataPathCreatesNothing(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if calls(fake, "Create")+calls(fake, "EnsureImage") != 0 {
-		t.Fatalf("sin verificar no se toca Docker: %v", fake.Calls)
+		t.Fatalf("unverified, Docker is not touched: %v", fake.Calls)
 	}
 	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "/root/mc") {
 		t.Fatalf("observed = %+v", o)
@@ -40,7 +40,7 @@ func TestDataPathOtherThanVerifiedIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p, _ := st.ExternalPath("a"); p != extDataPath {
-		t.Fatalf("adoptar registra la carpeta verificada: %q", p)
+		t.Fatalf("adopting registers the verified folder: %q", p)
 	}
 	fake.Calls = nil
 	err := r.Apply(ctx, importMsg("a", "alpha", 2, importedSpec(id, impOpts{dataPath: "/root/mc", memory: "3G"})))
@@ -48,14 +48,14 @@ func TestDataPathOtherThanVerifiedIsRefused(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, ok := fake.Containers[id]; !ok || calls(fake, "Stop")+calls(fake, "Remove")+calls(fake, "Create") != 0 {
-		t.Fatalf("el original sigue intacto: %v", fake.Calls)
+		t.Fatalf("the original stays intact: %v", fake.Calls)
 	}
 	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "/root/mc") {
 		t.Fatalf("observed = %+v", o)
 	}
 }
 
-// El registro sobrevive a reiniciar el agente: la primera recreación tras el reinicio monta la carpeta.
+// The record survives restarting the agent: the first recreation after the restart mounts the folder.
 func TestVerifiedDataPathSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	dbPath, root := filepath.Join(dir, "agent.db"), filepath.Join(dir, "data")
@@ -86,14 +86,14 @@ func TestVerifiedDataPathSurvivesRestart(t *testing.T) {
 	}
 	list, _ := fake.ListManaged(ctx)
 	if len(list) != 1 || list[0].Name != "mcsm-alpha" {
-		t.Fatalf("gestionado = %+v", list)
+		t.Fatalf("managed = %+v", list)
 	}
 	if src := dataSource(t, fake, list[0].ID); src != extDataPath {
 		t.Fatalf("/data = %q", src)
 	}
 }
 
-// Store perdido y original desaparecido: nada demuestra que la carpeta sea la del importado.
+// Lost store and vanished original: nothing proves that the folder is the imported one's.
 func TestStoreLostAndOriginalGoneCreatesNothing(t *testing.T) {
 	r, st, fake, rec, _ := setup(t)
 	put(t, st, "a", "alpha", 1, desiredRunning, string(importedSpec(docker.FakeID(42), impOpts{dataPath: extDataPath})))
@@ -101,14 +101,14 @@ func TestStoreLostAndOriginalGoneCreatesNothing(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if calls(fake, "Create") != 0 {
-		t.Fatalf("no se crea nada: %v", fake.Calls)
+		t.Fatalf("nothing is created: %v", fake.Calls)
 	}
-	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "vuelve a importar") {
+	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "import it again") {
 		t.Fatalf("observed = %+v", o)
 	}
 }
 
-// Store perdido con el original vivo: la readopción vuelve a verificar y registra la carpeta.
+// Lost store with the original alive: the re-adoption verifies again and registers the folder.
 func TestStoreLostReadoptRegistersDataPath(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
 	id := external(t, fake, "mc", extDataPath, true)
@@ -117,12 +117,12 @@ func TestStoreLostReadoptRegistersDataPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p, _ := st.ExternalPath("a"); p != extDataPath {
-		t.Fatalf("ruta = %q", p)
+		t.Fatalf("path = %q", p)
 	}
 }
 
-// Store perdido tras la recreación: el gestionado (solo lo crea el agente, con la carpeta ya
-// verificada) la sigue montando; se recupera el registro sin recrear.
+// Lost store after the recreation: the managed one (only the agent creates it, with the folder already
+// verified) keeps mounting it; the record is recovered without recreating.
 func TestStoreLostRecoversFromManagedContainer(t *testing.T) {
 	r, _, fake, _, _ := setup(t)
 	ctx := context.Background()
@@ -133,7 +133,7 @@ func TestStoreLostRecoversFromManagedContainer(t *testing.T) {
 	if err := r.Apply(ctx, importMsg("a", "alpha", 2, importedSpec(id, impOpts{dataPath: extDataPath, memory: "3G"}))); err != nil {
 		t.Fatal(err)
 	}
-	// Agente nuevo (store vacío) sobre el mismo Docker.
+	// New agent (empty store) over the same Docker.
 	r2, st2, _, _, _ := setup(t)
 	r2.eng, r2.dataRoot = fake, r.dataRoot
 	put(t, st2, "a", "alpha", 2, desiredRunning, string(importedSpec(id, impOpts{dataPath: extDataPath, memory: "3G"})))
@@ -142,14 +142,14 @@ func TestStoreLostRecoversFromManagedContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	if calls(fake, "Create")+calls(fake, "Remove") != 0 {
-		t.Fatalf("no recrea: %v", fake.Calls)
+		t.Fatalf("does not recreate: %v", fake.Calls)
 	}
 	if p, _ := st2.ExternalPath("a"); p != extDataPath {
-		t.Fatalf("ruta recuperada = %q", p)
+		t.Fatalf("recovered path = %q", p)
 	}
 }
 
-// dataSource es la carpeta del host montada en /data de un contenedor del fake (Binds o Mounts).
+// dataSource is the host folder mounted at /data of a fake container (Binds or Mounts).
 func dataSource(t *testing.T, fake *docker.Fake, id string) string {
 	t.Helper()
 	info, err := fake.InspectImport(context.Background(), id)
@@ -164,8 +164,8 @@ func dataSource(t *testing.T, fake *docker.Fake, id string) string {
 	return ""
 }
 
-// M2: el original desapareció porque Compose lo recreó con otro id sobre la misma carpeta: no se crea
-// mcsm-<slug> encima del mismo mundo.
+// M2: the original disappeared because Compose recreated it with another id over the same folder: mcsm-<slug>
+// is not created on top of the same world.
 func TestOriginalGoneButAnotherContainerUsesData(t *testing.T) {
 	r, _, fake, rec, root := setup(t)
 	ctx := context.Background()
@@ -177,21 +177,21 @@ func TestOriginalGoneButAnotherContainerUsesData(t *testing.T) {
 	if err := fake.Remove(ctx, id); err != nil { // docker compose up -d
 		t.Fatal(err)
 	}
-	external(t, fake, "casa-survival-1", dataDir, false)
+	external(t, fake, "home-survival-1", dataDir, false)
 	fake.Calls = nil
 	if err := r.Reconcile(ctx, "a"); !errors.Is(err, ErrDataInUse) {
 		t.Fatalf("err = %v", err)
 	}
 	if calls(fake, "Create")+calls(fake, "Start") != 0 {
-		t.Fatalf("no se crea nada: %v", fake.Calls)
+		t.Fatalf("nothing is created: %v", fake.Calls)
 	}
-	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "casa-survival-1") {
+	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "home-survival-1") {
 		t.Fatalf("observed = %+v", o)
 	}
 }
 
-// M2 con dataPath, y en la recreación: el original adoptado no se para si otro contenedor itzg monta
-// la misma carpeta (se crearía un segundo servidor sobre el mismo mundo).
+// M2 with dataPath, and on recreation: the adopted original is not stopped if another itzg container mounts
+// the same folder (a second server over the same world would be created).
 func TestRecreateRefusedWhileAnotherContainerUsesData(t *testing.T) {
 	r, _, fake, _, _ := setup(t)
 	ctx := context.Background()
@@ -199,13 +199,13 @@ func TestRecreateRefusedWhileAnotherContainerUsesData(t *testing.T) {
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{dataPath: extDataPath}))); err != nil {
 		t.Fatal(err)
 	}
-	external(t, fake, "copia-manual", extDataPath, false)
+	external(t, fake, "manual-copy", extDataPath, false)
 	fake.Calls = nil
 	err := r.Apply(ctx, importMsg("a", "alpha", 2, importedSpec(id, impOpts{dataPath: extDataPath, memory: "3G"})))
 	if !errors.Is(err, ErrDataInUse) {
 		t.Fatalf("err = %v", err)
 	}
 	if _, ok := fake.Containers[id]; !ok || calls(fake, "Stop")+calls(fake, "Remove")+calls(fake, "Create") != 0 {
-		t.Fatalf("el original sigue intacto: %v", fake.Calls)
+		t.Fatalf("the original stays intact: %v", fake.Calls)
 	}
 }

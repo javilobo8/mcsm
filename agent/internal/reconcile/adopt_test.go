@@ -23,11 +23,11 @@ import (
 
 const desiredRunning = mcsmv1.DesiredState_DESIRED_STATE_RUNNING
 
-// extDataPath es una carpeta fuera de DATA_ROOT que no existe: el agente nunca debe crearla.
-const extDataPath = "/mcsm-test-noexiste/externo/data"
+// extDataPath is a folder outside DATA_ROOT that does not exist: the agent must never create it.
+const extDataPath = "/mcsm-test-nonexistent/external/data"
 
-// external crea un contenedor itzg ajeno (sin etiquetas mcsm) que monta bindSrc en /data y publica
-// 25565/tcp en el 25570 del host; con run lo arranca.
+// external creates a foreign itzg container (without mcsm labels) that mounts bindSrc at /data and publishes
+// 25565/tcp on the host's 25570; with run it starts it.
 func external(t *testing.T, fake *docker.Fake, name, bindSrc string, run bool, mut ...func(*container.Config, *container.HostConfig)) string {
 	t.Helper()
 	ctx := context.Background()
@@ -59,7 +59,7 @@ type impOpts struct {
 	noAdopt      bool
 }
 
-// importedSpec es la spec que el panel envía de un importado (con "adopt").
+// importedSpec is the spec the panel sends for an imported server (with "adopt").
 func importedSpec(containerID string, o impOpts) []byte {
 	if o.memory == "" {
 		o.memory = "2G"
@@ -88,16 +88,16 @@ func importMsg(id, slug string, v uint64, js []byte) *mcsmv1.ServerSpec {
 func TestAdoptKeepsContainerRunning(t *testing.T) {
 	r, st, fake, rec, root := setup(t)
 	ctx := context.Background()
-	id := external(t, fake, "mc-viejo", filepath.Join(root, "alpha", "data"), true)
+	id := external(t, fake, "mc-old", filepath.Join(root, "alpha", "data"), true)
 	fake.Calls = nil
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
 		t.Fatal(err)
 	}
 	if n := calls(fake, "Create") + calls(fake, "Stop") + calls(fake, "Remove") + calls(fake, "Start") + calls(fake, "Kill"); n != 0 {
-		t.Fatalf("adoptar no toca el contenedor: %v", fake.Calls)
+		t.Fatalf("adopting does not touch the container: %v", fake.Calls)
 	}
 	if calls(fake, "ConnectNetwork mcsm "+id+" mcsm-alpha") != 1 {
-		t.Fatalf("debe conectarlo a la red con el alias mcsm-alpha: %v", fake.Calls)
+		t.Fatalf("it must connect it to the network with the alias mcsm-alpha: %v", fake.Calls)
 	}
 	if got := r.ContainerID(ctx, "a"); got != id {
 		t.Fatalf("ContainerID = %q", got)
@@ -111,12 +111,12 @@ func TestAdoptKeepsContainerRunning(t *testing.T) {
 	if ad, _ := st.Adoption("a"); ad == nil || *ad != (store.Adoption{ContainerID: id, Slug: "alpha", Version: 1}) {
 		t.Fatalf("adoption = %+v", ad)
 	}
-	// Tick posterior: sigue sin recrear (el adoptado no tiene mcsm.spec_hash).
+	// Later tick: it still does not recreate (the adopted one has no mcsm.spec_hash).
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if calls(fake, "Create") != 0 || len(fake.Containers) != 1 {
-		t.Fatalf("un tick no recrea: %v", fake.Calls)
+		t.Fatalf("a tick does not recreate: %v", fake.Calls)
 	}
 }
 
@@ -128,13 +128,13 @@ func TestAdoptedIsVisibleToPowerObserveAndServerContainers(t *testing.T) {
 		pinged = append(pinged, host)
 		return &mcsmv1.McStatus{Online: true}
 	}
-	id := external(t, fake, "mc-viejo", filepath.Join(root, "alpha", "data"), true)
-	fake.Calls = nil // solo cuenta lo que hace el agente
+	id := external(t, fake, "mc-old", filepath.Join(root, "alpha", "data"), true)
+	fake.Calls = nil // only counts what the agent does
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
 		t.Fatal(err)
 	}
 	if len(pinged) == 0 || pinged[len(pinged)-1] != "mcsm-alpha" {
-		t.Fatalf("el ping va al alias mcsm-alpha: %v", pinged)
+		t.Fatalf("the ping goes to the alias mcsm-alpha: %v", pinged)
 	}
 	if err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP); err != nil {
 		t.Fatal(err)
@@ -146,9 +146,9 @@ func TestAdoptedIsVisibleToPowerObserveAndServerContainers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if fake.Containers[id].State != "running" || calls(fake, "Create") != 0 {
-		t.Fatalf("power sobre el original: %v", fake.Calls)
+		t.Fatalf("power on the original: %v", fake.Calls)
 	}
-	// Un gestionado normal y el adoptado.
+	// A normal managed one and the adopted one.
 	put(t, r.st, "b", "beta", 1, desiredRunning, specJSON)
 	if err := r.Reconcile(ctx, "b"); err != nil {
 		t.Fatal(err)
@@ -164,7 +164,7 @@ func TestAdoptedIsVisibleToPowerObserveAndServerContainers(t *testing.T) {
 		}
 	}
 	if adopted == nil || adopted.ID != id || adopted.Labels[spec.LabelServerID] != "a" || adopted.Labels[spec.LabelSlug] != "alpha" || adopted.State != "running" {
-		t.Fatalf("adoptado = %+v", adopted)
+		t.Fatalf("adopted = %+v", adopted)
 	}
 }
 
@@ -172,7 +172,7 @@ func TestFirstSpecChangeRecreatesWithSameData(t *testing.T) {
 	r, st, fake, _, root := setup(t)
 	ctx := context.Background()
 	dataDir := filepath.Join(root, "alpha", "data")
-	id := external(t, fake, "mc-viejo", dataDir, true)
+	id := external(t, fake, "mc-old", dataDir, true)
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
 		t.Fatal(err)
 	}
@@ -181,14 +181,14 @@ func TestFirstSpecChangeRecreatesWithSameData(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := fake.Containers[id]; ok {
-		t.Fatal("el contenedor original se borra al recrear")
+		t.Fatal("the original container is deleted on recreation")
 	}
 	list, _ := fake.ListManaged(ctx)
 	if len(list) != 1 || list[0].Name != "mcsm-alpha" || list[0].Labels[spec.LabelServerID] != "a" || list[0].State != "running" {
-		t.Fatalf("gestionado = %+v", list)
+		t.Fatalf("managed = %+v", list)
 	}
 	if b := fake.Containers[list[0].ID].HostConfig.Binds; len(b) != 1 || b[0] != dataDir+":/data" {
-		t.Fatalf("binds = %v: el mismo directorio de datos", b)
+		t.Fatalf("binds = %v: the same data directory", b)
 	}
 	want := []string{"Stop " + id, "Remove " + id, "EnsureImage itzg/minecraft-server:java21", "Create mcsm-alpha", "Start " + list[0].ID}
 	for i, w := range want {
@@ -197,7 +197,7 @@ func TestFirstSpecChangeRecreatesWithSameData(t *testing.T) {
 		}
 	}
 	if ad, _ := st.Adoption("a"); ad != nil {
-		t.Fatalf("la adopción termina al recrear: %+v", ad)
+		t.Fatalf("the adoption ends on recreation: %+v", ad)
 	}
 }
 
@@ -207,22 +207,22 @@ func TestAdoptChecks(t *testing.T) {
 		mk   func(t *testing.T, fake *docker.Fake, root string) string
 		want error
 	}{
-		{"no existe", func(*testing.T, *docker.Fake, string) string { return docker.FakeID(999) }, ErrAdoptNotFound},
-		{"ya gestionado", func(t *testing.T, f *docker.Fake, root string) string {
-			return external(t, f, "mcsm-otro", filepath.Join(root, "alpha", "data"), false, func(c *container.Config, _ *container.HostConfig) {
+		{"does not exist", func(*testing.T, *docker.Fake, string) string { return docker.FakeID(999) }, ErrAdoptNotFound},
+		{"already managed", func(t *testing.T, f *docker.Fake, root string) string {
+			return external(t, f, "mcsm-other", filepath.Join(root, "alpha", "data"), false, func(c *container.Config, _ *container.HostConfig) {
 				c.Labels = map[string]string{spec.LabelManaged: "true"}
 			})
 		}, ErrAdoptConflict},
 		{"no es itzg", func(t *testing.T, f *docker.Fake, root string) string {
 			return external(t, f, "web", filepath.Join(root, "alpha", "data"), false, func(c *container.Config, _ *container.HostConfig) { c.Image = "nginx:1.27" })
 		}, ErrAdoptMismatch},
-		{"otro /data", func(t *testing.T, f *docker.Fake, root string) string {
+		{"another /data", func(t *testing.T, f *docker.Fake, root string) string {
 			return external(t, f, "mc", filepath.Join(root, "beta", "data"), false)
 		}, ErrAdoptMismatch},
-		// Al recrearlo solo se monta /data: el mundo de /data/world sería otro (Review Focus 1).
-		{"montaje bajo /data", func(t *testing.T, f *docker.Fake, root string) string {
+		// When recreating it only /data is mounted: the world in /data/world would be another one (Review Focus 1).
+		{"mount under /data", func(t *testing.T, f *docker.Fake, root string) string {
 			return external(t, f, "mc", filepath.Join(root, "alpha", "data"), false, func(_ *container.Config, h *container.HostConfig) {
-				h.Binds = append(h.Binds, "/srv/mundos/survival:/data/world")
+				h.Binds = append(h.Binds, "/srv/worlds/survival:/data/world")
 			})
 		}, ErrAdoptMismatch},
 		{"red host", func(t *testing.T, f *docker.Fake, root string) string {
@@ -239,14 +239,14 @@ func TestAdoptChecks(t *testing.T) {
 				t.Fatalf("err = %v; want %v", err, c.want)
 			}
 			if sp, _ := st.GetSpec("a"); sp != nil {
-				t.Fatal("un rechazo no guarda la spec")
+				t.Fatal("a rejection does not store the spec")
 			}
 			if calls(fake, "Create")+calls(fake, "Remove")+calls(fake, "ConnectNetwork") != 0 {
-				t.Fatalf("un rechazo no toca Docker: %v", fake.Calls)
+				t.Fatalf("a rejection does not touch Docker: %v", fake.Calls)
 			}
 		})
 	}
-	t.Run("spec sin adopt", func(t *testing.T) {
+	t.Run("spec without adopt", func(t *testing.T) {
 		r, _, _, _, _ := setup(t)
 		err := r.Adopt(context.Background(), importMsg("a", "alpha", 1, importedSpec("x", impOpts{noAdopt: true})))
 		if !errors.Is(err, ErrAdoptSpec) {
@@ -259,13 +259,13 @@ func TestAdoptIsIdempotent(t *testing.T) {
 	r, _, fake, _, root := setup(t)
 	ctx := context.Background()
 	id := external(t, fake, "mc", filepath.Join(root, "alpha", "data"), true)
-	fake.Calls = nil // solo cuenta lo que hace el agente
+	fake.Calls = nil // only counts what the agent does
 	msg := importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))
 	if err := r.Adopt(ctx, msg); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.Adopt(ctx, msg); err != nil {
-		t.Fatalf("reintento del panel: %v", err)
+		t.Fatalf("panel retry: %v", err)
 	}
 	if calls(fake, "ConnectNetwork") != 1 || calls(fake, "Create") != 0 {
 		t.Fatalf("calls = %v", fake.Calls)
@@ -295,7 +295,7 @@ func TestTwoServersCannotAdoptSameContainer(t *testing.T) {
 		}
 	}
 	if ok != 1 {
-		t.Fatalf("exactamente uno adopta: %v", errs)
+		t.Fatalf("exactly one adopts: %v", errs)
 	}
 }
 
@@ -303,14 +303,14 @@ func TestReadoptFromSpecWithoutRecord(t *testing.T) {
 	r, st, fake, _, root := setup(t)
 	ctx := context.Background()
 	id := external(t, fake, "mc", filepath.Join(root, "alpha", "data"), true)
-	fake.Calls = nil // solo cuenta lo que hace el agente
-	// SyncSpecs tras perder el ImportAdopt.
+	fake.Calls = nil // only counts what the agent does
+	// SyncSpecs after losing the ImportAdopt.
 	put(t, st, "a", "alpha", 1, desiredRunning, string(importedSpec(id, impOpts{})))
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
 	if calls(fake, "Create") != 0 || calls(fake, "ConnectNetwork mcsm "+id) != 1 {
-		t.Fatalf("debe adoptar, no crear: %v", fake.Calls)
+		t.Fatalf("it must adopt, not create: %v", fake.Calls)
 	}
 	if ad, _ := st.Adoption("a"); ad == nil || ad.ContainerID != id || ad.Version != 1 {
 		t.Fatalf("adoption = %+v", ad)
@@ -326,7 +326,7 @@ func TestReadoptWithNewerSpecRecreatesAtOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := fake.Containers[id]; ok || calls(fake, "Create mcsm-alpha") != 1 {
-		t.Fatalf("v3 > adopción v1: se recrea: %v", fake.Calls)
+		t.Fatalf("v3 > adoption v1: it is recreated: %v", fake.Calls)
 	}
 }
 
@@ -337,24 +337,24 @@ func TestReadoptOriginalGoneCreatesManaged(t *testing.T) {
 		t.Fatal(err)
 	}
 	if calls(fake, "Create mcsm-alpha") != 1 {
-		t.Fatalf("sin original se crea el gestionado: %v", fake.Calls)
+		t.Fatalf("without the original the managed one is created: %v", fake.Calls)
 	}
 	if ad, _ := st.Adoption("a"); ad != nil {
-		t.Fatalf("no queda adopción: %+v", ad)
+		t.Fatalf("no adoption remains: %+v", ad)
 	}
 }
 
 func TestReadoptMismatchCreatesNothing(t *testing.T) {
 	r, st, fake, rec, root := setup(t)
-	id := external(t, fake, "mc", filepath.Join(root, "otra", "data"), true)
-	fake.Calls = nil // solo cuenta lo que hace el agente
+	id := external(t, fake, "mc", filepath.Join(root, "other", "data"), true)
+	fake.Calls = nil // only counts what the agent does
 	put(t, st, "a", "alpha", 1, desiredRunning, string(importedSpec(id, impOpts{})))
 	err := r.Reconcile(context.Background(), "a")
 	if !errors.Is(err, ErrAdoptMismatch) {
 		t.Fatalf("err = %v", err)
 	}
 	if calls(fake, "Create") != 0 {
-		t.Fatalf("nunca un segundo contenedor sobre datos sin comprobar: %v", fake.Calls)
+		t.Fatalf("never a second container over unchecked data: %v", fake.Calls)
 	}
 	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "/data") {
 		t.Fatalf("observed = %+v", o)
@@ -372,10 +372,10 @@ func TestRemoveAdoptedRemovesOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := fake.Containers[id]; ok {
-		t.Fatal("borrar el servidor borra su contenedor")
+		t.Fatal("deleting the server deletes its container")
 	}
 	if ad, _ := st.Adoption("a"); ad != nil {
-		t.Fatal("ni adopción")
+		t.Fatal("nor the adoption")
 	}
 }
 
@@ -393,10 +393,10 @@ func TestForgetAdoptedThenRetryRemovesOriginal(t *testing.T) {
 		t.Fatalf("RetryRemovals = %v", done)
 	}
 	if _, ok := fake.Containers[id]; ok {
-		t.Fatal("la lápida borra el original adoptado")
+		t.Fatal("the tombstone deletes the adopted original")
 	}
 	if ad, _ := st.Adoption("a"); ad != nil {
-		t.Fatal("ni adopción")
+		t.Fatal("nor the adoption")
 	}
 }
 
@@ -407,20 +407,20 @@ func TestRemoveWithDataPathRefusesDeleteData(t *testing.T) {
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{dataPath: extDataPath}))); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Remove(ctx, "a", true); err == nil || !strings.Contains(err.Error(), "fuera de DATA_ROOT") {
+	if err := r.Remove(ctx, "a", true); err == nil || !strings.Contains(err.Error(), "outside DATA_ROOT") {
 		t.Fatalf("err = %v", err)
 	}
 	if _, ok := fake.Containers[id]; !ok {
-		t.Fatal("un rechazo no toca nada")
+		t.Fatal("a rejection touches nothing")
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil {
-		t.Fatal("ni la spec")
+		t.Fatal("nor the spec")
 	}
 }
 
 func TestDataPathCreateNeverMkdirs(t *testing.T) {
 	r, st, fake, _, _ := setup(t)
-	if err := st.PutExternalPath("a", extDataPath); err != nil { // verificada al importar (H1)
+	if err := st.PutExternalPath("a", extDataPath); err != nil { // verified when importing (H1)
 		t.Fatal(err)
 	}
 	put(t, st, "a", "alpha", 1, desiredRunning, string(importedSpec("", impOpts{noAdopt: true, dataPath: extDataPath})))
@@ -429,10 +429,10 @@ func TestDataPathCreateNeverMkdirs(t *testing.T) {
 	}
 	list, _ := fake.ListManaged(context.Background())
 	if len(list) != 1 || dataSource(t, fake, list[0].ID) != extDataPath {
-		t.Fatalf("contenedor = %+v", list)
+		t.Fatalf("container = %+v", list)
 	}
 	if _, err := os.Stat("/mcsm-test-noexiste"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("el agente no crea carpetas fuera de DATA_ROOT: %v", err)
+		t.Fatalf("the agent does not create folders outside DATA_ROOT: %v", err)
 	}
 }
 
@@ -443,7 +443,7 @@ func TestHoldDefersFirstSpecChange(t *testing.T) {
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
 		t.Fatal(err)
 	}
-	release, err := r.Hold("a", "copia de seguridad")
+	release, err := r.Hold("a", "backup")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,16 +451,16 @@ func TestHoldDefersFirstSpecChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, ok := fake.Containers[id]; !ok {
-		t.Fatal("con el servidor reservado no se recrea")
+		t.Fatal("with the server reserved it is not recreated")
 	}
 	release(ctx)
 	if _, ok := fake.Containers[id]; ok || calls(fake, "Create mcsm-alpha") != 1 {
-		t.Fatalf("al liberar se aplica el cambio: %v", fake.Calls)
+		t.Fatalf("on release the change is applied: %v", fake.Calls)
 	}
 }
 
-// Un servidor que ya sigue a un contenedor adoptado no adopta otro: los dos montarían el mismo
-// mundo y el reconciliador arrancaría el segundo con el primero en marcha.
+// A server that already follows an adopted container does not adopt another: both would mount the same
+// world and the reconciler would start the second with the first running.
 func TestAdoptRefusesSecondContainerForSameServer(t *testing.T) {
 	r, st, fake, _, root := setup(t)
 	ctx := context.Background()
@@ -476,14 +476,14 @@ func TestAdoptRefusesSecondContainerForSameServer(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 	if ad, _ := st.Adoption("a"); ad == nil || ad.ContainerID != first {
-		t.Fatalf("la adopción sigue en el primero: %+v", ad)
+		t.Fatalf("the adoption stays on the first: %+v", ad)
 	}
 	if calls(fake, "ConnectNetwork")+calls(fake, "Start")+calls(fake, "Create") != 0 {
-		t.Fatalf("un rechazo no toca Docker: %v", fake.Calls)
+		t.Fatalf("a rejection does not touch Docker: %v", fake.Calls)
 	}
 }
 
-// El muestreador no ve un adoptado cuyo contenedor ya no existe.
+// The sampler does not see an adopted one whose container no longer exists.
 func TestServerContainersSkipsGoneAdopted(t *testing.T) {
 	r, _, fake, _, root := setup(t)
 	ctx := context.Background()
@@ -491,7 +491,7 @@ func TestServerContainersSkipsGoneAdopted(t *testing.T) {
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
 		t.Fatal(err)
 	}
-	if err := fake.Remove(ctx, id); err != nil { // borrado a mano, fuera del agente
+	if err := fake.Remove(ctx, id); err != nil { // deleted by hand, outside the agent
 		t.Fatal(err)
 	}
 	list, err := r.ServerContainers(ctx)
@@ -500,8 +500,8 @@ func TestServerContainersSkipsGoneAdopted(t *testing.T) {
 	}
 }
 
-// M1: un ImportAdopt v1 tardío (sesión vieja) no pisa la v2 que ya guardó un SyncSpecs de «Adoptar y
-// aplicar»: se guarda solo la adopción v1, así que la v2 recrea.
+// M1: a late ImportAdopt v1 (old session) does not overwrite the v2 that a SyncSpecs from "Adopt and
+// apply" already stored: only the v1 adoption is stored, so v2 recreates.
 func TestLateAdoptKeepsNewerSpecAndRecreates(t *testing.T) {
 	r, st, fake, _, root := setup(t)
 	ctx := context.Background()
@@ -513,25 +513,25 @@ func TestLateAdoptKeepsNewerSpecAndRecreates(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil || sp.Version != 2 {
-		t.Fatalf("spec = %v: la v2 se conserva", sp)
+		t.Fatalf("spec = %v: v2 is kept", sp)
 	}
 	if _, ok := fake.Containers[id]; ok || calls(fake, "Create mcsm-alpha") != 1 {
-		t.Fatalf("la v2 recrea: %v", fake.Calls)
+		t.Fatalf("v2 recreates: %v", fake.Calls)
 	}
 	if v, _ := st.Applied("a"); v != 2 {
 		t.Fatalf("applied = %d", v)
 	}
 }
 
-// m1: ya está en la red mcsm sin el alias (reimportado tras perder el store, con otro slug): se
-// reconecta con el alias, sin pararlo; los alias que tuviera se conservan.
+// m1: it is already on the mcsm network without the alias (reimported after losing the store, with another slug): it is
+// reconnected with the alias, without stopping it; any aliases it had are kept.
 func TestAdoptAddsAliasWhenAlreadyOnNetwork(t *testing.T) {
 	r, _, fake, _, root := setup(t)
 	ctx := context.Background()
 	id, err := fake.Create(ctx, "mc", &container.Config{Image: "itzg/minecraft-server:java21"},
 		&container.HostConfig{Binds: []string{filepath.Join(root, "alpha", "data") + ":/data"},
 			PortBindings: network.PortMap{network.MustParsePort("25565/tcp"): {{HostPort: "25570"}}}},
-		&network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{"mcsm": {Aliases: []string{"mcsm-viejo"}}}})
+		&network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{"mcsm": {Aliases: []string{"mcsm-old"}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,13 +543,13 @@ func TestAdoptAddsAliasWhenAlreadyOnNetwork(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, _ := fake.InspectImport(ctx, id)
-	if !slices.Contains(info.Aliases["mcsm"], "mcsm-alpha") || !slices.Contains(info.Aliases["mcsm"], "mcsm-viejo") {
+	if !slices.Contains(info.Aliases["mcsm"], "mcsm-alpha") || !slices.Contains(info.Aliases["mcsm"], "mcsm-old") {
 		t.Fatalf("alias = %v", info.Aliases)
 	}
 	if calls(fake, "DisconnectNetwork mcsm "+id) != 1 || calls(fake, "Stop")+calls(fake, "Start")+calls(fake, "Create") != 0 {
 		t.Fatalf("calls = %v", fake.Calls)
 	}
-	// Con el alias ya puesto (reintento) no se toca la red.
+	// With the alias already set (retry) the network is not touched.
 	fake.Calls = nil
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
 		t.Fatal(err)
@@ -559,8 +559,8 @@ func TestAdoptAddsAliasWhenAlreadyOnNetwork(t *testing.T) {
 	}
 }
 
-// failStoreOnConnect cierra el store justo después de conectar el contenedor a la red: el guardado de
-// la adopción falla después de ConnectNetwork.
+// failStoreOnConnect closes the store right after connecting the container to the network: saving
+// the adoption fails after ConnectNetwork.
 type failStoreOnConnect struct {
 	*docker.Fake
 	st *store.Store
@@ -572,23 +572,23 @@ func (f failStoreOnConnect) ConnectNetwork(ctx context.Context, netName, id stri
 	return err
 }
 
-// m12: si guardar la adopción falla tras ConnectNetwork, el alias se deshace (no queda huérfano).
+// m12: if saving the adoption fails after ConnectNetwork, the alias is undone (it is not left orphaned).
 func TestAdoptUndoesAliasWhenStoreFails(t *testing.T) {
 	r, st, fake, _, root := setup(t)
 	ctx := context.Background()
 	id := external(t, fake, "mc", filepath.Join(root, "alpha", "data"), true)
 	r.eng = failStoreOnConnect{fake, st}
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err == nil {
-		t.Fatal("el guardado falla: Adopt también")
+		t.Fatal("saving fails: Adopt too")
 	}
 	info, _ := fake.InspectImport(ctx, id)
 	if slices.Contains(info.Networks, "mcsm") {
-		t.Fatalf("el alias se deshace: %v %v", info.Networks, fake.Calls)
+		t.Fatalf("the alias is undone: %v %v", info.Networks, fake.Calls)
 	}
 }
 
-// m6: un contenedor en pausa se adopta «en marcha» y se deja como está: Docker no arranca uno en
-// pausa (habría que reanudarlo), así que el reconciliador no lo intenta.
+// m6: a paused container is adopted "running" and left as it is: Docker does not start a paused
+// one (it would have to be resumed), so the reconciler does not try.
 func TestAdoptPausedLeavesItPaused(t *testing.T) {
 	r, _, fake, rec, root := setup(t)
 	ctx := context.Background()
@@ -606,51 +606,51 @@ func TestAdoptPausedLeavesItPaused(t *testing.T) {
 	}
 }
 
-// plan-6 × plan-8 (I1): el contenedor adoptado es el original del usuario. Aunque no arranque (puerto
-// ocupado; Docker 29.7.2 lo deja contaminado) o arranque sin publicar sus puertos, startOrDiscard no lo
-// borra, ni desde la reconciliación ni desde «Arrancar»/«Reiniciar»: solo informa del error.
+// plan-6 × plan-8 (I1): the adopted container is the user's original. Even if it does not start (port
+// taken; Docker 29.7.2 leaves it tainted) or starts without publishing its ports, startOrDiscard does not
+// delete it, neither from the reconciliation nor from "Start"/"Restart": it only reports the error.
 func TestAdoptedIsNeverDiscardedOnStart(t *testing.T) {
 	r, st, fake, rec, root := setup(t)
 	ctx := context.Background()
-	id := external(t, fake, "mc-viejo", filepath.Join(root, "alpha", "data"), false)
+	id := external(t, fake, "mc-old", filepath.Join(root, "alpha", "data"), false)
 	blocker := blockPort(t, fake, "25570")
-	fake.Calls = nil // solo cuenta lo que hace el agente
-	// Adoptar con el deseado en marcha lo intenta arrancar: el puerto está ocupado.
+	fake.Calls = nil // only counts what the agent does
+	// Adopting with the desired state running tries to start it: the port is taken.
 	if err := r.Adopt(ctx, importMsg("a", "alpha", 1, importedSpec(id, impOpts{}))); err != nil {
 		t.Fatal(err)
 	}
 	kept := func(when string) {
 		t.Helper()
 		if _, ok := fake.Containers[id]; !ok || calls(fake, "Remove "+id) != 0 || calls(fake, "Create") != 0 {
-			t.Fatalf("%s: el original no se borra ni se sustituye: %v", when, fake.Calls)
+			t.Fatalf("%s: the original is neither deleted nor replaced: %v", when, fake.Calls)
 		}
 		if c := serverContainer(t, r, "a"); c == nil || c.ID != id || !c.Adopted {
-			t.Fatalf("%s: el servidor sigue en su original: %+v", when, c)
+			t.Fatalf("%s: the server stays on its original: %+v", when, c)
 		}
 	}
-	kept("al adoptar")
-	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "already allocated") || strings.Contains(o.Error, "se recreará") {
+	kept("when adopting")
+	if o := rec.get("a"); o == nil || !strings.Contains(o.Error, "already allocated") || strings.Contains(o.Error, "will be recreated") {
 		t.Fatalf("observed = %+v", o)
 	}
-	// Reintento tras el backoff: arranca, pero contaminado (sin publicar el puerto). Se informa.
+	// Retry after the backoff: it starts, but tainted (without publishing the port). It is reported.
 	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) }
 	r.ReconcileAll(ctx)
-	kept("en el tick")
-	if o := rec.get("a"); o.State != "running" || !strings.Contains(o.Error, "sin publicar sus puertos") || !strings.Contains(o.Error, "original del importado") {
+	kept("on the tick")
+	if o := rec.get("a"); o.State != "running" || !strings.Contains(o.Error, "without publishing its ports") || !strings.Contains(o.Error, "original container") {
 		t.Fatalf("observed = %+v", o)
 	}
-	// Liberado el puerto, «Reiniciar» no lo arregla (sigue contaminado) y tampoco lo borra.
+	// With the port freed, "Restart" does not fix it (it stays tainted) and does not delete it either.
 	_ = fake.Stop(ctx, blocker, time.Second)
 	err := r.Power(ctx, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART)
-	if err == nil || !strings.Contains(err.Error(), "sin publicar sus puertos") || errors.Is(err, errDiscarded) {
-		t.Fatalf("Reiniciar = %v", err)
+	if err == nil || !strings.Contains(err.Error(), "without publishing its ports") || errors.Is(err, errDiscarded) {
+		t.Fatalf("Restart = %v", err)
 	}
-	kept("al reiniciar")
+	kept("when restarting")
 	if d := desired(t, st, "a"); d != desiredRunning {
 		t.Fatalf("desired = %v", d)
 	}
 	obs := r.Observe(ctx, "a")
-	if obs.State != "running" || !strings.Contains(obs.Error, "sin publicar sus puertos") || strings.Contains(obs.Error, "Reiniciar") {
+	if obs.State != "running" || !strings.Contains(obs.Error, "without publishing its ports") || strings.Contains(obs.Error, "Restart") {
 		t.Fatalf("observed = %+v", obs)
 	}
 }

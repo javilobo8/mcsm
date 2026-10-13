@@ -1,9 +1,9 @@
-// Package reconcile mantiene los contenedores Docker iguales a las specs del store.
+// Package reconcile keeps the Docker containers equal to the specs in the store.
 //
-// Invariante (spec §6.2): el reconciliador nunca borra contenedores mcsm.* por
-// iniciativa propia. Solo los elimina al recrear por un cambio de spec enviado por
-// el panel (Reconcile) o cuando el panel lo ordena explícitamente (Remove, y su reintento
-// por lápida tras SyncSpecs.removed_ids: RetryRemovals).
+// Invariant (spec §6.2): the reconciler never deletes mcsm.* containers on its own
+// initiative. It only removes them when recreating because of a spec change sent by
+// the panel (Reconcile) or when the panel explicitly orders it (Remove, and its retry
+// via tombstone after SyncSpecs.removed_ids: RetryRemovals).
 package reconcile
 
 import (
@@ -40,9 +40,9 @@ type Reconciler struct {
 	status   mc.StatusFunc
 	observer Observer
 	log      *slog.Logger
-	onDemand func(spec.Spec) bool // plan-8: servidores que arranca y para mc-router (SetOnDemand)
-	events   EventSink            // plan-9: incidencias (drift); nil = ninguna (SetEventSink)
-	// plan-9: Power aceptó un arranque o reinicio a mano (SetOnManualStart); nil = nada.
+	onDemand func(spec.Spec) bool // plan-8: servers that mc-router starts and stops (SetOnDemand)
+	events   EventSink            // plan-9: events (drift); nil = none (SetEventSink)
+	// plan-9: Power accepted a manual start or restart (SetOnManualStart); nil = nothing.
 	onManualStart func(serverID string)
 
 	mu      sync.Mutex
@@ -51,13 +51,13 @@ type Reconciler struct {
 	fails   map[string]int
 	failVer map[string]uint64
 	lastErr map[string]string
-	held    map[string]string // plan-4: servidores reservados por Hold (backup/restore) y su motivo
-	heldErr map[string]string // plan-4: error visible en Observed de un servidor reservado (HoldError)
-	// startGen cuenta, por servidor, los Power start/restart y las versiones nuevas de su spec (plan-9): un
-	// CrashLoopStop decidido antes de uno de ellos no retiene el servidor que el usuario acaba de arrancar ni una
-	// configuración nueva (CrashLoopStopUnlessStarted).
+	held    map[string]string // plan-4: servers reserved by Hold (backup/restore) and their reason
+	heldErr map[string]string // plan-4: error visible in Observed of a reserved server (HoldError)
+	// startGen counts, per server, the Power start/restart and the new versions of its spec (plan-9): a
+	// CrashLoopStop decided before one of them does not latch the server the user just started nor a new
+	// configuration (CrashLoopStopUnlessStarted).
 	startGen map[string]uint64
-	adoptMu  sync.Mutex // plan-6: comprobar y registrar adopciones (un contenedor, un servidor); tras el lock por servidor
+	adoptMu  sync.Mutex // plan-6: check and register adoptions (one container, one server); after the per-server lock
 	now      func() time.Time
 }
 
@@ -86,7 +86,7 @@ func (r *Reconciler) lock(id string) func() {
 	return m.Unlock
 }
 
-// bumpStartGen incrementa la generación de arranques de id (con el lock del servidor tomado).
+// bumpStartGen increments id's start generation (with the server's lock held).
 func (r *Reconciler) bumpStartGen(id string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -96,7 +96,7 @@ func (r *Reconciler) bumpStartGen(id string) {
 	r.startGen[id]++
 }
 
-// tryLock toma el lock de id solo si está libre (plan-9: TryHold).
+// tryLock takes id's lock only if it is free (plan-9: TryHold).
 func (r *Reconciler) tryLock(id string) (func(), bool) {
 	r.mu.Lock()
 	m, ok := r.locks[id]
@@ -115,27 +115,27 @@ func isActive(state string) bool {
 	return state == "running" || state == "restarting" || state == "paused"
 }
 
-// ReconcileAll reintenta los borrados pendientes (lápidas) y recorre todas las specs,
-// saltando las que están en backoff (salvo que la versión de la spec haya cambiado desde
-// el último fallo). Los borrados van antes: un slug retirado y recreado con otro id
-// reutiliza el nombre del contenedor.
+// ReconcileAll retries the pending deletions (tombstones) and walks all the specs,
+// skipping those in backoff (unless the spec version changed since the
+// last failure). Deletions go first: a withdrawn and recreated slug with another id
+// reuses the container name.
 func (r *Reconciler) ReconcileAll(ctx context.Context) {
 	r.RetryRemovals(ctx)
 	specs, err := r.st.ListSpecs()
 	if err != nil {
-		r.log.Error("listar specs", "err", err)
+		r.log.Error("list specs", "err", err)
 		return
 	}
 	for _, sp := range specs {
 		if err := r.reconcileTick(ctx, sp.ServerId); err != nil {
-			r.log.Warn("reconciliar", "server", sp.Slug, "err", err)
+			r.log.Warn("reconcile", "server", sp.Slug, "err", err)
 		}
 	}
 }
 
-// reconcileTick reconcilia un servidor desde el tick: la comprobación de backoff se
-// hace con el lock por servidor tomado para que dos ticks concurrentes no reintenten
-// (ni escalen el backoff) dos veces. Ignora servidores sin spec.
+// reconcileTick reconciles a server from the tick: the backoff check is
+// done with the per-server lock held so that two concurrent ticks do not retry
+// (nor escalate the backoff) twice. It ignores servers without a spec.
 func (r *Reconciler) reconcileTick(ctx context.Context, serverID string) error {
 	unlock := r.lock(serverID)
 	defer unlock()
@@ -156,22 +156,22 @@ func (r *Reconciler) reconcileTick(ctx context.Context, serverID string) error {
 	return r.reconcileLocked(ctx, serverID)
 }
 
-// ReconcileTick reconcilia un solo servidor desde un tick periódico, respetando el
-// backoff de fallos. Permite al llamador procesar cada servidor por separado.
+// ReconcileTick reconciles a single server from a periodic tick, respecting the
+// failure backoff. It lets the caller process each server separately.
 func (r *Reconciler) ReconcileTick(ctx context.Context, serverID string) error {
 	return r.reconcileTick(ctx, serverID)
 }
 
-// Reconcile aplica la spec de un servidor y siempre publica el estado observado.
-// Un fallo queda en Observed.Error y programa un reintento con backoff.
+// Reconcile applies a server's spec and always publishes the observed state.
+// A failure stays in Observed.Error and schedules a retry with backoff.
 func (r *Reconciler) Reconcile(ctx context.Context, serverID string) error {
 	unlock := r.lock(serverID)
 	defer unlock()
 	return r.reconcileLocked(ctx, serverID)
 }
 
-// Apply guarda la spec y la reconcilia, todo bajo el lock del servidor. Una spec con
-// versión menor que la guardada (fuera de orden) se ignora y devuelve nil.
+// Apply stores the spec and reconciles it, all under the server's lock. A spec with a
+// version lower than the stored one (out of order) is ignored and returns nil.
 func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 	unlock := r.lock(sp.ServerId)
 	defer unlock()
@@ -180,22 +180,22 @@ func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 		return err
 	}
 	if stored != nil && sp.Version < stored.Version {
-		r.log.Info("spec fuera de orden ignorada", "server", sp.Slug, "version", sp.Version, "guardada", stored.Version)
+		r.log.Info("out-of-order spec ignored", "server", sp.Slug, "version", sp.Version, "stored", stored.Version)
 		return nil
 	}
-	if err := r.st.PutSpec(sp); err != nil { // anula la lápida del id, si la hay
+	if err := r.st.PutSpec(sp); err != nil { // clears the id's tombstone, if there is one
 		return err
 	}
 	if stored == nil || stored.Version != sp.Version {
-		r.bumpStartGen(sp.ServerId) // plan-9: una versión nueva se prueba aunque hubiera una parada por bucle en cola
+		r.bumpStartGen(sp.ServerId) // plan-9: a new version is tried even if a loop stop was queued
 	}
 	return r.reconcileLocked(ctx, sp.ServerId)
 }
 
-// StoreForce guarda la spec sin guarda de versión y sin tocar Docker. Es para
-// SyncSpecs, donde el panel es la verdad al reconectar (p. ej. tras restaurar su base
-// de datos): la reconciliación va después, en segundo plano. Limpia el backoff para
-// que esa reconciliación (y el siguiente tick) no espere por fallos de otra spec.
+// StoreForce stores the spec without a version guard and without touching Docker. It is for
+// SyncSpecs, where the panel is the truth on reconnect (e.g. after restoring its database):
+// the reconciliation comes afterwards, in the background. It clears the backoff so
+// that reconciliation (and the next tick) does not wait because of another spec's failures.
 func (r *Reconciler) StoreForce(sp *mcsmv1.ServerSpec) error {
 	unlock := r.lock(sp.ServerId)
 	defer unlock()
@@ -203,25 +203,25 @@ func (r *Reconciler) StoreForce(sp *mcsmv1.ServerSpec) error {
 	if err != nil {
 		return err
 	}
-	if err := r.st.PutSpec(sp); err != nil { // anula la lápida del id, si la hay
+	if err := r.st.PutSpec(sp); err != nil { // clears the id's tombstone, if there is one
 		return err
 	}
 	if stored == nil || stored.Version != sp.Version {
-		r.bumpStartGen(sp.ServerId) // plan-9: como en Apply
+		r.bumpStartGen(sp.ServerId) // plan-9: as in Apply
 	}
 	r.clearFailure(sp.ServerId)
 	return nil
 }
 
-// Forget borra la spec de un servidor retirado por el panel (bajo su lock, para que
-// ningún tick lo resucite) sin tocar Docker. El contenedor se para y se borra después
-// con Remove, que también funciona sin spec; hasta que ese borrado termina bien queda una
-// lápida y el tick lo reintenta (RetryRemovals).
+// Forget deletes the spec of a server withdrawn by the panel (under its lock, so that
+// no tick resurrects it) without touching Docker. The container is stopped and deleted afterwards
+// with Remove, which also works without a spec; until that deletion succeeds a
+// tombstone remains and the tick retries it (RetryRemovals).
 func (r *Reconciler) Forget(serverID string) error {
 	unlock := r.lock(serverID)
 	defer unlock()
-	// Spec fuera y lápida dentro en una sola transacción: tras un Forget, el contenedor
-	// siempre tiene spec o lápida.
+	// Spec out and tombstone in, in a single transaction: after a Forget, the container
+	// always has a spec or a tombstone.
 	if err := r.st.ForgetWithTombstone(serverID, r.now()); err != nil {
 		return err
 	}
@@ -230,10 +230,10 @@ func (r *Reconciler) Forget(serverID string) error {
 }
 
 func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err error) {
-	// plan-4: con el servidor reservado (Hold) no se toca Docker ni se publica nada.
+	// plan-4: with the server reserved (Hold) Docker is not touched nor anything published.
 	if reason := r.heldReason(serverID); reason != "" {
-		// La spec ya está guardada: se aplicará al liberar la reserva (Hold).
-		r.log.Info("reconciliación aplazada", "server", serverID, "motivo", reason)
+		// The spec is already stored: it will be applied when the reservation (Hold) is released.
+		r.log.Info("reconciliation deferred", "server", serverID, "reason", reason)
 		return nil
 	}
 	var version uint64
@@ -267,8 +267,8 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 		return err
 	}
 	wantRunning := sp.DesiredState == mcsmv1.DesiredState_DESIRED_STATE_RUNNING
-	// plan-9: retenido por bucle de crash (CrashLoopStop) en esta versión: no se arranca hasta un Power
-	// start/restart o una spec nueva.
+	// plan-9: latched by a crash loop (CrashLoopStop) in this version: it is not started until a Power
+	// start/restart or a new spec.
 	latch, err := r.crashLatched(serverID, sp.Version)
 	if err != nil {
 		return err
@@ -281,40 +281,40 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 	if err != nil {
 		return err
 	}
-	// plan-6: un importado sin registro de adopción (ImportAdopt perdido, store nuevo) se vuelve a
-	// adoptar; si su contenedor original ya no existe, se crea el gestionado.
+	// plan-6: an imported server without an adoption record (ImportAdopt lost, new store) is
+	// adopted again; if its original container no longer exists, the managed one is created.
 	if existing == nil && parsed.Adopt != nil {
 		if existing, err = r.readopt(ctx, sp, parsed, build.DataDir); err != nil {
 			return err
 		}
 	}
-	// plan-6 (H1): un dataPath solo se monta si el agente lo verificó para este servidor. Antes de tocar
-	// Docker: un cambio de spec no debe parar el original para luego no poder crear.
+	// plan-6 (H1): a dataPath is only mounted if the agent verified it for this server. Before touching
+	// Docker: a spec change must not stop the original and then be unable to create.
 	if err := r.checkDataPath(ctx, serverID, parsed, existing); err != nil {
 		return err
 	}
 	recreate := false
 	switch {
 	case existing != nil && existing.Adopted:
-		// plan-6: el original sigue mientras la spec no supere la versión de la adopción.
+		// plan-6: the original stays while the spec does not exceed the adoption's version.
 		ad, aerr := r.st.Adoption(serverID)
 		if aerr != nil {
 			return aerr
 		}
 		if ad != nil && sp.Version > ad.Version {
-			r.log.Info("primer cambio de spec de un importado: se recrea con etiquetas mcsm", "server", sp.Slug, "original", existing.Name)
+			r.log.Info("first spec change of an imported server: it is recreated with mcsm labels", "server", sp.Slug, "original", existing.Name)
 			recreate = true
 		}
 	case existing != nil && existing.Labels[spec.LabelHash] != build.Hash:
-		r.log.Info("spec cambiada, recreando contenedor", "server", sp.Slug)
+		r.log.Info("spec changed, recreating container", "server", sp.Slug)
 		recreate = true
-		// plan-9: con la versión ya aplicada, el contenedor cambió fuera del agente (o el agente se actualizó).
+		// plan-9: with the version already applied, the container changed outside the agent (or the agent was updated).
 		if applied, aerr := r.st.Applied(serverID); aerr == nil && applied == sp.Version && r.events != nil {
-			r.events(serverID, KindDrift, "El contenedor no coincidía con su configuración (cambio fuera del panel o agente actualizado): se ha recreado")
+			r.events(serverID, KindDrift, "The container did not match its configuration (changed outside the panel or agent updated): it has been recreated")
 		}
 	}
-	// plan-6 (M2): antes de crear el gestionado de un importado (y antes de parar el que se sustituye),
-	// ningún otro contenedor itzg puede montar ya su carpeta de datos.
+	// plan-6 (M2): before creating an imported server's managed one (and before stopping the one being replaced),
+	// no other itzg container may already mount its data folder.
 	if (existing == nil || recreate) && (parsed.Adopt != nil || parsed.DataPath != "") {
 		exclude := ""
 		if existing != nil {
@@ -331,75 +331,75 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 		existing = nil
 	}
 	if existing == nil {
-		// plan-6: una adopción cuyo contenedor ya no está (o se acaba de sustituir) sobra.
+		// plan-6: an adoption whose container is gone (or has just been replaced) is left over.
 		if err := r.st.DeleteAdoption(serverID); err != nil {
 			return err
 		}
-		// plan-6: con dataPath la carpeta es del host y el agente no la ve (solo monta DATA_ROOT). Va
-		// en Mounts (M3): si no existe, Docker falla al crear en vez de crearla vacía.
+		// plan-6: with dataPath the folder is the host's and the agent does not see it (it only mounts DATA_ROOT). It goes
+		// in Mounts (M3): if it does not exist, Docker fails on create instead of creating it empty.
 		if parsed.DataPath == "" {
 			if err := os.MkdirAll(build.DataDir, 0o755); err != nil {
-				return fmt.Errorf("crear directorio de datos: %w", err)
+				return fmt.Errorf("create data directory: %w", err)
 			}
 		}
 		if err := r.eng.EnsureImage(ctx, build.Config.Image); err != nil {
-			return fmt.Errorf("descargar imagen: %w", err)
+			return fmt.Errorf("pull image: %w", err)
 		}
 		id, err := r.eng.Create(ctx, build.Name, build.Config, build.HostConfig, build.Networking)
 		if err != nil {
-			return fmt.Errorf("crear contenedor: %w", err)
+			return fmt.Errorf("create container: %w", err)
 		}
 		existing = &docker.Container{ID: id, Name: build.Name, State: "created", Labels: build.Config.Labels}
 	}
-	// plan-8: con el autoscale del router, mc-router arranca y para los servidores con hostname: el
-	// estado deseado no se impone. Un contenedor que nunca arrancó (recién creado o recreado, también
-	// al liberar una reserva tras Park) se arranca: mc-router no ve los contenedores que nunca
-	// arrancaron, así que no lo podría despertar; él lo duerme tras los minutos sin jugadores.
+	// plan-8: with the router's autoscale, mc-router starts and stops the servers with a hostname: the
+	// desired state is not imposed. A container that never started (freshly created or recreated, also
+	// when releasing a reservation after Park) is started: mc-router does not see containers that never
+	// started, so it could not wake it; it puts it to sleep after the minutes without players.
 	if r.onDemand != nil && r.onDemand(parsed) {
 		if existing.State == "created" && latch == nil {
 			if err := r.startOrDiscard(ctx, existing); err != nil {
-				return fmt.Errorf("arrancar: %w", err)
+				return fmt.Errorf("start: %w", err)
 			}
 		}
-		// plan-9: retenido por bucle de crash y en marcha (lo rearrancó la política de reinicio de Docker, también
-		// always tras reiniciar el daemon): se para, como cualquier servidor retenido.
+		// plan-9: latched by a crash loop and running (restarted by Docker's restart policy, also
+		// always after the daemon restarts): it is stopped, like any latched server.
 		if latch != nil && isActive(existing.State) {
 			if err := r.eng.Stop(ctx, existing.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-				return fmt.Errorf("parar: %w", err)
+				return fmt.Errorf("stop: %w", err)
 			}
 		}
 		return r.st.SetApplied(serverID, sp.Version)
 	}
 	switch {
-	// En pausa cuenta como activo: Docker no arranca un contenedor en pausa (hay que reanudarlo) y el
-	// panel nunca pausa; se deja como está (plan-6, m6: un importado en pausa).
+	// Paused counts as active: Docker does not start a paused container (it has to be resumed) and the
+	// panel never pauses; it is left as it is (plan-6, m6: a paused imported server).
 	case wantRunning && !isActive(existing.State):
 		if err := r.startOrDiscard(ctx, existing); err != nil {
-			return fmt.Errorf("arrancar: %w", err)
+			return fmt.Errorf("start: %w", err)
 		}
 	case !wantRunning && isActive(existing.State):
 		if err := r.eng.Stop(ctx, existing.ID, StopTimeout); err != nil {
-			return fmt.Errorf("parar: %w", err)
+			return fmt.Errorf("stop: %w", err)
 		}
 	}
 	return r.st.SetApplied(serverID, sp.Version)
 }
 
-// Remove borra la spec (bajo el lock, antes de parar, para que ningún tick lo
-// resucite), para y borra el contenedor; con deleteData borra también <dataRoot>/<slug>.
-// Solo se invoca cuando el panel lo indica. Si el servidor tenía lápida (Forget), la quita
-// cuando el borrado termina bien; si falla, la lápida sigue y el tick lo reintenta.
+// Remove deletes the spec (under the lock, before stopping, so that no tick
+// resurrects it), stops and deletes the container; with deleteData it also deletes <dataRoot>/<slug>.
+// It is only invoked when the panel says so. If the server had a tombstone (Forget), it removes it
+// when the deletion succeeds; if it fails, the tombstone stays and the tick retries it.
 func (r *Reconciler) Remove(ctx context.Context, serverID string, deleteData bool) error {
 	unlock := r.lock(serverID)
 	defer unlock()
-	// plan-4: un servidor reservado (Hold) no se borra a mitad de una copia o restauración.
+	// plan-4: a reserved server (Hold) is not deleted in the middle of a backup or restore.
 	if reason := r.heldReason(serverID); reason != "" {
 		return Busy(reason)
 	}
 	return r.removeLocked(ctx, serverID, deleteData)
 }
 
-// removeLocked es Remove con el lock del servidor tomado.
+// removeLocked is Remove with the server's lock held.
 func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteData bool) error {
 	sp, err := r.st.GetSpec(serverID)
 	if err != nil {
@@ -416,25 +416,25 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 		slug = c.Labels[spec.LabelSlug]
 	}
 	if sp == nil && c == nil {
-		if err := r.st.DeleteTombstone(serverID); err != nil { // nada que borrar
+		if err := r.st.DeleteTombstone(serverID); err != nil { // nothing to delete
 			return err
 		}
-		if err := r.st.DeleteAdoption(serverID); err != nil { // plan-6: su contenedor ya no existe
+		if err := r.st.DeleteAdoption(serverID); err != nil { // plan-6: its container no longer exists
 			return err
 		}
 		r.clearFailure(serverID)
 		if deleteData {
-			return fmt.Errorf("servidor %s desconocido: no se pueden borrar sus datos", serverID)
+			return fmt.Errorf("unknown server %s: its data cannot be deleted", serverID)
 		}
-		return nil // ya borrado: idempotente (el panel reenvía removed_ids al reconectar)
+		return nil // already deleted: idempotent (the panel resends removed_ids on reconnect)
 	}
-	// Validar antes de tocar nada: un slug inválido no debe dejar el borrado a medias.
+	// Validate before touching anything: an invalid slug must not leave the deletion half done.
 	var target string
 	if deleteData {
-		// plan-6: los datos de un importado con dataPath están fuera de DATA_ROOT: no se borran.
+		// plan-6: the data of an imported server with dataPath is outside DATA_ROOT: it is not deleted.
 		if sp != nil {
 			if p, perr := spec.Parse(sp.SpecJson); perr == nil && p.DataPath != "" {
-				return fmt.Errorf("los datos de %s están en %s, fuera de DATA_ROOT: el agente no los borra", slug, p.DataPath)
+				return fmt.Errorf("the data of %s is at %s, outside DATA_ROOT: the agent does not delete it", slug, p.DataPath)
 			}
 		}
 		target, err = r.dataPath(slug)
@@ -446,28 +446,28 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 		return err
 	}
 	if sp != nil {
-		// Sin spec (lápida) el backoff del reintento se conserva hasta que el borrado termine.
+		// Without a spec (tombstone) the retry's backoff is kept until the deletion finishes.
 		r.clearFailure(serverID)
 	}
 	if c != nil {
 		if err := r.eng.Stop(ctx, c.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			r.log.Warn("parada limpia fallida antes de borrar", "server", slug, "err", err)
+			r.log.Warn("clean stop failed before deleting", "server", slug, "err", err)
 		}
 		if err := r.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
 			return err
 		}
 	}
-	// plan-6: el contenedor del servidor (adoptado o no) ya no existe.
+	// plan-6: the server's container (adopted or not) no longer exists.
 	if err := r.st.DeleteAdoption(serverID); err != nil {
 		return err
 	}
 	if deleteData {
 		if err := os.RemoveAll(target); err != nil {
-			return fmt.Errorf("borrar datos: %w", err)
+			return fmt.Errorf("delete data: %w", err)
 		}
 	}
 	if sp == nil {
-		if err := r.st.DeleteTombstone(serverID); err != nil { // el borrado pendiente terminó
+		if err := r.st.DeleteTombstone(serverID); err != nil { // the pending deletion finished
 			return err
 		}
 		r.clearFailure(serverID)
@@ -475,30 +475,30 @@ func (r *Reconciler) removeLocked(ctx context.Context, serverID string, deleteDa
 	return nil
 }
 
-// dataPath devuelve <dataRoot>/<slug> solo si el slug es válido y la ruta queda
-// estrictamente dentro de dataRoot.
+// dataPath returns <dataRoot>/<slug> only if the slug is valid and the path stays
+// strictly inside dataRoot.
 func (r *Reconciler) dataPath(slug string) (string, error) {
 	if !spec.ValidSlug(slug) {
-		return "", fmt.Errorf("slug inválido %q: no se borran datos", slug)
+		return "", fmt.Errorf("invalid slug %q: data is not deleted", slug)
 	}
 	root := filepath.Clean(r.dataRoot)
 	target := filepath.Clean(filepath.Join(root, slug))
 	if !strings.HasPrefix(target, root+string(filepath.Separator)) {
-		return "", fmt.Errorf("ruta de datos fuera de DATA_ROOT: %q", target)
+		return "", fmt.Errorf("data path outside DATA_ROOT: %q", target)
 	}
 	return target, nil
 }
 
-// Power ejecuta una acción de encendido. El estado deseado solo se persiste si la
-// acción Docker tiene éxito (el panel tampoco lo cambia sin Ack): un fallo lo deja como
-// estaba y el error queda en Observed hasta la siguiente reconciliación con éxito.
-// Sin contenedor, fija el deseado y reconcilia (crea y arranca, o lo deja parado); si
-// eso falla, restaura el deseado anterior. plan-8: igual si al arrancar se descartó el
-// contenedor (startOrDiscard): se recrea al momento.
+// Power runs a power action. The desired state is only persisted if the
+// Docker action succeeds (the panel does not change it without an Ack either): a failure leaves it as
+// it was and the error stays in Observed until the next successful reconciliation.
+// Without a container, it sets the desired state and reconciles (creates and starts, or leaves it stopped); if
+// that fails, it restores the previous desired state. plan-8: the same if on starting the
+// container was discarded (startOrDiscard): it is recreated immediately.
 func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.PowerActionType) (err error) {
 	unlock := r.lock(serverID)
 	defer unlock()
-	// plan-4: antes del defer que publica: "ocupado" no es un error del servidor.
+	// plan-4: before the defer that publishes: "busy" is not a server error.
 	if reason := r.heldReason(serverID); reason != "" {
 		return Busy(reason)
 	}
@@ -518,10 +518,10 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 		return err
 	}
 	if sp == nil {
-		return fmt.Errorf("servidor %s desconocido", serverID)
+		return fmt.Errorf("unknown server %s", serverID)
 	}
-	// plan-9: arrancar o reiniciar a mano levanta la retención por bucle de crash y deja sin efecto las paradas por
-	// bucle decididas antes.
+	// plan-9: starting or restarting by hand lifts the crash loop latch and voids the loop stops
+	// decided earlier.
 	if action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || action == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
 		r.bumpStartGen(serverID)
 		if r.onManualStart != nil {
@@ -538,7 +538,7 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP, mcsmv1.PowerActionType_POWER_ACTION_TYPE_KILL:
 		desired = mcsmv1.DesiredState_DESIRED_STATE_STOPPED
 	default:
-		return fmt.Errorf("acción desconocida %v", action)
+		return fmt.Errorf("unknown action %v", action)
 	}
 	c, err := r.find(ctx, serverID)
 	if err != nil {
@@ -553,25 +553,25 @@ func (r *Reconciler) Power(ctx context.Context, serverID string, action mcsmv1.P
 			r.setLastErr(serverID, err.Error())
 			return err
 		}
-		// plan-8: el contenedor arrancó sin puertos o no pudo arrancar y se descartó (fallo de
-		// Docker 29.7.2): se recrea ya, como si no existiera, con el estado pedido.
-		r.log.Warn("contenedor descartado al arrancar; se recrea", "server", sp.Slug, "err", err)
+		// plan-8: the container started without ports or could not start and was discarded (Docker
+		// 29.7.2 failure): it is recreated now, as if it did not exist, with the requested state.
+		r.log.Warn("container discarded on start; recreating", "server", sp.Slug, "err", err)
 	}
 	prev := sp.DesiredState
 	if err := r.putDesired(sp, desired); err != nil {
 		return err
 	}
-	published = true // reconcileLocked publica el estado observado
+	published = true // reconcileLocked publishes the observed state
 	if err := r.reconcileLocked(ctx, serverID); err != nil {
 		if rerr := r.putDesired(sp, prev); rerr != nil {
-			r.log.Error("restaurar el estado deseado", "server", sp.Slug, "err", rerr)
+			r.log.Error("restore the desired state", "server", sp.Slug, "err", rerr)
 		}
 		return err
 	}
 	return nil
 }
 
-// powerContainer ejecuta la acción sobre un contenedor existente.
+// powerContainer runs the action on an existing container.
 func (r *Reconciler) powerContainer(ctx context.Context, c *docker.Container, action mcsmv1.PowerActionType) error {
 	switch action {
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_START:
@@ -590,7 +590,7 @@ func (r *Reconciler) powerContainer(ctx context.Context, c *docker.Container, ac
 		}
 		return r.startOrDiscard(ctx, c)
 	case mcsmv1.PowerActionType_POWER_ACTION_TYPE_KILL:
-		// Docker devuelve conflicto al matar algo que no corre: solo matamos si está activo.
+		// Docker returns a conflict when killing something that is not running: we only kill if it is active.
 		if isActive(c.State) {
 			return r.eng.Kill(ctx, c.ID)
 		}
@@ -598,7 +598,7 @@ func (r *Reconciler) powerContainer(ctx context.Context, c *docker.Container, ac
 	return nil
 }
 
-// putDesired persiste el estado deseado si cambia.
+// putDesired persists the desired state if it changes.
 func (r *Reconciler) putDesired(sp *mcsmv1.ServerSpec, d mcsmv1.DesiredState) error {
 	if sp.DesiredState == d {
 		return nil
@@ -607,7 +607,7 @@ func (r *Reconciler) putDesired(sp *mcsmv1.ServerSpec, d mcsmv1.DesiredState) er
 	return r.st.PutSpec(sp)
 }
 
-// Observe calcula el estado real y lo publica.
+// Observe computes the real state and publishes it.
 func (r *Reconciler) Observe(ctx context.Context, serverID string) *mcsmv1.Observed {
 	unlock := r.lock(serverID)
 	obs := r.observeLocked(ctx, serverID)
@@ -616,15 +616,15 @@ func (r *Reconciler) Observe(ctx context.Context, serverID string) *mcsmv1.Obser
 	return obs
 }
 
-// Container devuelve el contenedor del servidor: nil sin error si no existe, y el error de
-// Docker si no se pudo comprobar. plan-4: las copias y restauraciones lo necesitan para no
-// tomar un fallo de Docker por «no hay contenedor» (copia en caliente sin save-off,
-// restauración con el servidor en marcha).
+// Container returns the server's container: nil without error if it does not exist, and Docker's
+// error if it could not be checked. plan-4: backups and restores need it so as not to
+// mistake a Docker failure for "there is no container" (hot backup without save-off,
+// restore with the server running).
 func (r *Reconciler) Container(ctx context.Context, serverID string) (*docker.Container, error) {
 	return r.find(ctx, serverID)
 }
 
-// ContainerID devuelve el id del contenedor del servidor, o "" si no existe.
+// ContainerID returns the server's container id, or "" if it does not exist.
 func (r *Reconciler) ContainerID(ctx context.Context, serverID string) string {
 	c, err := r.find(ctx, serverID)
 	if err != nil || c == nil {
@@ -639,10 +639,10 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 	r.mu.Lock()
 	obs.Error = r.lastErr[serverID]
 	if msg := r.heldErr[serverID]; msg != "" {
-		obs.Error = msg // plan-4: reservado y sin poder arrancar (HoldError)
+		obs.Error = msg // plan-4: reserved and unable to start (HoldError)
 	}
 	r.mu.Unlock()
-	if obs.Error == "" { // plan-9: retenido por bucle de crash
+	if obs.Error == "" { // plan-9: latched by a crash loop
 		if sp, err := r.st.GetSpec(serverID); err == nil && sp != nil {
 			if l, err := r.st.CrashLatch(serverID); err == nil && l != nil && l.Version == sp.Version {
 				obs.Error = CrashLoopMessage(l.Crashes)
@@ -673,12 +673,12 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 		obs.StartedAtUnix = ins.StartedAt.Unix()
 	}
 	if ins.Running && r.status != nil {
-		// plan-6: el slug del contenedor encontrado (el adoptado no tiene etiquetas en Docker).
+		// plan-6: the slug of the container found (the adopted one has no labels in Docker).
 		obs.Mc = r.status(ctx, spec.ContainerName(c.Labels[spec.LabelSlug]), uint16(spec.GamePort))
 	}
-	if ins.PortsMissing && obs.Error == "" { // plan-8: lo arrancó otro (política de reinicio, mc-router)
-		hint := "pulsa Reiniciar para recrear el contenedor"
-		if c.Adopted { // plan-6: Reiniciar no borra el original del usuario
+	if ins.PortsMissing && obs.Error == "" { // plan-8: started by someone else (restart policy, mc-router)
+		hint := "press Restart to recreate the container"
+		if c.Adopted { // plan-6: Restart does not delete the user's original
 			hint = adoptedPortsHint
 		}
 		obs.Error = errPortsMissing.Error() + ": " + hint
@@ -686,21 +686,21 @@ func (r *Reconciler) observeLocked(ctx context.Context, serverID string) *mcsmv1
 	return obs
 }
 
-// plan-8: fallo de Docker 29.7.2. Un contenedor cuyo arranque falló por el puerto del host arranca
-// después SIN publicar sus puertos, y así se queda aunque se pare y se vuelva a arrancar.
+// plan-8: Docker 29.7.2 failure. A container whose start failed on the host port later starts
+// WITHOUT publishing its ports, and stays that way even if stopped and started again.
 var (
-	errPortsMissing = errors.New("en marcha sin publicar sus puertos (fallo de Docker tras un arranque fallido)")
-	errDiscarded    = errors.New("contenedor descartado: se recreará")
+	errPortsMissing = errors.New("running without publishing its ports (Docker failure after a failed start)")
+	errDiscarded    = errors.New("container discarded: it will be recreated")
 )
 
-// adoptedPortsHint: qué hacer con un adoptado (plan-6) en marcha sin sus puertos, que no se descarta.
-const adoptedPortsHint = "es el contenedor original del importado y el agente no lo borra; guarda un cambio en la configuración del servidor para que se recree con sus puertos"
+// adoptedPortsHint: what to do with an adopted one (plan-6) that is running without its ports, which is not discarded.
+const adoptedPortsHint = "it is the imported server's original container and the agent does not delete it; save a change to the server's configuration so that it is recreated with its ports"
 
-// startOrDiscard arranca el contenedor y comprueba que publica sus puertos. Si el arranque falla, o
-// arranca sin puertos (lo contaminó un arranque fallido de otro: la política de reinicio, mc-router),
-// lo borra (force) y devuelve el error envuelto en errDiscarded: los datos están en el bind y la
-// siguiente pasada lo recrea con el backoff de §6.2 (Power lo recrea al momento). Con ctx cancelado
-// no se descarta nada: el Start pudo llegar a Docker. Un adoptado (plan-6) nunca se descarta.
+// startOrDiscard starts the container and checks that it publishes its ports. If the start fails, or
+// it starts without ports (tainted by another party's failed start: the restart policy, mc-router),
+// it deletes it (force) and returns the error wrapped in errDiscarded: the data is in the bind and the
+// next pass recreates it with the §6.2 backoff (Power recreates it immediately). With ctx cancelled
+// nothing is discarded: the Start may have reached Docker. An adopted one (plan-6) is never discarded.
 func (r *Reconciler) startOrDiscard(ctx context.Context, c *docker.Container) error {
 	err := r.eng.Start(ctx, c.ID)
 	if err == nil {
@@ -713,8 +713,8 @@ func (r *Reconciler) startOrDiscard(ctx context.Context, c *docker.Container) er
 	if ctx.Err() != nil {
 		return err
 	}
-	// plan-6: el contenedor adoptado es el original del usuario y no se borra nunca: solo se informa.
-	// El primer cambio de spec lo sustituye por uno gestionado (reconcileLocked), con sus puertos.
+	// plan-6: the adopted container is the user's original and is never deleted: it is only reported.
+	// The first spec change replaces it with a managed one (reconcileLocked), with its ports.
 	if c.Adopted {
 		if errors.Is(err, errPortsMissing) {
 			return fmt.Errorf("%w: %s", err, adoptedPortsHint)
@@ -722,13 +722,13 @@ func (r *Reconciler) startOrDiscard(ctx context.Context, c *docker.Container) er
 		return err
 	}
 	if rerr := r.eng.Remove(ctx, c.ID); rerr != nil && !errors.Is(rerr, docker.ErrNotFound) {
-		return fmt.Errorf("%w (y no se pudo descartar el contenedor: %v)", err, rerr)
+		return fmt.Errorf("%w (and the container could not be discarded: %v)", err, rerr)
 	}
 	return fmt.Errorf("%w (%w)", err, errDiscarded)
 }
 
-// find devuelve el contenedor del servidor: el gestionado (etiqueta mcsm.server_id) o, si no hay,
-// el adoptado (plan-6). nil sin error si no existe.
+// find returns the server's container: the managed one (mcsm.server_id label) or, if there is none,
+// the adopted one (plan-6). nil without error if it does not exist.
 func (r *Reconciler) find(ctx context.Context, serverID string) (*docker.Container, error) {
 	c, err := r.findManaged(ctx, serverID)
 	if err != nil || c != nil {
@@ -740,7 +740,7 @@ func (r *Reconciler) find(ctx context.Context, serverID string) (*docker.Contain
 func (r *Reconciler) findManaged(ctx context.Context, serverID string) (*docker.Container, error) {
 	list, err := r.eng.ListManaged(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("listar contenedores: %w", err)
+		return nil, fmt.Errorf("list containers: %w", err)
 	}
 	for i := range list {
 		if list[i].Labels[spec.LabelServerID] == serverID {
@@ -750,20 +750,20 @@ func (r *Reconciler) findManaged(ctx context.Context, serverID string) (*docker.
 	return nil, nil
 }
 
-// replace para y borra un contenedor para recrearlo. Siempre Stop (Docker no hace nada sobre uno
-// parado): evita decidir con una foto del estado. Los datos están en el bind.
+// replace stops and deletes a container to recreate it. Always Stop (Docker does nothing on a stopped
+// one): it avoids deciding from a snapshot of the state. The data is in the bind.
 func (r *Reconciler) replace(ctx context.Context, c *docker.Container) error {
 	if err := r.eng.Stop(ctx, c.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-		return fmt.Errorf("parar: %w", err)
+		return fmt.Errorf("stop: %w", err)
 	}
 	if err := r.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
-		return fmt.Errorf("eliminar: %w", err)
+		return fmt.Errorf("remove: %w", err)
 	}
 	return nil
 }
 
-// markFailure registra un fallo de la versión ver. Si la versión cambió desde el
-// último fallo, el backoff empieza de nuevo.
+// markFailure records a failure of version ver. If the version changed since the
+// last failure, the backoff starts over.
 func (r *Reconciler) markFailure(id string, ver uint64, msg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -783,8 +783,8 @@ func (r *Reconciler) markFailure(id string, ver uint64, msg string) {
 	r.retryAt[id] = r.now().Add(wait)
 }
 
-// setLastErr deja un error visible en Observed sin programar backoff (fallo de una
-// acción manual): lo limpia la siguiente reconciliación con éxito.
+// setLastErr leaves a visible error in Observed without scheduling a backoff (failure of a
+// manual action): the next successful reconciliation clears it.
 func (r *Reconciler) setLastErr(id, msg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
