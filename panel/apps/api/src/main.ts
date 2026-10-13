@@ -3,12 +3,20 @@ import { buildApp } from "./app.js";
 import { config } from "./config.js";
 import { openDb } from "./db/db.js";
 import { prepareDataDir, restrictDbFiles } from "./lib/data-dir.js";
+import { randomToken } from "./lib/tokens.js";
 
 const warnings = prepareDataDir(config.dataDir);
 const dbPath = join(config.dataDir, "panel.db");
 const db = openDb(dbPath);
 warnings.push(...restrictDbFiles(dbPath));
-const app = await buildApp({ db, logger: true });
+// L3: sin contraseña, solo quien lee el log del panel (o fijó PANEL_SETUP_TOKEN) puede crearla.
+const setupToken = process.env.PANEL_SETUP_TOKEN || randomToken();
+const app = await buildApp({ db, logger: true, config: { setupToken } });
 for (const w of warnings) app.log.warn(w);
+if (app.auth.getSetting("admin_password_hash") === null) {
+  app.log.warn(process.env.PANEL_SETUP_TOKEN
+    ? "Panel sin contraseña: para crearla, usa el token de PANEL_SETUP_TOKEN"
+    : `Panel sin contraseña. Token de configuración inicial (pégalo en la web para crear la contraseña): ${setupToken}`);
+}
 await app.listen({ host: config.host, port: config.port });
 app.log.info(`panel escuchando en http://${config.host}:${config.port}`);

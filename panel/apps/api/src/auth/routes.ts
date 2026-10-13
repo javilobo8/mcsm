@@ -1,10 +1,13 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
+import { formatZodError, passwordChangeSchema } from "@mcsm/shared";
+import { hashToken, safeEqualHex } from "../lib/tokens.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { SESSION_COOKIE } from "./plugin.js";
 
 const passwordBody = z.object({ password: z.string().min(8, "Mínimo 8 caracteres").max(200) });
+const setupBody = passwordBody.extend({ setupToken: z.string().max(200).optional() });
 
 export async function authRoutes(app: FastifyInstance) {
   await app.register(rateLimit, { global: false });
@@ -17,13 +20,17 @@ export async function authRoutes(app: FastifyInstance) {
   app.get("/api/auth/status", async (req) => ({
     configured: app.auth.getSetting("admin_password_hash") !== null,
     authenticated: req.sessionId !== null,
+    setupTokenRequired: app.config.setupToken !== "" && app.auth.getSetting("admin_password_hash") === null,
   }));
 
   app.post("/api/auth/setup", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
     const yaConfigurada = () => reply.code(409).send({ error: "La contraseña ya está configurada" });
     if (app.auth.getSetting("admin_password_hash")) return yaConfigurada();
-    const parsed = passwordBody.safeParse(req.body);
+    const parsed = setupBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "Datos inválidos" });
+    if (app.config.setupToken && !safeEqualHex(hashToken(parsed.data.setupToken ?? ""), hashToken(app.config.setupToken))) {
+      return reply.code(403).send({ error: "Token de configuración incorrecto: está en el log del panel (docker compose logs panel)" });
+    }
     const hash = await hashPassword(parsed.data.password);
     // Atómico: si otro setup ganó mientras hasheábamos, la inserción no hace nada.
     if (!app.auth.setSettingIfAbsent("admin_password_hash", hash)) return yaConfigurada();
@@ -39,6 +46,20 @@ export async function authRoutes(app: FastifyInstance) {
     }
     app.auth.purgeExpired();
     setCookie(reply, app.auth.createSession(app.config.sessionTtlSeconds));
+    return { ok: true };
+  });
+
+  // Sesión obligatoria (no está en la lista pública del guard). Una actual incorrecta es 400, no 401: en la web un
+  // 401 fuera de /api/auth/ significa sesión caducada.
+  app.post("/api/auth/password", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
+    const parsed = passwordChangeSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: formatZodError(parsed.error) });
+    const stored = app.auth.getSetting("admin_password_hash");
+    if (!stored || !(await verifyPassword(parsed.data.currentPassword, stored))) {
+      return reply.code(400).send({ error: "La contraseña actual no es correcta" });
+    }
+    app.auth.setSetting("admin_password_hash", await hashPassword(parsed.data.newPassword));
+    app.auth.deleteOtherSessions(req.sessionId!);
     return { ok: true };
   });
 
