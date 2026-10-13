@@ -335,6 +335,13 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 				return fmt.Errorf("arrancar: %w", err)
 			}
 		}
+		// plan-9: retenido por bucle de crash y en marcha (lo rearrancó la política de reinicio de Docker, también
+		// always tras reiniciar el daemon): se para, como cualquier servidor retenido.
+		if latch != nil && isActive(existing.State) {
+			if err := r.eng.Stop(ctx, existing.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
+				return fmt.Errorf("parar: %w", err)
+			}
+		}
 		return r.st.SetApplied(serverID, sp.Version)
 	}
 	switch {

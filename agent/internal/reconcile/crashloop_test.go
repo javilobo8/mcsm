@@ -168,3 +168,32 @@ func TestCrashLoopMessage(t *testing.T) {
 		t.Fatalf("msg = %q", msg)
 	}
 }
+
+// Un servidor bajo demanda retenido que vuelve a estar en marcha (la política de reinicio en la ventana entre la
+// retención y la parada, o restartPolicy always tras reiniciar el daemon) se para en el tick: mc-router no lo
+// arrancaría (la política del proxy lo impide), pero Docker sí.
+func TestOnDemandLatchedServerIsStoppedByTheTick(t *testing.T) {
+	r, st, fake, _, _ := setup(t)
+	ctx := context.Background()
+	r.SetOnDemand(func(s spec.Spec) bool { return s.Router.Active() })
+	put(t, st, "a", "alpha", 1, running, routedJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.CrashLoopStop(ctx, "a", 4); err != nil {
+		t.Fatal(err)
+	}
+	c, err := r.Container(ctx, "a")
+	if err != nil || c == nil || c.State != "exited" {
+		t.Fatalf("tras la retención: %+v %v", c, err)
+	}
+	if err := fake.Start(ctx, c.ID); err != nil { // Docker lo vuelve a arrancar por su cuenta
+		t.Fatal(err)
+	}
+	if err := r.ReconcileTick(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	if got := state(t, r, "a"); got != "exited" {
+		t.Fatalf("un bajo demanda retenido en marcha se para; estado = %s", got)
+	}
+}
