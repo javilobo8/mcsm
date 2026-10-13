@@ -2,23 +2,178 @@
 
 Panel self-hosted para gestionar servidores de Minecraft (imagen `itzg/minecraft-server`) repartidos en varias máquinas con Docker. Un panel, un agente por máquina.
 
-## Puesta en marcha (máquina principal)
+## Despliegue
 
-Las imágenes se publican en GitHub Container Registry con cada versión: `ghcr.io/javilobo8/mcsm-panel` y `ghcr.io/javilobo8/mcsm-agent` (`linux/amd64` y `linux/arm64`; tags `X.Y.Z`, `X.Y` y `latest`). De este repositorio solo necesitas `deploy/` (los compose y `.env.example`).
+Un **panel** (web y API, puerto 8080) y un **agente** en cada máquina que vaya a tener servidores; la máquina del panel suele llevar también el suyo. Las imágenes se publican en GitHub Container Registry con cada [versión](https://github.com/javilobo8/mcsm/releases):
 
-1. `docker network create mcsm 2>/dev/null || true` (red compartida por el agente y los servidores; los compose la declaran como externa).
-2. `cp deploy/.env.example deploy/.env` y edita `PANEL_PUBLIC_URL` (`http://<ip-de-esta-máquina>:8080`, con el puerto: es la dirección que se pone en el `docker run` de los demás nodos; si lo dejas vacío, el panel usa la dirección con la que lo abres en el navegador) y `DATA_ROOT` (ruta absoluta). Fija también `MCSM_VERSION` (p. ej. `0.9.0`; vacío = `latest`) para que una actualización sea siempre un paso consciente.
-3. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d panel`
-4. Abre `http://<ip>:8080` y crea la contraseña (mínimo 8 caracteres). El panel recién instalado escribe en su log un **token de configuración inicial** (`docker compose -f deploy/docker-compose.yml logs panel`, línea «Token de configuración inicial») y la web lo pide para crear la contraseña; o fíjalo tú con `PANEL_SETUP_TOKEN` en `deploy/.env`. Así cierra la ventana del «primer visitante» (una web de Internet no puede fijar la contraseña por DNS rebinding). Ve a **Nodos → Añadir nodo**, pon en «Directorio de datos» el mismo `DATA_ROOT` del `.env` y copia el token en `ENROLL_TOKEN` del `.env`. El token caduca a los 15 minutos y sirve una sola vez.
-5. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d agent`. El nodo aparece como conectado. Este agente llega al panel por la red interna del compose (`http://panel:8080`). El alta queda guardada en el volumen `mcsm_agent-data`: a partir de ahí `ENROLL_TOKEN` se ignora.
+| Imagen | Qué es |
+|---|---|
+| `ghcr.io/javilobo8/mcsm-panel` | Panel: web y API (puerto 8080) |
+| `ghcr.io/javilobo8/mcsm-agent` | Agente de nodo: gestiona los servidores con el Docker de su máquina |
 
-**Construir desde el código** (en vez de descargar las imágenes): añade `-f deploy/docker-compose.build.yml` a cada `docker compose` y `--build` a los `up` (p. ej. `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env up -d --build panel`). Así las imágenes se llaman `mcsm-panel:latest` y `mcsm-agent:latest`, y el `docker run` de **Añadir nodo** usa `mcsm-agent:latest`, que tendrás que construir en cada nodo (`docker build -t mcsm-agent:latest agent/`).
+Las dos para `linux/amd64` y `linux/arm64` (p. ej. una Raspberry Pi 4/5 con sistema de 64 bits), con los tags `X.Y.Z`, `X.Y` y `latest`. Usa **la misma versión** en el panel y en todos los agentes.
 
-## Añadir otra máquina
+**Cada máquina necesita** Linux con Docker Engine y el plugin Compose v2 (`docker compose`), salida a Internet (imágenes y descargas de Minecraft) y un directorio para los mundos (`DATA_ROOT`, ruta absoluta; por defecto `/srv/minecraft`). Abre los puertos de [Puertos y cortafuegos](#puertos-y-cortafuegos).
 
-Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → Añadir nodo** copia el `docker run` que se muestra y ejecútalo allí antes de 15 minutos. Usa la imagen del agente de la misma versión que el panel (`ghcr.io/javilobo8/mcsm-agent:<versión>`), que Docker descarga solo; con un panel construido desde el código es `mcsm-agent:latest` y hay que construirla allí. O usa `deploy/docker-compose.node.yml` con `PANEL_URL`, `ENROLL_TOKEN` y `MCSM_VERSION` en su `.env` (con un agente construido allí, `MCSM_AGENT_IMAGE=mcsm-agent:latest`).
+Los comandos `docker compose` de este README se ejecutan en el directorio del `docker-compose.yml` y su `.env`. Si usas el repositorio clonado, los mismos ficheros están en `deploy/`: añade `-f deploy/docker-compose.yml --env-file deploy/.env` (en un nodo, `-f deploy/docker-compose.node.yml --env-file deploy/.env`).
+
+### Máquina principal (panel + agente)
+
+En un directorio (p. ej. `/opt/mcsm`) crea un `docker-compose.yml` y un `.env`. Puedes descargarlos del repositorio:
+
+```bash
+mkdir -p /opt/mcsm && cd /opt/mcsm
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/javilobo8/mcsm/main/deploy/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/javilobo8/mcsm/main/deploy/.env.example
+```
+
+`docker-compose.yml` (igual que `deploy/docker-compose.yml`):
+
+```yaml
+# Requiere la red compartida: docker network create mcsm
+# Imágenes publicadas en GHCR; MCSM_VERSION (en .env) fija la versión, vacío = latest. Para construir desde el
+# código, añade -f deploy/docker-compose.build.yml.
+name: mcsm
+services:
+  panel:
+    image: ghcr.io/javilobo8/mcsm-panel:${MCSM_VERSION:-latest}
+    init: true
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    environment:
+      # Vacío: el panel usa la dirección con la que lo abres en el navegador (Host con puerto).
+      PANEL_PUBLIC_URL: ${PANEL_PUBLIC_URL:-}
+      # Opcional: token de configuración inicial (vacío = el panel genera uno y lo escribe en su log).
+      PANEL_SETUP_TOKEN: ${PANEL_SETUP_TOKEN:-}
+    volumes:
+      - panel-data:/data
+  agent:
+    image: ghcr.io/javilobo8/mcsm-agent:${MCSM_VERSION:-latest}
+    # docker stop mata a los 10 s; al pararlo, el agente espera a la vez, hasta 25 s, a sus
+    # operaciones de archivos y a las copias en curso (save-on) antes de salir.
+    stop_grace_period: 30s
+    restart: unless-stopped
+    depends_on: [panel]
+    environment:
+      PANEL_URL: http://panel:8080
+      ENROLL_TOKEN: ${ENROLL_TOKEN:-}
+      NODE_NAME: ${NODE_NAME:-principal}
+      DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
+      # Opcional: tamaño máximo de una subida de archivo, en bytes (vacío = 4 GiB).
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
+      HOST_PROC: /host/proc
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_ROOT:-/srv/minecraft}:${DATA_ROOT:-/srv/minecraft}
+      - agent-data:/var/lib/mcsm-agent
+      - /proc:/host/proc:ro
+    networks: [default, mcsm]
+networks:
+  mcsm:
+    name: mcsm
+    external: true
+volumes:
+  panel-data: {}
+  agent-data: {}
+```
+
+`.env` (edítalo; el resto de variables de `deploy/.env.example` son opcionales):
+
+```bash
+# Versión de las imágenes: fíjala para que actualizar sea siempre un paso consciente (vacío = latest)
+MCSM_VERSION=0.9.0
+# Dirección del panel con el puerto, tal como la ven los otros nodos y tu navegador
+# (vacío = la dirección con la que abras el panel en el navegador)
+PANEL_PUBLIC_URL=http://192.168.1.10:8080
+# Directorio del host (ruta ABSOLUTA) para los mundos de esta máquina
+DATA_ROOT=/srv/minecraft
+# Token de alta del agente local: se rellena en el paso 4
+ENROLL_TOKEN=
+```
+
+Después:
+
+1. Crea la red compartida por el agente y los servidores, y el directorio de datos: `docker network create mcsm 2>/dev/null || true` y `sudo mkdir -p /srv/minecraft` (tu `DATA_ROOT`).
+2. Arranca **solo el panel**: `docker compose up -d panel`.
+3. Busca en su log el token de configuración inicial (`docker compose logs panel | grep "Token de configuración inicial"`), abre `http://<ip>:8080` y crea la contraseña (mínimo 8 caracteres) con ese token. También puedes fijarlo antes con `PANEL_SETUP_TOKEN` en el `.env`. Así se cierra la ventana del «primer visitante»: una web de Internet no puede fijar la contraseña por DNS rebinding.
+4. En **Nodos → Añadir nodo**, pon en «Directorio de datos» el mismo `DATA_ROOT` del `.env` y copia el token en `ENROLL_TOKEN`. El token caduca a los 15 minutos y sirve una sola vez.
+5. Arranca el agente: `docker compose up -d agent`. El nodo aparece como conectado. Este agente llega al panel por la red interna del compose (`http://panel:8080`). El alta queda guardada en el volumen `mcsm_agent-data`: a partir de ahí `ENROLL_TOKEN` se ignora.
+
+No arranques el agente sin token (un `docker compose up -d` sin nombrar servicio lo haría): sin alta guardada ni token, sale con error y Docker lo reinicia en bucle.
+
+### Otras máquinas (solo agente)
+
+En cada una, crea la red (`docker network create mcsm 2>/dev/null || true`) y el `DATA_ROOT`. Luego, en **Nodos → Añadir nodo**, genera un token con el «Directorio de datos» de esa máquina y, antes de 15 minutos, arranca el agente de una de estas dos formas.
+
+**Con `docker run`:** ejecuta el comando que muestra el panel. Ya lleva tu token, tu dirección y la imagen del agente de la misma versión que el panel; es así:
+
+```bash
+docker network create mcsm 2>/dev/null || true
+docker run -d --name mcsm-agent --restart unless-stopped --stop-timeout 30 \
+  --network mcsm \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /srv/minecraft:/srv/minecraft \
+  -v mcsm-agent-data:/var/lib/mcsm-agent \
+  -v /proc:/host/proc:ro -e HOST_PROC=/host/proc \
+  -e PANEL_URL=http://192.168.1.10:8080 \
+  -e ENROLL_TOKEN=<token-de-alta> \
+  -e DATA_ROOT=/srv/minecraft \
+  ghcr.io/javilobo8/mcsm-agent:0.9.0
+```
+
+**Con Docker Compose:** en un directorio (p. ej. `/opt/mcsm-node`), un `docker-compose.yml` igual que `deploy/docker-compose.node.yml` (`curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/javilobo8/mcsm/main/deploy/docker-compose.node.yml`):
+
+```yaml
+# Requiere la red compartida: docker network create mcsm
+# Imagen publicada en GHCR; MCSM_VERSION (en .env) fija la versión, vacío = latest. Con un agente construido desde el
+# código (docker build -t mcsm-agent:latest agent/), pon MCSM_AGENT_IMAGE=mcsm-agent:latest.
+name: mcsm-node
+services:
+  agent:
+    image: ${MCSM_AGENT_IMAGE:-ghcr.io/javilobo8/mcsm-agent:${MCSM_VERSION:-latest}}
+    # docker stop mata a los 10 s; al pararlo, el agente espera a la vez, hasta 25 s, a sus
+    # operaciones de archivos y a las copias en curso (save-on) antes de salir.
+    stop_grace_period: 30s
+    restart: unless-stopped
+    environment:
+      PANEL_URL: ${PANEL_URL:?Define PANEL_URL, p. ej. http://192.168.1.10:8080}
+      ENROLL_TOKEN: ${ENROLL_TOKEN:-}
+      # Opcional: vacío = el panel usa el nombre del token de alta (igual que el docker run de la UI, que no lo pasa).
+      NODE_NAME: ${NODE_NAME:-}
+      DATA_ROOT: ${DATA_ROOT:-/srv/minecraft}
+      # Opcional: tamaño máximo de una subida de archivo, en bytes (vacío = 4 GiB).
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-}
+      HOST_PROC: /host/proc
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DATA_ROOT:-/srv/minecraft}:${DATA_ROOT:-/srv/minecraft}
+      - agent-data:/var/lib/mcsm-agent
+      - /proc:/host/proc:ro
+    networks: [mcsm]
+networks:
+  mcsm:
+    name: mcsm
+    external: true
+volumes:
+  agent-data: {}
+```
+
+y su `.env`:
+
+```bash
+MCSM_VERSION=0.9.0
+PANEL_URL=http://192.168.1.10:8080
+ENROLL_TOKEN=<token-de-alta>
+DATA_ROOT=/srv/minecraft
+```
+
+Después, `docker compose up -d`. Sin `NODE_NAME`, el nodo toma el nombre del token.
 
 `DATA_ROOT` se monta en el agente **con la misma ruta dentro y fuera** (`-v /srv/minecraft:/srv/minecraft`): el agente lo comprueba al arrancar y no arranca si no está montado desde el host.
+
+### Construir desde el código
+
+En vez de descargar las imágenes, con el repositorio clonado: añade `-f deploy/docker-compose.build.yml` a cada `docker compose` y `--build` a los `up` (p. ej. `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env up -d --build panel`). Las imágenes se llaman entonces `mcsm-panel:latest` y `mcsm-agent:latest`, y el `docker run` de **Añadir nodo** usa `mcsm-agent:latest`, que tendrás que construir en cada nodo (`docker build -t mcsm-agent:latest agent/`; con el compose de nodo, `MCSM_AGENT_IMAGE=mcsm-agent:latest` en su `.env`).
 
 ### Rotar el token de un nodo
 
@@ -29,7 +184,7 @@ Si sospechas que el token de un nodo se ha filtrado, rotarlo no basta: borra el 
 ## Ajustes
 
 - **Contraseña.** Al cambiarla se cierran todas las sesiones, también las de otros navegadores.
-- **URL del panel.** La guardada manda sobre `PANEL_PUBLIC_URL`; es la del comando de alta de nodos y el `Origin` que acepta el WebSocket. Las escrituras (`POST`/`PUT`/`PATCH`/`DELETE` bajo `/api/`) con un `Origin` que no sea el del panel dan 403, y el login también es una escritura. Detrás de un proxy inverso que reescriba `Host`, el login por el proxy da 403: entra directamente por `http://<ip>:8080` y guarda aquí la dirección con la que entras por el proxy, fija `PANEL_PUBLIC_URL` en el entorno del panel (`deploy/.env`; solo cuenta si no hay una guardada aquí) o haz que el proxy conserve `Host` (en nginx, `proxy_set_header Host $http_host;`).
+- **URL del panel.** La guardada manda sobre `PANEL_PUBLIC_URL`; es la del comando de alta de nodos y el `Origin` que acepta el WebSocket. Las escrituras (`POST`/`PUT`/`PATCH`/`DELETE` bajo `/api/`) con un `Origin` que no sea el del panel dan 403, y el login también es una escritura. Detrás de un proxy inverso que reescriba `Host`, el login por el proxy da 403: entra directamente por `http://<ip>:8080` y guarda aquí la dirección con la que entras por el proxy, fija `PANEL_PUBLIC_URL` en el `.env` del compose (solo cuenta si no hay una guardada aquí) o haz que el proxy conserve `Host` (en nginx, `proxy_set_header Host $http_host;`).
 - **Rango de puertos de juego.** Solo se usa para servidores nuevos sin puerto.
 - **API key de CurseForge.** Si la guardada no es válida, la página lo avisa.
 - **Versiones y builds.** Al crear o editar un servidor, el panel consulta por HTTPS las fuentes oficiales (`piston-meta.mojang.com`, `fill.papermc.io`, `api.purpurmc.org`, `hub.spigotmc.org`, `meta.fabricmc.net`, `meta.quiltmc.org`, `files.minecraftforge.net`, `maven.neoforged.net`) para listar versiones de Minecraft y builds; las listas se guardan en memoria (1 h las versiones, 15 min los builds). Sin salida a Internet desde el panel la versión se puede escribir a mano. El campo **Build / loader** (Paper, Folia, Purpur, Fabric, Quilt, Forge, NeoForge) fija el build o la versión del loader; vacío = el último al arrancar.
@@ -48,15 +203,15 @@ Si sospechas que el token de un nodo se ha filtrado, rotarlo no basta: borra el 
 
 ## Actualizar
 
-**Primero los agentes y luego el panel.** Un agente antiguo rechaza lo que no conoce, pero un panel nuevo puede pedirle cosas que todavía no sabe hacer. Usa la misma versión en todas las máquinas: en cada `.env`, `MCSM_VERSION=<nueva>` (con `latest`, basta con descargar de nuevo). Las notas de cada versión están en las [Releases](https://github.com/javilobo8/mcsm/releases).
+**Primero los agentes y luego el panel.** Un agente antiguo rechaza lo que no conoce, pero un panel nuevo puede pedirle cosas que todavía no sabe hacer. Usa la misma versión en todas las máquinas: en cada `.env`, `MCSM_VERSION=<nueva>` (con `latest`, basta con volver a descargar). Las notas de cada versión están en las [Releases](https://github.com/javilobo8/mcsm/releases).
 
 1. Agentes.
-   - En la máquina principal: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env pull agent` y `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --no-deps agent` (`--no-deps`: sin él, Compose también reiniciaría el panel).
-   - En los nodos con compose: `docker compose -f deploy/docker-compose.node.yml --env-file deploy/.env pull` y `docker compose -f deploy/docker-compose.node.yml --env-file deploy/.env up -d`.
+   - En la máquina principal: `docker compose pull agent && docker compose up -d --no-deps agent` (`--no-deps`: sin él, Compose también reiniciaría el panel).
+   - En los nodos con compose: `docker compose pull && docker compose up -d`.
    - En los nodos con `docker run`: `docker pull ghcr.io/javilobo8/mcsm-agent:<nueva>`, luego `docker stop mcsm-agent && docker rm mcsm-agent` (con `stop` tiene sus 30 s para terminar; `rm -f` lo mata en el acto) y vuelve a lanzar el mismo `docker run` cambiando la versión de la imagen. El volumen `mcsm-agent-data` conserva el alta, así que el `ENROLL_TOKEN` caducado da igual.
-2. Panel: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env pull panel` y `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --no-deps panel`.
+2. Panel: `docker compose pull panel && docker compose up -d --no-deps panel`.
 
-Construyendo desde el código: `git pull` en cada máquina y los mismos pasos con `-f deploy/docker-compose.build.yml` y `up -d --build` en vez de `pull` (en los nodos con `docker run`, `docker build -t mcsm-agent:latest agent/`).
+[Construyendo desde el código](#construir-desde-el-código): `git pull` en cada máquina y los mismos pasos con `-f deploy/docker-compose.build.yml` y `up -d --build` en vez de `pull` (en los nodos con `docker run`, `docker build -t mcsm-agent:latest agent/`).
 
 El agente muestra su versión (`agent/VERSION`) en **Nodos**. Las imágenes base (Node, `docker:dind`, Playwright…) van fijadas por digest; para subirlas de versión, consulta el nuevo con `docker buildx imagetools inspect <imagen>:<tag>` y cambia tag y digest a la vez.
 
@@ -69,9 +224,9 @@ Los servidores de Minecraft siguen en marcha mientras se actualizan el agente y 
 Todo lo del panel (servidores, nodos, plantillas, historial, contraseña) está en `panel.db`, en el volumen `mcsm_panel-data`. Los mundos y sus copias no: están en el `DATA_ROOT` de cada nodo. Cópiala con el panel parado: los servidores siguen funcionando, pero espera a que no haya copias, restauraciones ni migraciones en curso. Copia el volumen entero: el panel usa WAL y los ficheros `panel.db-wal` y `panel.db-shm` forman parte de la base de datos.
 
 ```bash
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env stop panel
+docker compose stop panel
 docker run --rm -v mcsm_panel-data:/data:ro -v "$PWD":/backup alpine tar czf /backup/mcsm-panel-$(date +%F).tgz -C /data .
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env start panel
+docker compose start panel
 ```
 
 Guárdala en un sitio privado: contiene las contraseñas RCON de los servidores y el secreto de las sesiones. Para restaurarla, con el panel parado:
@@ -92,7 +247,7 @@ Configuración del agente (por nodo, variable de entorno):
 |---|---|---|
 | `UPLOAD_MAX_BYTES` | `4294967296` (4 GiB) | Tamaño máximo de una subida, en bytes. Por encima, el nodo la rechaza con «la subida supera el máximo… (UPLOAD_MAX_BYTES)». Ejemplo para 10 GiB: `UPLOAD_MAX_BYTES=10737418240`. |
 
-Se fija en el `.env` de `deploy/docker-compose.yml` o de `deploy/docker-compose.node.yml` (vacío = el valor por defecto) o, en un nodo arrancado con el `docker run` de **Añadir nodo**, añadiendo `-e UPLOAD_MAX_BYTES=…`.
+Se fija en el `.env` del compose, el principal o el de nodo (vacío = el valor por defecto) o, en un nodo arrancado con el `docker run` de **Añadir nodo**, añadiendo `-e UPLOAD_MAX_BYTES=…`.
 
 Límites fijos, para saber qué esperar:
 

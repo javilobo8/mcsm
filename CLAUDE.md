@@ -310,3 +310,5 @@ conocer.)
 - Tests Go que arrancan el bucle de eventos: `runEventLoop(t, a)`, nunca `go a.eventLoop(ctx)` (debe salir antes del
   `bg.Wait` de la limpieza de `newApp`, o `-race` salta). La CI corre en runners de 4 CPUs: un test que dependa de que
   el planificador deje correr a otra goroutine falla; pruébalo con `GOMAXPROCS=1`.
+- El README («Despliegue») lleva copias literales de `deploy/docker-compose.yml`, `deploy/docker-compose.node.yml` y del
+  `docker run` de `dockerRunSnippet`: si cambian, actualiza el README (y sus `.env` de ejemplo).
