@@ -21,7 +21,7 @@ import (
 
 type fakeHost struct {
 	mu  sync.Mutex
-	cpu []CPUTimes // una lectura por llamada; se repite la última
+	cpu []CPUTimes // one reading per call; the last one repeats
 	err error
 }
 
@@ -40,14 +40,14 @@ func (h *fakeHost) CPUTimes(context.Context) (CPUTimes, error) {
 func (h *fakeHost) Memory(context.Context) (uint64, uint64, error) { return 6 << 30, 16 << 30, nil }
 func (h *fakeHost) Disk(_ context.Context, path string) (uint64, uint64, error) {
 	if path != "/srv/minecraft" {
-		return 0, 0, errors.New("ruta inesperada " + path)
+		return 0, 0, errors.New("unexpected path " + path)
 	}
 	return 100 << 30, 500 << 30, nil
 }
 
 type fakeRcon struct {
 	mu      sync.Mutex
-	outputs []string // respuestas a `tps`, en orden; se repite la última
+	outputs []string // responses to `tps`, in order; the last one repeats
 	cmds    int
 	closed  bool
 	fail    bool
@@ -57,10 +57,10 @@ func (r *fakeRcon) Command(_ context.Context, cmd string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
-		return "", errors.New("cerrada")
+		return "", errors.New("closed")
 	}
 	if r.fail {
-		return "", errors.New("conexión rota")
+		return "", errors.New("broken connection")
 	}
 	r.cmds++
 	out := r.outputs[0]
@@ -71,19 +71,19 @@ func (r *fakeRcon) Command(_ context.Context, cmd string) (string, error) {
 }
 func (r *fakeRcon) Close() error { r.mu.Lock(); r.closed = true; r.mu.Unlock(); return nil }
 
-// engine envuelve el motor falso: exige un plazo en cada llamada (el motor real no
-// impone timeout propio), permite que ListManaged falle y que Stats se cuelgue.
+// engine wraps the fake engine: it requires a deadline on every call (the real engine does not
+// impose its own timeout), lets ListManaged fail and Stats hang.
 type engine struct {
 	*docker.Fake
 	t       *testing.T
 	mu      sync.Mutex
 	listErr error
-	hung    map[string]bool // Stats de estos contenedores no responde hasta que vence el ctx
+	hung    map[string]bool // Stats of these containers does not respond until ctx expires
 }
 
 func (e *engine) ListManaged(ctx context.Context) ([]docker.Container, error) {
 	if _, ok := ctx.Deadline(); !ok {
-		e.t.Error("ListManaged sin plazo")
+		e.t.Error("ListManaged without a deadline")
 	}
 	e.mu.Lock()
 	err := e.listErr
@@ -96,7 +96,7 @@ func (e *engine) ListManaged(ctx context.Context) ([]docker.Container, error) {
 
 func (e *engine) Stats(ctx context.Context, id string) (docker.Stats, error) {
 	if _, ok := ctx.Deadline(); !ok {
-		e.t.Error("Stats sin plazo")
+		e.t.Error("Stats without a deadline")
 	}
 	e.mu.Lock()
 	hung := e.hung[id]
@@ -124,7 +124,7 @@ type world struct {
 	ctr    *engine
 	host   *fakeHost
 	mu     sync.Mutex
-	online map[string]*mcsmv1.McStatus // por host (mcsm-<slug>)
+	online map[string]*mcsmv1.McStatus // per host (mcsm-<slug>)
 	specs  map[string]spec.Spec
 	dials  []string // "host:port:password"
 	conns  []*fakeRcon
@@ -143,10 +143,10 @@ func newWorld(t *testing.T) *world {
 		Containers: w.ctr, Host: w.host, DataRoot: "/srv/minecraft",
 		Status: func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 			if port != spec.GamePort {
-				t.Errorf("SLP al puerto %d", port)
+				t.Errorf("SLP to port %d", port)
 			}
 			if _, ok := ctx.Deadline(); !ok {
-				t.Error("SLP sin plazo")
+				t.Error("SLP without a deadline")
 			}
 			w.mu.Lock()
 			defer w.mu.Unlock()
@@ -163,7 +163,7 @@ func newWorld(t *testing.T) *world {
 		},
 		Dial: func(ctx context.Context, host string, port uint16, pw string) (Rcon, error) {
 			if _, ok := ctx.Deadline(); !ok {
-				t.Error("RCON sin plazo")
+				t.Error("RCON without a deadline")
 			}
 			w.mu.Lock()
 			defer w.mu.Unlock()
@@ -178,7 +178,7 @@ func newWorld(t *testing.T) *world {
 	return w
 }
 
-// server crea un contenedor gestionado y lo arranca si running.
+// server creates a managed container and starts it if running.
 func (w *world) server(id, slug, typ string, running bool) string {
 	w.t.Helper()
 	ctx := context.Background()
@@ -214,8 +214,8 @@ func find(b *mcsmv1.MetricBatch, id string) *mcsmv1.ServerMetricSample {
 	return nil
 }
 
-// st es una lectura válida de un núcleo (sin datos de memoria: MemLimit == 0 no la
-// invalida).
+// st is a valid one-core reading (without memory data: MemLimit == 0 does not
+// invalidate it).
 func st(cpuNs, sysNs uint64) docker.Stats {
 	return docker.Stats{CPUTotalNs: cpuNs, SystemCPUNs: sysNs, OnlineCPUs: 1}
 }
@@ -231,12 +231,12 @@ func TestSampleNeedsTwoReadings(t *testing.T) {
 	w.eng.SetStats(cid, docker.Stats{CPUTotalNs: 1e9, SystemCPUNs: 10e9, OnlineCPUs: 4, MemBytes: 1 << 30, MemLimit: 3 << 30, NetRxBytes: 10, NetTxBytes: 20})
 	ctx := context.Background()
 	if b := w.s.Sample(ctx, t0); b != nil {
-		t.Fatalf("la primera lectura no debe enviar nada: %v", b)
+		t.Fatalf("the first reading must not send anything: %v", b)
 	}
 	w.eng.SetStats(cid, docker.Stats{CPUTotalNs: 3e9, SystemCPUNs: 30e9, OnlineCPUs: 4, MemBytes: 2 << 30, MemLimit: 3 << 30, NetRxBytes: 110, NetTxBytes: 220})
 	b := w.s.Sample(ctx, t0.Add(10*time.Second))
 	if b == nil {
-		t.Fatal("la segunda lectura debe enviar un lote")
+		t.Fatal("the second reading must send a batch")
 	}
 	if b.TsUnix != time.Date(2026, 10, 12, 10, 0, 10, 0, time.UTC).Unix() {
 		t.Fatalf("ts = %d", b.TsUnix)
@@ -246,16 +246,16 @@ func TestSampleNeedsTwoReadings(t *testing.T) {
 	}
 	m := find(b, "a")
 	if m == nil {
-		t.Fatalf("servidor ausente: %v", b)
+		t.Fatalf("missing server: %v", b)
 	}
 	if m.CpuPct != 40 || m.MemBytes != 2<<30 || m.MemLimitBytes != 3<<30 || m.NetRxBytes != 110 || m.NetTxBytes != 220 {
-		t.Fatalf("muestra = %+v", m)
+		t.Fatalf("sample = %+v", m)
 	}
 	if !m.McOnline || m.PlayersOnline != 3 || m.PlayersMax != 20 || m.PingMs != 4 {
 		t.Fatalf("SLP = %+v", m)
 	}
 	if m.Tps != nil || len(w.dials) != 0 {
-		t.Fatalf("VANILLA no debe pedir TPS: tps=%v dials=%v", m.Tps, w.dials)
+		t.Fatalf("VANILLA must not request TPS: tps=%v dials=%v", m.Tps, w.dials)
 	}
 }
 
@@ -265,30 +265,30 @@ func TestSampleSkipsStoppedUnlabeledAndResetCounters(t *testing.T) {
 	run := w.server("a", "alpha", "VANILLA", true)
 	stopped := w.server("b", "beta", "VANILLA", false)
 	w.eng.SetStats(stopped, docker.Stats{CPUTotalNs: 1, SystemCPUNs: 1})
-	// contenedor gestionado sin server_id: se ignora
+	// managed container without server_id: ignored
 	if _, err := w.eng.Create(ctx, "mcsm-raro", &container.Config{Labels: map[string]string{spec.LabelManaged: "true"}}, &container.HostConfig{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	w.eng.SetStats(run, st(5e9, 10e9))
 	w.s.Sample(ctx, t0)
-	// el contenedor se reinició: su CPU acumulada vuelve a empezar
+	// the container restarted: its accumulated CPU starts over
 	w.eng.SetStats(run, st(1e9, 20e9))
 	b := w.s.Sample(ctx, t0.Add(10*time.Second))
 	if find(b, "a") != nil {
-		t.Fatalf("con contadores reiniciados no se envía muestra: %+v", find(b, "a"))
+		t.Fatalf("with reset counters no sample is sent: %+v", find(b, "a"))
 	}
 	if find(b, "b") != nil || len(b.Servers) != 0 {
-		t.Fatalf("solo servidores en marcha: %v", b.Servers)
+		t.Fatalf("running servers only: %v", b.Servers)
 	}
 	w.eng.SetStats(run, st(2e9, 30e9))
 	b = w.s.Sample(ctx, t0.Add(20*time.Second))
 	if m := find(b, "a"); m == nil || m.CpuPct != 10 || m.McOnline {
-		t.Fatalf("tras el reinicio vuelve a medir (10 %%, sin SLP): %+v", m)
+		t.Fatalf("after the restart it measures again (10 %%, no SLP): %+v", m)
 	}
 }
 
-// Una lectura sin datos (SystemCPUNs == 0: la de un contenedor parado, o todo a cero) no
-// es un 0 %: no se envía y no sustituye a la última lectura válida como base de la CPU.
+// A reading without data (SystemCPUNs == 0: that of a stopped container, or all zero) is not
+// a 0 %: it is not sent and does not replace the last valid reading as the CPU baseline.
 func TestNoDataReadingIsSkippedAndKeepsBase(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
@@ -302,17 +302,17 @@ func TestNoDataReadingIsSkippedAndKeepsBase(t *testing.T) {
 	for i, e := range empties {
 		w.eng.SetStats(cid, e)
 		if m := find(w.s.Sample(ctx, t0.Add(time.Duration(i+1)*10*time.Second)), "a"); m != nil {
-			t.Fatalf("lectura sin datos %d enviada: %+v", i, m)
+			t.Fatalf("reading without data %d sent: %+v", i, m)
 		}
 	}
 	w.eng.SetStats(cid, st(4e9, 40e9))
 	if m := find(w.s.Sample(ctx, t0.Add(40*time.Second)), "a"); m == nil || m.CpuPct != 10 {
-		t.Fatalf("la base debe seguir siendo la última lectura válida (10 %%): %+v", m)
+		t.Fatalf("the baseline must remain the last valid reading (10 %%): %+v", m)
 	}
 }
 
-// Sin cgroup de memoria (p. ej. Raspberry Pi OS sin cgroup_enable=memory) Docker da CPU
-// válida y MemLimit == 0: la muestra se envía con límite 0 ("sin límite conocido").
+// Without a memory cgroup (e.g. Raspberry Pi OS without cgroup_enable=memory) Docker gives a valid
+// CPU and MemLimit == 0: the sample is sent with limit 0 ("no known limit").
 func TestZeroMemLimitWithValidCPUIsSent(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
@@ -322,19 +322,19 @@ func TestZeroMemLimitWithValidCPUIsSent(t *testing.T) {
 	w.eng.SetStats(cid, docker.Stats{CPUTotalNs: 2e9, SystemCPUNs: 20e9, OnlineCPUs: 2, MemBytes: 512 << 20, NetRxBytes: 7})
 	m := find(w.s.Sample(ctx, t0.Add(10*time.Second)), "a")
 	if m == nil || m.CpuPct != 20 || m.MemBytes != 512<<20 || m.MemLimitBytes != 0 || m.NetRxBytes != 7 {
-		t.Fatalf("muestra con MemLimit 0 = %+v", m)
+		t.Fatalf("sample with MemLimit 0 = %+v", m)
 	}
 }
 
 func TestTPSOnlyPaperPurpurEvery30sOverOneSession(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
-	paper := w.server("p", "papel", "paper", true)
+	paper := w.server("p", "paper", "paper", true)
 	purpur := w.server("u", "morado", "PURPUR", true)
 	for _, cid := range []string{paper, purpur} {
 		w.eng.SetStats(cid, st(1e9, 10e9))
 	}
-	w.setOnline("papel", 0, 20, 1)
+	w.setOnline("paper", 0, 20, 1)
 	w.s.Sample(ctx, t0) // base
 	for i := 1; i <= 7; i++ {
 		for _, cid := range []string{paper, purpur} {
@@ -343,121 +343,121 @@ func TestTPSOnlyPaperPurpurEvery30sOverOneSession(t *testing.T) {
 		b := w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second))
 		p := find(b, "p")
 		if p == nil || p.Tps == nil || *p.Tps != 19.5 {
-			t.Fatalf("ciclo %d: Paper online debe llevar TPS 19.5: %+v", i, p)
+			t.Fatalf("cycle %d: online Paper must carry TPS 19.5: %+v", i, p)
 		}
 		if u := find(b, "u"); u == nil || u.Tps != nil || u.McOnline {
-			t.Fatalf("ciclo %d: Purpur sin SLP no sondea TPS: %+v", i, u)
+			t.Fatalf("cycle %d: Purpur without SLP does not probe TPS: %+v", i, u)
 		}
 	}
-	// t0+10 (1ª medida), t0+40 y t0+70: tres `tps` por la misma sesión.
-	if len(w.dials) != 1 || w.dials[0] != "mcsm-papel:25575:pw-p" {
+	// t0+10 (1st measurement), t0+40 and t0+70: three `tps` over the same session.
+	if len(w.dials) != 1 || w.dials[0] != "mcsm-paper:25575:pw-p" {
 		t.Fatalf("dials = %v", w.dials)
 	}
 	if w.conns[0].cmds != 3 {
-		t.Fatalf("comandos tps = %d, want 3 (cada 30 s)", w.conns[0].cmds)
+		t.Fatalf("tps commands = %d, want 3 (every 30 s)", w.conns[0].cmds)
 	}
 }
 
 func TestTPSReconnectsAfterErrorAndStaleValueExpires(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
-	cid := w.server("p", "papel", "PAPER", true)
-	w.setOnline("papel", 0, 20, 1)
+	cid := w.server("p", "paper", "PAPER", true)
+	w.setOnline("paper", 0, 20, 1)
 	step := func(i int) *mcsmv1.ServerMetricSample {
 		w.eng.SetStats(cid, st(uint64(1+i)*1e9, uint64(10+10*i)*1e9))
 		return find(w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second)), "p")
 	}
 	step(0)
-	if m := step(1); m.Tps == nil { // medido en t0+10
-		t.Fatal("debe medir TPS")
+	if m := step(1); m.Tps == nil { // measured at t0+10
+		t.Fatal("must measure TPS")
 	}
 	w.conns[0].mu.Lock()
-	w.conns[0].fail = true // el servidor se reinicia: la sesión se rompe
+	w.conns[0].fail = true // the server restarts: the session breaks
 	w.conns[0].mu.Unlock()
 	w.rcon = func() *fakeRcon { return &fakeRcon{outputs: []string{"TPS from last 1m, 5m, 15m: 18.0, 20.0, 20.0"}} }
-	for i := 2; i <= 5; i++ { // en t0+40 el sondeo falla; el valor de t0+10 sigue valiendo hasta t0+55
+	for i := 2; i <= 5; i++ { // at t0+40 the probe fails; the t0+10 value stays valid until t0+55
 		if m := step(i); m.Tps == nil || *m.Tps != 19.5 {
-			t.Fatalf("ciclo %d: tps = %v, want 19.5", i, m.Tps)
+			t.Fatalf("cycle %d: tps = %v, want 19.5", i, m.Tps)
 		}
 	}
 	if !w.conns[0].closed {
-		t.Fatal("la sesión rota debe cerrarse")
+		t.Fatal("the broken session must be closed")
 	}
-	if m := step(6); m.Tps != nil { // t0+60: el último valor bueno tiene 50 s
-		t.Fatalf("un TPS de hace más de 45 s no se envía: %v", *m.Tps)
+	if m := step(6); m.Tps != nil { // t0+60: the last good value is 50 s old
+		t.Fatalf("a TPS older than 45 s is not sent: %v", *m.Tps)
 	}
-	if m := step(7); m.Tps == nil || *m.Tps != 18 { // t0+70: reintento con sesión nueva
-		t.Fatalf("tras reconectar: %+v", m)
+	if m := step(7); m.Tps == nil || *m.Tps != 18 { // t0+70: retry with a new session
+		t.Fatalf("after reconnecting: %+v", m)
 	}
 	if len(w.dials) != 2 {
 		t.Fatalf("dials = %v, want 2", w.dials)
 	}
 }
 
-// El TPS de Paper/Purpur va de 0 a 20: un valor algo mayor se recorta a 20 y uno
-// absurdo se descarta sin romper la sesión.
+// Paper/Purpur TPS ranges from 0 to 20: a slightly higher value is capped to 20 and an
+// absurd one is discarded without breaking the session.
 func TestTPSClampedAndOutOfRangeDropped(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
 	w.rcon = func() *fakeRcon {
 		return &fakeRcon{outputs: []string{"TPS from last 1m, 5m, 15m: 99.0, 20.0, 20.0", "TPS from last 1m, 5m, 15m: 20.4, 20.0, 20.0"}}
 	}
-	cid := w.server("p", "papel", "PAPER", true)
-	w.setOnline("papel", 0, 20, 1)
+	cid := w.server("p", "paper", "PAPER", true)
+	w.setOnline("paper", 0, 20, 1)
 	step := func(i int) *mcsmv1.ServerMetricSample {
 		w.eng.SetStats(cid, st(uint64(1+i)*1e9, uint64(10+10*i)*1e9))
 		return find(w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second)), "p")
 	}
 	step(0)
 	if m := step(1); m == nil || m.Tps != nil {
-		t.Fatalf("un TPS fuera de rango no se envía: %+v", m)
+		t.Fatalf("an out-of-range TPS is not sent: %+v", m)
 	}
 	step(2)
 	step(3)
 	if m := step(4); m == nil || m.Tps == nil || *m.Tps != 20 {
-		t.Fatalf("20.4 se recorta a 20: %+v", m)
+		t.Fatalf("20.4 is capped to 20: %+v", m)
 	}
 	if len(w.dials) != 1 || w.conns[0].closed {
-		t.Fatalf("un valor fuera de rango no cierra la sesión: dials=%v", w.dials)
+		t.Fatalf("an out-of-range value does not close the session: dials=%v", w.dials)
 	}
 }
 
 func TestTPSSessionClosedWhenServerStopsOrPasswordChanges(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
-	cid := w.server("p", "papel", "PAPER", true)
-	w.setOnline("papel", 0, 20, 1)
+	cid := w.server("p", "paper", "PAPER", true)
+	w.setOnline("paper", 0, 20, 1)
 	for i := 0; i <= 1; i++ {
 		w.eng.SetStats(cid, st(uint64(1+i)*1e9, uint64(10+10*i)*1e9))
 		w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second))
 	}
 	w.mu.Lock()
-	w.specs["p"] = spec.Spec{Type: "PAPER", RconPassword: "nueva"}
+	w.specs["p"] = spec.Spec{Type: "PAPER", RconPassword: "new"}
 	w.mu.Unlock()
 	w.eng.SetStats(cid, st(3e9, 30e9))
 	w.s.Sample(ctx, t0.Add(20*time.Second))
 	if !w.conns[0].closed {
-		t.Fatal("al cambiar la contraseña RCON se cierra la sesión")
+		t.Fatal("changing the RCON password closes the session")
 	}
 	if err := w.eng.Stop(ctx, cid, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	w.s.Sample(ctx, t0.Add(50*time.Second)) // tps debido: reabriría si siguiera en marcha
+	w.s.Sample(ctx, t0.Add(50*time.Second)) // tps due: would reopen if it were still running
 	if len(w.dials) != 1 {
-		t.Fatalf("un servidor parado no se sondea: dials = %v", w.dials)
+		t.Fatalf("a stopped server is not probed: dials = %v", w.dials)
 	}
 	if len(w.s.tps) != 0 || len(w.s.prev) != 0 {
-		t.Fatalf("el estado de un servidor parado se olvida: tps=%d prev=%d", len(w.s.tps), len(w.s.prev))
+		t.Fatalf("a stopped server's state is forgotten: tps=%d prev=%d", len(w.s.tps), len(w.s.prev))
 	}
 }
 
-// Si el contenedor se recrea entre dos ticks (cambio de spec), la sesión RCON apunta al
-// proceso viejo: se cierra y el TPS se vuelve a medir enseguida con una sesión nueva.
+// If the container is recreated between two ticks (spec change), the RCON session points to the
+// old process: it is closed and the TPS is measured again right away with a new session.
 func TestTPSSessionResetWhenContainerRecreated(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
-	cid := w.server("p", "papel", "PAPER", true)
-	w.setOnline("papel", 0, 20, 1)
+	cid := w.server("p", "paper", "PAPER", true)
+	w.setOnline("paper", 0, 20, 1)
 	for i := 0; i <= 1; i++ {
 		w.eng.SetStats(cid, st(uint64(1+i)*1e9, uint64(10+10*i)*1e9))
 		w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second))
@@ -466,19 +466,19 @@ func TestTPSSessionResetWhenContainerRecreated(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.rcon = func() *fakeRcon { return &fakeRcon{outputs: []string{"TPS from last 1m, 5m, 15m: 17.0, 20.0, 20.0"}} }
-	nid := w.server("p", "papel", "PAPER", true)
+	nid := w.server("p", "paper", "PAPER", true)
 	for i := 2; i <= 3; i++ {
 		w.eng.SetStats(nid, st(uint64(1+i)*1e9, uint64(10+10*i)*1e9))
 		m := find(w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second)), "p")
 		if i == 2 && m != nil {
-			t.Fatalf("primera lectura del contenedor nuevo: %+v", m)
+			t.Fatalf("first reading of the new container: %+v", m)
 		}
 		if i == 3 && (m == nil || m.Tps == nil || *m.Tps != 17) {
-			t.Fatalf("TPS del proceso nuevo: %+v", m)
+			t.Fatalf("TPS of the new process: %+v", m)
 		}
 	}
 	if !w.conns[0].closed || len(w.dials) != 2 {
-		t.Fatalf("sesión vieja cerrada y una nueva: closed=%v dials=%v", w.conns[0].closed, w.dials)
+		t.Fatalf("old session closed and a new one: closed=%v dials=%v", w.conns[0].closed, w.dials)
 	}
 }
 
@@ -492,7 +492,7 @@ func TestHungServerDoesNotBlockOthers(t *testing.T) {
 	slow := w.s.o.Status
 	w.s.o.Status = func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		if host == "mcsm-alpha" {
-			<-ctx.Done() // servidor colgado: no responde hasta el timeout
+			<-ctx.Done() // hung server: does not respond until the timeout
 			return &mcsmv1.McStatus{}
 		}
 		return slow(ctx, host, port)
@@ -508,18 +508,18 @@ func TestHungServerDoesNotBlockOthers(t *testing.T) {
 	start := time.Now()
 	batch := w.s.Sample(ctx, t0.Add(20*time.Second))
 	if took := time.Since(start); took > 2*time.Second {
-		t.Fatalf("Sample tardó %s con un servidor colgado", took)
+		t.Fatalf("Sample took %s with a hung server", took)
 	}
 	if m := find(batch, "a"); m == nil || m.McOnline {
-		t.Fatalf("el colgado se envía sin SLP: %+v", m)
+		t.Fatalf("the hung one is sent without SLP: %+v", m)
 	}
 	if m := find(batch, "b"); m == nil || !m.McOnline || m.PlayersOnline != 1 {
-		t.Fatalf("el sano conserva su SLP: %+v", m)
+		t.Fatalf("the healthy one keeps its SLP: %+v", m)
 	}
 }
 
-// docker stats de un contenedor que no responde no retrasa a los demás más del plazo
-// por servidor, y no estropea su base de CPU.
+// docker stats of a container that does not respond does not delay the others beyond the per-server
+// deadline, and does not spoil its CPU baseline.
 func TestHungDockerStatsDoesNotBlockOthers(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
@@ -538,67 +538,67 @@ func TestHungDockerStatsDoesNotBlockOthers(t *testing.T) {
 	start := time.Now()
 	batch := w.s.Sample(ctx, t0.Add(20*time.Second))
 	if took := time.Since(start); took > 2*time.Second {
-		t.Fatalf("Sample tardó %s con docker stats colgado", took)
+		t.Fatalf("Sample took %s with docker stats hung", took)
 	}
 	if find(batch, "a") != nil {
-		t.Fatalf("sin lectura no hay muestra: %+v", find(batch, "a"))
+		t.Fatalf("without a reading there is no sample: %+v", find(batch, "a"))
 	}
 	if m := find(batch, "b"); m == nil || !m.McOnline || m.CpuPct != 10 {
-		t.Fatalf("el sano se mide igual: %+v", m)
+		t.Fatalf("the healthy one is measured as usual: %+v", m)
 	}
 	w.ctr.hang(a, false)
 	w.eng.SetStats(a, st(4e9, 40e9)) // base: (2e9, 20e9)
 	if m := find(w.s.Sample(ctx, t0.Add(30*time.Second)), "a"); m == nil || m.CpuPct != 10 {
-		t.Fatalf("al responder mide contra la última lectura buena: %+v", m)
+		t.Fatalf("when it responds it measures against the last good reading: %+v", m)
 	}
 }
 
 func TestHostErrorsAndDockerErrors(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
-	w.host.err = errors.New("sin /proc")
+	w.host.err = errors.New("no /proc")
 	if b := w.s.Sample(ctx, t0); b != nil {
-		t.Fatalf("sin host ni servidores no se envía nada: %v", b)
+		t.Fatalf("without host or servers nothing is sent: %v", b)
 	}
 	w.host.err = nil
 	w.s.Sample(ctx, t0.Add(10*time.Second))
-	w.eng.StatsErr = errors.New("daemon ocupado")
+	w.eng.StatsErr = errors.New("daemon busy")
 	w.server("a", "alpha", "VANILLA", true)
 	b := w.s.Sample(ctx, t0.Add(20*time.Second))
 	if b == nil || b.Host == nil || len(b.Servers) != 0 {
-		t.Fatalf("con docker stats fallando se envía solo el host: %v", b)
+		t.Fatalf("with docker stats failing only the host is sent: %v", b)
 	}
 }
 
-// Un fallo pasajero al listar contenedores no borra bases de CPU ni cierra sesiones.
+// A transient failure when listing containers does not delete CPU baselines or close sessions.
 func TestListErrorKeepsState(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
-	cid := w.server("p", "papel", "PAPER", true)
-	w.setOnline("papel", 0, 20, 1)
+	cid := w.server("p", "paper", "PAPER", true)
+	w.setOnline("paper", 0, 20, 1)
 	for i := 0; i <= 1; i++ {
 		w.eng.SetStats(cid, st(uint64(1+i)*1e9, uint64(10+10*i)*1e9))
 		w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second))
 	}
-	w.ctr.setListErr(errors.New("daemon caído"))
+	w.ctr.setListErr(errors.New("daemon down"))
 	if m := find(w.s.Sample(ctx, t0.Add(20*time.Second)), "p"); m != nil {
-		t.Fatalf("sin lista no hay servidores: %+v", m)
+		t.Fatalf("without a list there are no servers: %+v", m)
 	}
 	if w.conns[0].closed || len(w.s.prev) != 1 || len(w.s.tps) != 1 {
-		t.Fatalf("estado perdido: closed=%v prev=%d tps=%d", w.conns[0].closed, len(w.s.prev), len(w.s.tps))
+		t.Fatalf("state lost: closed=%v prev=%d tps=%d", w.conns[0].closed, len(w.s.prev), len(w.s.tps))
 	}
 	w.ctr.setListErr(nil)
 	w.eng.SetStats(cid, st(4e9, 40e9))
 	m := find(w.s.Sample(ctx, t0.Add(30*time.Second)), "p")
 	if m == nil || m.CpuPct != 10 || m.Tps == nil || *m.Tps != 19.5 {
-		t.Fatalf("al volver mide sin nueva base y con el TPS vigente: %+v", m)
+		t.Fatalf("on return it measures without a new baseline and with the current TPS: %+v", m)
 	}
 	if len(w.dials) != 1 {
 		t.Fatalf("dials = %v", w.dials)
 	}
 }
 
-// recorder guarda los registros de log para contarlos por nivel.
+// recorder stores the log records to count them by level.
 type recorder struct {
 	mu   sync.Mutex
 	recs []slog.Record
@@ -625,8 +625,8 @@ func (r *recorder) count(l slog.Level) int {
 	return n
 }
 
-// Un fallo que se repite cada 10 s se registra una vez (aunque cambie el texto, p. ej.
-// por un puerto efímero) y otra al recuperarse; si vuelve a fallar, se registra de nuevo.
+// A failure that repeats every 10 s is logged once (even if the text changes, e.g.
+// because of an ephemeral port) and once more on recovery; if it fails again, it is logged again.
 func TestRepeatedErrorsLoggedOnce(t *testing.T) {
 	w := newWorld(t)
 	rec := &recorder{}
@@ -642,21 +642,21 @@ func TestRepeatedErrorsLoggedOnce(t *testing.T) {
 		sample()
 	}
 	if n := rec.count(slog.LevelWarn); n != 1 {
-		t.Fatalf("avisos = %d, want 1", n)
+		t.Fatalf("warnings = %d, want 1", n)
 	}
 	w.eng.StatsErr = nil
 	sample()
 	if n := rec.count(slog.LevelInfo); n != 1 {
-		t.Fatalf("recuperación registrada %d veces, want 1", n)
+		t.Fatalf("recovery logged %d times, want 1", n)
 	}
-	w.eng.StatsErr = errors.New("daemon ocupado")
+	w.eng.StatsErr = errors.New("daemon busy")
 	sample()
 	if n := rec.count(slog.LevelWarn); n != 2 {
-		t.Fatalf("avisos = %d, want 2 (falla de nuevo)", n)
+		t.Fatalf("warnings = %d, want 2 (fails again)", n)
 	}
 }
 
-// fakeClock entrega los ticks que pide el test; After informa de la espera pedida.
+// fakeClock delivers the ticks the test asks for; After reports the requested wait.
 type fakeClock struct {
 	mu    sync.Mutex
 	now   time.Time
@@ -670,19 +670,19 @@ func (c *fakeClock) After(d time.Duration) <-chan time.Time {
 	return c.fire
 }
 
-// wait espera a que Run pida un temporizador y devuelve la espera pedida.
+// wait waits for Run to request a timer and returns the requested wait.
 func (c *fakeClock) wait(t *testing.T) time.Duration {
 	t.Helper()
 	select {
 	case d := <-c.waits:
 		return d
 	case <-time.After(3 * time.Second):
-		t.Fatal("Run no pidió temporizador")
+		t.Fatal("Run did not request a timer")
 		return 0
 	}
 }
 
-// advance mueve el reloj d y dispara el temporizador pendiente.
+// advance moves the clock d and fires the pending timer.
 func (c *fakeClock) advance(d time.Duration) {
 	c.mu.Lock()
 	c.now = c.now.Add(d)
@@ -693,8 +693,8 @@ func (c *fakeClock) advance(d time.Duration) {
 
 func TestRunAlignsTicksSendsAndClosesSessions(t *testing.T) {
 	w := newWorld(t)
-	cid := w.server("p", "papel", "PAPER", true)
-	w.setOnline("papel", 2, 20, 1)
+	cid := w.server("p", "paper", "PAPER", true)
+	w.setOnline("paper", 2, 20, 1)
 	clk := &fakeClock{now: time.Date(2026, 10, 12, 10, 0, 2, 0, time.UTC), waits: make(chan time.Duration, 1), fire: make(chan time.Time)}
 	sent := make(chan *mcsmv1.Envelope, 4)
 	w.s.o.Clock = clk
@@ -705,13 +705,13 @@ func TestRunAlignsTicksSendsAndClosesSessions(t *testing.T) {
 
 	d := clk.wait(t)
 	if d != 3*time.Second { // 10:00:02 → 10:00:05
-		t.Fatalf("primera espera = %s, want 3s", d)
+		t.Fatalf("first wait = %s, want 3s", d)
 	}
 	w.eng.SetStats(cid, st(1e9, 10e9))
 	clk.advance(d)
-	// Run vuelve a pedir temporizador cuando ha terminado el primer Sample.
+	// Run requests a timer again when the first Sample has finished.
 	if d = clk.wait(t); d != 10*time.Second {
-		t.Fatalf("segunda espera = %s, want 10s", d)
+		t.Fatalf("second wait = %s, want 10s", d)
 	}
 	w.eng.SetStats(cid, st(2e9, 20e9))
 	clk.advance(d)
@@ -719,50 +719,50 @@ func TestRunAlignsTicksSendsAndClosesSessions(t *testing.T) {
 	select {
 	case env = <-sent:
 	case <-time.After(3 * time.Second):
-		t.Fatal("no se envió el lote")
+		t.Fatal("the batch was not sent")
 	}
 	b := env.GetMetricBatch()
 	if env.Id != 0 || b == nil || b.TsUnix != time.Date(2026, 10, 12, 10, 0, 10, 0, time.UTC).Unix() || find(b, "p") == nil || b.Host == nil {
 		t.Fatalf("envelope = %v", env)
 	}
-	clk.wait(t) // Run terminó el segundo Sample y espera el tercero
+	clk.wait(t) // Run finished the second Sample and waits for the third
 	select {
 	case e := <-sent:
-		t.Fatalf("solo un lote tras dos ticks: %v", e)
+		t.Fatalf("only one batch after two ticks: %v", e)
 	default:
 	}
 	cancel()
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
-		t.Fatal("Run no terminó al cancelar")
+		t.Fatal("Run did not finish on cancel")
 	}
 	if !w.conns[0].closed {
-		t.Fatal("Run cierra las sesiones RCON al terminar")
+		t.Fatal("Run closes the RCON sessions on finishing")
 	}
 }
 
 func TestTPSSessionResetWhenCPUCountersGoBackwards(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
-	cid := w.server("p", "papel", "PAPER", true)
-	w.setOnline("papel", 0, 20, 1)
+	cid := w.server("p", "paper", "PAPER", true)
+	w.setOnline("paper", 0, 20, 1)
 	for i := 0; i <= 1; i++ {
 		w.eng.SetStats(cid, st(uint64(5+i)*1e9, uint64(10+10*i)*1e9))
 		w.s.Sample(ctx, t0.Add(time.Duration(i)*10*time.Second))
 	}
-	// Reinicio en el sitio: mismo id, contadores de CPU a cero.
+	// In-place restart: same id, CPU counters at zero.
 	w.rcon = func() *fakeRcon { return &fakeRcon{outputs: []string{"TPS from last 1m, 5m, 15m: 17.0, 20.0, 20.0"}} }
 	w.eng.SetStats(cid, st(1e8, 30e9))
 	if m := find(w.s.Sample(ctx, t0.Add(20*time.Second)), "p"); m != nil {
-		t.Fatalf("ventana con contadores reiniciados: %+v", m)
+		t.Fatalf("window with reset counters: %+v", m)
 	}
 	if !w.conns[0].closed {
-		t.Fatal("la sesión RCON del proceso anterior debe cerrarse")
+		t.Fatal("the previous process's RCON session must be closed")
 	}
 	w.eng.SetStats(cid, st(2e8, 40e9))
 	m := find(w.s.Sample(ctx, t0.Add(30*time.Second)), "p")
 	if m == nil || m.Tps == nil || *m.Tps != 17 || len(w.dials) != 2 {
-		t.Fatalf("TPS del proceso nuevo: %+v dials=%v", m, w.dials)
+		t.Fatalf("TPS of the new process: %+v dials=%v", m, w.dials)
 	}
 }

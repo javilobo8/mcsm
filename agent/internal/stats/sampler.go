@@ -18,28 +18,28 @@ import (
 
 const (
 	tpsEvery            = 30 * time.Second // spec §6.4
-	tpsMaxAge           = 45 * time.Second // un TPS más antiguo no se envía
-	tpsTop              = 20.0             // TPS objetivo de Minecraft: lo que pase de ahí se recorta
-	tpsAccept           = 25.0             // por encima, la salida no es un TPS fiable y se descarta
-	statsTimeout        = 3 * time.Second  // docker stats, lista de contenedores y lectura del host
-	defaultProbeTimeout = 4 * time.Second  // docker stats + SLP + TPS de un servidor
+	tpsMaxAge           = 45 * time.Second // an older TPS is not sent
+	tpsTop              = 20.0             // Minecraft's target TPS: anything above is capped
+	tpsAccept           = 25.0             // above that, the output is not a reliable TPS and is discarded
+	statsTimeout        = 3 * time.Second  // docker stats, container list and host reading
+	defaultProbeTimeout = 4 * time.Second  // docker stats + SLP + a server's TPS
 )
 
-// Containers es lo que el muestreador usa de Docker (docker.Engine lo cumple). El motor
-// no impone plazos propios: el muestreador pasa siempre un ctx con plazo.
+// Containers is what the sampler uses from Docker (docker.Engine satisfies it). The engine
+// imposes no deadlines of its own: the sampler always passes a ctx with a deadline.
 type Containers interface {
 	ListManaged(ctx context.Context) ([]docker.Container, error)
 	Stats(ctx context.Context, id string) (docker.Stats, error)
 }
 
-// Rcon es una sesión RCON persistente (*mc.RconConn la cumple). No necesita ser segura
-// para uso concurrente: cada sesión la usa una sola goroutine a la vez.
+// Rcon is a persistent RCON session (*mc.RconConn satisfies it). It does not need to be safe
+// for concurrent use: each session is used by a single goroutine at a time.
 type Rcon interface {
 	Command(ctx context.Context, command string) (string, error)
 	Close() error
 }
 
-// DialRcon abre una sesión RCON autenticada.
+// DialRcon opens an authenticated RCON session.
 type DialRcon func(ctx context.Context, host string, port uint16, password string) (Rcon, error)
 
 var (
@@ -47,7 +47,7 @@ var (
 	_ Rcon       = (*mc.RconConn)(nil)
 )
 
-// Clock abstrae el tiempo para probar Run sin esperas reales.
+// Clock abstracts time to test Run without real waits.
 type Clock interface {
 	Now() time.Time
 	After(d time.Duration) <-chan time.Time
@@ -58,34 +58,34 @@ type realClock struct{}
 func (realClock) Now() time.Time                         { return time.Now() }
 func (realClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
-// RealClock es el reloj del sistema.
+// RealClock is the system clock.
 var RealClock Clock = realClock{}
 
-// Options son las dependencias del muestreador. Status, Dial y las sesiones Rcon deben
-// respetar el plazo del ctx: Sample espera a todos los sondeos antes de devolver.
+// Options are the sampler's dependencies. Status, Dial and the Rcon sessions must
+// respect the ctx deadline: Sample waits for all the probes before returning.
 type Options struct {
 	Containers   Containers
 	Host         HostReader
-	DataRoot     string                                  // ruta cuyo sistema de ficheros se mide
+	DataRoot     string                                  // path whose filesystem is measured
 	Status       mc.StatusFunc                           // Server List Ping
-	Spec         func(serverID string) (spec.Spec, bool) // spec guardada: tipo y contraseña RCON
+	Spec         func(serverID string) (spec.Spec, bool) // stored spec: type and RCON password
 	Dial         DialRcon
 	Send         func(*mcsmv1.Envelope) error
-	Clock        Clock         // por defecto RealClock
-	ProbeTimeout time.Duration // plazo total por servidor (stats + SLP + TPS); por defecto 4 s
+	Clock        Clock         // RealClock by default
+	ProbeTimeout time.Duration // total deadline per server (stats + SLP + TPS); 4 s by default
 	Log          *slog.Logger
 }
 
-// tpsProbe es el estado del sondeo de TPS de un servidor. Durante un Sample solo lo toca
-// la goroutine que mide ese servidor (una por server_id); entre Samples, solo Sample.
+// tpsProbe is the state of a server's TPS probe. During a Sample only the goroutine measuring
+// that server touches it (one per server_id); between Samples, only Sample.
 type tpsProbe struct {
-	container string // contenedor al que apunta la sesión: si se recrea, es otro proceso
+	container string // container the session points to: if recreated, it is another process
 	password  string
 	conn      Rcon
-	tried     time.Time // último intento (cero: nunca)
+	tried     time.Time // last attempt (zero: never)
 	value     float64
-	at        time.Time // cuándo se midió value (cero: nunca)
-	err       error     // resultado del último intento, para registrarlo desde Sample
+	at        time.Time // when value was measured (zero: never)
+	err       error     // result of the last attempt, to log it from Sample
 }
 
 func (p *tpsProbe) close() {
@@ -95,34 +95,34 @@ func (p *tpsProbe) close() {
 	}
 }
 
-// target es un servidor en marcha que se mide en este ciclo. Su goroutine solo escribe
-// en target y en su tpsProbe; Sample lee el resultado tras esperarla.
+// target is a running server measured in this cycle. Its goroutine only writes
+// to target and its tpsProbe; Sample reads the result after waiting for it.
 type target struct {
 	containerID, serverID, host string
-	prev                        docker.Stats // última lectura válida (si hasPrev)
+	prev                        docker.Stats // last valid reading (if hasPrev)
 	hasPrev                     bool
-	probe                       *tpsProbe // nil si su tipo no tiene `tps`
+	probe                       *tpsProbe // nil if its type has no `tps`
 
 	cur docker.Stats
 	err error
-	m   *mcsmv1.ServerMetricSample // nil si no hay muestra que enviar
+	m   *mcsmv1.ServerMetricSample // nil if there is no sample to send
 }
 
-// failKey identifica una fuente de lectura para registrar sus fallos una sola vez.
+// failKey identifies a reading source to log its failures only once.
 type failKey struct{ what, server string }
 
-// Sampler reúne las métricas del host y de los servidores en marcha. Run es su único
-// llamador en producción; Sample se serializa con un mutex por si acaso.
+// Sampler gathers the metrics of the host and of running servers. Run is its only
+// caller in production; Sample is serialized with a mutex just in case.
 type Sampler struct {
 	o        Options
 	mu       sync.Mutex
 	prevHost *CPUTimes
-	prev     map[string]docker.Stats // última lectura válida por id de contenedor
-	tps      map[string]*tpsProbe    // por server_id
-	failing  map[failKey]bool        // fuentes cuyo fallo ya se registró
+	prev     map[string]docker.Stats // last valid reading per container id
+	tps      map[string]*tpsProbe    // per server_id
+	failing  map[failKey]bool        // sources whose failure was already logged
 }
 
-// New crea un muestreador.
+// New creates a sampler.
 func New(o Options) *Sampler {
 	if o.Clock == nil {
 		o.Clock = RealClock
@@ -136,10 +136,10 @@ func New(o Options) *Sampler {
 	return &Sampler{o: o, prev: map[string]docker.Stats{}, tps: map[string]*tpsProbe{}, failing: map[failKey]bool{}}
 }
 
-// Run muestrea en cada NextTick y envía el lote hasta que ctx termina; al terminar
-// cierra las sesiones RCON. ctx debe ser el contexto de vida del agente (App.life), no
-// el de una sesión WS. Si el panel no está conectado el lote se descarta: no se acumula
-// nada en memoria.
+// Run samples on every NextTick and sends the batch until ctx ends; on finishing it
+// closes the RCON sessions. ctx must be the agent's life context (App.life), not
+// a WS session's. If the panel is not connected the batch is dropped: nothing
+// accumulates in memory.
 func (s *Sampler) Run(ctx context.Context) {
 	defer s.closeAll()
 	for {
@@ -153,18 +153,18 @@ func (s *Sampler) Run(ctx context.Context) {
 				continue
 			}
 			if err := s.o.Send(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_MetricBatch{MetricBatch: b}}); err != nil {
-				s.o.Log.Debug("métricas: lote descartado", "err", err)
+				s.o.Log.Debug("metrics: batch dropped", "err", err)
 			}
 		}
 	}
 }
 
-// Sample toma una lectura en el instante now. Devuelve nil si no hay nada que enviar: la
-// primera lectura de cada contenedor (y del host) solo fija la base de la CPU.
+// Sample takes a reading at instant now. It returns nil if there is nothing to send: the
+// first reading of each container (and of the host) only sets the CPU baseline.
 //
-// Cada servidor se mide en su propia goroutine con un plazo total de ProbeTimeout
-// (docker stats, SLP y, si toca, TPS), así que un servidor o un daemon colgado no
-// retrasa a los demás ni alarga el ciclo más de ese plazo.
+// Each server is measured in its own goroutine with a total deadline of ProbeTimeout
+// (docker stats, SLP and, if due, TPS), so a hung server or daemon does not
+// delay the others nor extend the cycle beyond that deadline.
 func (s *Sampler) Sample(ctx context.Context, now time.Time) *mcsmv1.MetricBatch {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -175,17 +175,17 @@ func (s *Sampler) Sample(ctx context.Context, now time.Time) *mcsmv1.MetricBatch
 	lctx, cancel := context.WithTimeout(ctx, statsTimeout)
 	list, err := s.o.Containers.ListManaged(lctx)
 	cancel()
-	s.report(ctx, failKey{what: "lista de contenedores"}, err)
+	s.report(ctx, failKey{what: "container list"}, err)
 	if err != nil {
-		return nonEmpty(b) // fallo pasajero: no se toca el estado ni se cierran sesiones
+		return nonEmpty(b) // transient failure: state is not touched nor sessions closed
 	}
 
 	var targets []*target
-	seen, running := map[string]bool{}, map[string]bool{} // por contenedor / por server_id
+	seen, running := map[string]bool{}, map[string]bool{} // per container / per server_id
 	for _, c := range list {
 		id := c.Labels[spec.LabelServerID]
-		// Un server_id repetido no debe ocurrir; si ocurre se mide solo el primero, para
-		// que dos goroutines no compartan la misma sesión RCON.
+		// A repeated server_id should not happen; if it does only the first is measured, so
+		// that two goroutines do not share the same RCON session.
 		if id == "" || c.State != "running" || running[id] {
 			continue
 		}
@@ -202,12 +202,12 @@ func (s *Sampler) Sample(ctx context.Context, now time.Time) *mcsmv1.MetricBatch
 	}
 	wg.Wait()
 	if ctx.Err() != nil {
-		return nil // apagando: nada que enviar ni que registrar
+		return nil // shutting down: nothing to send or log
 	}
 
 	for _, t := range targets {
 		s.report(ctx, failKey{"docker stats", t.serverID}, t.err)
-		if t.err == nil && hasData(t.cur) { // una lectura sin datos no sustituye a la base
+		if t.err == nil && hasData(t.cur) { // a reading without data does not replace the baseline
 			s.prev[t.containerID] = t.cur
 		}
 		if t.probe != nil {
@@ -236,18 +236,18 @@ func (s *Sampler) Sample(ctx context.Context, now time.Time) *mcsmv1.MetricBatch
 	return nonEmpty(b)
 }
 
-// sampleHost lee el host. nil en la primera lectura o si falla la CPU; si fallan memoria
-// o disco se envían a 0 y se registra el error.
+// sampleHost reads the host. nil on the first reading or if the CPU fails; if memory
+// or disk fail they are sent as 0 and the error is logged.
 func (s *Sampler) sampleHost(ctx context.Context) *mcsmv1.HostMetricSample {
 	hctx, cancel := context.WithTimeout(ctx, statsTimeout)
 	defer cancel()
 	cur, err := s.o.Host.CPUTimes(hctx)
-	s.report(ctx, failKey{what: "cpu del host"}, err)
+	s.report(ctx, failKey{what: "host cpu"}, err)
 	if err != nil {
 		return nil
 	}
-	// HostCPUPercent no distingue la primera lectura (daría el % desde el arranque):
-	// sin lectura previa no hay muestra.
+	// HostCPUPercent does not distinguish the first reading (it would give the % since boot):
+	// without a previous reading there is no sample.
 	prev := s.prevHost
 	s.prevHost = &cur
 	if prev == nil {
@@ -260,19 +260,19 @@ func (s *Sampler) sampleHost(ctx context.Context) *mcsmv1.HostMetricSample {
 	h := &mcsmv1.HostMetricSample{CpuPct: round1(pct)}
 	var memErr, diskErr error
 	h.MemUsedBytes, h.MemTotalBytes, memErr = s.o.Host.Memory(hctx)
-	s.report(ctx, failKey{what: "memoria del host"}, memErr)
+	s.report(ctx, failKey{what: "host memory"}, memErr)
 	h.DiskUsedBytes, h.DiskTotalBytes, diskErr = s.o.Host.Disk(hctx, s.o.DataRoot)
-	s.report(ctx, failKey{what: "disco de DATA_ROOT"}, diskErr)
+	s.report(ctx, failKey{what: "DATA_ROOT disk"}, diskErr)
 	return h
 }
 
-// hasData: Docker devuelve una lectura sin reloj de CPU del host (SystemCPUNs == 0) para
-// un contenedor que ya no está en marcha. No es un 0 %: se ignora. MemLimit == 0 sí es
-// una lectura válida (host sin cgroup de memoria): se envía con límite 0.
+// hasData: Docker returns a reading without host CPU clock (SystemCPUNs == 0) for
+// a container that is no longer running. It is not a 0 %: it is ignored. MemLimit == 0 is
+// a valid reading (host without a memory cgroup): it is sent with limit 0.
 func hasData(st docker.Stats) bool { return st.SystemCPUNs != 0 }
 
-// measure corre en su propia goroutine: lee docker stats, calcula la CPU respecto a la
-// última lectura válida y, si hay muestra, sondea SLP y TPS. Todo dentro de ProbeTimeout.
+// measure runs in its own goroutine: it reads docker stats, computes the CPU against the
+// last valid reading and, if there is a sample, probes SLP and TPS. All within ProbeTimeout.
 func (s *Sampler) measure(ctx context.Context, now time.Time, t *target) {
 	ctx, cancel := context.WithTimeout(ctx, s.o.ProbeTimeout)
 	defer cancel()
@@ -283,13 +283,13 @@ func (s *Sampler) measure(ctx context.Context, now time.Time, t *target) {
 		return
 	}
 	if t.cur.CPUTotalNs < t.prev.CPUTotalNs && t.probe != nil {
-		// Reinicio en el sitio (mismo id, Stop+Start o restart policy): es otro proceso,
-		// igual que una recreación. Se descarta la sesión RCON y el TPS anterior.
+		// In-place restart (same id, Stop+Start or restart policy): it is another process,
+		// just like a recreation. The RCON session and the previous TPS are discarded.
 		*t.probe = tpsProbe{container: t.probe.container, password: t.probe.password, conn: t.probe.conn}
 		t.probe.close()
 	}
 	pct, ok := ContainerCPUPercent(t.prev, t.cur)
-	if !ok { // contadores reiniciados: esta ventana se omite
+	if !ok { // reset counters: this window is skipped
 		return
 	}
 	t.m = &mcsmv1.ServerMetricSample{
@@ -299,9 +299,9 @@ func (s *Sampler) measure(ctx context.Context, now time.Time, t *target) {
 	s.probe(ctx, now, t)
 }
 
-// probeFor devuelve el sondeo de TPS si el tipo del servidor lo admite. Cierra la sesión
-// RCON si la contraseña cambió y la descarta (con su último valor) si el contenedor se
-// recreó. nil si no aplica.
+// probeFor returns the TPS probe if the server's type supports it. It closes the RCON
+// session if the password changed and discards it (with its last value) if the container was
+// recreated. nil if it does not apply.
 func (s *Sampler) probeFor(serverID, containerID string) *tpsProbe {
 	p := s.tps[serverID]
 	sp, ok := s.o.Spec(serverID)
@@ -327,12 +327,12 @@ func (s *Sampler) probeFor(serverID, containerID string) *tpsProbe {
 	return p
 }
 
-// hasTPS: solo Paper y Purpur tienen el comando `tps` (spec §6.4).
+// hasTPS: only Paper and Purpur have the `tps` command (spec §6.4).
 func hasTPS(serverType string) bool {
 	return strings.EqualFold(serverType, "PAPER") || strings.EqualFold(serverType, "PURPUR")
 }
 
-// probe hace el Server List Ping y, cada 30 s y solo si respondió, pide el TPS.
+// probe does the Server List Ping and, every 30 s and only if it responded, requests the TPS.
 func (s *Sampler) probe(ctx context.Context, now time.Time, t *target) {
 	st := s.o.Status(ctx, t.host, spec.GamePort)
 	if st == nil || !st.Online {
@@ -354,13 +354,13 @@ func (s *Sampler) probe(ctx context.Context, now time.Time, t *target) {
 	}
 }
 
-// measureTPS reutiliza la sesión RCON del servidor (o abre una) y ejecuta `tps`. Si la
-// sesión falla se cierra y se reabre en el siguiente intento.
+// measureTPS reuses the server's RCON session (or opens one) and runs `tps`. If the
+// session fails it is closed and reopened on the next attempt.
 func (s *Sampler) measureTPS(ctx context.Context, now time.Time, p *tpsProbe, host string) error {
 	if p.conn == nil {
 		c, err := s.o.Dial(ctx, host, spec.RconPort, p.password)
 		if err == nil && c == nil {
-			err = errors.New("rcon: sesión nula")
+			err = errors.New("rcon: nil session")
 		}
 		if err != nil {
 			return err
@@ -374,10 +374,10 @@ func (s *Sampler) measureTPS(ctx context.Context, now time.Time, p *tpsProbe, ho
 	}
 	v, ok := mc.ParseTPS(out)
 	if !ok {
-		return fmt.Errorf("salida de tps no reconocida: %.80q", out)
+		return fmt.Errorf("unrecognized tps output: %.80q", out)
 	}
 	if v < 0 || v > tpsAccept {
-		return fmt.Errorf("tps fuera de rango: %g", v)
+		return fmt.Errorf("tps out of range: %g", v)
 	}
 	p.value, p.at = math.Min(v, tpsTop), now
 	return nil
@@ -392,9 +392,9 @@ func (s *Sampler) closeAll() {
 	}
 }
 
-// report registra el primer fallo de una fuente (aunque el texto cambie en los
-// siguientes, p. ej. por un puerto efímero) y su recuperación, para no repetir el mismo
-// aviso cada 10 s. Un error con ctx ya terminado es el apagado, no un fallo.
+// report logs a source's first failure (even if the text changes on the
+// following ones, e.g. because of an ephemeral port) and its recovery, so as not to repeat the same
+// warning every 10 s. An error with an already finished ctx is shutdown, not a failure.
 func (s *Sampler) report(ctx context.Context, k failKey, err error) {
 	attrs := []any{}
 	if k.server != "" {
@@ -403,7 +403,7 @@ func (s *Sampler) report(ctx context.Context, k failKey, err error) {
 	if err == nil {
 		if s.failing[k] {
 			delete(s.failing, k)
-			s.o.Log.Info("métricas: "+k.what+" vuelve a responder", attrs...)
+			s.o.Log.Info("metrics: "+k.what+" responds again", attrs...)
 		}
 		return
 	}
@@ -412,11 +412,11 @@ func (s *Sampler) report(ctx context.Context, k failKey, err error) {
 	}
 	attrs = append(attrs, "err", err)
 	if s.failing[k] {
-		s.o.Log.Debug("métricas: "+k.what+" sigue fallando", attrs...)
+		s.o.Log.Debug("metrics: "+k.what+" keeps failing", attrs...)
 		return
 	}
 	s.failing[k] = true
-	s.o.Log.Warn("métricas: fallo al leer "+k.what, attrs...)
+	s.o.Log.Warn("metrics: failed to read "+k.what, attrs...)
 }
 
 func nonEmpty(b *mcsmv1.MetricBatch) *mcsmv1.MetricBatch {
