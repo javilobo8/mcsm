@@ -106,6 +106,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 		return a.status(ctx, host, port)
 	}, a.onObserved)
 	a.hub = logs.NewHub(eng)
+	a.hub.SetSecrets(a.logSecrets)               // plan-9
 	a.bk = newBackupService(a, backup.RealClock) // plan-4
 	// plan-8: mc-router del nodo; con su autoscale, los servidores con hostname van bajo demanda.
 	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot)})

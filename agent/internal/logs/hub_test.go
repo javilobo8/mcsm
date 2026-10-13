@@ -282,3 +282,29 @@ func TestEOFClosesChannelsAndDoubleUnsub(t *testing.T) {
 	unsub()
 	unsub()
 }
+
+func TestSecretsAreRedactedBeforeTheRing(t *testing.T) {
+	f, id := newFakeWithContainer(t)
+	h := NewHub(f)
+	h.SetSecrets(func(serverID string) []string {
+		if serverID != "a" {
+			return nil
+		}
+		return []string{"abcdefgh", "corto", "", "CF$2a$10$clave"}
+	})
+	ch, unsub, err := h.Subscribe("a", id, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unsub()
+	f.WriteLog(id, "2026-10-12T10:00:00Z rcon=abcdefgh key=CF$2a$10$clave corto abcdefgh\n")
+	want := "rcon=[oculto] key=[oculto] corto [oculto]"
+	if got := recv(t, ch).Text; got != want {
+		t.Fatalf("got %q", got)
+	}
+	ch2, unsub2, _ := h.Subscribe("a", id, 10) // el replay sale del anillo, ya limpio
+	defer unsub2()
+	if got := recv(t, ch2).Text; got != want {
+		t.Fatalf("replay %q", got)
+	}
+}
