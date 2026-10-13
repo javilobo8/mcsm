@@ -11,7 +11,7 @@ import (
 	"github.com/moby/moby/api/types/network"
 )
 
-// ListAll devuelve todos los contenedores, ordenados por id. Como Inspect, no se anota en Calls.
+// ListAll returns all the containers, sorted by id. Like Inspect, it is not recorded in Calls.
 func (f *Fake) ListAll(context.Context) ([]Container, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -27,8 +27,8 @@ func (f *Fake) ListAll(context.Context) ([]Container, error) {
 	return out, nil
 }
 
-// InspectImport traduce la configuración guardada en Create (y las redes de ConnectNetwork).
-// En el fake ImageID es la referencia de la imagen. No se anota en Calls.
+// InspectImport translates the configuration stored in Create (and the networks from ConnectNetwork).
+// In the fake, ImageID is the image reference. It is not recorded in Calls.
 func (f *Fake) InspectImport(_ context.Context, id string) (*ImportInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -104,7 +104,7 @@ func (f *Fake) InspectImport(_ context.Context, id string) (*ImportInfo, error) 
 	return out, nil
 }
 
-// ImageEnv devuelve el ENV fijado en ImageEnvs para esa referencia. No se anota en Calls.
+// ImageEnv returns the ENV set in ImageEnvs for that reference. It is not recorded in Calls.
 func (f *Fake) ImageEnv(_ context.Context, image string) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -115,7 +115,7 @@ func (f *Fake) ImageEnv(_ context.Context, image string) ([]string, error) {
 	return append([]string(nil), env...), nil
 }
 
-// ConnectNetwork imita a Docker: conectar dos veces a la misma red es un error.
+// ConnectNetwork imitates Docker: connecting twice to the same network is an error.
 func (f *Fake) ConnectNetwork(_ context.Context, netName, id string, aliases []string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -142,7 +142,7 @@ func (f *Fake) ConnectNetwork(_ context.Context, netName, id string, aliases []s
 	return nil
 }
 
-// DisconnectNetwork imita a Docker: desconectar de una red a la que no está conectado es un error.
+// DisconnectNetwork imitates Docker: disconnecting from a network it is not connected to is an error.
 func (f *Fake) DisconnectNetwork(_ context.Context, netName, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -167,7 +167,7 @@ func (f *Fake) DisconnectNetwork(_ context.Context, netName, id string) error {
 				eps[n] = ep
 			}
 		}
-		c.Net = &network.NetworkingConfig{EndpointsConfig: eps} // copia: no toca la config del llamador
+		c.Net = &network.NetworkingConfig{EndpointsConfig: eps} // copy: does not touch the caller's config
 	}
 	return nil
 }

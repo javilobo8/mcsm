@@ -44,12 +44,12 @@ func (s *sink) next(t *testing.T) *mcsmv1.Envelope {
 	case e := <-s.ch:
 		return e
 	case <-time.After(3 * time.Second):
-		t.Fatal("sin respuesta")
+		t.Fatal("no response")
 		return nil
 	}
 }
 
-// waitID descarta mensajes hasta recibir la respuesta con ese id.
+// waitID discards messages until receiving the response with that id.
 func (s *sink) waitID(t *testing.T, id uint64) *mcsmv1.Envelope {
 	t.Helper()
 	for {
@@ -66,7 +66,7 @@ func newApp(t *testing.T) (*App, *docker.Fake, *store.Store) {
 	return a, fake, st
 }
 
-// newAppEngine construye la App sobre un Engine cualquiera (envoltorios del fake).
+// newAppEngine builds the App over any Engine (fake wrappers).
 func newAppEngine(t *testing.T, eng docker.Engine) (*App, *store.Store) {
 	t.Helper()
 	dir := t.TempDir()
@@ -78,12 +78,12 @@ func newAppEngine(t *testing.T, eng docker.Engine) (*App, *store.Store) {
 	cfg := Config{DataRoot: filepath.Join(dir, "data"), Network: "mcsm", Version: "test"}
 	a := New(cfg, st, eng, slog.Default())
 	a.status = func(context.Context, string, uint16) *mcsmv1.McStatus { return &mcsmv1.McStatus{Online: true} }
-	// Las tareas de fondo terminan antes de cerrar el store.
+	// Background tasks finish before closing the store.
 	t.Cleanup(a.bg.Wait)
 	return a, st
 }
 
-// waitBackground espera a que terminen las tareas de fondo (sincronización y despachos).
+// waitBackground waits for the background tasks (synchronization and dispatches) to finish.
 func waitBackground(t *testing.T, a *App) {
 	t.Helper()
 	done := make(chan struct{})
@@ -91,13 +91,13 @@ func waitBackground(t *testing.T, a *App) {
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
-		t.Fatal("las tareas de fondo no terminaron")
+		t.Fatal("the background tasks did not finish")
 	}
 }
 
-// runEventLoop arranca el bucle de eventos y, al acabar el test, lo para y espera a que salga. La limpieza se
-// registra después que la de newApp, así que corre antes de su bg.Wait: un dispatch del bucle (bg.Add) a la vez
-// que ese Wait es una carrera.
+// runEventLoop starts the event loop and, when the test ends, stops it and waits for it to exit. The cleanup is
+// registered after newApp's, so it runs before its bg.Wait: a dispatch from the loop (bg.Add) at the same time
+// as that Wait is a race.
 func runEventLoop(t *testing.T, a *App) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -122,7 +122,7 @@ func TestSyncSpecsAndObserved(t *testing.T) {
 	a.send = s.send
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 7, Body: &mcsmv1.Envelope_SyncSpecs{SyncSpecs: &mcsmv1.SyncSpecs{Servers: []*mcsmv1.ServerSpec{specMsg("a", "alpha", 1)}}}}, s.send)
 	var sawObserved, sawAck bool
-	// El Ack sale tras guardar la spec; la reconciliación (y sus ServerObserved) va en segundo plano.
+	// The Ack goes out after storing the spec; the reconciliation (and its ServerObserved) runs in the background.
 	for !sawObserved || !sawAck {
 		e := s.next(t)
 		if e.GetServerObserved() != nil && e.GetServerObserved().ServerId == "a" && e.GetServerObserved().Observed.State == "running" {
@@ -136,23 +136,23 @@ func TestSyncSpecsAndObserved(t *testing.T) {
 		t.Fatalf("observed=%v ack=%v", sawObserved, sawAck)
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 1 {
-		t.Fatal("debe haber creado el contenedor")
+		t.Fatal("it must have created the container")
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil {
-		t.Fatal("la spec debe quedar en el store")
+		t.Fatal("the spec must remain in the store")
 	}
-	// removed_ids borra contenedor y spec
+	// removed_ids deletes container and spec
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 8, Body: &mcsmv1.Envelope_SyncSpecs{SyncSpecs: &mcsmv1.SyncSpecs{RemovedIds: []string{"a"}}}}, s.send)
 	s.waitID(t, 8)
 	if sp, _ := st.GetSpec("a"); sp != nil {
-		t.Fatal("la spec retirada se borra antes del Ack")
+		t.Fatal("the withdrawn spec is deleted before the Ack")
 	}
 	waitBackground(t, a)
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
-		t.Fatal("debe haber borrado el contenedor")
+		t.Fatal("it must have deleted the container")
 	}
 	if sp, _ := st.GetSpec("a"); sp != nil {
-		t.Fatal("la spec debe borrarse")
+		t.Fatal("the spec must be deleted")
 	}
 }
 
@@ -177,10 +177,10 @@ func TestApplySpecInvalidSlugRejected(t *testing.T) {
 		t.Fatalf("resp = %+v", e)
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
-		t.Fatal("no debe crear contenedores")
+		t.Fatal("it must not create containers")
 	}
 	if sp, _ := st.GetSpec("a"); sp != nil {
-		t.Fatal("no debe guardar la spec")
+		t.Fatal("it must not store the spec")
 	}
 }
 
@@ -196,10 +196,10 @@ func TestRemoveServerDeletesContainerAndSpec(t *testing.T) {
 		t.Fatalf("resp = %+v", e)
 	}
 	if list, _ := fake.ListManaged(ctx); len(list) != 0 {
-		t.Fatal("contenedor no borrado")
+		t.Fatal("container not deleted")
 	}
 	if sp, _ := st.GetSpec("a"); sp != nil {
-		t.Fatal("spec no borrada")
+		t.Fatal("spec not deleted")
 	}
 }
 
@@ -223,8 +223,8 @@ func TestSendCommandUsesRcon(t *testing.T) {
 	}
 }
 
-// startStream abre un stream de logs y espera a que el follower esté suscrito
-// reescribiendo una línea hasta que llega (el fake descarta líneas sin lector).
+// startStream opens a log stream and waits for the follower to be subscribed
+// rewriting a line until it arrives (the fake drops lines without a reader).
 func startStream(t *testing.T, a *App, fake *docker.Fake, s *sink, ctx context.Context, id uint64, serverID string) *logStream {
 	t.Helper()
 	a.Handle(ctx, &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_SubscribeLogs{SubscribeLogs: &mcsmv1.SubscribeLogs{ServerId: serverID, Tail: 50}}}, s.send)
@@ -236,7 +236,7 @@ func startStream(t *testing.T, a *App, fake *docker.Fake, s *sink, ctx context.C
 	ls := a.streams[id]
 	a.mu.Unlock()
 	if ls == nil {
-		t.Fatal("stream no registrado")
+		t.Fatal("stream not registered")
 	}
 	cid := a.rec.ContainerID(ctx, serverID)
 	deadline := time.After(3 * time.Second)
@@ -252,7 +252,7 @@ func startStream(t *testing.T, a *App, fake *docker.Fake, s *sink, ctx context.C
 			}
 		case <-time.After(10 * time.Millisecond):
 		case <-deadline:
-			t.Fatal("el stream no entregó líneas")
+			t.Fatal("the stream delivered no lines")
 		}
 	}
 }
@@ -262,21 +262,21 @@ func waitDone(t *testing.T, ls *logStream) {
 	select {
 	case <-ls.done:
 	case <-time.After(3 * time.Second):
-		t.Fatal("la goroutine del stream no terminó")
+		t.Fatal("the stream's goroutine did not finish")
 	}
 }
 
-// noMoreLogLines vacía lo ya enviado y comprueba que una línea nueva no llega.
+// noMoreLogLines drains what was already sent and checks that a new line does not arrive.
 func noMoreLogLines(t *testing.T, s *sink, fake *docker.Fake, cid string) {
 	t.Helper()
 	for len(s.ch) > 0 {
 		<-s.ch
 	}
-	fake.WriteLog(cid, "2026-10-12T10:00:01Z Tarde\n")
+	fake.WriteLog(cid, "2026-10-12T10:00:01Z Late\n")
 	select {
 	case e := <-s.ch:
 		if e.GetLogLine() != nil {
-			t.Fatalf("no deben salir LogLine tras cerrar: %+v", e)
+			t.Fatalf("no LogLine must come out after closing: %+v", e)
 		}
 	case <-time.After(100 * time.Millisecond):
 	}
@@ -302,13 +302,13 @@ func TestSubscribeLogsStream(t *testing.T) {
 	_, open := a.streams[5]
 	a.mu.Unlock()
 	if open {
-		t.Fatal("StreamClose debe cancelar el stream")
+		t.Fatal("StreamClose must cancel the stream")
 	}
 	noMoreLogLines(t, s, fake, a.rec.ContainerID(ctx, "a"))
 }
 
-// Proto3 rechaza string con UTF-8 inválido: sin sanear, proto.Marshal falla y la línea
-// (o la respuesta del comando) se pierde en silencio.
+// Proto3 rejects strings with invalid UTF-8: without sanitizing, proto.Marshal fails and the line
+// (or the command's response) is silently lost.
 func TestLogLineAndCommandResultAreValidUTF8(t *testing.T) {
 	a, fake, _ := newApp(t)
 	s := newSink()
@@ -322,7 +322,7 @@ func TestLogLineAndCommandResultAreValidUTF8(t *testing.T) {
 		e := s.next(t)
 		if ll := e.GetLogLine(); ll != nil {
 			if !utf8.ValidString(ll.Line) || ll.Line != "caf\uFFFD \uFFFD fin" {
-				t.Fatalf("línea = %q", ll.Line)
+				t.Fatalf("line = %q", ll.Line)
 			}
 			if _, err := proto.Marshal(e); err != nil {
 				t.Fatal(err)
@@ -365,18 +365,18 @@ func TestSubscribeLogsUnknownServer(t *testing.T) {
 	n := len(a.streams)
 	a.mu.Unlock()
 	if n != 0 {
-		t.Fatal("no debe abrir stream")
+		t.Fatal("it must not open a stream")
 	}
 }
 
-// Un panel más nuevo puede enviar un cuerpo que este agente no conoce: protobuf lo deja
-// en campos desconocidos y Body llega nil. Se responde unsupported pidiendo actualizar.
+// A newer panel may send a body this agent does not know: protobuf leaves it
+// in unknown fields and Body arrives nil. It answers unsupported asking to update.
 func TestUnknownBodyGetsUnsupportedError(t *testing.T) {
 	a, _, _ := newApp(t)
 	s := newSink()
 	raw := protowire.AppendTag(nil, 1, protowire.VarintType)
 	raw = protowire.AppendVarint(raw, 12)
-	raw = protowire.AppendTag(raw, 99, protowire.BytesType) // campo del oneof que este agente no tiene
+	raw = protowire.AppendTag(raw, 99, protowire.BytesType) // oneof field this agent does not have
 	raw = protowire.AppendBytes(raw, []byte{0x0a, 0x01, 'x'})
 	env := &mcsmv1.Envelope{}
 	if err := proto.Unmarshal(raw, env); err != nil || env.Body != nil {
@@ -384,13 +384,13 @@ func TestUnknownBodyGetsUnsupportedError(t *testing.T) {
 	}
 	a.Handle(context.Background(), env, s.send)
 	e := s.next(t)
-	if e.Id != 12 || e.GetError() == nil || e.GetError().Code != errcode.Unsupported || !strings.Contains(e.GetError().Message, "actualiza el agente") {
+	if e.Id != 12 || e.GetError() == nil || e.GetError().Code != errcode.Unsupported || !strings.Contains(e.GetError().Message, "update the agent") {
 		t.Fatalf("resp = %+v", e)
 	}
 }
 
-// Ack y Error del panel nunca se contestan: el agente no hace peticiones y responder a
-// un Error con otro Error podría encadenar un bucle.
+// The panel's Ack and Error are never answered: the agent makes no requests and replying to
+// an Error with another Error could chain into a loop.
 func TestAckAndErrorFromPanelAreNotAnswered(t *testing.T) {
 	a, _, _ := newApp(t)
 	s := newSink()
@@ -398,12 +398,12 @@ func TestAckAndErrorFromPanelAreNotAnswered(t *testing.T) {
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 13, Body: &mcsmv1.Envelope_Error{Error: &mcsmv1.Error{Code: "x", Message: "y"}}}, s.send)
 	select {
 	case e := <-s.ch:
-		t.Fatalf("no debe responder: %+v", e)
+		t.Fatalf("it must not respond: %+v", e)
 	case <-time.After(50 * time.Millisecond):
 	}
 }
 
-// Un cuerpo conocido pero que el panel no debe enviar (Hello) se rechaza como no soportado.
+// A known body that the panel must not send (Hello) is rejected as unsupported.
 func TestUnexpectedKnownBodyGetsUnsupported(t *testing.T) {
 	a, _, _ := newApp(t)
 	s := newSink()
@@ -426,8 +426,8 @@ func withMemory(sp *mcsmv1.ServerSpec, mem string) *mcsmv1.ServerSpec {
 	return sp
 }
 
-// containerEnv lee el env del contenedor del servidor. Solo tras waitBackground: sin
-// tareas de fondo vivas nadie más toca el fake.
+// containerEnv reads the server container's env. Only after waitBackground: without
+// live background tasks nobody else touches the fake.
 func containerEnv(t *testing.T, fake *docker.Fake, serverID string) map[string]string {
 	t.Helper()
 	list, _ := fake.ListManaged(context.Background())
@@ -442,12 +442,12 @@ func containerEnv(t *testing.T, fake *docker.Fake, serverID string) map[string]s
 			return m
 		}
 	}
-	t.Fatalf("sin contenedor para %s", serverID)
+	t.Fatalf("no container for %s", serverID)
 	return nil
 }
 
-// Dentro de una sesión, la guarda de versión sigue aplicando entre ApplySpecs: un
-// ApplySpec v6 posterior a un SyncSpecs v5 gana, y uno v4 se ignora.
+// Within a session, the version guard still applies between ApplySpecs: an
+// ApplySpec v6 after a SyncSpecs v5 wins, and a v4 one is ignored.
 func TestApplySpecAfterSyncSpecsKeepsNewer(t *testing.T) {
 	a, fake, st := newApp(t)
 	s := newSink()
@@ -469,12 +469,12 @@ func TestApplySpecAfterSyncSpecsKeepsNewer(t *testing.T) {
 		t.Fatalf("applied = %d, want 6", v)
 	}
 	if mem := containerEnv(t, fake, "a")["MEMORY"]; mem != "3G" {
-		t.Fatalf("el contenedor debe quedar con la spec v6, MEMORY=%s", mem)
+		t.Fatalf("the container must end up with spec v6, MEMORY=%s", mem)
 	}
 }
 
-// En una sesión nueva, SyncSpecs fuerza la foto del panel aunque sea más antigua que
-// la del store (base de datos del panel restaurada).
+// In a new session, SyncSpecs forces the panel's snapshot even if it is older than
+// the store's (restored panel database).
 func TestSyncSpecsForcesOlderSpecOnNewSession(t *testing.T) {
 	a, fake, st := newApp(t)
 	s := newSink()
@@ -485,7 +485,7 @@ func TestSyncSpecsForcesOlderSpecOnNewSession(t *testing.T) {
 	a.Handle(context.Background(), syncMsg(1, []*mcsmv1.ServerSpec{specMsg("a", "alpha", 5)}), s.send)
 	s.waitID(t, 1)
 	if sp, _ := st.GetSpec("a"); sp.Version != 5 {
-		t.Fatalf("SyncSpecs es la verdad del panel, version=%d", sp.Version)
+		t.Fatalf("SyncSpecs is the panel's truth, version=%d", sp.Version)
 	}
 	waitBackground(t, a)
 	if v, _ := st.Applied("a"); v != 5 {
@@ -496,7 +496,7 @@ func TestSyncSpecsForcesOlderSpecOnNewSession(t *testing.T) {
 	}
 }
 
-// gateEngine bloquea EnsureImage hasta que se cierra gate.
+// gateEngine blocks EnsureImage until gate is closed.
 type gateEngine struct {
 	*docker.Fake
 	gate chan struct{}
@@ -511,7 +511,7 @@ func (e gateEngine) EnsureImage(ctx context.Context, ref string) error {
 	return e.Fake.EnsureImage(ctx, ref)
 }
 
-// El Ack de SyncSpecs no espera a Docker: el panel no retiene nada durante un pull.
+// SyncSpecs's Ack does not wait for Docker: the panel holds nothing back during a pull.
 func TestSyncSpecsAcksBeforeTouchingDocker(t *testing.T) {
 	fake := docker.NewFake()
 	gate := make(chan struct{})
@@ -523,20 +523,20 @@ func TestSyncSpecsAcksBeforeTouchingDocker(t *testing.T) {
 		t.Fatalf("resp = %+v", e)
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil {
-		t.Fatal("la spec se guarda antes del Ack")
+		t.Fatal("the spec is stored before the Ack")
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
-		t.Fatal("el contenedor aún no puede existir: el pull está bloqueado")
+		t.Fatal("the container cannot exist yet: the pull is blocked")
 	}
 	close(gate)
 	waitBackground(t, a)
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 1 || list[0].State != "running" {
-		t.Fatalf("tras el pull debe crearse y arrancar: %+v", list)
+		t.Fatalf("after the pull it must be created and started: %+v", list)
 	}
 }
 
-// Un slug borrado y recreado con el nodo desconectado: removed_ids se procesa antes,
-// así que el Create del servidor nuevo no choca con el nombre del contenedor viejo.
+// A slug deleted and recreated while the node was disconnected: removed_ids is processed first,
+// so the new server's Create does not clash with the old container's name.
 func TestSyncSpecsReusedSlugAfterOfflineDelete(t *testing.T) {
 	a, fake, st := newApp(t)
 	s := newSink()
@@ -549,16 +549,16 @@ func TestSyncSpecsReusedSlugAfterOfflineDelete(t *testing.T) {
 	waitBackground(t, a)
 	list, _ := fake.ListManaged(ctx)
 	if len(list) != 1 || list[0].Labels["mcsm.server_id"] != "new" || list[0].State != "running" {
-		t.Fatalf("debe quedar solo el contenedor nuevo en marcha: %+v (calls %v)", list, fake.Calls)
+		t.Fatalf("only the new container must remain running: %+v (calls %v)", list, fake.Calls)
 	}
 	if sp, _ := st.GetSpec("old"); sp != nil {
-		t.Fatal("la spec retirada no debe quedar")
+		t.Fatal("the withdrawn spec must not remain")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, e := range s.envs {
 		if o := e.GetServerObserved(); o != nil && o.ServerId == "new" && o.Observed.Error != "" {
-			t.Fatalf("el servidor nuevo no debe publicar errores: %s", o.Observed.Error)
+			t.Fatalf("the new server must not publish errors: %s", o.Observed.Error)
 		}
 	}
 }
@@ -572,10 +572,10 @@ func TestSyncSpecsSkipsInvalidAndStillAcks(t *testing.T) {
 		t.Fatalf("resp = %+v", e)
 	}
 	if sp, _ := st.GetSpec("bad"); sp != nil {
-		t.Fatal("una spec con slug inválido no se guarda")
+		t.Fatal("a spec with an invalid slug is not stored")
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil {
-		t.Fatal("las válidas sí")
+		t.Fatal("the valid ones are")
 	}
 	waitBackground(t, a)
 }
@@ -613,7 +613,7 @@ func TestSendCommandErrors(t *testing.T) {
 	}
 }
 
-// Un servidor bloqueado en una operación larga no debe frenar la observación de los demás.
+// A server blocked in a long operation must not hold back the observation of the others.
 func TestBlockedServerDoesNotStallOthers(t *testing.T) {
 	a, fake, _ := newApp(t)
 	s := newSink()
@@ -626,7 +626,7 @@ func TestBlockedServerDoesNotStallOthers(t *testing.T) {
 		a.Handle(ctx, &mcsmv1.Envelope{Id: uint64(i + 1), Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: sp}}}, s.send)
 		s.waitID(t, uint64(i+1))
 	}
-	// Ports distintos no importan: el fake solo choca al arrancar y ambos ya están en marcha o fallaron.
+	// Different Ports do not matter: the fake only clashes on start and both are already running or failed.
 	release := make(chan struct{})
 	entered := make(chan struct{}, 8)
 	a.status = func(_ context.Context, host string, _ uint16) *mcsmv1.McStatus {
@@ -656,7 +656,7 @@ func TestBlockedServerDoesNotStallOthers(t *testing.T) {
 			}
 		case <-time.After(10 * time.Millisecond):
 		case <-deadline:
-			t.Fatalf("slowIn=%v: el servidor lento bloquea al resto", slowIn)
+			t.Fatalf("slowIn=%v: the slow server blocks the rest", slowIn)
 		}
 	}
 }
@@ -677,7 +677,7 @@ func TestEventTriggersObserve(t *testing.T) {
 			}
 		case <-time.After(10 * time.Millisecond):
 		case <-deadline:
-			t.Fatal("el evento no provocó Observe")
+			t.Fatal("the event did not trigger Observe")
 		}
 	}
 }
@@ -700,19 +700,19 @@ func TestHelloCarriesVersionsAndDesiredStates(t *testing.T) {
 func TestLoadConfigValidation(t *testing.T) {
 	t.Setenv("PANEL_URL", "panel:3000")
 	if _, err := LoadConfig("x"); err == nil {
-		t.Fatal("PANEL_URL sin esquema http/https debe fallar")
+		t.Fatal("PANEL_URL without an http/https scheme must fail")
 	}
 	t.Setenv("PANEL_URL", "http://p")
-	t.Setenv("DATA_ROOT", "relativa/ruta")
+	t.Setenv("DATA_ROOT", "relative/path")
 	if _, err := LoadConfig("x"); err == nil {
-		t.Fatal("DATA_ROOT relativa debe fallar")
+		t.Fatal("a relative DATA_ROOT must fail")
 	}
 }
 
 func TestLoadConfigRequiresPanelURL(t *testing.T) {
 	t.Setenv("PANEL_URL", "")
 	if _, err := LoadConfig("x"); err == nil {
-		t.Fatal("debe exigir PANEL_URL")
+		t.Fatal("it must require PANEL_URL")
 	}
 	t.Setenv("PANEL_URL", "http://p")
 	cfg, err := LoadConfig("x")
@@ -721,7 +721,7 @@ func TestLoadConfigRequiresPanelURL(t *testing.T) {
 	}
 }
 
-// ctxEngine imita a Moby: las operaciones fallan si el contexto está cancelado.
+// ctxEngine imitates Moby: operations fail if the context is cancelled.
 type ctxEngine struct{ *docker.Fake }
 
 func (e ctxEngine) EnsureImage(ctx context.Context, ref string) error {
@@ -752,8 +752,8 @@ func (e ctxEngine) Remove(ctx context.Context, id string) error {
 	return e.Fake.Remove(ctx, id)
 }
 
-// Un corte de la sesión WS no debe cancelar las operaciones que mutan Docker: usan el
-// contexto de vida del agente, no el de la sesión.
+// A WS session drop must not cancel the operations that mutate Docker: they use the
+// agent's life context, not the session's.
 func TestMutatingHandlersSurviveSessionCancel(t *testing.T) {
 	dir := t.TempDir()
 	st, err := store.Open(filepath.Join(dir, "a.db"))
@@ -767,29 +767,29 @@ func TestMutatingHandlersSurviveSessionCancel(t *testing.T) {
 	s := newSink()
 	a.send = s.send
 	session, cancel := context.WithCancel(context.Background())
-	cancel() // la sesión ya se cortó cuando el handler llega a Docker
+	cancel() // the session was already cut when the handler reaches Docker
 
 	a.Handle(session, &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: specMsg("a", "alpha", 1)}}}, s.send)
 	if e := s.waitID(t, 1); e.GetAck() == nil {
-		t.Fatalf("ApplySpec con la sesión cortada: %+v", e)
+		t.Fatalf("ApplySpec with the session cut: %+v", e)
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 1 || list[0].State != "running" {
-		t.Fatalf("el contenedor debe crearse y arrancar: %+v", list)
+		t.Fatalf("the container must be created and started: %+v", list)
 	}
 	a.Handle(session, &mcsmv1.Envelope{Id: 2, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP}}}, s.send)
 	if e := s.waitID(t, 2); e.GetAck() == nil {
-		t.Fatalf("PowerAction con la sesión cortada: %+v", e)
+		t.Fatalf("PowerAction with the session cut: %+v", e)
 	}
 	a.Handle(session, &mcsmv1.Envelope{Id: 3, Body: &mcsmv1.Envelope_RemoveServer{RemoveServer: &mcsmv1.RemoveServer{ServerId: "a"}}}, s.send)
 	if e := s.waitID(t, 3); e.GetAck() == nil {
-		t.Fatalf("RemoveServer con la sesión cortada: %+v", e)
+		t.Fatalf("RemoveServer with the session cut: %+v", e)
 	}
 	if list, _ := fake.ListManaged(context.Background()); len(list) != 0 {
-		t.Fatalf("el contenedor debe borrarse: %+v", list)
+		t.Fatalf("the container must be deleted: %+v", list)
 	}
 }
 
-// failRemoveEngine hace fallar Remove mientras fail esté activo.
+// failRemoveEngine makes Remove fail while fail is active.
 type failRemoveEngine struct {
 	*docker.Fake
 	mu   sync.Mutex
@@ -807,13 +807,13 @@ func (e *failRemoveEngine) Remove(ctx context.Context, id string) error {
 	fail := e.fail
 	e.mu.Unlock()
 	if fail {
-		return errors.New("docker: no se pudo borrar")
+		return errors.New("docker: could not delete")
 	}
 	return e.Fake.Remove(ctx, id)
 }
 
-// Si el borrado en segundo plano de un servidor retirado por SyncSpecs falla, el tick de
-// reconciliación lo reintenta aunque su spec ya no exista (lápida del reconciliador).
+// If the background deletion of a server withdrawn by SyncSpecs fails, the reconciliation tick
+// retries it even though its spec no longer exists (the reconciler's tombstone).
 func TestSyncSpecsFailedRemovalIsRetriedByTick(t *testing.T) {
 	fake := docker.NewFake()
 	eng := &failRemoveEngine{Fake: fake}
@@ -828,19 +828,19 @@ func TestSyncSpecsFailedRemovalIsRetriedByTick(t *testing.T) {
 	s.waitID(t, 2)
 	waitBackground(t, a)
 	if list, _ := fake.ListManaged(ctx); len(list) != 1 {
-		t.Fatalf("el borrado falló: el contenedor sigue: %+v", list)
+		t.Fatalf("the deletion failed: the container remains: %+v", list)
 	}
 	if vers, _ := st.SpecVersions(); len(vers) != 0 {
-		t.Fatalf("el servidor retirado no vuelve al Hello: %v", vers)
+		t.Fatalf("the withdrawn server does not return to the Hello: %v", vers)
 	}
 	eng.setFail(false)
 	a.reconcileAll(ctx) // tick
 	waitBackground(t, a)
 	if list, _ := fake.ListManaged(ctx); len(list) != 0 {
-		t.Fatalf("el tick debe reintentar el borrado: %+v", list)
+		t.Fatalf("the tick must retry the deletion: %+v", list)
 	}
 	if calls := strings.Join(fake.Calls, ";"); strings.Count(calls, "Create") != 1 {
-		t.Fatalf("no debe resucitar: %v", fake.Calls)
+		t.Fatalf("it must not resurrect: %v", fake.Calls)
 	}
 }
 
@@ -852,8 +852,8 @@ func removeMsg(id uint64, serverID string, deleteData bool) *mcsmv1.Envelope {
 	return &mcsmv1.Envelope{Id: id, Body: &mcsmv1.Envelope_RemoveServer{RemoveServer: &mcsmv1.RemoveServer{ServerId: serverID, DeleteData: deleteData}}}
 }
 
-// Power y Remove sobre un servidor reservado (copia o restauración en curso) responden
-// busy, que el panel traduce a 409, no power_failed/remove_failed (502).
+// Power and Remove on a reserved server (backup or restore in progress) answer
+// busy, which the panel translates to 409, not power_failed/remove_failed (502).
 func TestPowerAndRemoveOnHeldServerAreBusy(t *testing.T) {
 	a, fake, st := newApp(t)
 	s := newSink()
@@ -863,33 +863,33 @@ func TestPowerAndRemoveOnHeldServerAreBusy(t *testing.T) {
 	if e := s.waitID(t, 1); e.GetAck() == nil {
 		t.Fatalf("resp = %+v", e)
 	}
-	release, err := a.rec.Hold("a", "copia de seguridad")
+	release, err := a.rec.Hold("a", "backup")
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.Handle(ctx, powerMsg(2, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP), s.send)
 	if e := s.waitID(t, 2); e.GetError().GetCode() != errcode.Busy {
-		t.Fatalf("Power reservado = %+v, want busy", e)
+		t.Fatalf("Power reserved = %+v, want busy", e)
 	}
 	a.Handle(ctx, removeMsg(3, "a", false), s.send)
 	if e := s.waitID(t, 3); e.GetError().GetCode() != errcode.Busy {
-		t.Fatalf("Remove reservado = %+v, want busy", e)
+		t.Fatalf("Remove reserved = %+v, want busy", e)
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil {
-		t.Fatal("la spec sigue")
+		t.Fatal("the spec remains")
 	}
 	if list, _ := fake.ListManaged(ctx); len(list) != 1 || list[0].State != "running" {
-		t.Fatalf("el contenedor no se toca: %+v", list)
+		t.Fatalf("the container is not touched: %+v", list)
 	}
 	release(ctx)
 	a.Handle(ctx, powerMsg(4, "a", mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP), s.send)
 	if e := s.waitID(t, 4); e.GetAck() == nil {
-		t.Fatalf("tras liberar, Power = %+v", e)
+		t.Fatalf("after releasing, Power = %+v", e)
 	}
 }
 
-// ApplySpec con el servidor reservado no falla: guarda la spec, responde Ack y la aplica
-// al liberar la reserva.
+// ApplySpec with the server reserved does not fail: it stores the spec, answers Ack and applies it
+// when the reservation is released.
 func TestApplySpecOnHeldServerIsDeferred(t *testing.T) {
 	a, fake, st := newApp(t)
 	s := newSink()
@@ -897,30 +897,30 @@ func TestApplySpecOnHeldServerIsDeferred(t *testing.T) {
 	ctx := context.Background()
 	a.Handle(ctx, applyMsg(1, specMsg("a", "alpha", 1)), s.send)
 	s.waitID(t, 1)
-	release, err := a.rec.Hold("a", "restauración")
+	release, err := a.rec.Hold("a", "restore")
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.Handle(ctx, applyMsg(2, withMemory(specMsg("a", "alpha", 2), "3G")), s.send)
 	if e := s.waitID(t, 2); e.GetAck() == nil {
-		t.Fatalf("ApplySpec reservado = %+v, want Ack", e)
+		t.Fatalf("ApplySpec reserved = %+v, want Ack", e)
 	}
 	waitBackground(t, a)
 	if mem := containerEnv(t, fake, "a")["MEMORY"]; mem != "2G" {
-		t.Fatalf("durante la reserva no se recrea: MEMORY=%s", mem)
+		t.Fatalf("during the reservation it is not recreated: MEMORY=%s", mem)
 	}
 	release(ctx)
 	if mem := containerEnv(t, fake, "a")["MEMORY"]; mem != "3G" {
-		t.Fatalf("al liberar se aplica la spec aplazada: MEMORY=%s", mem)
+		t.Fatalf("on release the deferred spec is applied: MEMORY=%s", mem)
 	}
 	if v, _ := st.Applied("a"); v != 2 {
 		t.Fatalf("applied = %d, want 2", v)
 	}
 }
 
-// Un slug retirado (con su contenedor aún por borrar) y recreado con otro id: el tick borra
-// primero el contenedor viejo y después reconcilia el nuevo, que no choca con el nombre
-// ni cae en backoff.
+// A withdrawn slug (with its container still to be deleted) recreated with another id: the tick deletes
+// the old container first and then reconciles the new one, which does not clash with the name
+// nor fall into backoff.
 func TestTickRemovesTombstonesBeforeReconciling(t *testing.T) {
 	fake := docker.NewFake()
 	eng := &failRemoveEngine{Fake: fake}
@@ -942,9 +942,9 @@ func TestTickRemovesTombstonesBeforeReconciling(t *testing.T) {
 	waitBackground(t, a)
 	list, _ := fake.ListManaged(ctx)
 	if len(list) != 1 || list[0].Labels["mcsm.server_id"] != "new" || list[0].State != "running" {
-		t.Fatalf("debe quedar solo el contenedor nuevo en marcha: %+v (calls %v)", list, fake.Calls)
+		t.Fatalf("only the new container must remain running: %+v (calls %v)", list, fake.Calls)
 	}
 	if v, _ := st.Applied("new"); v != 1 {
-		t.Fatalf("el servidor nuevo se aplica en el mismo tick: applied = %d", v)
+		t.Fatalf("the new server is applied in the same tick: applied = %d", v)
 	}
 }

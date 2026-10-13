@@ -2,8 +2,8 @@ package app
 
 import "encoding/json"
 
-// logSecrets son los secretos de la spec de un servidor que no deben salir en su consola (L2 del Plan 3). Se leen
-// sin validar la spec: una spec que ya no valida sigue teniendo que ocultarlos.
+// logSecrets are the secrets of a server's spec that must not appear in its console (L2 of Plan 3). They are read
+// without validating the spec: a spec that no longer validates must still hide them.
 func (a *App) logSecrets(serverID string) []string {
 	sp, err := a.st.GetSpec(serverID)
 	if err != nil || sp == nil {

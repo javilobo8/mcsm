@@ -13,8 +13,8 @@ import (
 	"github.com/moby/moby/api/types/network"
 )
 
-// Fake es un Engine en memoria para tests. Los campos exportados permiten
-// inspeccionar llamadas e inyectar fallos.
+// Fake is an in-memory Engine for tests. The exported fields allow
+// inspecting calls and injecting failures.
 type Fake struct {
 	mu         sync.Mutex
 	seq        int
@@ -25,22 +25,22 @@ type Fake struct {
 	Calls      []string
 	CreateErr  error
 	StartErr   error
-	StatsErr   error               // si no es nil, Stats lo devuelve
-	ImageEnvs  map[string][]string // plan-6: ENV de cada imagen, por referencia (ImageEnv)
-	ConnectErr error               // plan-6: si no es nil, ConnectNetwork lo devuelve
-	stats      map[string]Stats    // lecturas fijadas con SetStats, por id de contenedor
+	StatsErr   error               // if not nil, Stats returns it
+	ImageEnvs  map[string][]string // plan-6: each image's ENV, by reference (ImageEnv)
+	ConnectErr error               // plan-6: if not nil, ConnectNetwork returns it
+	stats      map[string]Stats    // readings set with SetStats, by container id
 	logPipes   map[string][]*io.PipeWriter
 	subs       []*eventSub
-	subscribed chan struct{} // se cierra con el primer suscriptor de Events (Subscribed)
+	subscribed chan struct{} // closed on Events' first subscriber (Subscribed)
 }
 
-// eventSub es un suscriptor de Events.
+// eventSub is a subscriber of Events.
 type eventSub struct {
 	ch   chan Event
 	errs chan error
 }
 
-// eventBuffer es la capacidad del canal de eventos de cada suscriptor.
+// eventBuffer is the capacity of each subscriber's event channel.
 const eventBuffer = 256
 
 func copyLabels(in map[string]string) map[string]string {
@@ -61,17 +61,17 @@ type FakeContainer struct {
 	Config     *container.Config
 	HostConfig *container.HostConfig
 	Net        *network.NetworkingConfig
-	Aliases    map[string][]string // plan-6: red → alias añadidos con ConnectNetwork
-	// startFailed: un Start falló por el puerto. Como Docker 29.7.2, los Start siguientes
-	// funcionan pero no publican los puertos (unpublished), aunque se pare y se arranque.
+	Aliases    map[string][]string // plan-6: network → aliases added with ConnectNetwork
+	// startFailed: a Start failed on the port. Like Docker 29.7.2, subsequent Starts
+	// work but do not publish the ports (unpublished), even if stopped and started.
 	startFailed bool
 	unpublished bool
-	// removing: un `docker rm -f` ajeno en curso (BeginRemoval). Como Docker 29.7.2: la lista
-	// (instantánea) lo da como exited, Inspect como removing, y Start y Remove fallan con conflicto.
+	// removing: a foreign `docker rm -f` in progress (BeginRemoval). Like Docker 29.7.2: the list
+	// (snapshot) gives it as exited, Inspect as removing, and Start and Remove fail with a conflict.
 	removing bool
 }
 
-// FakeID es el id del n-ésimo contenedor que crea el fake: 64 hex, como los de Docker.
+// FakeID is the id of the nth container the fake creates: 64 hex, like Docker's.
 func FakeID(n int) string { return fmt.Sprintf("%064x", n) }
 
 func NewFake() *Fake {
@@ -145,7 +145,7 @@ func (f *Fake) Create(_ context.Context, name string, cfg *container.Config, hos
 	}
 	for _, c := range f.Containers {
 		if c.Name == name {
-			return "", fmt.Errorf("conflict: el nombre %q ya está en uso", name)
+			return "", fmt.Errorf("conflict: the name %q is already in use", name)
 		}
 	}
 	f.seq++
@@ -154,7 +154,7 @@ func (f *Fake) Create(_ context.Context, name string, cfg *container.Config, hos
 	return id, nil
 }
 
-// hostPorts devuelve las claves "puerto/proto" de host publicadas por un contenedor.
+// hostPorts returns the host "port/proto" keys published by a container.
 func hostPorts(hc *container.HostConfig) map[string]bool {
 	out := map[string]bool{}
 	if hc == nil {
@@ -170,11 +170,11 @@ func hostPorts(hc *container.HostConfig) map[string]bool {
 	return out
 }
 
-// Start imita a Docker: sobre un contenedor ya running es no-op, y los puertos de
-// host se enlazan aquí (no en Create), así que una colisión con otro contenedor
-// running falla con "port is already allocated" dejando el contenedor en created.
-// Como Docker 29.7.2, tras un Start fallido por el puerto los siguientes arrancan sin
-// publicar los puertos (Inspect.PortsMissing) y sin ocuparlos.
+// Start imitates Docker: on an already running container it is a no-op, and host
+// ports are bound here (not in Create), so a collision with another running
+// container fails with "port is already allocated" leaving the container in created.
+// Like Docker 29.7.2, after a Start that failed on the port the following ones start without
+// publishing the ports (Inspect.PortsMissing) and without occupying them.
 func (f *Fake) Start(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -186,18 +186,18 @@ func (f *Fake) Start(_ context.Context, id string) error {
 	if !ok {
 		return ErrNotFound
 	}
-	if c.removing { // como Docker
+	if c.removing { // like Docker
 		return fmt.Errorf("container is marked for removal and cannot be started: %w", cerrdefs.ErrConflict)
 	}
 	if c.State == "running" {
 		return nil
 	}
-	if c.State == "paused" { // como Docker
+	if c.State == "paused" { // like Docker
 		return fmt.Errorf("cannot start a paused container, try unpause instead: %w", cerrdefs.ErrConflict)
 	}
 	mine := hostPorts(c.HostConfig)
 	if c.startFailed {
-		mine = nil // no publicará nada: no compite por los puertos
+		mine = nil // it will not publish anything: it does not compete for ports
 	}
 	for _, o := range f.Containers {
 		if o.ID == id || o.State != "running" || o.unpublished {
@@ -215,8 +215,8 @@ func (f *Fake) Start(_ context.Context, id string) error {
 	return nil
 }
 
-// Stop: sobre un contenedor no running es no-op (created sigue created, exited
-// conserva su ExitCode), como en Docker.
+// Stop: on a non-running container it is a no-op (created stays created, exited
+// keeps its ExitCode), as in Docker.
 func (f *Fake) Stop(_ context.Context, id string, timeout time.Duration) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -232,7 +232,7 @@ func (f *Fake) Stop(_ context.Context, id string, timeout time.Duration) error {
 	return nil
 }
 
-// Kill sobre un contenedor no running devuelve un error de conflicto (409).
+// Kill on a non-running container returns a conflict error (409).
 func (f *Fake) Kill(_ context.Context, id string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -256,7 +256,7 @@ func (f *Fake) Remove(_ context.Context, id string) error {
 	if !ok {
 		return ErrNotFound
 	}
-	if c.removing { // como Docker
+	if c.removing { // like Docker
 		return fmt.Errorf("removal of container %s is already in progress: %w", id, cerrdefs.ErrConflict)
 	}
 	delete(f.Containers, id)
@@ -279,7 +279,7 @@ func (f *Fake) Logs(_ context.Context, id string, tail int) (io.ReadCloser, erro
 	return r, nil
 }
 
-// WriteLog empuja una línea a todos los lectores de Logs del contenedor.
+// WriteLog pushes a line to all the container's Logs readers.
 func (f *Fake) WriteLog(id, line string) {
 	f.mu.Lock()
 	ws := append([]*io.PipeWriter(nil), f.logPipes[id]...)
@@ -289,13 +289,13 @@ func (f *Fake) WriteLog(id, line string) {
 	}
 }
 
-// Events devuelve el canal de eventos y el de errores. Como en Moby, el canal de
-// eventos se cierra cuando ctx termina; errs no se cierra.
+// Events returns the events channel and the errors one. As in Moby, the events
+// channel is closed when ctx ends; errs is not closed.
 func (f *Fake) Events(ctx context.Context) (<-chan Event, <-chan error) {
 	sub := &eventSub{ch: make(chan Event, eventBuffer), errs: make(chan error, 1)}
 	f.mu.Lock()
 	f.subs = append(f.subs, sub)
-	f.subscribedLocked() // crea el canal si hace falta
+	f.subscribedLocked() // creates the channel if needed
 	select {
 	case <-f.subscribed:
 	default:
@@ -317,8 +317,8 @@ func (f *Fake) Events(ctx context.Context) (<-chan Event, <-chan error) {
 	return sub.ch, sub.errs
 }
 
-// Subscribed devuelve un canal que se cierra en cuanto alguien se suscribe a Events: los tests
-// esperan a él antes de EmitEvent (que descarta los eventos sin suscriptores) sin reintentar.
+// Subscribed returns a channel that closes as soon as someone subscribes to Events: tests
+// wait on it before EmitEvent (which drops events without subscribers) without retrying.
 func (f *Fake) Subscribed() <-chan struct{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -332,9 +332,9 @@ func (f *Fake) subscribedLocked() chan struct{} {
 	return f.subscribed
 }
 
-// EmitEvent entrega un evento a todos los suscriptores activos de Events. Nunca
-// bloquea: sin suscriptores, o con el buffer de un suscriptor lleno, el evento se
-// descarta. Los suscriptores con ctx cancelado ya fueron retirados.
+// EmitEvent delivers an event to all active Events subscribers. It never
+// blocks: with no subscribers, or with a subscriber's buffer full, the event is
+// dropped. Subscribers with a cancelled ctx have already been removed.
 func (f *Fake) EmitEvent(ev Event) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -346,8 +346,8 @@ func (f *Fake) EmitEvent(ev Event) {
 	}
 }
 
-// EmitEventErr entrega un error a los suscriptores activos por el canal errs
-// (mismo criterio de no bloqueo que EmitEvent).
+// EmitEventErr delivers an error to the active subscribers through the errs channel
+// (same non-blocking criterion as EmitEvent).
 func (f *Fake) EmitEventErr(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -359,8 +359,8 @@ func (f *Fake) EmitEventErr(err error) {
 	}
 }
 
-// BeginRemoval simula un `docker rm -f` ajeno a medias: el contenedor ya está muerto (kill y die
-// emitidos) pero aún existe hasta FinishRemoval (destroy). Ver FakeContainer.removing.
+// BeginRemoval simulates a half-done foreign `docker rm -f`: the container is already dead (kill and die
+// emitted) but still exists until FinishRemoval (destroy). See FakeContainer.removing.
 func (f *Fake) BeginRemoval(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -369,7 +369,7 @@ func (f *Fake) BeginRemoval(id string) {
 	}
 }
 
-// FinishRemoval completa el borrado que empezó BeginRemoval.
+// FinishRemoval completes the deletion that BeginRemoval started.
 func (f *Fake) FinishRemoval(id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -380,7 +380,7 @@ func (f *Fake) FinishRemoval(id string) {
 	delete(f.logPipes, id)
 }
 
-// SetHealth permite a los tests simular el healthcheck.
+// SetHealth lets tests simulate the healthcheck.
 func (f *Fake) SetHealth(id, health string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -389,7 +389,7 @@ func (f *Fake) SetHealth(id, health string) {
 	}
 }
 
-// Crash simula que el proceso del contenedor termina con exitCode (sin emitir eventos: el test emite el die).
+// Crash simulates the container's process ending with exitCode (without emitting events: the test emits the die).
 func (f *Fake) Crash(id string, exitCode int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

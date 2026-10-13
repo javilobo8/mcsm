@@ -17,7 +17,7 @@ func TestFilenameAndParse(t *testing.T) {
 		t.Fatalf("name = %s", name)
 	}
 	if !ValidName("survival", name) {
-		t.Fatal("el nombre generado debe ser válido")
+		t.Fatal("the generated name must be valid")
 	}
 	ts, v, ok := parseName("survival", name)
 	if !ok || !ts.Equal(at) || v != 7 {
@@ -30,7 +30,7 @@ func TestValidName(t *testing.T) {
 		"survival-20261012T020000.123Z-7.tar.zst":           true,
 		"survival-20261012T020000.123Z-7.tar.zst.json":      false,
 		"survival-20261012T020000.123Z-7.tar.zst.partial":   false,
-		"otro-20261012T020000.123Z-7.tar.zst":               false,
+		"other-20261012T020000.123Z-7.tar.zst":              false,
 		"survival-x-20261012T020000.123Z-7.tar.zst":         false,
 		"../survival-20261012T020000.123Z-7.tar.zst":        false,
 		"survival-20261012T020000.123Z-7.tar.zst/../../etc": false,
@@ -42,7 +42,7 @@ func TestValidName(t *testing.T) {
 		}
 	}
 	if ValidName("../x", "../x-20261012T020000.123Z-7.tar.zst") {
-		t.Fatal("un slug inválido nunca da nombres válidos")
+		t.Fatal("an invalid slug never gives valid names")
 	}
 }
 
@@ -54,7 +54,7 @@ func TestPreRestoreName(t *testing.T) {
 	}
 	for _, bad := range []string{"data", "data.pre-restore-", "data.pre-restore-../x", "backups", "data.restoring-20261012T050000.000Z"} {
 		if ValidPreRestoreName(dataDir, bad) {
-			t.Errorf("%q no debe ser válido", bad)
+			t.Errorf("%q must not be valid", bad)
 		}
 	}
 }
@@ -70,9 +70,9 @@ func TestListAndMeta(t *testing.T) {
 	if err := WriteMeta(dir, Meta{Filename: a, ServerID: "s1", Slug: "survival", SpecVersion: 3, Trigger: TriggerScheduled, SHA256: "abc", StartedAt: t1, FinishedAt: t1}); err != nil {
 		t.Fatal(err)
 	}
-	mustWrite(t, filepath.Join(dir, b), "BBBBBB", 0o640) // sin .json
+	mustWrite(t, filepath.Join(dir, b), "BBBBBB", 0o640) // without .json
 	mustWrite(t, filepath.Join(dir, Filename("survival", t2.Add(time.Hour), 5)+".partial"), "x", 0o640)
-	mustWrite(t, filepath.Join(dir, Filename("otro", t2, 1)), "x", 0o640)
+	mustWrite(t, filepath.Join(dir, Filename("other", t2, 1)), "x", 0o640)
 	list, err := List(dir, "survival")
 	if err != nil {
 		t.Fatal(err)
@@ -81,13 +81,13 @@ func TestListAndMeta(t *testing.T) {
 		t.Fatalf("list = %+v", list)
 	}
 	if list[0].SizeBytes != 6 || list[0].SpecVersion != 4 || list[0].Trigger != TriggerManual || !list[0].StartedAt.Equal(t2) {
-		t.Fatalf("deducida del nombre = %+v", list[0])
+		t.Fatalf("deduced from the name = %+v", list[0])
 	}
 	if list[1].SHA256 != "abc" || list[1].Trigger != TriggerScheduled || list[1].SizeBytes != 4 {
-		t.Fatalf("con .json = %+v", list[1])
+		t.Fatalf("with .json = %+v", list[1])
 	}
-	if got, err := List(filepath.Join(root, "nada"), "survival"); err != nil || got != nil {
-		t.Fatalf("directorio inexistente = %v, %v", got, err)
+	if got, err := List(filepath.Join(root, "nothing"), "survival"); err != nil || got != nil {
+		t.Fatalf("nonexistent directory = %v, %v", got, err)
 	}
 	info := list[1].Info("s1")
 	if info.ServerId != "s1" || info.Trigger != mcsmv1.BackupTrigger_BACKUP_TRIGGER_SCHEDULED || info.SizeBytes != 4 || info.StartedUnixMs != t1.UnixMilli() {
@@ -101,7 +101,7 @@ func TestListPreRestoreAndDelete(t *testing.T) {
 	backupsDir := filepath.Join(root, "survival", "backups")
 	mustWrite(t, filepath.Join(dataDir, "level.dat"), "actual", 0o644)
 	pre := PreRestoreName(dataDir, time.Date(2026, 10, 12, 5, 0, 0, 0, time.UTC))
-	mustWrite(t, filepath.Join(root, "survival", pre, "level.dat"), "antes", 0o644)
+	mustWrite(t, filepath.Join(root, "survival", pre, "level.dat"), "before", 0o644)
 	if err := writeJSON(filepath.Join(root, "survival", pre+MetaExt), Meta{SizeBytes: 5}); err != nil {
 		t.Fatal(err)
 	}
@@ -115,26 +115,26 @@ func TestListPreRestoreAndDelete(t *testing.T) {
 
 	for _, bad := range []string{"data", "../data", "backups", "data.pre-restore-x", name + "/.."} {
 		if err := Delete(backupsDir, dataDir, "survival", bad); err == nil {
-			t.Errorf("Delete(%q) debe fallar", bad)
+			t.Errorf("Delete(%q) must fail", bad)
 		}
 	}
 	if !exists(dataDir) || !exists(backupsDir) {
-		t.Fatal("un nombre inválido no debe borrar nada")
+		t.Fatal("an invalid name must not delete anything")
 	}
 	if err := Delete(backupsDir, dataDir, "survival", name); err != nil {
 		t.Fatal(err)
 	}
 	if exists(filepath.Join(backupsDir, name)) || exists(filepath.Join(backupsDir, name+MetaExt)) {
-		t.Fatal("la copia y su .json deben borrarse")
+		t.Fatal("the backup and its .json must be deleted")
 	}
 	if err := Delete(backupsDir, dataDir, "survival", name); err != nil {
-		t.Fatalf("borrar dos veces es idempotente: %v", err)
+		t.Fatalf("deleting twice is idempotent: %v", err)
 	}
 	if err := Delete(backupsDir, dataDir, "survival", pre); err != nil {
 		t.Fatal(err)
 	}
 	if exists(filepath.Join(root, "survival", pre)) || exists(filepath.Join(root, "survival", pre+MetaExt)) || !exists(filepath.Join(dataDir, "level.dat")) {
-		t.Fatal("solo debe borrarse el directorio pre-restore")
+		t.Fatal("only the pre-restore directory must be deleted")
 	}
 	_ = os.RemoveAll(root)
 }
@@ -165,17 +165,17 @@ func TestPrunePlan(t *testing.T) {
 	}
 	old := []Meta{m("a", TriggerScheduled, 40), m("b", TriggerScheduled, 50)}
 	if got := PrunePlan(old, 7, 0, now); !reflect.DeepEqual(got, []string{"b"}) {
-		t.Fatalf("la más reciente nunca se borra: %v", got)
+		t.Fatalf("the most recent one is never deleted: %v", got)
 	}
 }
 
 func TestTriggerConversion(t *testing.T) {
 	for _, tr := range []string{TriggerManual, TriggerScheduled, TriggerPreMigration, TriggerPreRestore} {
 		if TriggerFromProto(TriggerToProto(tr)) != tr {
-			t.Errorf("ida y vuelta de %s", tr)
+			t.Errorf("round trip of %s", tr)
 		}
 	}
 	if TriggerFromProto(mcsmv1.BackupTrigger_BACKUP_TRIGGER_UNSPECIFIED) != TriggerManual {
-		t.Fatal("UNSPECIFIED cuenta como manual")
+		t.Fatal("UNSPECIFIED counts as manual")
 	}
 }

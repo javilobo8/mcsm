@@ -2,8 +2,8 @@ package docker
 
 import "context"
 
-// Stats devuelve la lectura fijada con SetStats (cero si no se fijó ninguna).
-// Como Inspect, no se anota en Calls.
+// Stats returns the reading set with SetStats (zero if none was set).
+// Like Inspect, it is not recorded in Calls.
 func (f *Fake) Stats(_ context.Context, id string) (Stats, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -16,7 +16,7 @@ func (f *Fake) Stats(_ context.Context, id string) (Stats, error) {
 	return f.stats[id], nil
 }
 
-// SetStats fija la próxima lectura de Stats para un contenedor.
+// SetStats sets the next Stats reading for a container.
 func (f *Fake) SetStats(id string, s Stats) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

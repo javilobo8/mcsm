@@ -28,7 +28,7 @@ func TestMobyLifecycle(t *testing.T) {
 	if err := m.EnsureNetwork(ctx, netName); err != nil {
 		t.Fatal(err)
 	}
-	// Limpieza de la red de test aunque el test falle (solo la red mcsm-test-net).
+	// Cleanup of the test network even if the test fails (only the mcsm-test-net network).
 	defer func() { _, _ = m.cli.NetworkRemove(context.Background(), netName, client.NetworkRemoveOptions{}) }()
 	if err := m.EnsureImage(ctx, "alpine:3.22"); err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestMobyLifecycle(t *testing.T) {
 	line, _ := bufio.NewReader(rc).ReadString('\n')
 	rc.Close()
 	if !strings.Contains(line, "hola") || !strings.Contains(line, "T") {
-		t.Fatalf("log sin timestamp o sin contenido: %q", line)
+		t.Fatalf("log without timestamp or without content: %q", line)
 	}
 	list, _ := m.ListManaged(ctx)
 	found := false
@@ -71,7 +71,7 @@ func TestMobyLifecycle(t *testing.T) {
 		found = found || c.ID == id
 	}
 	if !found {
-		t.Fatal("ListManaged no devuelve el contenedor")
+		t.Fatal("ListManaged does not return the container")
 	}
 	if err := m.Stop(ctx, id, 5*time.Second); err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestMobyLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ins.Running {
-		t.Fatal("debería estar parado")
+		t.Fatal("should be stopped")
 	}
 	if err := m.Remove(ctx, id); err != nil {
 		t.Fatal(err)
@@ -120,7 +120,7 @@ func TestMobyEvents(t *testing.T) {
 		select {
 		case ev, ok := <-evs:
 			if !ok {
-				t.Fatal("canal de eventos cerrado antes de recibir start")
+				t.Fatal("events channel closed before receiving start")
 			}
 			if ev.Action == "start" && ev.ContainerID == id {
 				got = true
@@ -129,7 +129,7 @@ func TestMobyEvents(t *testing.T) {
 				}
 			}
 		case <-timeout:
-			t.Fatal("sin evento start")
+			t.Fatal("no start event")
 		}
 	}
 	evCancel()
@@ -140,7 +140,7 @@ func TestMobyEvents(t *testing.T) {
 				return
 			}
 		case <-time.After(10 * time.Second):
-			t.Fatal("el canal de eventos no se cerró tras cancelar")
+			t.Fatal("the events channel was not closed after cancelling")
 		}
 	}
 }

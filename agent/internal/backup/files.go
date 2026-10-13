@@ -18,12 +18,12 @@ import (
 )
 
 const (
-	// Ext es la extensión de las copias.
+	// Ext is the backups' extension.
 	Ext = ".tar.zst"
-	// MetaExt es la extensión del fichero de metadatos que acompaña a cada copia.
+	// MetaExt is the extension of the metadata file that accompanies each backup.
 	MetaExt    = ".json"
 	partialExt = ".partial"
-	// tsLayout es ISO 8601 básico en UTC con milisegundos (sin `:`: nombre portable).
+	// tsLayout is basic ISO 8601 in UTC with milliseconds (without `:`: portable name).
 	tsLayout        = "20060102T150405.000Z"
 	preRestoreInfix = ".pre-restore-"
 	restoringInfix  = ".restoring-"
@@ -39,8 +39,8 @@ var (
 	tsRe       = regexp.MustCompile(`^\d{8}T\d{6}\.\d{3}Z$`)
 )
 
-// Meta son los metadatos de una copia: el .json junto al .tar.zst (y junto a cada
-// directorio pre-restore).
+// Meta is a backup's metadata: the .json next to the .tar.zst (and next to each
+// pre-restore directory).
 type Meta struct {
 	Filename    string    `json:"filename"`
 	ServerID    string    `json:"serverId"`
@@ -53,31 +53,31 @@ type Meta struct {
 	FinishedAt  time.Time `json:"finishedAt"`
 	Excludes    []string  `json:"excludes,omitempty"`
 	Files       int       `json:"files,omitempty"`
-	DataBytes   int64     `json:"dataBytes,omitempty"` // contenido sin comprimir: lo que ocupará al restaurarse
+	DataBytes   int64     `json:"dataBytes,omitempty"` // uncompressed content: what it will take when restored
 }
 
-// Dir es el directorio de copias de un servidor: <dataRoot>/<slug>/backups.
+// Dir is a server's backups directory: <dataRoot>/<slug>/backups.
 func Dir(dataRoot, slug string) string { return filepath.Join(dataRoot, slug, "backups") }
 
-// Filename es <slug>-<YYYYMMDDTHHMMSS.mmmZ>-<spec_version>.tar.zst (spec §6.5).
+// Filename is <slug>-<YYYYMMDDTHHMMSS.mmmZ>-<spec_version>.tar.zst (spec §6.5).
 func Filename(slug string, t time.Time, specVersion uint64) string {
 	return fmt.Sprintf("%s-%s-%d%s", slug, t.UTC().Format(tsLayout), specVersion, Ext)
 }
 
-// ValidName indica si name es una copia .tar.zst de ese slug. Un nombre válido nunca
-// contiene `/` ni `..`.
+// ValidName reports whether name is a .tar.zst backup of that slug. A valid name never
+// contains `/` or `..`.
 func ValidName(slug, name string) bool {
 	rest, ok := strings.CutPrefix(name, slug+"-")
 	return ok && spec.ValidSlug(slug) && nameTailRe.MatchString(rest)
 }
 
-// PreRestoreName es el nombre del directorio donde se conservan los datos previos a una
-// restauración, junto a dataDir: p. ej. data.pre-restore-20261012T040000.000Z.
+// PreRestoreName is the name of the directory where the data prior to a restore is
+// kept, next to dataDir: e.g. data.pre-restore-20261012T040000.000Z.
 func PreRestoreName(dataDir string, t time.Time) string {
 	return filepath.Base(dataDir) + preRestoreInfix + t.UTC().Format(tsLayout)
 }
 
-// ValidPreRestoreName indica si name es un directorio pre-restore de dataDir.
+// ValidPreRestoreName reports whether name is a pre-restore directory of dataDir.
 func ValidPreRestoreName(dataDir, name string) bool {
 	rest, ok := strings.CutPrefix(name, filepath.Base(dataDir)+preRestoreInfix)
 	return ok && tsRe.MatchString(rest)
@@ -103,13 +103,13 @@ func parseName(slug, name string) (time.Time, uint64, bool) {
 	return ts, v, true
 }
 
-// WriteMeta escribe <dir>/<m.Filename>.json de forma atómica.
+// WriteMeta writes <dir>/<m.Filename>.json atomically.
 func WriteMeta(dir string, m Meta) error {
 	return writeJSON(filepath.Join(dir, m.Filename+MetaExt), m)
 }
 
-// writeJSON escribe p de forma atómica y duradera: fichero temporal, fsync y rename (el
-// llamante sincroniza el directorio).
+// writeJSON writes p atomically and durably: temporary file, fsync and rename (the
+// caller syncs the directory).
 func writeJSON(p string, v any) (err error) {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -145,15 +145,15 @@ func ReadMeta(dir, name string) (Meta, error) {
 	}
 	var m Meta
 	if err := json.Unmarshal(b, &m); err != nil {
-		return Meta{}, fmt.Errorf("metadatos ilegibles de %s: %w", name, err)
+		return Meta{}, fmt.Errorf("unreadable metadata of %s: %w", name, err)
 	}
 	m.Filename = name
 	return m, nil
 }
 
-// List devuelve las copias .tar.zst de un servidor, las más recientes primero. Una copia
-// sin .json (o con uno ilegible) se lista con lo que se deduce del nombre. Ignora los
-// .partial (copias en curso o abortadas). Un directorio inexistente es una lista vacía.
+// List returns a server's .tar.zst backups, most recent first. A backup
+// without a .json (or with an unreadable one) is listed with what is deduced from the name. It ignores
+// .partial files (backups in progress or aborted). A nonexistent directory is an empty list.
 func List(backupsDir, slug string) ([]Meta, error) {
 	ents, err := os.ReadDir(backupsDir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -182,7 +182,7 @@ func List(backupsDir, slug string) ([]Meta, error) {
 	return out, nil
 }
 
-// ListPreRestore devuelve los directorios pre-restore que hay junto a dataDir.
+// ListPreRestore returns the pre-restore directories next to dataDir.
 func ListPreRestore(dataDir string) ([]Meta, error) {
 	parent := filepath.Dir(dataDir)
 	ents, err := os.ReadDir(parent)
@@ -210,8 +210,8 @@ func ListPreRestore(dataDir string) ([]Meta, error) {
 	return out, nil
 }
 
-// Delete borra una copia (.tar.zst y su .json) o un directorio pre-restore de dataDir.
-// El nombre se valida antes de tocar nada; que ya no exista no es un error.
+// Delete deletes a backup (.tar.zst and its .json) or a pre-restore directory of dataDir.
+// The name is validated before touching anything; that it no longer exists is not an error.
 func Delete(backupsDir, dataDir, slug, name string) error {
 	switch {
 	case ValidName(slug, name):
@@ -219,11 +219,11 @@ func Delete(backupsDir, dataDir, slug, name string) error {
 	case ValidPreRestoreName(dataDir, name):
 		return removeIn(filepath.Dir(dataDir), name, true)
 	default:
-		return fmt.Errorf("nombre de copia inválido %q", name)
+		return fmt.Errorf("invalid backup name %q", name)
 	}
 }
 
-// removeIn borra name (y su .json) dentro de dir sin poder salir de él (os.Root).
+// removeIn deletes name (and its .json) inside dir without being able to leave it (os.Root).
 func removeIn(dir, name string, recursive bool) error {
 	root, err := os.OpenRoot(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -247,9 +247,9 @@ func removeIn(dir, name string, recursive bool) error {
 	return nil
 }
 
-// PrunePlan devuelve las copias a borrar según la retención. Solo cuentan las programadas
-// (las manuales, pre_migration y pre_restore se borran a mano); la más reciente nunca se
-// borra; 0 = sin límite.
+// PrunePlan returns the backups to delete according to the retention. Only scheduled ones
+// count (manual, pre_migration and pre_restore ones are deleted by hand); the most recent one is never
+// deleted; 0 = no limit.
 func PrunePlan(metas []Meta, keepDays, keepCount int, now time.Time) []string {
 	var sched []Meta
 	for _, m := range metas {
@@ -281,7 +281,7 @@ func sortNewest(ms []Meta) {
 	})
 }
 
-// Info convierte los metadatos al mensaje del protocolo.
+// Info converts the metadata to the protocol message.
 func (m Meta) Info(serverID string) *mcsmv1.BackupInfo {
 	info := &mcsmv1.BackupInfo{
 		ServerId: serverID, Filename: m.Filename, Sha256: m.SHA256, SpecVersion: m.SpecVersion,
@@ -299,7 +299,7 @@ func (m Meta) Info(serverID string) *mcsmv1.BackupInfo {
 	return info
 }
 
-// TriggerToProto convierte el trigger del .json al enum del protocolo.
+// TriggerToProto converts the .json's trigger to the protocol enum.
 func TriggerToProto(t string) mcsmv1.BackupTrigger {
 	switch t {
 	case TriggerScheduled:
@@ -313,7 +313,7 @@ func TriggerToProto(t string) mcsmv1.BackupTrigger {
 	}
 }
 
-// TriggerFromProto es la inversa; UNSPECIFIED cuenta como manual.
+// TriggerFromProto is the inverse; UNSPECIFIED counts as manual.
 func TriggerFromProto(t mcsmv1.BackupTrigger) string {
 	switch t {
 	case mcsmv1.BackupTrigger_BACKUP_TRIGGER_SCHEDULED:

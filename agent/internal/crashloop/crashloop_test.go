@@ -24,13 +24,13 @@ func TestTrackerTripsOnFourthCrashWithinAnHour(t *testing.T) {
 		c.t = c.t.Add(10 * time.Minute)
 	}
 	if n, tripped := tr.Record("a"); n != MaxCrashes+1 || !tripped {
-		t.Fatalf("el cuarto en una hora dispara: n=%d tripped=%v", n, tripped)
+		t.Fatalf("the fourth within an hour trips: n=%d tripped=%v", n, tripped)
 	}
 	if n, tripped := tr.Record("a"); n != 1 || tripped {
-		t.Fatalf("tras disparar la cuenta empieza de cero: n=%d tripped=%v", n, tripped)
+		t.Fatalf("after tripping the count starts from zero: n=%d tripped=%v", n, tripped)
 	}
 	if n, _ := tr.Record("b"); n != 1 {
-		t.Fatal("cada servidor cuenta aparte")
+		t.Fatal("each server counts separately")
 	}
 }
 
@@ -41,13 +41,13 @@ func TestTrackerForgetsCrashesOlderThanTheWindow(t *testing.T) {
 		tr.Record("a")
 		c.t = c.t.Add(25 * time.Minute) // 0, 25, 50 min
 	}
-	// 75 min: el de 0 min ya no cuenta → 3 en la ventana, no dispara.
+	// 75 min: the one at 0 min no longer counts → 3 in the window, does not trip.
 	if n, tripped := tr.Record("a"); n != MaxCrashes || tripped {
 		t.Fatalf("n=%d tripped=%v", n, tripped)
 	}
 	tr.Reset("a")
 	if n, _ := tr.Record("a"); n != 1 {
-		t.Fatal("Reset olvida los crashes")
+		t.Fatal("Reset forgets the crashes")
 	}
 }
 
@@ -55,15 +55,15 @@ func TestIntentsAbsorbOneDiePerRequestedStop(t *testing.T) {
 	c := &clock{t: time.Unix(1_000_000, 0)}
 	in := NewIntents(c.now)
 	if in.Consume("c1") {
-		t.Fatal("sin parada pedida")
+		t.Fatal("no requested stop")
 	}
 	in.Note("c1")
-	in.Note("") // ignorado
+	in.Note("") // ignored
 	if !in.Consume("c1") {
-		t.Fatal("el die de la parada pedida no es un crash")
+		t.Fatal("the die of the requested stop is not a crash")
 	}
 	if in.Consume("c1") {
-		t.Fatal("el segundo die del mismo contenedor ya cuenta: cada parada absorbe uno solo")
+		t.Fatal("the second die of the same container does count: each stop absorbs only one")
 	}
 }
 
@@ -71,19 +71,19 @@ func TestIntentsTwoStopsAbsorbTwoDies(t *testing.T) {
 	c := &clock{t: time.Unix(1_000_000, 0)}
 	in := NewIntents(c.now)
 	in.Note("c1")
-	in.Note("c2") // otro contenedor: no se mezcla
+	in.Note("c2") // another container: not mixed up
 	c.t = c.t.Add(time.Minute)
 	in.Note("c1")
 	for i := 0; i < 2; i++ {
 		if !in.Consume("c1") {
-			t.Fatalf("die %d: dos paradas absorben dos", i+1)
+			t.Fatalf("die %d: two stops absorb two", i+1)
 		}
 	}
 	if in.Consume("c1") {
-		t.Fatal("el tercero ya cuenta")
+		t.Fatal("the third one does count")
 	}
 	if !in.Consume("c2") {
-		t.Fatal("la parada de c2 sigue anotada")
+		t.Fatal("c2's stop is still recorded")
 	}
 }
 
@@ -93,17 +93,17 @@ func TestIntentsExpireAfterTTL(t *testing.T) {
 	in.Note("c1")
 	c.t = c.t.Add(IntentTTL)
 	if !in.Consume("c1") {
-		t.Fatal("dentro del plazo cuenta como pedida")
+		t.Fatal("within the deadline it counts as requested")
 	}
 	in.Note("c1")
 	c.t = c.t.Add(IntentTTL + time.Second)
 	if in.Consume("c1") {
-		t.Fatal("pasado el plazo ya no")
+		t.Fatal("past the deadline it no longer does")
 	}
-	// Una anotación caducada no se queda: una nueva vale y es la única.
+	// An expired note does not linger: a new one works and is the only one.
 	in.Note("c1")
 	if !in.Consume("c1") || in.Consume("c1") {
-		t.Fatal("solo la anotación vigente absorbe un die")
+		t.Fatal("only the current note absorbs a die")
 	}
 }
 
@@ -134,10 +134,10 @@ func TestEngineNotesStopKillAndRemove(t *testing.T) {
 	}
 	for _, id := range []string{a, b, c} {
 		if !in.Consume(id) {
-			t.Fatalf("%s: la parada pedida debe quedar anotada", id)
+			t.Fatalf("%s: the requested stop must be recorded", id)
 		}
 	}
-	// Lo demás pasa tal cual al motor de debajo.
+	// Everything else passes unchanged to the engine underneath.
 	if v, _ := eng.Version(ctx); v != "fake-29.0" {
 		t.Fatalf("version = %q", v)
 	}

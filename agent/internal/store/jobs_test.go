@@ -10,13 +10,13 @@ import (
 func TestJobs(t *testing.T) {
 	s := open(t)
 	if j, err := s.GetJob("nope"); err != nil || j != nil {
-		t.Fatalf("GetJob sin bucket = %v, %v", j, err)
+		t.Fatalf("GetJob without bucket = %v, %v", j, err)
 	}
 	if list, err := s.ListJobs(); err != nil || len(list) != 0 {
-		t.Fatalf("ListJobs sin bucket = %v, %v", list, err)
+		t.Fatalf("ListJobs without bucket = %v, %v", list, err)
 	}
 	if err := s.PutJob(&mcsmv1.JobRecord{}); err == nil {
-		t.Fatal("un job sin id debe rechazarse")
+		t.Fatal("a job without id must be rejected")
 	}
 	now := time.Date(2026, 10, 12, 4, 0, 0, 0, time.UTC)
 	old := &mcsmv1.JobRecord{JobId: "old", Type: "backup", Status: mcsmv1.JobStatus_JOB_STATUS_OK, FinishedUnixMs: now.Add(-8 * 24 * time.Hour).UnixMilli()}
@@ -39,16 +39,16 @@ func TestJobs(t *testing.T) {
 		t.Fatalf("PruneJobs = %d, %v", n, err)
 	}
 	if j, _ := s.GetJob("old"); j != nil {
-		t.Fatal("el job antiguo debe borrarse")
+		t.Fatal("the old job must be deleted")
 	}
 	if j, _ := s.GetJob("running"); j == nil {
-		t.Fatal("un job en curso nunca se poda")
+		t.Fatal("a running job is never pruned")
 	}
 	noEnd := &mcsmv1.JobRecord{JobId: "noend", Type: "backup", Status: mcsmv1.JobStatus_JOB_STATUS_OK, StartedUnixMs: now.Add(-9 * 24 * time.Hour).UnixMilli()}
 	if err := s.PutJob(noEnd); err != nil {
 		t.Fatal(err)
 	}
 	if n, err := s.PruneJobs(now.Add(-7 * 24 * time.Hour)); err != nil || n != 1 {
-		t.Fatalf("PruneJobs sin hora de fin = %d, %v", n, err)
+		t.Fatalf("PruneJobs without end time = %d, %v", n, err)
 	}
 }

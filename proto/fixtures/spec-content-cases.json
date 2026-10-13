@@ -1,6 +1,6 @@
 [
  {
-  "name": "modpack de Modrinth con type MODRINTH",
+  "name": "Modrinth modpack with type MODRINTH",
   "ok": true,
   "merge": {
    "type": "MODRINTH",
@@ -11,7 +11,7 @@
   }
  },
  {
-  "name": "modpack con type PAPER",
+  "name": "modpack with type PAPER",
   "ok": false,
   "merge": {
    "modpack": {
@@ -21,14 +21,14 @@
   }
  },
  {
-  "name": "type MODRINTH sin modpack",
+  "name": "type MODRINTH without modpack",
   "ok": false,
   "merge": {
    "type": "MODRINTH"
   }
  },
  {
-  "name": "type AUTO_CURSEFORGE con modpack de Modrinth",
+  "name": "type AUTO_CURSEFORGE with a Modrinth modpack",
   "ok": false,
   "merge": {
    "type": "AUTO_CURSEFORGE",
@@ -39,7 +39,7 @@
   }
  },
  {
-  "name": "plataforma de modpack desconocida",
+  "name": "unknown modpack platform",
   "ok": false,
   "merge": {
    "type": "CURSEFORGE",
@@ -50,7 +50,7 @@
   }
  },
  {
-  "name": "slugOrUrl vacío",
+  "name": "empty slugOrUrl",
   "ok": false,
   "merge": {
    "type": "MODRINTH",
@@ -61,7 +61,7 @@
   }
  },
  {
-  "name": "slugOrUrl con espacio",
+  "name": "slugOrUrl with a space",
   "ok": false,
   "merge": {
    "type": "MODRINTH",
@@ -72,7 +72,7 @@
   }
  },
  {
-  "name": "loader neoforge en Modrinth",
+  "name": "neoforge loader on Modrinth",
   "ok": true,
   "merge": {
    "type": "MODRINTH",
@@ -85,7 +85,7 @@
   }
  },
  {
-  "name": "loader desconocido en Modrinth",
+  "name": "unknown loader on Modrinth",
   "ok": false,
   "merge": {
    "type": "MODRINTH",
@@ -97,7 +97,7 @@
   }
  },
  {
-  "name": "loader en un modpack de CurseForge",
+  "name": "loader in a CurseForge modpack",
   "ok": false,
   "merge": {
    "type": "AUTO_CURSEFORGE",
@@ -109,7 +109,7 @@
   }
  },
  {
-  "name": "CurseForge por URL con fileId numérico",
+  "name": "CurseForge by URL with numeric fileId",
   "ok": true,
   "merge": {
    "type": "AUTO_CURSEFORGE",
@@ -121,7 +121,7 @@
   }
  },
  {
-  "name": "CurseForge con fileId no numérico",
+  "name": "CurseForge with non-numeric fileId",
   "ok": false,
   "merge": {
    "type": "AUTO_CURSEFORGE",
@@ -133,7 +133,7 @@
   }
  },
  {
-  "name": "FTBA con ids numéricos",
+  "name": "FTBA with numeric ids",
   "ok": true,
   "merge": {
    "type": "FTBA",
@@ -145,7 +145,7 @@
   }
  },
  {
-  "name": "FTBA con slug en vez de id",
+  "name": "FTBA with a slug instead of an id",
   "ok": false,
   "merge": {
    "type": "FTBA",
@@ -156,7 +156,7 @@
   }
  },
  {
-  "name": "mods válidos",
+  "name": "valid mods",
   "ok": true,
   "merge": {
    "mods": {
@@ -175,14 +175,14 @@
   }
  },
  {
-  "name": "mods vacío",
+  "name": "empty mods",
   "ok": true,
   "merge": {
    "mods": {}
   }
  },
  {
-  "name": "proyecto de Modrinth con coma",
+  "name": "Modrinth project with a comma",
   "ok": false,
   "merge": {
    "mods": {
@@ -193,7 +193,7 @@
   }
  },
  {
-  "name": "proyecto de Modrinth con espacio",
+  "name": "Modrinth project with a space",
   "ok": false,
   "merge": {
    "mods": {
@@ -204,7 +204,7 @@
   }
  },
  {
-  "name": "proyecto de Modrinth vacío",
+  "name": "empty Modrinth project",
   "ok": false,
   "merge": {
    "mods": {
@@ -215,7 +215,7 @@
   }
  },
  {
-  "name": "URL de mod que no es http",
+  "name": "mod URL that is not http",
   "ok": false,
   "merge": {
    "mods": {
@@ -226,7 +226,7 @@
   }
  },
  {
-  "name": "URL de plugin con espacio no ASCII",
+  "name": "plugin URL with a non-ASCII space",
   "ok": false,
   "merge": {
    "plugins": {
@@ -237,7 +237,7 @@
   }
  },
  {
-  "name": "recursos de Spiget numéricos",
+  "name": "numeric Spiget resources",
   "ok": true,
   "merge": {
    "plugins": {
@@ -252,7 +252,7 @@
   }
  },
  {
-  "name": "recurso de Spiget no numérico",
+  "name": "non-numeric Spiget resource",
   "ok": false,
   "merge": {
    "plugins": {
@@ -263,7 +263,7 @@
   }
  },
  {
-  "name": "whitelist con nombre y UUID",
+  "name": "whitelist with name and UUID",
   "ok": true,
   "merge": {
    "whitelist": {
@@ -276,7 +276,7 @@
   }
  },
  {
-  "name": "whitelist sin enabled (vale false)",
+  "name": "whitelist without enabled (defaults to false)",
   "ok": true,
   "merge": {
    "whitelist": {
@@ -287,7 +287,7 @@
   }
  },
  {
-  "name": "whitelist desactivada con jugadores",
+  "name": "disabled whitelist with players",
   "ok": true,
   "merge": {
    "whitelist": {
@@ -299,7 +299,7 @@
   }
  },
  {
-  "name": "jugador con espacio",
+  "name": "player with a space",
   "ok": false,
   "merge": {
    "whitelist": {
@@ -311,7 +311,7 @@
   }
  },
  {
-  "name": "jugador de 17 caracteres",
+  "name": "17-character player",
   "ok": false,
   "merge": {
    "whitelist": {
@@ -323,7 +323,7 @@
   }
  },
  {
-  "name": "ops válidos",
+  "name": "valid ops",
   "ok": true,
   "merge": {
    "ops": [
@@ -333,7 +333,7 @@
   }
  },
  {
-  "name": "op con coma",
+  "name": "op with a comma",
   "ok": false,
   "merge": {
    "ops": [
@@ -342,7 +342,7 @@
   }
  },
  {
-  "name": "sección whitelist y propiedad white-list a la vez",
+  "name": "whitelist section and white-list property at the same time",
   "ok": false,
   "merge": {
    "whitelist": {
@@ -355,7 +355,7 @@
   }
  },
  {
-  "name": "sección whitelist y propiedad enforce-whitelist a la vez",
+  "name": "whitelist section and enforce-whitelist property at the same time",
   "ok": false,
   "merge": {
    "whitelist": {
@@ -368,7 +368,7 @@
   }
  },
  {
-  "name": "propiedad white-list sin sección whitelist (compatibilidad)",
+  "name": "white-list property without whitelist section (compatibility)",
   "ok": true,
   "merge": {
    "properties": {
@@ -377,7 +377,7 @@
   }
  },
  {
-  "name": "CF_API_KEY en env libre",
+  "name": "CF_API_KEY in the free-form env",
   "ok": false,
   "merge": {
    "env": {
@@ -386,14 +386,14 @@
   }
  },
  {
-  "name": "ops presente y vacío (sincroniza)",
+  "name": "ops present and empty (synchronizes)",
   "ok": true,
   "merge": {
    "ops": []
   }
  },
  {
-  "name": "whitelist activada con lista vacía",
+  "name": "whitelist enabled with an empty list",
   "ok": true,
   "merge": {
    "whitelist": {
@@ -403,7 +403,7 @@
   }
  },
  {
-  "name": "env OPS con la sección ops",
+  "name": "env OPS with the ops section",
   "ok": false,
   "merge": {
    "ops": [
@@ -415,7 +415,7 @@
   }
  },
  {
-  "name": "env OPS_FILE con la sección ops vacía",
+  "name": "env OPS_FILE with the empty ops section",
   "ok": false,
   "merge": {
    "ops": [],
@@ -425,7 +425,7 @@
   }
  },
  {
-  "name": "env OPS sin sección ops (compatibilidad)",
+  "name": "env OPS without ops section (compatibility)",
   "ok": true,
   "merge": {
    "env": {
@@ -434,7 +434,7 @@
   }
  },
  {
-  "name": "env EXISTING_OPS_FILE=MERGE con la sección ops",
+  "name": "env EXISTING_OPS_FILE=MERGE with the ops section",
   "ok": true,
   "merge": {
    "ops": [
@@ -446,7 +446,7 @@
   }
  },
  {
-  "name": "env ENABLE_WHITELIST con la sección whitelist",
+  "name": "env ENABLE_WHITELIST with the whitelist section",
   "ok": false,
   "merge": {
    "whitelist": {
@@ -461,7 +461,7 @@
   }
  },
  {
-  "name": "env WHITELIST con la sección whitelist desactivada",
+  "name": "env WHITELIST with the whitelist section disabled",
   "ok": false,
   "merge": {
    "whitelist": {
@@ -473,7 +473,7 @@
   }
  },
  {
-  "name": "env WHITELIST_FILE con la sección whitelist",
+  "name": "env WHITELIST_FILE with the whitelist section",
   "ok": false,
   "merge": {
    "whitelist": {
@@ -488,7 +488,7 @@
   }
  },
  {
-  "name": "env WHITELIST sin sección whitelist (compatibilidad)",
+  "name": "env WHITELIST without whitelist section (compatibility)",
   "ok": true,
   "merge": {
    "env": {
@@ -498,7 +498,7 @@
   }
  },
  {
-  "name": "env EXISTING_WHITELIST_FILE=MERGE con la sección whitelist",
+  "name": "env EXISTING_WHITELIST_FILE=MERGE with the whitelist section",
   "ok": true,
   "merge": {
    "whitelist": {
@@ -513,7 +513,7 @@
   }
  },
  {
-  "name": "env OPS con la sección whitelist (no choca)",
+  "name": "env OPS with the whitelist section (no clash)",
   "ok": true,
   "merge": {
    "whitelist": {
@@ -538,7 +538,7 @@
   }
  },
  {
-  "name": "level-name con barra",
+  "name": "level-name with a slash",
   "ok": false,
   "merge": {
    "properties": {
@@ -548,7 +548,7 @@
   }
  },
  {
-  "name": "level-name con barra invertida",
+  "name": "level-name with a backslash",
   "ok": false,
   "merge": {
    "properties": {
@@ -558,7 +558,7 @@
   }
  },
  {
-  "name": "level-name que sube de carpeta",
+  "name": "level-name that goes up a folder",
   "ok": false,
   "merge": {
    "properties": {
@@ -568,7 +568,7 @@
   }
  },
  {
-  "name": "level-name con .. dentro",
+  "name": "level-name with .. inside",
   "ok": false,
   "merge": {
    "properties": {

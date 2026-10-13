@@ -14,13 +14,13 @@ func TestRouterSpecRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sp, err := st.RouterSpec(); err != nil || sp != nil {
-		t.Fatalf("sin router: %v %v", sp, err)
+		t.Fatalf("without router: %v %v", sp, err)
 	}
 	if err := st.DeleteRouterSpec(); err != nil {
-		t.Fatalf("borrar sin bucket es idempotente: %v", err)
+		t.Fatalf("deleting without a bucket is idempotent: %v", err)
 	}
 	if err := st.PutRouterSpec(nil); err == nil {
-		t.Fatal("una spec nil no se guarda")
+		t.Fatal("a nil spec is not stored")
 	}
 	if err := st.PutRouterSpec(&mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleDownAfterMinutes: 15}); err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestRouterSpecRoundTrip(t *testing.T) {
 	}
 	st.Close()
 
-	// Sobrevive a un reinicio del agente.
+	// It survives an agent restart.
 	st, err = Open(path)
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +44,6 @@ func TestRouterSpecRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sp, _ := st.RouterSpec(); sp != nil {
-		t.Fatalf("tras borrar: %v", sp)
+		t.Fatalf("after deleting: %v", sp)
 	}
 }

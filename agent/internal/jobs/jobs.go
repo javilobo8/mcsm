@@ -1,10 +1,10 @@
-// Package jobs registra los jobs largos del agente (backup, restore): los persiste en el
-// store para responder a un job_id repetido sin repetir el trabajo (spec §5.4) y emite
-// JobProgress al panel.
+// Package jobs records the agent's long jobs (backup, restore): it persists them in the
+// store so a repeated job_id can be answered without repeating the work (spec §5.4) and emits
+// JobProgress to the panel.
 //
-// Limitación conocida del log: las líneas que caen dentro de la ventana LogEvery tras un
-// volcado solo se guardan y envían con la siguiente línea, Progress o Done (no hay volcado
-// diferido por temporizador). El log completo siempre queda guardado en Done.
+// Known log limitation: lines that fall within the LogEvery window after a
+// flush are only saved and sent with the next line, Progress or Done (there is no
+// timer-deferred flush). The full log is always saved on Done.
 package jobs
 
 import (
@@ -27,26 +27,26 @@ const (
 	TypeBackup  = "backup"
 	TypeRestore = "restore"
 
-	// MaxLog es el log que se guarda por job (se conserva el final).
+	// MaxLog is the log kept per job (the end is preserved).
 	MaxLog = 64 << 10
-	// KeepFor es cuánto se recuerdan los jobs terminados.
+	// KeepFor is how long finished jobs are remembered.
 	KeepFor = 7 * 24 * time.Hour
-	// progressStep: un avance menor no se emite (no inundar el WS con ficheros pequeños).
+	// progressStep: a smaller advance is not emitted (do not flood the WS with small files).
 	progressStep = 5
-	// inventoryJobs e inventoryLog acotan el tamaño del inventario que se envía al panel.
+	// inventoryJobs and inventoryLog bound the size of the inventory sent to the panel.
 	inventoryJobs = 200
 	inventoryLog  = 4 << 10
 
-	// MaxMessage acota el mensaje de estado de un job.
+	// MaxMessage bounds a job's status message.
 	MaxMessage = 1024
-	// LogEvery es el intervalo mínimo entre volcados (guardar + enviar) del log de un job.
+	// LogEvery is the minimum interval between flushes (save + send) of a job's log.
 	LogEvery = time.Second
 
 	putAttempts  = 3
 	putRetryWait = 200 * time.Millisecond
 )
 
-// Store es la parte del store del agente que usan los jobs.
+// Store is the part of the agent's store that jobs use.
 type Store interface {
 	PutJob(*mcsmv1.JobRecord) error
 	GetJob(id string) (*mcsmv1.JobRecord, error)
@@ -54,23 +54,23 @@ type Store interface {
 	PruneJobs(before time.Time) (int, error)
 }
 
-// Tracker crea y sigue jobs.
+// Tracker creates and follows jobs.
 type Tracker struct {
 	st   Store
 	send func(*mcsmv1.Envelope) error
 	now  func() time.Time
 	log  *slog.Logger
-	// sleep es la espera entre reintentos de guardado (inyectable en tests).
+	// sleep is the wait between save retries (injectable in tests).
 	sleep func(time.Duration)
-	mu    sync.Mutex // serializa Begin: dos duplicados simultáneos no arrancan dos ejecuciones
+	mu    sync.Mutex // serializes Begin: two simultaneous duplicates do not start two executions
 }
 
-// New crea un Tracker. send debe tolerar estar desconectado (devuelve error y se ignora).
+// New creates a Tracker. send must tolerate being disconnected (it returns an error and it is ignored).
 func New(st Store, send func(*mcsmv1.Envelope) error, now func() time.Time) *Tracker {
 	return &Tracker{st: st, send: send, now: now, sleep: time.Sleep, log: slog.Default().With("component", "jobs")}
 }
 
-// NewID genera un id (UUID v4) para los jobs que inicia el propio agente (copias programadas).
+// NewID generates an id (UUID v4) for the jobs the agent itself starts (scheduled backups).
 func NewID() string {
 	var b [16]byte
 	_, _ = rand.Read(b[:])
@@ -79,11 +79,11 @@ func NewID() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// Begin registra un job nuevo en RUNNING y lo anuncia. Si el id ya existe devuelve
-// (nil, registro guardado, nil): el llamante NO debe ejecutarlo otra vez.
+// Begin registers a new job as RUNNING and announces it. If the id already exists it returns
+// (nil, stored record, nil): the caller must NOT run it again.
 func (t *Tracker) Begin(id, serverID, typ string) (*Job, *mcsmv1.JobRecord, error) {
 	if id == "" || serverID == "" || typ == "" {
-		return nil, nil, errors.New("job sin id, servidor o tipo")
+		return nil, nil, errors.New("job without id, server or type")
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -106,14 +106,14 @@ func (t *Tracker) Begin(id, serverID, typ string) (*Job, *mcsmv1.JobRecord, erro
 	return j, nil, nil
 }
 
-// Replay reenvía al panel el estado guardado de un job (respuesta a un job_id repetido).
+// Replay resends a job's stored state to the panel (reply to a repeated job_id).
 func (t *Tracker) Replay(rec *mcsmv1.JobRecord) {
 	_ = t.send(progressEnv(rec, "", t.now()))
 }
 
-// FailInterrupted marca FAILED los jobs que quedaron RUNNING (el agente se reinició a mitad)
-// y olvida los terminados hace más de KeepFor. Llamar solo al arrancar, antes de aceptar
-// jobs (no toma t.mu).
+// FailInterrupted marks as FAILED the jobs that were left RUNNING (the agent restarted midway)
+// and forgets those finished more than KeepFor ago. Call only at startup, before accepting
+// jobs (it does not take t.mu).
 func (t *Tracker) FailInterrupted() error {
 	if _, err := t.st.PruneJobs(t.now().Add(-KeepFor)); err != nil {
 		return err
@@ -127,7 +127,7 @@ func (t *Tracker) FailInterrupted() error {
 			continue
 		}
 		rec.Status = mcsmv1.JobStatus_JOB_STATUS_FAILED
-		rec.Message = "interrumpido: el agente se reinició durante el job"
+		rec.Message = "interrupted: the agent restarted during the job"
 		rec.FinishedUnixMs = t.now().UnixMilli()
 		if err := t.st.PutJob(rec); err != nil {
 			return err
@@ -136,9 +136,9 @@ func (t *Tracker) FailInterrupted() error {
 	return nil
 }
 
-// Inventory devuelve los jobs recientes para el panel (los más nuevos primero, como mucho
-// 200 más los RUNNING que no quepan, y con el log recortado a 4 KiB) tras olvidar los terminados hace más de KeepFor.
-// serverID vacío = todos.
+// Inventory returns the recent jobs for the panel (newest first, at most
+// 200 plus any RUNNING ones that do not fit, and with the log trimmed to 4 KiB) after forgetting those finished more than KeepFor ago.
+// Empty serverID = all.
 func (t *Tracker) Inventory(serverID string) ([]*mcsmv1.JobRecord, error) {
 	if _, err := t.st.PruneJobs(t.now().Add(-KeepFor)); err != nil {
 		return nil, err
@@ -155,8 +155,8 @@ func (t *Tracker) Inventory(serverID string) ([]*mcsmv1.JobRecord, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].StartedUnixMs > out[j].StartedUnixMs })
 	if len(out) > inventoryJobs {
-		// Los RUNNING entran siempre (el panel daría por perdido uno que sigue en marcha); el
-		// resto, los más recientes hasta completar inventoryJobs. Se conserva el orden.
+		// RUNNING ones always go in (the panel would consider a still-running one lost); the
+		// rest, the most recent until inventoryJobs is reached. Order is preserved.
 		running := 0
 		for _, r := range out {
 			if r.Status == mcsmv1.JobStatus_JOB_STATUS_RUNNING {
@@ -181,12 +181,12 @@ func (t *Tracker) Inventory(serverID string) ([]*mcsmv1.JobRecord, error) {
 	return out, nil
 }
 
-// Job es un job en curso. Sus métodos son seguros para uso concurrente. Nunca se llama a
-// send con el lock tomado: un envío lento no bloquea Record ni los demás métodos.
+// Job is a job in progress. Its methods are safe for concurrent use. send is never called
+// with the lock held: a slow send does not block Record or the other methods.
 //
-// Orden de locks fijo: sendMu -> mu. sendMu serializa guardar+enviar por job, de modo que los
-// avisos salen en el orden en que se producen y tras el terminal no sale ninguno (los métodos
-// ven j.done y vuelven antes de emitir).
+// Fixed lock order: sendMu -> mu. sendMu serializes save+send per job, so that
+// notifications go out in the order they are produced and none goes out after the terminal one
+// (the methods see j.done and return before emitting).
 type Job struct {
 	t        *Tracker
 	sendMu   sync.Mutex
@@ -194,15 +194,15 @@ type Job struct {
 	rec      *mcsmv1.JobRecord
 	lastSent uint32
 	done     bool
-	pending  string    // líneas de log aún sin enviar al panel
-	lastLog  time.Time // último volcado del log (cero = ninguno todavía)
+	pending  string    // log lines not yet sent to the panel
+	lastLog  time.Time // last log flush (zero = none yet)
 }
 
-// ID devuelve el id del job (no cambia).
+// ID returns the job's id (it does not change).
 func (j *Job) ID() string { return j.rec.JobId }
 
-// Progress actualiza el avance (0-99: el 100 lo pone Done). Solo se guarda y se emite si
-// cambia el mensaje o el avance sube al menos 5 puntos. El avance nunca retrocede.
+// Progress updates the progress (0-99: Done sets 100). It is only saved and emitted if
+// the message changes or the progress rises at least 5 points. Progress never goes backwards.
 func (j *Job) Progress(pct uint32, msg string) {
 	if pct > 99 {
 		pct = 99
@@ -230,9 +230,9 @@ func (j *Job) Progress(pct uint32, msg string) {
 	_ = j.t.send(env)
 }
 
-// Log añade una línea al log del job. Se acumula en memoria y se guarda y envía (como un
-// único log_chunk con las líneas pendientes) la primera vez y luego como mucho cada LogEvery;
-// Done vuelca siempre lo que quede.
+// Log adds a line to the job's log. It accumulates in memory and is saved and sent (as a
+// single log_chunk with the pending lines) the first time and then at most every LogEvery;
+// Done always flushes whatever remains.
 func (j *Job) Log(line string) {
 	chunk := clean(strings.TrimRight(line, "\n")) + "\n"
 	j.sendMu.Lock()
@@ -256,9 +256,9 @@ func (j *Job) Log(line string) {
 	_ = j.t.send(env)
 }
 
-// Done cierra el job: OK con okMsg si err es nil, FAILED con el error si no. Idempotente.
-// El estado en memoria queda final aunque falle el guardado; si tras reintentar sigue
-// fallando devuelve el error (el llamante debe registrarlo): en disco quedaría RUNNING.
+// Done closes the job: OK with okMsg if err is nil, FAILED with the error otherwise. Idempotent.
+// The in-memory state ends up final even if saving fails; if it keeps
+// failing after retrying it returns the error (the caller must log it): on disk it would stay RUNNING.
 func (j *Job) Done(err error, okMsg string) error {
 	j.sendMu.Lock()
 	defer j.sendMu.Unlock()
@@ -280,7 +280,7 @@ func (j *Job) Done(err error, okMsg string) error {
 	rec := proto.Clone(j.rec).(*mcsmv1.JobRecord)
 	env := j.snapshot()
 	j.mu.Unlock()
-	// Reintentos fuera de j.mu (Record no espera); sendMu los serializa con el resto.
+	// Retries outside j.mu (Record does not wait); sendMu serializes them with the rest.
 	var perr error
 	for i := 0; i < putAttempts; i++ {
 		if perr = j.t.st.PutJob(rec); perr == nil {
@@ -292,12 +292,12 @@ func (j *Job) Done(err error, okMsg string) error {
 	}
 	_ = j.t.send(env)
 	if perr != nil {
-		return fmt.Errorf("guardar el estado final del job %s: %w", j.rec.JobId, perr)
+		return fmt.Errorf("save the job's final state %s: %w", j.rec.JobId, perr)
 	}
 	return nil
 }
 
-// Record devuelve una copia del estado actual.
+// Record returns a copy of the current state.
 func (j *Job) Record() *mcsmv1.JobRecord {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -306,11 +306,11 @@ func (j *Job) Record() *mcsmv1.JobRecord {
 
 func (j *Job) persist() {
 	if err := j.t.st.PutJob(j.rec); err != nil {
-		j.t.log.Warn("guardar job", "job", j.rec.JobId, "err", err)
+		j.t.log.Warn("save job", "job", j.rec.JobId, "err", err)
 	}
 }
 
-// snapshot (con j.mu tomado) construye el aviso con el log pendiente y lo da por enviado.
+// snapshot (with j.mu held) builds the notification with the pending log and marks it as sent.
 func (j *Job) snapshot() *mcsmv1.Envelope {
 	j.lastSent = j.rec.Progress
 	chunk := j.pending
@@ -325,16 +325,16 @@ func progressEnv(r *mcsmv1.JobRecord, chunk string, now time.Time) *mcsmv1.Envel
 	}}}
 }
 
-// clean deja s en UTF-8 válido: proto3 rechaza strings inválidos al serializar, y los
-// nombres de fichero o la salida de RCON pueden traer bytes sueltos.
+// clean leaves s as valid UTF-8: proto3 rejects invalid strings when serializing, and
+// file names or RCON output may carry stray bytes.
 func clean(s string) string { return strings.ToValidUTF8(s, "�") }
 
-// tail recorta s a sus últimos max bytes (marcando el recorte) sin partir un carácter.
+// tail trims s to its last max bytes (marking the cut) without splitting a character.
 func tail(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
-	const mark = "…(recortado)\n"
+	const mark = "…(trimmed)\n"
 	cut := s[len(s)-max+len(mark):]
 	if i := strings.IndexByte(cut, '\n'); i >= 0 && i < len(cut)-1 {
 		cut = cut[i+1:]
@@ -342,7 +342,7 @@ func tail(s string, max int) string {
 	return mark + strings.ToValidUTF8(cut, "")
 }
 
-// limit recorta s a max bytes sin partir un carácter.
+// limit trims s to max bytes without splitting a character.
 func limit(s string, max int) string {
 	if len(s) <= max {
 		return s

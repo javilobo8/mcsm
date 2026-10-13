@@ -19,12 +19,12 @@ import (
 	"github.com/moby/moby/api/types/container"
 )
 
-// flakyRemove envuelve el fake de Docker para que Remove falle mientras err no sea nil.
+// flakyRemove wraps the Docker fake so that Remove fails while err is not nil.
 type flakyRemove struct {
 	*docker.Fake
 	mu       sync.Mutex
 	err      error
-	attempts int // llamadas a Remove, fallidas o no
+	attempts int // calls to Remove, failed or not
 }
 
 func (f *flakyRemove) setErr(err error) {
@@ -44,7 +44,7 @@ func (f *flakyRemove) Remove(ctx context.Context, id string) error {
 	return f.Fake.Remove(ctx, id)
 }
 
-// setupFlaky es setup con un Docker cuyo Remove puede fallar.
+// setupFlaky is setup with a Docker whose Remove can fail.
 func setupFlaky(t *testing.T) (*Reconciler, *store.Store, *docker.Fake, *flakyRemove) {
 	t.Helper()
 	r, st, fake, _, _ := setup(t)
@@ -62,16 +62,16 @@ func containers(t *testing.T, fake *docker.Fake) int {
 	return len(list)
 }
 
-// forgetWithFailedRemove reproduce SyncSpecs con removed_ids: Forget y, en segundo plano,
-// un Remove cuyo borrado del contenedor falla.
+// forgetWithFailedRemove reproduces SyncSpecs with removed_ids: Forget and, in the background,
+// a Remove whose container deletion fails.
 func forgetWithFailedRemove(t *testing.T, r *Reconciler, eng *flakyRemove, id string) {
 	t.Helper()
 	if err := r.Forget(id); err != nil {
 		t.Fatal(err)
 	}
-	eng.setErr(errors.New("docker: no se pudo borrar"))
+	eng.setErr(errors.New("docker: could not delete"))
 	if err := r.Remove(context.Background(), id, false); err == nil {
-		t.Fatal("esperaba que el borrado del contenedor fallara")
+		t.Fatal("expected the container deletion to fail")
 	}
 }
 
@@ -84,26 +84,26 @@ func TestForgetThenFailedRemoveIsRetriedByTick(t *testing.T) {
 	}
 	forgetWithFailedRemove(t, r, eng, "a")
 	if containers(t, fake) != 1 {
-		t.Fatal("el contenedor sigue ahí tras el fallo")
+		t.Fatal("the container is still there after the failure")
 	}
-	r.ReconcileAll(ctx) // Docker sigue fallando: la lápida se conserva
+	r.ReconcileAll(ctx) // Docker keeps failing: the tombstone is kept
 	if containers(t, fake) != 1 {
-		t.Fatal("no puede borrarse mientras Docker falla")
+		t.Fatal("it cannot be deleted while Docker fails")
 	}
 	if tomb, _ := st.HasTombstone("a"); !tomb {
-		t.Fatal("la lápida debe sobrevivir a un reintento fallido")
+		t.Fatal("the tombstone must survive a failed retry")
 	}
 	eng.setErr(nil)
-	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) } // vence el backoff (30 s)
+	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) } // the backoff expires (30 s)
 	r.ReconcileAll(ctx)
 	if containers(t, fake) != 0 {
-		t.Fatalf("el tick debe reintentar el borrado: %v", fake.Calls)
+		t.Fatalf("the tick must retry the deletion: %v", fake.Calls)
 	}
 	if tomb, _ := st.HasTombstone("a"); tomb {
-		t.Fatal("la lápida se borra cuando la eliminación termina bien")
+		t.Fatal("the tombstone is deleted when the removal succeeds")
 	}
 	if calls(fake, "Create") != 1 {
-		t.Fatalf("no debe resucitar: %v", fake.Calls)
+		t.Fatalf("it must not resurrect: %v", fake.Calls)
 	}
 }
 
@@ -117,23 +117,23 @@ func TestTombstoneIsNotADesiredServer(t *testing.T) {
 	forgetWithFailedRemove(t, r, eng, "a")
 	r.ReconcileAll(ctx)
 	if specs, _ := st.ListSpecs(); len(specs) != 0 {
-		t.Fatalf("una lápida no es una spec (inventario, ticks): %v", specs)
+		t.Fatalf("a tombstone is not a spec (inventory, ticks): %v", specs)
 	}
 	if vers, _ := st.SpecVersions(); len(vers) != 0 {
-		t.Fatalf("una lápida no va en el Hello: %v", vers)
+		t.Fatalf("a tombstone does not go in the Hello: %v", vers)
 	}
 	if list, _ := st.ListTombstones(); len(list) != 1 || list[0].ServerID != "a" {
-		t.Fatalf("Forget deja una lápida explícita: %+v", list)
+		t.Fatalf("Forget leaves an explicit tombstone: %+v", list)
 	}
 	if calls(fake, "Start") != 0 || calls(fake, "Create") != 1 {
-		t.Fatalf("una lápida no se reconcilia: %v", fake.Calls)
+		t.Fatalf("a tombstone is not reconciled: %v", fake.Calls)
 	}
 	if obs := r.Observe(ctx, "a"); obs.AppliedVersion != 0 {
-		t.Fatalf("la lápida no debe filtrarse como versión aplicada: %d", obs.AppliedVersion)
+		t.Fatalf("the tombstone must not leak as an applied version: %d", obs.AppliedVersion)
 	}
 }
 
-// La lápida está en el store bbolt: sobrevive a un reinicio del agente.
+// The tombstone is in the bbolt store: it survives an agent restart.
 func TestTombstoneSurvivesRestart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agent.db")
 	st, err := store.Open(path)
@@ -165,7 +165,7 @@ func TestTombstoneSurvivesRestart(t *testing.T) {
 	r2.log = quiet
 	r2.ReconcileAll(ctx)
 	if containers(t, fake) != 0 {
-		t.Fatalf("tras reiniciar, el tick debe reintentar el borrado: %v", fake.Calls)
+		t.Fatalf("after restarting, the tick must retry the deletion: %v", fake.Calls)
 	}
 }
 
@@ -181,18 +181,18 @@ func TestRetryRemovalsReportsCompletedIDs(t *testing.T) {
 	}
 	forgetWithFailedRemove(t, r, eng, "a")
 	if got := r.RetryRemovals(ctx); len(got) != 0 {
-		t.Fatalf("con Docker fallando no termina ninguna: %v", got)
+		t.Fatalf("with Docker failing none finishes: %v", got)
 	}
 	eng.setErr(nil)
-	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) } // vence el backoff (30 s)
+	r.now = func() time.Time { return time.Unix(1_000_000+31, 0) } // the backoff expires (30 s)
 	if got := r.RetryRemovals(ctx); len(got) != 1 || got[0] != "a" {
 		t.Fatalf("RetryRemovals = %v, want [a]", got)
 	}
 	if got := r.RetryRemovals(ctx); len(got) != 0 {
-		t.Fatalf("sin lápidas no hay nada que reintentar: %v", got)
+		t.Fatalf("without tombstones there is nothing to retry: %v", got)
 	}
 	if r.ContainerID(ctx, "b") == "" {
-		t.Fatal("no toca servidores con spec")
+		t.Fatal("it does not touch servers with a spec")
 	}
 }
 
@@ -210,13 +210,13 @@ func TestApplyCancelsTombstone(t *testing.T) {
 	}
 	r.ReconcileAll(ctx)
 	if containers(t, fake) != 1 || calls(fake, "Remove") != 0 {
-		t.Fatalf("Apply anula la lápida: el servidor sigue vivo: %v", fake.Calls)
+		t.Fatalf("Apply voids the tombstone: the server stays alive: %v", fake.Calls)
 	}
 	if v, _ := st.Applied("a"); v != 2 {
 		t.Fatalf("applied = %d, want 2", v)
 	}
 	if has, _ := st.HasTombstone("a"); has {
-		t.Fatal("Apply debe borrar la lápida")
+		t.Fatal("Apply must delete the tombstone")
 	}
 }
 
@@ -233,22 +233,22 @@ func TestStoreForceCancelsTombstone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if obs := r.Observe(ctx, "a"); obs.AppliedVersion != 0 {
-		t.Fatalf("tras anular la lápida no queda versión aplicada: %d", obs.AppliedVersion)
+		t.Fatalf("after voiding the tombstone no applied version remains: %d", obs.AppliedVersion)
 	}
 	r.ReconcileAll(ctx)
 	if containers(t, fake) != 1 || calls(fake, "Remove") != 0 {
-		t.Fatalf("StoreForce anula la lápida: el servidor sigue vivo: %v", fake.Calls)
+		t.Fatalf("StoreForce voids the tombstone: the server stays alive: %v", fake.Calls)
 	}
 	if v, _ := st.Applied("a"); v != 1 {
 		t.Fatalf("applied = %d, want 1", v)
 	}
 	if has, _ := st.HasTombstone("a"); has {
-		t.Fatal("StoreForce debe borrar la lápida")
+		t.Fatal("StoreForce must delete the tombstone")
 	}
 }
 
-// Un servidor retirado durante una copia (Hold) no se borra hasta liberar la reserva, y
-// después el tick termina el trabajo.
+// A server withdrawn during a backup (Hold) is not deleted until the reservation is released, and
+// afterwards the tick finishes the job.
 func TestTombstoneWaitsForHold(t *testing.T) {
 	r, st, fake, _ := setupFlaky(t)
 	ctx := context.Background()
@@ -256,7 +256,7 @@ func TestTombstoneWaitsForHold(t *testing.T) {
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	release, err := r.Hold("a", "copia de seguridad")
+	release, err := r.Hold("a", "backup")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,22 +268,22 @@ func TestTombstoneWaitsForHold(t *testing.T) {
 	}
 	r.ReconcileAll(ctx)
 	if containers(t, fake) != 1 {
-		t.Fatal("no se borra durante la reserva")
+		t.Fatal("it is not deleted during the reservation")
 	}
 	release(ctx)
 	if containers(t, fake) != 0 {
-		t.Fatalf("al liberar se completa el borrado pendiente: %v", fake.Calls)
+		t.Fatalf("on release the pending deletion is completed: %v", fake.Calls)
 	}
 	if has, _ := st.HasTombstone("a"); has {
-		t.Fatal("la lápida se borra al completar el borrado")
+		t.Fatal("the tombstone is deleted when the deletion completes")
 	}
 	if calls(fake, "Create") != 1 || calls(fake, "Start") != 1 {
-		t.Fatalf("liberar no resucita el servidor retirado: %v", fake.Calls)
+		t.Fatalf("releasing does not resurrect the withdrawn server: %v", fake.Calls)
 	}
 }
 
-// Un StoreForce que llega entre el listado de lápidas y el reintento nunca pierde la spec:
-// el reintento vuelve a comprobar la lápida bajo el lock del servidor.
+// A StoreForce that arrives between the tombstone listing and the retry never loses the spec:
+// the retry checks the tombstone again under the server's lock.
 func TestRetryRemovalsNeverDeletesARevivedSpec(t *testing.T) {
 	r, st, fake, eng := setupFlaky(t)
 	ctx := context.Background()
@@ -293,7 +293,7 @@ func TestRetryRemovalsNeverDeletesARevivedSpec(t *testing.T) {
 	}
 	forgetWithFailedRemove(t, r, eng, "a")
 	eng.setErr(nil)
-	list, err := st.ListTombstones() // lo que RetryRemovals habría listado
+	list, err := st.ListTombstones() // what RetryRemovals would have listed
 	if err != nil || len(list) != 1 {
 		t.Fatalf("ListTombstones = %v, %v", list, err)
 	}
@@ -302,18 +302,18 @@ func TestRetryRemovalsNeverDeletesARevivedSpec(t *testing.T) {
 	}
 	tried, err := r.retryRemoval(ctx, list[0].ServerID)
 	if err != nil || tried {
-		t.Fatalf("retryRemoval = %v, %v: la lápida ya no existe", tried, err)
+		t.Fatalf("retryRemoval = %v, %v: the tombstone no longer exists", tried, err)
 	}
 	if sp, _ := st.GetSpec("a"); sp == nil || sp.Version != 3 {
-		t.Fatalf("el reintento borró una spec revivida: %+v", sp)
+		t.Fatalf("the retry deleted a revived spec: %+v", sp)
 	}
 	if containers(t, fake) != 1 {
-		t.Fatal("el contenedor del servidor revivido sigue")
+		t.Fatal("the revived server's container is still there")
 	}
 }
 
-// Un Remove completo (RemoveServer del panel) no deja lápida: si el borrado del
-// contenedor falla, el panel conserva el servidor y es quien reintenta.
+// A complete Remove (the panel's RemoveServer) leaves no tombstone: if the container
+// deletion fails, the panel keeps the server and is the one that retries.
 func TestRemoveServerFailureLeavesNoTombstone(t *testing.T) {
 	r, st, fake, eng := setupFlaky(t)
 	ctx := context.Background()
@@ -321,21 +321,21 @@ func TestRemoveServerFailureLeavesNoTombstone(t *testing.T) {
 	if err := r.Reconcile(ctx, "a"); err != nil {
 		t.Fatal(err)
 	}
-	eng.setErr(errors.New("docker: no se pudo borrar"))
+	eng.setErr(errors.New("docker: could not delete"))
 	if err := r.Remove(ctx, "a", false); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	eng.setErr(nil)
 	r.ReconcileAll(ctx)
 	if containers(t, fake) != 1 {
-		t.Fatal("sin lápida, el tick no borra contenedores por iniciativa propia")
+		t.Fatal("without a tombstone, the tick does not delete containers on its own initiative")
 	}
 	if err := r.Remove(ctx, "a", false); err != nil || containers(t, fake) != 0 {
-		t.Fatalf("el reintento del panel sí lo borra: err=%v", err)
+		t.Fatalf("the panel's retry does delete it: err=%v", err)
 	}
 }
 
-// managedContainer crea un contenedor mcsm.* ajeno a cualquier spec del store.
+// managedContainer creates an mcsm.* container foreign to any spec in the store.
 func managedContainer(t *testing.T, fake *docker.Fake, id string) {
 	t.Helper()
 	cfg := &container.Config{Image: "x", Labels: map[string]string{"mcsm.managed": "true", "mcsm.server_id": id, "mcsm.slug": id}}
@@ -344,9 +344,9 @@ func managedContainer(t *testing.T, fake *docker.Fake, id string) {
 	}
 }
 
-// RetryRemovals solo borra contenedores con lápida explícita. Un contenedor mcsm.* sin spec
-// ni lápida no se toca, aunque su versión aplicada tenga cualquier valor (el centinela de
-// la versión anterior ya no significa nada).
+// RetryRemovals only deletes containers with an explicit tombstone. An mcsm.* container with neither a spec
+// nor a tombstone is not touched, whatever its applied version is (the previous version's
+// sentinel no longer means anything).
 func TestRetryRemovalsOnlyTouchesTombstonedContainers(t *testing.T) {
 	r, st, fake, eng := setupFlaky(t)
 	ctx := context.Background()
@@ -367,16 +367,16 @@ func TestRetryRemovalsOnlyTouchesTombstonedContainers(t *testing.T) {
 	}
 	list, _ := fake.ListManaged(ctx)
 	if len(list) != 2 {
-		t.Fatalf("los contenedores sin lápida siguen: %+v", list)
+		t.Fatalf("containers without a tombstone remain: %+v", list)
 	}
 	for _, c := range list {
 		if id := c.Labels["mcsm.server_id"]; id != "ghost" && id != "legacy" {
-			t.Fatalf("contenedor inesperado: %s", id)
+			t.Fatalf("unexpected container: %s", id)
 		}
 	}
 }
 
-// Una lápida cuyo contenedor ya no existe se limpia sin tocar Docker.
+// A tombstone whose container no longer exists is cleaned up without touching Docker.
 func TestRetryRemovalsDropsTombstoneWithoutContainer(t *testing.T) {
 	r, st, fake, _ := setupFlaky(t)
 	ctx := context.Background()
@@ -388,10 +388,10 @@ func TestRetryRemovalsDropsTombstoneWithoutContainer(t *testing.T) {
 		t.Fatalf("RetryRemovals = %v, want [gone]", got)
 	}
 	if has, _ := st.HasTombstone("gone"); has {
-		t.Fatal("la lápida sin contenedor debe borrarse")
+		t.Fatal("the tombstone without a container must be deleted")
 	}
 	if calls(fake, "Remove") != 0 || calls(fake, "Stop") != 0 {
-		t.Fatalf("no hay nada que borrar en Docker: %v", fake.Calls)
+		t.Fatalf("there is nothing to delete in Docker: %v", fake.Calls)
 	}
 }
 
@@ -401,8 +401,8 @@ func (f *flakyRemove) removeAttempts() int {
 	return f.attempts
 }
 
-// Un borrado por lápida que falla se reintenta con backoff (spec §6.2: 30 s, 60 s, … máx.
-// 5 min), no en cada tick.
+// A tombstone deletion that fails is retried with backoff (spec §6.2: 30 s, 60 s, … max.
+// 5 min), not on every tick.
 func TestRetryRemovalsBacksOff(t *testing.T) {
 	r, st, fake, eng := setupFlaky(t)
 	ctx := context.Background()
@@ -419,30 +419,30 @@ func TestRetryRemovalsBacksOff(t *testing.T) {
 		now = now.Add(advance)
 		r.RetryRemovals(ctx)
 		if got := eng.removeAttempts() - base; got != want {
-			t.Fatalf("%s: intentos = %d, want %d", msg, got, want)
+			t.Fatalf("%s: attempts = %d, want %d", msg, got, want)
 		}
 	}
-	step(0, 1, "primer reintento")
-	step(0, 1, "dentro del backoff no reintenta")
-	step(29*time.Second, 1, "a los 29 s tampoco")
-	step(2*time.Second, 2, "a los 31 s reintenta")
-	step(31*time.Second, 2, "el backoff crece (60 s)")
-	step(30*time.Second, 3, "a los 61 s reintenta")
+	step(0, 1, "first retry")
+	step(0, 1, "within the backoff it does not retry")
+	step(29*time.Second, 1, "at 29 s neither")
+	step(2*time.Second, 2, "at 31 s it retries")
+	step(31*time.Second, 2, "the backoff grows (60 s)")
+	step(30*time.Second, 3, "at 61 s it retries")
 	eng.setErr(nil)
-	step(2*time.Minute, 4, "tras el backoff, borrado con éxito")
+	step(2*time.Minute, 4, "after the backoff, deletion succeeds")
 	if containers(t, fake) != 0 {
-		t.Fatal("el contenedor debe borrarse")
+		t.Fatal("the container must be deleted")
 	}
 	if has, _ := st.HasTombstone("a"); has {
-		t.Fatal("la lápida se borra")
+		t.Fatal("the tombstone is deleted")
 	}
 	if _, waiting := r.retryAt["a"]; waiting {
-		t.Fatal("el éxito limpia el backoff")
+		t.Fatal("success clears the backoff")
 	}
 }
 
-// Cada pasada intenta como mucho maxRemovalsPerTick borrados: N contenedores atascados no
-// bloquean el tick N×60 s. Los que fallan quedan en backoff y dejan sitio al resto.
+// Each pass attempts at most maxRemovalsPerTick deletions: N stuck containers do not
+// block the tick N×60 s. Those that fail stay in backoff and make room for the rest.
 func TestRetryRemovalsLimitsWorkPerTick(t *testing.T) {
 	r, st, fake, eng := setupFlaky(t)
 	ctx := context.Background()
@@ -454,17 +454,17 @@ func TestRetryRemovalsLimitsWorkPerTick(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	eng.setErr(errors.New("docker: no se pudo borrar"))
+	eng.setErr(errors.New("docker: could not delete"))
 	r.RetryRemovals(ctx)
 	if got := eng.removeAttempts(); got != maxRemovalsPerTick {
-		t.Fatalf("primera pasada: intentos = %d, want %d", got, maxRemovalsPerTick)
+		t.Fatalf("first pass: attempts = %d, want %d", got, maxRemovalsPerTick)
 	}
 	r.RetryRemovals(ctx)
 	if got := eng.removeAttempts(); got != n {
-		t.Fatalf("segunda pasada: intentos = %d, want %d (los demás, en backoff, no cuentan)", got, n)
+		t.Fatalf("second pass: attempts = %d, want %d (the others, in backoff, do not count)", got, n)
 	}
 	r.RetryRemovals(ctx)
 	if got := eng.removeAttempts(); got != n {
-		t.Fatalf("todos en backoff: intentos = %d, want %d", got, n)
+		t.Fatalf("all in backoff: attempts = %d, want %d", got, n)
 	}
 }

@@ -43,8 +43,8 @@ func hashOfSpec(t *testing.T, s Spec) string {
 	return b.Hash
 }
 
-// Casos compartidos con panel/packages/shared/src/spec-content.test.ts: Go y zod deben
-// aceptar y rechazar exactamente lo mismo.
+// Cases shared with panel/packages/shared/src/spec-content.test.ts: Go and zod must
+// accept and reject exactly the same.
 func TestContentCasesSharedWithZod(t *testing.T) {
 	baseRaw, err := os.ReadFile(fixturePath("spec-example.json"))
 	if err != nil {
@@ -63,7 +63,7 @@ func TestContentCasesSharedWithZod(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cases) < 30 {
-		t.Fatalf("solo %d casos: ¿fixture truncada?", len(cases))
+		t.Fatalf("only %d cases: truncated fixture?", len(cases))
 	}
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
@@ -77,10 +77,10 @@ func TestContentCasesSharedWithZod(t *testing.T) {
 			b, _ := json.Marshal(doc)
 			_, err := Parse(b)
 			if c.OK && err != nil {
-				t.Fatalf("debía aceptarse: %v", err)
+				t.Fatalf("should have been accepted: %v", err)
 			}
 			if !c.OK && err == nil {
-				t.Fatal("debía rechazarse")
+				t.Fatal("should have been rejected")
 			}
 		})
 	}
@@ -106,7 +106,7 @@ func TestContentEnvModrinthModpack(t *testing.T) {
 	}
 	for _, k := range []string{"MODPACK_PLATFORM", "MODRINTH_VERSION", "CF_API_KEY", "MODS", "PLUGINS", "SPIGET_RESOURCES", "CURSEFORGE_FILES"} {
 		if _, ok := env[k]; ok {
-			t.Errorf("no debía emitirse %s (= %q)", k, env[k])
+			t.Errorf("%s (= %q) should not have been emitted", k, env[k])
 		}
 	}
 }
@@ -121,7 +121,7 @@ func TestContentEnvCurseForgeAndFTB(t *testing.T) {
 		t.Errorf("slug: %v", env)
 	}
 	if env["CF_API_KEY"] != "$2a$10$abc/def" {
-		t.Errorf("CF_API_KEY = %q (los $ no se escapan: la API de Docker no interpola)", env["CF_API_KEY"])
+		t.Errorf("CF_API_KEY = %q (the $ are not escaped: the Docker API does not interpolate)", env["CF_API_KEY"])
 	}
 
 	s.Modpack.SlugOrURL = "https://www.curseforge.com/minecraft/modpacks/all-the-mods-10"
@@ -158,47 +158,47 @@ func TestContentEnvModsPluginsAndWhitelistOff(t *testing.T) {
 		}
 	}
 	if _, ok := env["WHITELIST"]; ok {
-		t.Error("con la whitelist desactivada no se emite WHITELIST (itzg la activaría)")
+		t.Error("with the whitelist disabled WHITELIST is not emitted (itzg would enable it)")
 	}
 	if _, ok := env["CF_API_KEY"]; ok {
-		t.Error("sin API key en la spec no se emite CF_API_KEY")
+		t.Error("without an API key in the spec CF_API_KEY is not emitted")
 	}
 }
 
-func TestEnvLibreGanaSobreLoGenerado(t *testing.T) {
+func TestFreeEnvWinsOverGenerated(t *testing.T) {
 	s := loadModded(t)
 	s.Env = map[string]string{"EXISTING_WHITELIST_FILE": "MERGE"}
 	if env := buildEnv(t, s); env["EXISTING_WHITELIST_FILE"] != "MERGE" {
-		t.Errorf("env libre debe ganar: %q", env["EXISTING_WHITELIST_FILE"])
+		t.Errorf("free-form env must win: %q", env["EXISTING_WHITELIST_FILE"])
 	}
 }
 
-// El hash solo cambia cuando cambia el contenedor.
+// The hash only changes when the container changes.
 func TestContentHash(t *testing.T) {
 	base := loadFixture(t)
 	h0 := hashOfSpec(t, base)
-	// Valor calculado con el código del Plan 1 para spec-example.json: si cambia, al
-	// actualizar el agente se recrearían TODOS los contenedores existentes. Solo puede
-	// cambiar si se actualiza la versión de github.com/moby/moby/api.
+	// Value computed with Plan 1's code for spec-example.json: if it changes, updating the
+	// agent would recreate ALL the existing containers. It can only
+	// change if the github.com/moby/moby/api version is updated.
 	if h0 != "09ff6e5490b40677" {
-		t.Fatalf("el hash de una spec sin campos nuevos cambió: %s", h0)
+		t.Fatalf("the hash of a spec without new fields changed: %s", h0)
 	}
 
 	noOps := base
 	noOps.Ops = []string{}
 	if hashOfSpec(t, noOps) == h0 {
-		t.Error("ops presente y vacío debe cambiar el hash (sincroniza el fichero)")
+		t.Error("ops present and empty must change the hash (it synchronizes the file)")
 	}
 	absentOps := base
 	absentOps.Ops = nil
 	if hashOfSpec(t, absentOps) != h0 {
-		t.Error("ops ausente no debe cambiar el hash")
+		t.Error("absent ops must not change the hash")
 	}
 
 	withKey := base
 	withKey.CurseForgeAPIKey = "k"
 	if hashOfSpec(t, withKey) != h0 {
-		t.Error("la API key de CurseForge no debe afectar a servidores que no usan CurseForge")
+		t.Error("the CurseForge API key must not affect servers that do not use CurseForge")
 	}
 
 	a := base
@@ -206,43 +206,43 @@ func TestContentHash(t *testing.T) {
 	b := base
 	b.Mods = &ModSources{ModrinthProjects: []string{"sodium", "lithium", "lithium"}}
 	if hashOfSpec(t, a) != hashOfSpec(t, b) {
-		t.Error("reordenar o duplicar mods no debe recrear el contenedor")
+		t.Error("reordering or duplicating mods must not recreate the container")
 	}
 	if hashOfSpec(t, a) == h0 {
-		t.Error("añadir mods debe cambiar el hash")
+		t.Error("adding mods must change the hash")
 	}
 
 	cf := base
 	cf.Mods = &ModSources{CurseforgeFiles: []string{"jei"}}
 	cf1, cf2 := cf, cf
-	cf1.CurseForgeAPIKey = "uno"
-	cf2.CurseForgeAPIKey = "dos"
+	cf1.CurseForgeAPIKey = "one"
+	cf2.CurseForgeAPIKey = "two"
 	if hashOfSpec(t, cf1) == hashOfSpec(t, cf2) {
-		t.Error("cambiar la API key debe recrear los servidores que usan CurseForge")
+		t.Error("changing the API key must recreate the servers that use CurseForge")
 	}
 }
 
-// Quitar el último mod debe llegar a itzg como MODRINTH_PROJECTS vacía (borra lo instalado);
-// sin la sección, la variable no existe y itzg no toca nada.
+// Removing the last mod must reach itzg as an empty MODRINTH_PROJECTS (it deletes what is installed);
+// without the section, the variable does not exist and itzg touches nothing.
 func TestEmptyModsSectionClearsModrinthProjects(t *testing.T) {
 	s := loadFixture(t)
 	if _, ok := buildEnv(t, s)["MODRINTH_PROJECTS"]; ok {
-		t.Fatal("sin sección mods/plugins no debe existir MODRINTH_PROJECTS")
+		t.Fatal("without a mods/plugins section MODRINTH_PROJECTS must not exist")
 	}
 	s.Mods = &ModSources{}
 	env := buildEnv(t, s)
 	if v, ok := env["MODRINTH_PROJECTS"]; !ok || v != "" {
-		t.Errorf("MODRINTH_PROJECTS = %q (presente=%v), want vacía y presente", v, ok)
+		t.Errorf("MODRINTH_PROJECTS = %q (present=%v), want empty and present", v, ok)
 	}
 	for _, k := range []string{"MODS", "CURSEFORGE_FILES"} {
 		if _, ok := env[k]; ok {
-			t.Errorf("%s vacía no debe emitirse", k)
+			t.Errorf("an empty %s must not be emitted", k)
 		}
 	}
 }
 
 func TestParseIgnoresUnknownFields(t *testing.T) {
-	// Campos de otros planes (p. ej. backups) no deben romper el agente de este plan.
+	// Fields from other plans (e.g. backups) must not break this plan's agent.
 	raw, _ := os.ReadFile(fixturePath("spec-example.json"))
 	var doc map[string]json.RawMessage
 	_ = json.Unmarshal(raw, &doc)
@@ -253,21 +253,21 @@ func TestParseIgnoresUnknownFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	if hashOfSpec(t, s) != "09ff6e5490b40677" {
-		t.Error("un campo desconocido no debe cambiar el hash")
+		t.Error("an unknown field must not change the hash")
 	}
 	if !strings.Contains(string(b), "backups") {
-		t.Fatal("fixture mal construida")
+		t.Fatal("badly built fixture")
 	}
 }
 
-// Ausente (nil) no emite nada; presente y vacío sincroniza el fichero a vacío (revocar al
-// último op o jugador debe llegar al servidor).
+// Absent (nil) emits nothing; present and empty synchronizes the file to empty (revoking the
+// last op or player must reach the server).
 func TestEmptyOpsAndWhitelistSynchronize(t *testing.T) {
 	s := loadFixture(t)
 	env := buildEnv(t, s)
 	for _, k := range []string{"OPS", "EXISTING_OPS_FILE", "WHITELIST", "EXISTING_WHITELIST_FILE", "ENABLE_WHITELIST"} {
 		if _, ok := env[k]; ok {
-			t.Errorf("sección ausente no debe emitir %s", k)
+			t.Errorf("an absent section must not emit %s", k)
 		}
 	}
 	s.Ops = []string{}
@@ -278,12 +278,12 @@ func TestEmptyOpsAndWhitelistSynchronize(t *testing.T) {
 		"WHITELIST": "", "EXISTING_WHITELIST_FILE": "SYNCHRONIZE", "ENABLE_WHITELIST": "true",
 	} {
 		if v, ok := env[k]; !ok || v != want {
-			t.Errorf("env[%s] = %q (presente=%v), want %q", k, v, ok, want)
+			t.Errorf("env[%s] = %q (present=%v), want %q", k, v, ok, want)
 		}
 	}
 }
 
-// La distinción ausente/vacío sobrevive a Parse y a re-serializar.
+// The absent/empty distinction survives Parse and re-serialization.
 func TestOpsAbsentVsEmptyJSON(t *testing.T) {
 	base, _ := os.ReadFile(fixturePath("spec-example.json"))
 	var doc map[string]json.RawMessage
@@ -295,16 +295,16 @@ func TestOpsAbsentVsEmptyJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	if s.Ops == nil {
-		t.Fatal(`"ops": [] debe parsear como presente (no nil)`)
+		t.Fatal(`"ops": [] must parse as present (not nil)`)
 	}
 	out, _ := json.Marshal(s)
 	if !strings.Contains(string(out), `"ops":[]`) {
-		t.Errorf("re-serializar debe conservar ops vacío: %s", out)
+		t.Errorf("re-serializing must keep ops empty: %s", out)
 	}
 	s.Ops = nil
 	out, _ = json.Marshal(s)
 	if strings.Contains(string(out), `"ops"`) {
-		t.Errorf("ops ausente no debe serializarse: %s", out)
+		t.Errorf("absent ops must not be serialized: %s", out)
 	}
 }
 
@@ -320,7 +320,7 @@ func TestPlayerListsDedupeCaseInsensitive(t *testing.T) {
 	a.Ops = []string{"Lobo"}
 	b.Ops = []string{"lobo", "Lobo"}
 	if hashOfSpec(t, a) != hashOfSpec(t, b) {
-		t.Error("variantes de mayúsculas no deben recrear el contenedor")
+		t.Error("case variants must not recreate the container")
 	}
 }
 
@@ -333,39 +333,39 @@ func TestModsAndPluginsShareModrinthProjects(t *testing.T) {
 	}
 }
 
-// La API key de CurseForge llega del panel dentro de la spec: ASCII imprimible sin espacios,
-// 1-200 caracteres. Una key con NUL o saltos de línea haría que Docker rechazara el env de
-// todos los servidores CurseForge. El error no repite la key (acaba en observed.error).
+// The CurseForge API key comes from the panel inside the spec: printable ASCII without spaces,
+// 1-200 characters. A key with NUL or line breaks would make Docker reject the env of
+// all CurseForge servers. The error does not repeat the key (it ends up in observed.error).
 func TestCurseForgeAPIKeyValidated(t *testing.T) {
 	s := loadFixture(t)
 	s.Mods = &ModSources{CurseforgeFiles: []string{"jei"}}
 	for _, ok := range []string{"", "$2a$10$abc/DEF.ghi", strings.Repeat("k", 200), "!~"} {
 		s.CurseForgeAPIKey = ok
 		if err := s.Validate(); err != nil {
-			t.Errorf("key %q debía aceptarse: %v", ok, err)
+			t.Errorf("key %q should have been accepted: %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"con espacio", "nul\x00", "salto\n", "tab\t", "del\x7f", "clé", strings.Repeat("k", 201)} {
+	for _, bad := range []string{"with space", "nul\x00", "newline\n", "tab\t", "del\x7f", "clé", strings.Repeat("k", 201)} {
 		s.CurseForgeAPIKey = bad
 		err := s.Validate()
 		if err == nil {
-			t.Errorf("key %q debía rechazarse", bad)
+			t.Errorf("key %q should have been rejected", bad)
 			continue
 		}
 		if strings.Contains(err.Error(), bad) {
-			t.Errorf("el error no debe repetir la key: %v", err)
+			t.Errorf("the error must not repeat the key: %v", err)
 		}
 	}
 }
 
-// Con la sección presente, el env libre no puede fijar lo que ella genera: como el env gana,
-// revocar un op o un jugador de la whitelist no tendría efecto (auditoría M1).
+// With the section present, the free-form env cannot set what it generates: since env wins,
+// revoking an op or a whitelist player would have no effect (audit M1).
 func TestPlayersSectionsRejectOverridingEnv(t *testing.T) {
 	s := loadFixture(t)
 	s.Ops = []string{"Lobo"}
 	s.Env = map[string]string{"OPS": "Lobo,Pepe"}
 	err := s.Validate()
-	want := "spec: Quita la variable OPS de las variables de entorno (Avanzado): los operadores se gestionan en la sección Jugadores"
+	want := "spec: Remove the OPS variable from the environment variables (Advanced): operators are managed in the Players section"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %q", err, want)
 	}
@@ -373,18 +373,18 @@ func TestPlayersSectionsRejectOverridingEnv(t *testing.T) {
 	s.Whitelist = &Whitelist{Enabled: true}
 	s.Env = map[string]string{"ENABLE_WHITELIST": "false"}
 	err = s.Validate()
-	want = "spec: Quita la variable ENABLE_WHITELIST de las variables de entorno (Avanzado): la whitelist se gestiona en la sección Jugadores"
+	want = "spec: Remove the ENABLE_WHITELIST variable from the environment variables (Advanced): the whitelist is managed in the Players section"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %q", err, want)
 	}
 }
 
-// level-name es la carpeta del mundo dentro de /data: sin separadores ni "..", para que ningún
-// código que construya rutas del host con ella pueda salirse (auditoría L6).
+// level-name is the world folder inside /data: no separators or "..", so that no
+// code that builds host paths with it can escape (audit L6).
 func TestLevelNameIsAPlainFolder(t *testing.T) {
 	s := loadFixture(t)
 	s.Properties = map[string]string{"level-name": "../../etc"}
-	want := "spec: La propiedad level-name es la carpeta del mundo: no puede contener «/», «\\» ni «..»"
+	want := "spec: The level-name property is the world folder: it cannot contain “/”, “\\” or “..”"
 	if err := s.Validate(); err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %q", err, want)
 	}

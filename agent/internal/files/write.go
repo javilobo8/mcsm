@@ -14,15 +14,15 @@ import (
 	"syscall"
 )
 
-// writeTarget es el destino ya validado de una escritura.
+// writeTarget is the already validated destination of a write.
 type writeTarget struct {
-	real  string      // ruta real relativa a la raíz
-	mode  fs.FileMode // permisos a conservar (0o644 si es nuevo)
-	owner fs.FileInfo // de quién copiar uid/gid: el fichero reemplazado o su carpeta
+	real  string      // real path relative to the root
+	mode  fs.FileMode // permissions to keep (0o644 if new)
+	owner fs.FileInfo // whose uid/gid to copy: the replaced file or its folder
 }
 
-// prepareWrite valida el destino de una escritura: la carpeta existe y está dentro, el destino
-// no es una carpeta y, si es un enlace que queda dentro, se escribe en su destino real.
+// prepareWrite validates a write's destination: the folder exists and is inside, the destination
+// is not a folder and, if it is a link that stays inside, it is written to its real target.
 func (f *FS) prepareWrite(r *os.Root, rel string) (writeTarget, error) {
 	target, err := f.resolveEntry(rel)
 	if err != nil {
@@ -43,7 +43,7 @@ func (f *FS) prepareWrite(r *os.Root, rel string) (writeTarget, error) {
 			return writeTarget{}, fmt.Errorf("%w: %s", ErrIsDir, display(rel))
 		}
 		if !li.Mode().IsRegular() {
-			return writeTarget{}, fmt.Errorf("%w: %s no es un fichero normal", ErrInvalidPath, display(rel))
+			return writeTarget{}, fmt.Errorf("%w: %s is not a regular file", ErrInvalidPath, display(rel))
 		}
 		return writeTarget{real: target, mode: li.Mode().Perm(), owner: li}, nil
 	case errors.Is(err, fs.ErrNotExist):
@@ -60,8 +60,8 @@ func (f *FS) prepareWrite(r *os.Root, rel string) (writeTarget, error) {
 	}
 }
 
-// CheckWrite valida que p se puede escribir sin tocar nada. Sirve para fallar antes de
-// empezar una transferencia; WriteFrom vuelve a validar al escribir.
+// CheckWrite validates that p can be written without touching anything. It serves to fail before
+// starting a transfer; WriteFrom validates again when writing.
 func (f *FS) CheckWrite(p string) error {
 	rel, err := Clean(p)
 	if err != nil {
@@ -76,7 +76,7 @@ func (f *FS) CheckWrite(p string) error {
 	return err
 }
 
-// readErr marca los errores que vienen del origen (la transferencia), no del disco.
+// readErr marks errors that come from the source (the transfer), not from the disk.
 type readErr struct{ error }
 
 func (e readErr) Unwrap() error { return e.error }
@@ -97,13 +97,13 @@ func randHex() string {
 	return hex.EncodeToString(b)
 }
 
-// WriteFrom escribe src en p de forma atómica: temporal en la misma carpeta, fsync y rename.
-// Si algo falla, el fichero anterior queda intacto y el temporal se borra. expected >= 0 exige
-// ese número exacto de bytes (una transferencia truncada nunca reemplaza el fichero) y no lee
-// más de expected+1 del origen; con expected < 0 no hay tope. Conserva
-// permisos y dueño del fichero reemplazado; uno nuevo hereda el dueño de su carpeta, para que
-// el servidor (uid 1000 en itzg) pueda seguir reescribiéndolo aunque el agente sea root.
-// Copia en streaming: la memoria usada no depende del tamaño.
+// WriteFrom writes src to p atomically: temporary in the same folder, fsync and rename.
+// If anything fails, the previous file is left intact and the temporary is deleted. expected >= 0 demands
+// that exact number of bytes (a truncated transfer never replaces the file) and reads no
+// more than expected+1 from the source; with expected < 0 there is no cap. It keeps the
+// permissions and owner of the replaced file; a new one inherits its folder's owner, so that
+// the server (uid 1000 in itzg) can keep rewriting it even if the agent is root.
+// It copies as a stream: the memory used does not depend on the size.
 func (f *FS) WriteFrom(p string, src io.Reader, expected int64) (int64, error) {
 	rel, err := Clean(p)
 	if err != nil {
@@ -133,7 +133,7 @@ func (f *FS) WriteFrom(p string, src io.Reader, expected int64) (int64, error) {
 		}
 	}()
 	if expected >= 0 && expected < math.MaxInt64 {
-		src = io.LimitReader(src, expected+1) // un origen que envía de más no llena el disco
+		src = io.LimitReader(src, expected+1) // a source that sends too much does not fill the disk
 	}
 	n, err := io.Copy(fh, tagReader{src})
 	if err != nil {
@@ -145,11 +145,11 @@ func (f *FS) WriteFrom(p string, src io.Reader, expected int64) (int64, error) {
 	}
 	switch {
 	case expected >= 0 && n > expected:
-		return n, fmt.Errorf("%w: el origen envía más de %d bytes", ErrTransfer, expected)
+		return n, fmt.Errorf("%w: the source sends more than %d bytes", ErrTransfer, expected)
 	case expected >= 0 && n < expected:
-		return n, fmt.Errorf("%w: recibidos %d de %d bytes", ErrTransfer, n, expected)
+		return n, fmt.Errorf("%w: received %d of %d bytes", ErrTransfer, n, expected)
 	}
-	if err := fh.Chmod(wt.mode); err != nil { // el umask pudo recortar los permisos al crear
+	if err := fh.Chmod(wt.mode); err != nil { // the umask may have trimmed the permissions on creation
 		return n, mapErr(err, rel)
 	}
 	chownLike(fh, wt.owner)
@@ -164,14 +164,14 @@ func (f *FS) WriteFrom(p string, src io.Reader, expected int64) (int64, error) {
 		return n, mapErr(err, rel)
 	}
 	renamed = true
-	if d, err := r.Open(path.Dir(wt.real)); err == nil { // que el rename sobreviva a un corte de luz
+	if d, err := r.Open(path.Dir(wt.real)); err == nil { // so the rename survives a power cut
 		_ = d.Sync()
 		d.Close()
 	}
 	return n, nil
 }
 
-// Write es la escritura inline (editor): como máximo InlineMax bytes.
+// Write is the inline write (editor): at most InlineMax bytes.
 func (f *FS) Write(p string, data []byte) error {
 	if len(data) > InlineMax {
 		return fmt.Errorf("%w: %d bytes", ErrTooLarge, len(data))
@@ -180,15 +180,15 @@ func (f *FS) Write(p string, data []byte) error {
 	return err
 }
 
-// chownLike copia uid/gid de ref. Sin privilegios falla con EPERM y se ignora: el fichero
-// queda del usuario del agente, que es el mismo que el de la carpeta en ese caso.
+// chownLike copies uid/gid from ref. Without privileges it fails with EPERM and is ignored: the file
+// stays with the agent's user, which is the same as the folder's in that case.
 func chownLike(fh *os.File, ref fs.FileInfo) {
 	if st, ok := ref.Sys().(*syscall.Stat_t); ok {
 		_ = fh.Chown(int(st.Uid), int(st.Gid))
 	}
 }
 
-// Mkdir crea una carpeta (su padre debe existir) con el dueño de la carpeta padre.
+// Mkdir creates a folder (its parent must exist) with the parent folder's owner.
 func (f *FS) Mkdir(p string) error {
 	rel, err := Clean(p)
 	if err != nil {
@@ -216,8 +216,8 @@ func (f *FS) Mkdir(p string) error {
 	return nil
 }
 
-// Rename mueve o renombra sin sobrescribir: si el destino existe devuelve ErrExists.
-// Renombrar un enlace mueve el enlace, no su destino.
+// Rename moves or renames without overwriting: if the destination exists it returns ErrExists.
+// Renaming a link moves the link, not its target.
 func (f *FS) Rename(from, to string) error {
 	src, err := Clean(from)
 	if err != nil {
@@ -254,7 +254,7 @@ func (f *FS) Rename(from, to string) error {
 	return nil
 }
 
-// Delete borra un fichero, un enlace (no su destino) o una carpeta con todo su contenido.
+// Delete deletes a file, a link (not its target) or a folder with all its contents.
 func (f *FS) Delete(p string) error {
 	rel, err := Clean(p)
 	if err != nil {

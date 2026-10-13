@@ -14,8 +14,8 @@ func names(n int) []string {
 	return out
 }
 
-// Topes de tamaño (auditoría L1), iguales a los de zod (spec-limits.ts): listas ≤ 1000
-// elementos, cadenas ≤ 4 KiB (en bytes UTF-8) y env generado ≤ 96 KiB.
+// Size caps (audit L1), equal to zod's (spec-limits.ts): lists ≤ 1000
+// elements, strings ≤ 4 KiB (in UTF-8 bytes) and generated env ≤ 96 KiB.
 func TestLimitsLists(t *testing.T) {
 	cases := map[string]func(s *Spec, n int){
 		"ops":                     func(s *Spec, n int) { s.Ops = names(n) },
@@ -35,12 +35,12 @@ func TestLimitsLists(t *testing.T) {
 		s := loadFixture(t)
 		set(&s, 1000)
 		if err := s.Validate(); err != nil {
-			t.Errorf("%s con 1000 elementos debía aceptarse: %v", name, err)
+			t.Errorf("%s with 1000 elements should have been accepted: %v", name, err)
 		}
 		s = loadFixture(t)
 		set(&s, 1001)
 		if err := s.Validate(); err == nil || !strings.Contains(err.Error(), name) {
-			t.Errorf("%s con 1001 elementos: err = %v", name, err)
+			t.Errorf("%s with 1001 elements: err = %v", name, err)
 		}
 	}
 }
@@ -64,7 +64,7 @@ func urls(n int) []string {
 func TestLimitsStrings(t *testing.T) {
 	ok := strings.Repeat("a", 4096)
 	long := strings.Repeat("a", 4097)
-	multi := strings.Repeat("ñ", 2049) // 4098 bytes en UTF-8 (2049 caracteres)
+	multi := strings.Repeat("ñ", 2049) // 4098 bytes in UTF-8 (2049 characters)
 	cases := map[string]func(s *Spec, v string){
 		"env.X":               func(s *Spec, v string) { s.Env = map[string]string{"X": v} },
 		"properties.motd":     func(s *Spec, v string) { s.Properties = map[string]string{"motd": v} },
@@ -76,38 +76,38 @@ func TestLimitsStrings(t *testing.T) {
 		s := loadFixture(t)
 		set(&s, ok)
 		if err := s.Validate(); err != nil {
-			t.Errorf("%s de 4096 bytes debía aceptarse: %v", name, err)
+			t.Errorf("%s of 4096 bytes should have been accepted: %v", name, err)
 		}
 		for _, bad := range []string{long, multi} {
 			s = loadFixture(t)
 			set(&s, bad)
 			if err := s.Validate(); err == nil || !strings.Contains(err.Error(), name) {
-				t.Errorf("%s de %d bytes: err = %v", name, len(bad), err)
+				t.Errorf("%s of %d bytes: err = %v", name, len(bad), err)
 			}
 		}
 	}
 	s := loadFixture(t)
 	s.Env = map[string]string{strings.Repeat("K", 4097): "v"}
 	if err := s.Validate(); err == nil {
-		t.Error("un nombre de variable de más de 4 KiB debía rechazarse")
+		t.Error("a variable name over 4 KiB should have been rejected")
 	}
 }
 
 func TestLimitsGeneratedEnv(t *testing.T) {
 	s := loadFixture(t)
 	s.Env = map[string]string{}
-	for i := 0; i < 23; i++ { // 23 × ~4 KiB ≈ 92 KiB más lo generado: por debajo de 96 KiB
+	for i := 0; i < 23; i++ { // 23 × ~4 KiB ≈ 92 KiB plus what is generated: below 96 KiB
 		s.Env[fmt.Sprintf("V%02d", i)] = strings.Repeat("x", 4090)
 	}
 	if err := s.Validate(); err != nil {
-		t.Fatalf("debía aceptarse: %v", err)
+		t.Fatalf("should have been accepted: %v", err)
 	}
 	s.Env["V23"] = strings.Repeat("x", 4090)
 	err := s.Validate()
 	if err == nil || !strings.Contains(err.Error(), "96 KiB") {
 		t.Fatalf("err = %v", err)
 	}
-	// Las secciones también cuentan: 1000 URLs de ~1000 bytes no caben en el env.
+	// Sections also count: 1000 URLs of ~1000 bytes do not fit in the env.
 	s = loadFixture(t)
 	big := make([]string, 120)
 	for i := range big {
@@ -115,6 +115,6 @@ func TestLimitsGeneratedEnv(t *testing.T) {
 	}
 	s.Mods = &ModSources{URLs: big}
 	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "96 KiB") {
-		t.Fatalf("mods enormes: err = %v", err)
+		t.Fatalf("huge mods: err = %v", err)
 	}
 }

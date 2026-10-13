@@ -1,38 +1,38 @@
-// Package errcode es el catálogo de Error.code que el agente envía al panel. El
-// comentario de `message Error` en proto/mcsm/v1/agent.proto lo documenta con su
-// traducción a HTTP, y panel/apps/api/src/agents/error-codes.ts es su espejo en TS.
-// Un código nuevo se añade en los tres sitios; el panel traduce los desconocidos a 502.
+// Package errcode is the catalog of Error.code values the agent sends to the panel. The
+// comment on `message Error` in proto/mcsm/v1/agent.proto documents it with its
+// HTTP translation, and panel/apps/api/src/agents/error-codes.ts is its TS mirror.
+// A new code is added in all three places; the panel maps unknown ones to 502.
 package errcode
 
 const (
-	InvalidSpec    = "invalid_spec"    // spec inválida (server_id o slug)
-	InvalidRequest = "invalid_request" // petición mal formada
-	UnknownServer  = "unknown_server"  // el nodo no conoce ese servidor
-	NotFound       = "not_found"       // recurso inexistente (fichero, copia…)
-	Busy           = "busy"            // servidor ocupado o reservado (el mensaje da el motivo)
-	Exists         = "exists"          // ya existe
-	Unsupported    = "unsupported"     // el agente no entiende el mensaje: está desactualizado
-	TooLarge       = "too_large"       // demasiado grande
-	ApplyFailed    = "apply_failed"    // fallo al aplicar la spec (texto de Docker)
-	RemoveFailed   = "remove_failed"   // fallo al borrar el servidor
-	PowerFailed    = "power_failed"    // fallo de la acción de encendido
-	BadSpec        = "bad_spec"        // la spec guardada no se puede leer
-	RconFailed     = "rcon_failed"     // fallo de RCON
-	BackupFailed   = "backup_failed"   // fallo de una copia, restauración o borrado de copias
+	InvalidSpec    = "invalid_spec"    // invalid spec (server_id or slug)
+	InvalidRequest = "invalid_request" // malformed request
+	UnknownServer  = "unknown_server"  // the node does not know that server
+	NotFound       = "not_found"       // nonexistent resource (file, backup…)
+	Busy           = "busy"            // server busy or reserved (the message gives the reason)
+	Exists         = "exists"          // already exists
+	Unsupported    = "unsupported"     // the agent does not understand the message: it is out of date
+	TooLarge       = "too_large"       // too large
+	ApplyFailed    = "apply_failed"    // failed to apply the spec (Docker text)
+	RemoveFailed   = "remove_failed"   // failed to delete the server
+	PowerFailed    = "power_failed"    // power action failed
+	BadSpec        = "bad_spec"        // the stored spec cannot be read
+	RconFailed     = "rcon_failed"     // RCON failure
+	BackupFailed   = "backup_failed"   // a backup, restore or backup deletion failed
 )
 
-// Archivos (Plan 5). unknown_server, not_found, exists y too_large están arriba.
+// Files (Plan 5). unknown_server, not_found, exists and too_large are above.
 const (
-	InvalidPath    = "invalid_path"    // ruta con «..», caracteres de control o fichero no regular
-	PathOutside    = "path_outside"    // la ruta resuelta sale de /data del servidor
-	IsDir          = "is_dir"          // era un fichero y es una carpeta
-	NotDir         = "not_dir"         // era una carpeta y es un fichero
-	Root           = "root"            // operación no permitida sobre la raíz
-	TransferFailed = "transfer_failed" // subida/descarga fallida
-	IOError        = "io_error"        // error de E/S del host
+	InvalidPath    = "invalid_path"    // path with "..", control characters or a non-regular file
+	PathOutside    = "path_outside"    // the resolved path leaves the server's /data
+	IsDir          = "is_dir"          // it was a file and is a folder
+	NotDir         = "not_dir"         // it was a folder and is a file
+	Root           = "root"            // operation not allowed on the root
+	TransferFailed = "transfer_failed" // upload/download failed
+	IOError        = "io_error"        // host I/O error
 )
 
-// Importación (Plan 6).
+// Import (Plan 6).
 const (
-	ExternalData = "external_data" // datos del servidor fuera de DATA_ROOT (dataPath): sin copias ni archivos
+	ExternalData = "external_data" // server data outside DATA_ROOT (dataPath): no backups or files
 )

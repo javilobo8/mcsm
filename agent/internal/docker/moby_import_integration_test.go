@@ -59,7 +59,7 @@ func TestMobyImportInspectAndConnect(t *testing.T) {
 	}
 	all, err := m.ListAll(ctx)
 	if err != nil || !slices.ContainsFunc(all, func(c Container) bool { return c.ID == id && c.Labels["mcsm.test"] == "true" }) {
-		t.Fatalf("ListAll no devuelve el contenedor: %v", err)
+		t.Fatalf("ListAll does not return the container: %v", err)
 	}
 	info, err := m.InspectImport(ctx, id)
 	if err != nil {
@@ -87,24 +87,24 @@ func TestMobyImportInspectAndConnect(t *testing.T) {
 	if !slices.Contains(info.Networks, netName) || !slices.Contains(info.Aliases[netName], "mcsm-test-alias") {
 		t.Fatalf("networks = %v, aliases = %v", info.Networks, info.Aliases)
 	}
-	// plan-6 (m1): para añadir un alias se desconecta y se vuelve a conectar, sin reiniciarlo.
+	// plan-6 (m1): to add an alias it is disconnected and connected again, without restarting it.
 	if err := m.DisconnectNetwork(ctx, netName, id); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.ConnectNetwork(ctx, netName, id, []string{"mcsm-test-alias", "mcsm-test-otro"}); err != nil {
+	if err := m.ConnectNetwork(ctx, netName, id, []string{"mcsm-test-alias", "mcsm-test-other"}); err != nil {
 		t.Fatal(err)
 	}
 	info, _ = m.InspectImport(ctx, id)
-	if info.State != "running" || !slices.Contains(info.Aliases[netName], "mcsm-test-otro") || !slices.Contains(info.Aliases[netName], "mcsm-test-alias") {
+	if info.State != "running" || !slices.Contains(info.Aliases[netName], "mcsm-test-other") || !slices.Contains(info.Aliases[netName], "mcsm-test-alias") {
 		t.Fatalf("state = %s, aliases = %v", info.State, info.Aliases)
 	}
-	if _, err := m.InspectImport(ctx, "mcsm-test-no-existe"); !errors.Is(err, ErrNotFound) {
+	if _, err := m.InspectImport(ctx, "mcsm-test-nonexistent"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
-// plan-6 (M3): con Mounts de tipo bind, Docker no crea la carpeta de origen si no existe (con Binds sí,
-// vacía): un disco externo sin montar no acaba en un mundo nuevo.
+// plan-6 (M3): with bind-type Mounts, Docker does not create the source folder if it does not exist (with Binds it does,
+// empty): an unmounted external disk does not end up as a new world.
 func TestMobyBindMountMissingSourceFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -116,17 +116,17 @@ func TestMobyBindMountMissingSourceFails(t *testing.T) {
 	if err := m.EnsureImage(ctx, "alpine:3.22"); err != nil {
 		t.Fatal(err)
 	}
-	missing := filepath.Join(t.TempDir(), "no-existe", "data")
+	missing := filepath.Join(t.TempDir(), "nonexistent", "data")
 	id, err := m.Create(ctx, name, &container.Config{Image: "alpine:3.22", Cmd: []string{"true"}, Labels: map[string]string{"mcsm.test": "true"}},
 		&container.HostConfig{Mounts: []mount.Mount{{Type: mount.TypeBind, Source: missing, Target: "/data"}}}, nil)
 	if err == nil {
 		defer m.Remove(context.Background(), id)
 		startErr := m.Start(ctx, id)
 		if startErr == nil {
-			t.Fatal("Docker aceptó un bind cuyo origen no existe")
+			t.Fatal("Docker accepted a bind whose source does not exist")
 		}
 	}
 	if _, statErr := os.Stat(missing); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatalf("Docker no debe crear la carpeta: %v", statErr)
+		t.Fatalf("Docker must not create the folder: %v", statErr)
 	}
 }

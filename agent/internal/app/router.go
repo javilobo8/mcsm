@@ -15,33 +15,33 @@ import (
 	"mcsm/agent/internal/spec"
 )
 
-// plan-8: el mc-router del nodo. La spec vive en el store (sobrevive a reinicios) y el contenedor se
-// reconcilia en segundo plano, con el contexto de vida: al recibir RouterApply/RouterRemove, al
-// arrancar el agente, cada reconcileEvery y con los eventos de Docker de su contenedor. Cada pasada
-// envía RouterObserved (id = 0) por la sesión vigente; sin sesión se pierde y la siguiente lo repone.
+// plan-8: the node's mc-router. The spec lives in the store (survives restarts) and the container is
+// reconciled in the background, with the life context: on receiving RouterApply/RouterRemove, when
+// the agent starts, every reconcileEvery and with the Docker events of its container. Each pass
+// sends RouterObserved (id = 0) over the current session; without a session it is lost and the next one restores it.
 
-// routerFilesDir es el directorio del host con los ficheros del router (la lista de jugadores del
-// autoscale). Va dentro de DATA_ROOT porque es lo único del host que el agente ve en la misma ruta
-// (montaje espejo, §6.1); empieza por punto, así que nunca coincide con el slug de un servidor.
+// routerFilesDir is the host directory with the router's files (the autoscale player
+// list). It lives inside DATA_ROOT because that is the only thing on the host the agent sees at the same path
+// (mirror mount, §6.1); it starts with a dot, so it never matches a server's slug.
 func routerFilesDir(dataRoot string) string { return filepath.Join(dataRoot, ".mcsm-router") }
 
-// proxySocketPath es el socket del proxy de Docker para el router: en el directorio del router, dentro de
-// DATA_ROOT (ruta del host gracias al montaje espejo).
+// proxySocketPath is the Docker proxy's socket for the router: in the router's directory, inside
+// DATA_ROOT (a host path thanks to the mirror mount).
 func proxySocketPath(dataRoot string) string {
 	return filepath.Join(routerFilesDir(dataRoot), "docker.sock")
 }
 
-// routerPolicy decide qué arranques y paradas de mc-router (autoscale) deja pasar el proxy: solo servidores de este
-// agente con hostname de router; nunca uno reservado (copia, restauración, migración) y, para arrancar, tampoco uno
-// retenido por bucle de crash. Una parada permitida queda anotada: su die no cuenta como crash.
+// routerPolicy decides which mc-router starts and stops (autoscale) the proxy lets through: only servers of this
+// agent with a router hostname; never a reserved one (backup, restore, migration) and, to start, not one
+// latched by a crash loop either. An allowed stop is recorded: its die does not count as a crash.
 func (a *App) routerPolicy(ctx context.Context, op dockerproxy.Op, container string) error {
 	ins, err := a.eng.Inspect(ctx, container)
 	if err != nil {
-		return fmt.Errorf("contenedor %s: %w", container, err)
+		return fmt.Errorf("container %s: %w", container, err)
 	}
 	id := ins.Labels[spec.LabelServerID]
 	if ins.Labels[spec.LabelManaged] != "true" || id == "" || ins.Labels[spec.LabelRouterHost] == "" {
-		return errors.New("no es un servidor con hostname de router de este nodo")
+		return errors.New("not a server with a router hostname on this node")
 	}
 	switch op {
 	case dockerproxy.OpStart:
@@ -52,21 +52,21 @@ func (a *App) routerPolicy(ctx context.Context, op dockerproxy.Op, container str
 		if reason := a.rec.HeldReason(id); reason != "" {
 			return reconcile.Busy(reason)
 		}
-		// plan-9 (además del brief): como al arrancar, solo servidores que este agente conoce; las etiquetas
-		// mcsm las puede poner cualquiera que cree contenedores en el mismo Docker.
+		// plan-9 (beyond the brief): as when starting, only servers this agent knows; the mcsm
+		// labels can be set by anyone who creates containers on the same Docker.
 		if sp, err := a.st.GetSpec(id); err != nil || sp == nil {
-			return errors.New("servidor desconocido en este nodo")
+			return errors.New("unknown server on this node")
 		}
 		a.intents.Note(ins.ID)
 	}
 	return nil
 }
 
-// onDemand indica si un servidor lo arranca y para mc-router (autoscale del router y hostname).
-// La invoca el reconciliador con el lock del servidor tomado: solo lee un atómico del router.
+// onDemand reports whether a server is started and stopped by mc-router (router autoscale and hostname).
+// It is invoked by the reconciler with the server's lock held: it only reads one of the router's atomics.
 func (a *App) onDemand(s spec.Spec) bool { return s.Router.Active() && a.router.Autoscale() }
 
-// handleRouterApply guarda la spec del router y responde; el contenedor se ajusta en segundo plano.
+// handleRouterApply stores the router's spec and answers; the container is adjusted in the background.
 func (a *App) handleRouterApply(id uint64, req *mcsmv1.RouterApply, send func(*mcsmv1.Envelope) error) {
 	before := a.router.Autoscale()
 	if err := router.Validate(req.GetSpec()); err != nil {
@@ -74,17 +74,17 @@ func (a *App) handleRouterApply(id uint64, req *mcsmv1.RouterApply, send func(*m
 		return
 	}
 	if err := a.router.Apply(req.GetSpec()); err != nil {
-		_ = send(errMsg(id, errcode.IOError, err)) // el store del agente (bbolt)
+		_ = send(errMsg(id, errcode.IOError, err)) // the agent's store (bbolt)
 		return
 	}
 	_ = send(ack(id))
 	a.routerAsync(a.life)
 	if a.router.Autoscale() != before {
-		a.reconcileAll(a.life) // cambia qué servidores están bajo demanda
+		a.reconcileAll(a.life) // changes which servers are on-demand
 	}
 }
 
-// handleRouterRemove borra la spec del router y responde; el contenedor se borra en segundo plano.
+// handleRouterRemove deletes the router's spec and answers; the container is deleted in the background.
 func (a *App) handleRouterRemove(id uint64, send func(*mcsmv1.Envelope) error) {
 	before := a.router.Autoscale()
 	if err := a.router.Clear(); err != nil {
@@ -94,11 +94,11 @@ func (a *App) handleRouterRemove(id uint64, send func(*mcsmv1.Envelope) error) {
 	_ = send(ack(id))
 	a.routerAsync(a.life)
 	if before {
-		a.reconcileAll(a.life) // los servidores bajo demanda vuelven a su estado deseado
+		a.reconcileAll(a.life) // on-demand servers return to their desired state
 	}
 }
 
-// routerAsync reconcilia el router sin bloquear (coalescido con el despachador) y publica su estado.
+// routerAsync reconciles the router without blocking (coalesced with the dispatcher) and publishes its state.
 func (a *App) routerAsync(ctx context.Context) {
 	a.dispatch(ctx, "router", func() {
 		obs := a.router.Reconcile(ctx)
@@ -106,8 +106,8 @@ func (a *App) routerAsync(ctx context.Context) {
 	})
 }
 
-// routerLoop reconcilia el router al arrancar (reinicio del agente: lo recrea si falta) y cada
-// reconcileEvery (borrado a mano, puerto liberado).
+// routerLoop reconciles the router at startup (agent restart: it recreates it if missing) and every
+// reconcileEvery (deleted by hand, port freed).
 func (a *App) routerLoop(ctx context.Context) {
 	a.routerAsync(ctx)
 	t := time.NewTicker(reconcileEvery)
@@ -122,7 +122,7 @@ func (a *App) routerLoop(ctx context.Context) {
 	}
 }
 
-// routerEvent reacciona a un evento de Docker del contenedor del router.
+// routerEvent reacts to a Docker event of the router's container.
 func (a *App) routerEvent(ctx context.Context, action string) {
 	switch action {
 	case "start", "die", "stop", "kill", "destroy", "oom", "restart":
@@ -130,5 +130,5 @@ func (a *App) routerEvent(ctx context.Context, action string) {
 	}
 }
 
-// isRouterEvent indica si el evento es del contenedor del router.
+// isRouterEvent reports whether the event is from the router's container.
 func isRouterEvent(labels map[string]string) bool { return labels[router.LabelRouter] == "true" }

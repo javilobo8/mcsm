@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-// SweepTemps borra los temporales de escrituras atómicas que quedaron huérfanos (el agente murió
-// o se cerró a mitad de una subida) y llevan más de olderThan sin modificarse: los de una
-// escritura en curso cambian con cada trozo, y una transferencia parada más de un minuto se
-// corta. Recorre la raíz con os.Root, sin seguir enlaces ni salir de ella, y solo borra ficheros
-// normales con el nombre exacto de un temporal. Una carpeta ilegible no detiene el barrido; el
-// contexto sí. Devuelve cuántos borró.
+// SweepTemps deletes the temporaries of atomic writes that were left orphaned (the agent died
+// or shut down midway through an upload) and have gone unmodified for more than olderThan: those of an
+// in-progress write change with every chunk, and a transfer stalled for more than a minute is
+// cut off. It walks the root with os.Root, without following links or leaving it, and only deletes regular
+// files with the exact name of a temporary. An unreadable folder does not stop the sweep; the
+// context does. It returns how many it deleted.
 func (f *FS) SweepTemps(ctx context.Context, olderThan time.Duration, now time.Time) (int, error) {
 	r, err := f.open()
 	if err != nil {

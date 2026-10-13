@@ -9,27 +9,27 @@ import (
 	"mcsm/agent/internal/spec"
 )
 
-// SetOnDemand fija qué servidores están «bajo demanda» (plan-8): los que arranca y para mc-router con
-// su autoscale. Para ellos la reconciliación crea y recrea el contenedor, pero no para uno en marcha
-// ni arranca uno parado: el estado deseado solo se aplica con las acciones de encendido (Power). Un
-// contenedor que nunca arrancó sí se arranca, porque mc-router no lo vería (comprobado con mc-router
-// 1.47.1: solo conoce los que vio arrancar o encontró parados al arrancar él) y lo duerme sin
-// jugadores. Se llama antes de lanzar goroutines (App.New); después es de solo lectura. fn se invoca
-// con el lock del servidor tomado: no puede llamar al reconciliador.
+// SetOnDemand sets which servers are "on-demand" (plan-8): those mc-router starts and stops with
+// its autoscale. For them the reconciliation creates and recreates the container, but does not stop a running one
+// nor start a stopped one: the desired state is only applied with power actions (Power). A
+// container that never started is started, because mc-router would not see it (checked with mc-router
+// 1.47.1: it only knows those it saw start or found stopped when it started) and puts it to sleep without
+// players. It is called before launching goroutines (App.New); afterwards it is read-only. fn is invoked
+// with the server's lock held: it cannot call the reconciler.
 func (r *Reconciler) SetOnDemand(fn func(spec.Spec) bool) { r.onDemand = fn }
 
-// Park aparca un servidor bajo demanda mientras está reservado (Hold): la reserva solo frena al
-// agente, y mc-router, con su autoscale, arranca por su cuenta cualquier contenedor parado con
-// hostname en cuanto un jugador intenta entrar (p. ej. sobre el mundo viejo a mitad de una
-// restauración). Park lo para (con su espera) y lo borra: sin contenedor no hay nada que arrancar.
-// Los datos están en el bind; al liberar la reserva, reconcileLocked lo recrea y lo arranca (ver
-// SetOnDemand: mc-router lo vuelve a dormir sin jugadores). Devuelve false sin tocar nada si el
-// servidor no está bajo demanda. Exige la reserva tomada: sin ella, un tick lo recrearía.
+// Park parks an on-demand server while it is reserved (Hold): the reservation only holds back the
+// agent, and mc-router, with its autoscale, starts on its own any stopped container with a
+// hostname as soon as a player tries to join (e.g. on the old world midway through a
+// restore). Park stops it (with its wait) and deletes it: without a container there is nothing to start.
+// The data is in the bind; when the reservation is released, reconcileLocked recreates and starts it (see
+// SetOnDemand: mc-router puts it back to sleep without players). It returns false without touching anything if the
+// server is not on-demand. It requires the reservation to be held: without it, a tick would recreate it.
 func (r *Reconciler) Park(ctx context.Context, serverID string) (bool, error) {
 	unlock := r.lock(serverID)
 	defer unlock()
 	if r.heldReason(serverID) == "" {
-		return false, errors.New("aparcar un servidor exige tenerlo reservado")
+		return false, errors.New("parking a server requires it to be reserved")
 	}
 	if r.onDemand == nil {
 		return false, nil
@@ -50,14 +50,14 @@ func (r *Reconciler) Park(ctx context.Context, serverID string) (bool, error) {
 		return false, err
 	}
 	if c == nil {
-		return true, nil // ya aparcado (o sin crear)
+		return true, nil // already parked (or not created)
 	}
 	if err := r.eng.Stop(ctx, c.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-		return false, fmt.Errorf("parar: %w", err)
+		return false, fmt.Errorf("stop: %w", err)
 	}
 	if err := r.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, docker.ErrNotFound) {
-		return false, fmt.Errorf("eliminar: %w", err)
+		return false, fmt.Errorf("remove: %w", err)
 	}
-	r.log.Info("servidor bajo demanda aparcado mientras está reservado", "server", sp.Slug)
+	r.log.Info("on-demand server parked while it is reserved", "server", sp.Slug)
 	return true, nil
 }

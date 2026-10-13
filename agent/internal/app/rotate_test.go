@@ -17,7 +17,7 @@ func rotate(a *App, tok string, send func(*mcsmv1.Envelope) error) {
 
 func TestRotateTokenSavesBeforeAckAndReconnectsAfter(t *testing.T) {
 	a, _, st := newApp(t)
-	if err := st.SaveCredentials(store.Credentials{NodeID: "n1", Token: "viejo"}); err != nil {
+	if err := st.SaveCredentials(store.Credentials{NodeID: "n1", Token: "old"}); err != nil {
 		t.Fatal(err)
 	}
 	tok := strings.Repeat("A", 42) + "_"
@@ -26,15 +26,15 @@ func TestRotateTokenSavesBeforeAckAndReconnectsAfter(t *testing.T) {
 	a.reconnect = func() { order = append(order, "reconnect") }
 	rotate(a, tok, func(e *mcsmv1.Envelope) error {
 		creds, _ := st.Credentials()
-		order = append(order, fmt.Sprintf("ack=%v guardado=%v", e.GetAck() != nil && e.Id == 5, creds.Token == tok))
+		order = append(order, fmt.Sprintf("ack=%v saved=%v", e.GetAck() != nil && e.Id == 5, creds.Token == tok))
 		return nil
 	})
-	want := []string{"token=" + tok, "ack=true guardado=true", "reconnect"}
+	want := []string{"token=" + tok, "ack=true saved=true", "reconnect"}
 	if !slices.Equal(order, want) {
-		t.Fatalf("orden = %v", order)
+		t.Fatalf("order = %v", order)
 	}
 	if creds, _ := st.Credentials(); creds.NodeID != "n1" {
-		t.Fatalf("el nodo no cambia: %+v", creds)
+		t.Fatalf("the node does not change: %+v", creds)
 	}
 }
 
@@ -44,34 +44,34 @@ func TestRotateTokenRejectsBadTokensAndMissingCredentials(t *testing.T) {
 	a.setToken = func(string) { called = true }
 	a.reconnect = func() { called = true }
 	s := newSink()
-	rotate(a, "corto", s.send)
+	rotate(a, "short", s.send)
 	if e := s.waitID(t, 5); e.GetError().GetCode() != "invalid_request" {
 		t.Fatalf("resp = %+v", e)
 	}
-	rotate(a, strings.Repeat("B", 43), s.send) // sin credenciales guardadas
+	rotate(a, strings.Repeat("B", 43), s.send) // without stored credentials
 	if e := s.waitID(t, 5); e.GetError().GetCode() != "io_error" {
 		t.Fatalf("resp = %+v", e)
 	}
 	if called {
-		t.Fatal("sin guardar no se cambia de token ni se reconecta")
+		t.Fatal("without saving, neither the token changes nor does it reconnect")
 	}
 	if creds, _ := st.Credentials(); creds != nil {
-		t.Fatalf("credenciales = %+v", creds)
+		t.Fatalf("credentials = %+v", creds)
 	}
 }
 
-// Dos RotateToken a la vez (el cliente despacha cada mensaje en su goroutine) se atienden de uno en uno: si no, el
-// store podría quedarse con un token y el cliente con el otro. El handler tiene rotateMu tomado desde que guarda
-// hasta que reconecta: en cada paso, nadie más puede tomarlo (TryLock falla), sin plazos.
+// Two RotateTokens at once (the client dispatches each message in its goroutine) are served one at a time: otherwise the
+// store could end up with one token and the client with the other. The handler holds rotateMu from when it saves
+// until it reconnects: at each step, nobody else can take it (TryLock fails), without deadlines.
 func TestRotateTokenIsSerialized(t *testing.T) {
 	a, _, st := newApp(t)
-	if err := st.SaveCredentials(store.Credentials{NodeID: "n1", Token: "viejo"}); err != nil {
+	if err := st.SaveCredentials(store.Credentials{NodeID: "n1", Token: "old"}); err != nil {
 		t.Fatal(err)
 	}
 	held := func(step string) {
 		if a.rotateMu.TryLock() {
 			a.rotateMu.Unlock()
-			t.Errorf("%s: otra rotación podría colarse aquí", step)
+			t.Errorf("%s: another rotation could sneak in here", step)
 		}
 	}
 	var steps []string
@@ -83,10 +83,10 @@ func TestRotateTokenIsSerialized(t *testing.T) {
 		return nil
 	})
 	if !slices.Equal(steps, []string{"setToken", "ack", "reconnect"}) {
-		t.Fatalf("pasos = %v", steps)
+		t.Fatalf("steps = %v", steps)
 	}
 	if !a.rotateMu.TryLock() {
-		t.Fatal("al terminar, el lock queda libre")
+		t.Fatal("when finished, the lock is left free")
 	}
 	a.rotateMu.Unlock()
 }

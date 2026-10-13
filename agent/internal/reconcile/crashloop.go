@@ -9,28 +9,28 @@ import (
 	"mcsm/agent/internal/store"
 )
 
-// EventSink recibe incidencias del reconciliador (plan-9: drift). Se invoca con el lock del servidor tomado: no
-// puede bloquear ni llamar al reconciliador (App la conecta a su cola de eventos, que nunca bloquea).
+// EventSink receives reconciler events (plan-9: drift). It is invoked with the server's lock held: it
+// cannot block or call the reconciler (App wires it to its event queue, which never blocks).
 type EventSink func(serverID, kind, message string)
 
-// KindDrift: el contenedor no coincidía con la spec ya aplicada y se ha recreado.
+// KindDrift: the container did not match the already applied spec and has been recreated.
 const KindDrift = "drift"
 
-// SetEventSink fija el receptor de incidencias. Se llama antes de lanzar goroutines (App.New).
+// SetEventSink sets the event receiver. It is called before launching goroutines (App.New).
 func (r *Reconciler) SetEventSink(fn EventSink) { r.events = fn }
 
-// SetOnManualStart fija lo que se hace cuando Power acepta un arranque o reinicio a mano (plan-9: la cuenta de
-// crashes empieza de cero). Se invoca con el lock del servidor tomado, antes de la acción en Docker: no puede
-// bloquear ni llamar al reconciliador. Se llama antes de lanzar goroutines (App.New).
+// SetOnManualStart sets what is done when Power accepts a manual start or restart (plan-9: the crash
+// count starts from zero). It is invoked with the server's lock held, before the Docker action: it cannot
+// block or call the reconciler. It is called before launching goroutines (App.New).
 func (r *Reconciler) SetOnManualStart(fn func(serverID string)) { r.onManualStart = fn }
 
-// CrashLoopMessage es el error visible (Observed.error) de un servidor retenido por bucle de crash.
+// CrashLoopMessage is the visible error (Observed.error) of a server held by a crash loop.
 func CrashLoopMessage(crashes int) string {
-	return fmt.Sprintf("Parado por bucle de crash: se cerró con error %d veces en menos de una hora. Revisa la consola y pulsa Arrancar para volver a intentarlo", crashes)
+	return fmt.Sprintf("Stopped by a crash loop: it exited with an error %d times in less than an hour. Check the console and press Start to try again", crashes)
 }
 
-// crashLatched devuelve la retención de serverID si es de esta versión de su spec. Una retención de otra versión
-// (llegó una spec nueva) se borra. Con el lock del servidor tomado.
+// crashLatched returns serverID's latch if it is from this version of its spec. A latch from another version
+// (a new spec arrived) is deleted. With the server's lock held.
 func (r *Reconciler) crashLatched(serverID string, version uint64) (*store.CrashLatch, error) {
 	l, err := r.st.CrashLatch(serverID)
 	if err != nil || l == nil {
@@ -42,16 +42,16 @@ func (r *Reconciler) crashLatched(serverID string, version uint64) (*store.Crash
 	return l, nil
 }
 
-// CrashLoopStop para un servidor en bucle de crash (spec §10) y lo retiene en la versión actual de su spec: la
-// reconciliación no lo vuelve a arrancar (aunque SyncSpecs reenvíe «en marcha») hasta un Power start/restart o
-// una versión nueva. El estado deseado no cambia (lo decide el panel). Busy si el servidor está reservado.
+// CrashLoopStop stops a server in a crash loop (spec §10) and latches it at the current version of its spec: the
+// reconciliation does not start it again (even if SyncSpecs resends "running") until a Power start/restart or
+// a new version. The desired state does not change (the panel decides it). Busy if the server is reserved.
 func (r *Reconciler) CrashLoopStop(ctx context.Context, serverID string, crashes int) error {
 	unlock := r.lock(serverID)
 	defer unlock()
 	return r.crashLoopStopLocked(ctx, serverID, crashes)
 }
 
-// StartGen es el número de Power start/restart y de versiones nuevas de la spec de serverID hasta ahora (ver
+// StartGen is the number of Power start/restart and of new spec versions of serverID so far (see
 // CrashLoopStopUnlessStarted).
 func (r *Reconciler) StartGen(serverID string) uint64 {
 	r.mu.Lock()
@@ -59,9 +59,9 @@ func (r *Reconciler) StartGen(serverID string) uint64 {
 	return r.startGen[serverID]
 }
 
-// CrashLoopStopUnlessStarted es CrashLoopStop salvo si, desde que se decidió (gen = StartGen en ese momento), alguien
-// arrancó o reinició el servidor a mano o llegó una versión nueva de su spec: entonces no hace nada y devuelve false.
-// La comprobación va bajo el lock del servidor, el mismo que toman Power, Apply y StoreForce.
+// CrashLoopStopUnlessStarted is CrashLoopStop unless, since it was decided (gen = StartGen at that moment), someone
+// started or restarted the server by hand or a new version of its spec arrived: then it does nothing and returns false.
+// The check goes under the server's lock, the same one Power, Apply and StoreForce take.
 func (r *Reconciler) CrashLoopStopUnlessStarted(ctx context.Context, serverID string, crashes int, gen uint64) (bool, error) {
 	unlock := r.lock(serverID)
 	defer unlock()
@@ -71,7 +71,7 @@ func (r *Reconciler) CrashLoopStopUnlessStarted(ctx context.Context, serverID st
 	return true, r.crashLoopStopLocked(ctx, serverID, crashes)
 }
 
-// crashLoopStopLocked es CrashLoopStop con el lock del servidor tomado.
+// crashLoopStopLocked is CrashLoopStop with the server's lock held.
 func (r *Reconciler) crashLoopStopLocked(ctx context.Context, serverID string, crashes int) error {
 	if reason := r.heldReason(serverID); reason != "" {
 		return Busy(reason)
@@ -81,7 +81,7 @@ func (r *Reconciler) crashLoopStopLocked(ctx context.Context, serverID string, c
 		return err
 	}
 	if sp == nil {
-		return fmt.Errorf("servidor %s desconocido", serverID)
+		return fmt.Errorf("unknown server %s", serverID)
 	}
 	if err := r.st.PutCrashLatch(serverID, store.CrashLatch{Version: sp.Version, Crashes: crashes, At: r.now()}); err != nil {
 		return err
@@ -90,9 +90,9 @@ func (r *Reconciler) crashLoopStopLocked(ctx context.Context, serverID string, c
 	c, err := r.find(ctx, serverID)
 	if err != nil {
 		stopErr = err
-	} else if c != nil && isActive(c.State) { // también «restarting»: la política de reinicio lo está rearrancando
+	} else if c != nil && isActive(c.State) { // also "restarting": the restart policy is restarting it
 		if err := r.eng.Stop(ctx, c.ID, StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			stopErr = fmt.Errorf("parar: %w", err)
+			stopErr = fmt.Errorf("stop: %w", err)
 		}
 	}
 	obs := r.observeLocked(ctx, serverID)
@@ -103,9 +103,9 @@ func (r *Reconciler) crashLoopStopLocked(ctx context.Context, serverID string, c
 	return stopErr
 }
 
-// StartBlocked es el motivo por el que nadie (mc-router, a través del proxy del socket) debe arrancar el servidor
-// ahora: una reserva (copia, restauración, migración…), la retención por bucle de crash o que el agente no lo
-// conozca. "" si puede arrancar. Sin lock: es una foto, como la que vería quien lo arranca.
+// StartBlocked is the reason why nobody (mc-router, through the socket proxy) should start the server
+// now: a reservation (backup, restore, migration…), the crash loop latch or the agent not
+// knowing it. "" if it can start. Without a lock: it is a snapshot, like what whoever starts it would see.
 func (r *Reconciler) StartBlocked(serverID string) string {
 	if reason := r.heldReason(serverID); reason != "" {
 		return Busy(reason).Error()
@@ -115,7 +115,7 @@ func (r *Reconciler) StartBlocked(serverID string) string {
 		return err.Error()
 	}
 	if sp == nil {
-		return "servidor desconocido en este nodo"
+		return "unknown server on this node"
 	}
 	if l, err := r.st.CrashLatch(serverID); err == nil && l != nil && l.Version == sp.Version {
 		return CrashLoopMessage(l.Crashes)

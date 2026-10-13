@@ -1,4 +1,4 @@
-// Package docker aísla el SDK de Docker tras una interfaz pequeña y testeable.
+// Package docker isolates the Docker SDK behind a small, testable interface.
 package docker
 
 import (
@@ -11,15 +11,15 @@ import (
 	"github.com/moby/moby/api/types/network"
 )
 
-var ErrNotFound = errors.New("docker: no encontrado")
+var ErrNotFound = errors.New("docker: not found")
 
 type Container struct {
 	ID     string
 	Name   string
 	State  string
 	Labels map[string]string
-	// Adopted lo marca el reconciliador en el contenedor original de un servidor importado (plan-6):
-	// no tiene etiquetas mcsm.* y sus Labels son sintetizadas. Docker nunca lo rellena.
+	// Adopted is set by the reconciler on the original container of an imported server (plan-6):
+	// it has no mcsm.* labels and its Labels are synthesized. Docker never fills it in.
 	Adopted bool
 }
 
@@ -32,14 +32,14 @@ type Inspect struct {
 	ExitCode  int
 	StartedAt time.Time
 	Labels    map[string]string
-	// PortsMissing: en marcha sin publicar los puertos que pide (PortBindings con puerto de host y
-	// NetworkSettings.Ports sin ellos). Docker 29.7.2 arranca así, y así se queda aunque se pare y
-	// se vuelva a arrancar, un contenedor cuyo arranque anterior falló por el puerto del host: hay
-	// que borrarlo y crearlo de nuevo (plan-8).
+	// PortsMissing: running without publishing the ports it asks for (PortBindings with a host port and
+	// NetworkSettings.Ports without them). Docker 29.7.2 starts this way, and stays that way even if it is stopped and
+	// started again, a container whose previous start failed on the host port: it has to
+	// be deleted and created again (plan-8).
 	PortsMissing bool
 }
 
-// PortsMissing indica si falta en published algún puerto que want publica en el host. Pura.
+// PortsMissing reports whether published lacks any port that want publishes on the host. Pure.
 func PortsMissing(want, published network.PortMap) bool {
 	for p, binds := range want {
 		needs := false
@@ -55,16 +55,16 @@ func PortsMissing(want, published network.PortMap) bool {
 	return false
 }
 
-// Stats es una lectura puntual de `docker stats` (una sola muestra, sin la previa:
-// el % de CPU lo calcula el muestreador con dos lecturas consecutivas).
+// Stats is a point reading of `docker stats` (a single sample, without the previous one:
+// the CPU % is computed by the sampler from two consecutive readings).
 type Stats struct {
 	Read        time.Time
-	CPUTotalNs  uint64 // CPU acumulada del contenedor, en ns
-	SystemCPUNs uint64 // CPU acumulada del host (todas las CPU), en ns
+	CPUTotalNs  uint64 // accumulated container CPU, in ns
+	SystemCPUNs uint64 // accumulated host CPU (all CPUs), in ns
 	OnlineCPUs  uint32
-	MemBytes    uint64 // uso sin la caché de páginas inactiva (como la CLI de Docker)
+	MemBytes    uint64 // usage without the inactive page cache (like the Docker CLI)
 	MemLimit    uint64
-	NetRxBytes  uint64 // suma de todas las interfaces, acumulado desde el arranque
+	NetRxBytes  uint64 // sum of all interfaces, accumulated since startup
 	NetTxBytes  uint64
 }
 
@@ -85,28 +85,28 @@ type Engine interface {
 	Stop(ctx context.Context, id string, timeout time.Duration) error
 	Kill(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
-	// Logs sigue la salida del contenedor (follow) empezando por las últimas `tail` líneas,
-	// con timestamps RFC3339Nano al inicio de cada línea.
+	// Logs follows the container output (follow) starting with the last `tail` lines,
+	// with RFC3339Nano timestamps at the start of each line.
 	Logs(ctx context.Context, id string, tail int) (io.ReadCloser, error)
-	// Events emite eventos de contenedores con la etiqueta mcsm.managed=true hasta que ctx termina.
+	// Events emits events of containers with the mcsm.managed=true label until ctx ends.
 	Events(ctx context.Context) (<-chan Event, <-chan error)
-	// Stats devuelve una lectura puntual de uso de recursos (one-shot: no espera a una
-	// segunda muestra). ErrNotFound si el contenedor no existe.
+	// Stats returns a point reading of resource usage (one-shot: it does not wait for a
+	// second sample). ErrNotFound if the container does not exist.
 	Stats(ctx context.Context, id string) (Stats, error)
-	// HostName es el nombre del host del daemon (docker info → Name): el de la máquina, no el del contenedor del
-	// agente (os.Hostname dentro de un contenedor es su id). plan-9.
+	// HostName is the daemon's host name (docker info → Name): the machine's, not that of the agent's
+	// container (os.Hostname inside a container is its id). plan-9.
 	HostName(ctx context.Context) (string, error)
 
-	// ── plan-6: importación (spec §6.7) ──
-	// ListAll lista todos los contenedores del host (como `docker ps -a`), gestionados o no.
+	// ── plan-6: import (spec §6.7) ──
+	// ListAll lists all the host's containers (like `docker ps -a`), managed or not.
 	ListAll(ctx context.Context) ([]Container, error)
-	// InspectImport es el inspect reducido de un contenedor importable. ErrNotFound si no existe.
+	// InspectImport is the reduced inspect of an importable container. ErrNotFound if it does not exist.
 	InspectImport(ctx context.Context, id string) (*ImportInfo, error)
-	// ImageEnv devuelve el ENV de una imagen (por id o referencia). ErrNotFound si no existe.
+	// ImageEnv returns an image's ENV (by id or reference). ErrNotFound if it does not exist.
 	ImageEnv(ctx context.Context, image string) ([]string, error)
-	// ConnectNetwork conecta un contenedor (en marcha o no) a una red con alias DNS, sin reiniciarlo.
+	// ConnectNetwork connects a container (running or not) to a network with a DNS alias, without restarting it.
 	ConnectNetwork(ctx context.Context, netName, id string, aliases []string) error
-	// DisconnectNetwork lo desconecta de una red, sin reiniciarlo (Docker no cambia los alias de una
-	// conexión existente: se desconecta y se vuelve a conectar).
+	// DisconnectNetwork disconnects it from a network, without restarting it (Docker does not change the aliases of an
+	// existing connection: it is disconnected and connected again).
 	DisconnectNetwork(ctx context.Context, netName, id string) error
 }

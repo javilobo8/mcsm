@@ -24,8 +24,8 @@ import (
 	"mcsm/agent/internal/store"
 )
 
-// newMigrateEnv: el entorno de copias (servidor "a", slug alpha, en marcha y con un mundo) con
-// credenciales para las transferencias.
+// newMigrateEnv: the backups environment (server "a", slug alpha, running and with a world) with
+// credentials for the transfers.
 func newMigrateEnv(t *testing.T) *backupEnv {
 	t.Helper()
 	e := newBackupEnv(t, specJSON)
@@ -35,7 +35,7 @@ func newMigrateEnv(t *testing.T) *backupEnv {
 	return e
 }
 
-// migrateEnvelope envuelve los mensajes de la migración.
+// migrateEnvelope wraps the migration messages.
 func migrateEnvelope(id uint64, body any) *mcsmv1.Envelope {
 	env := &mcsmv1.Envelope{Id: id}
 	switch b := body.(type) {
@@ -50,18 +50,18 @@ func migrateEnvelope(id uint64, body any) *mcsmv1.Envelope {
 	case *mcsmv1.MigrateConfirm:
 		env.Body = &mcsmv1.Envelope_MigrateConfirm{MigrateConfirm: b}
 	default:
-		panic(fmt.Sprintf("cuerpo no previsto %T", body))
+		panic(fmt.Sprintf("unexpected body %T", body))
 	}
 	return env
 }
 
-// call entrega un mensaje de la migración y espera, sin dormir, la respuesta con su id (Ack,
-// Error o *Result; algunas llegan desde una tarea de fondo).
+// call delivers a migration message and waits, without sleeping, for the response with its id (Ack,
+// Error or *Result; some arrive from a background task).
 func (e *backupEnv) call(t *testing.T, id uint64, body any) *mcsmv1.Envelope {
 	t.Helper()
 	e.a.Handle(context.Background(), migrateEnvelope(id, body), e.col.reply)
 	var out *mcsmv1.Envelope
-	e.col.waitFor(t, fmt.Sprintf("respuesta a %d", id), func() bool {
+	e.col.waitFor(t, fmt.Sprintf("response to %d", id), func() bool {
 		for _, env := range e.col.all() {
 			if env.Id == id {
 				out = env
@@ -73,10 +73,10 @@ func (e *backupEnv) call(t *testing.T, id uint64, body any) *mcsmv1.Envelope {
 	return out
 }
 
-// preMigration hace una copia pre_migration de "a" y devuelve su aviso.
+// preMigration makes a pre_migration backup of "a" and returns its notice.
 func preMigration(t *testing.T, e *backupEnv) *mcsmv1.BackupInfo {
 	t.Helper()
-	stopServer(t, e, 9) // paso 1 de la migración: la copia previa exige el servidor parado
+	stopServer(t, e, 9) // migration step 1: the prior backup requires the server stopped
 	if r := e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-pre", Trigger: mcsmv1.BackupTrigger_BACKUP_TRIGGER_PRE_MIGRATION}); r.GetAck() == nil {
 		t.Fatalf("BackupNow = %+v", r)
 	}
@@ -94,7 +94,7 @@ func TestBackupPushSendsArchiveAndMeta(t *testing.T) {
 	var got []byte
 	panelFor(t, e.a, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {
-			http.Error(w, "método", http.StatusMethodNotAllowed)
+			http.Error(w, "method", http.StatusMethodNotAllowed)
 			return
 		}
 		got, _ = io.ReadAll(r.Body)
@@ -109,14 +109,14 @@ func TestBackupPushSendsArchiveAndMeta(t *testing.T) {
 	sum := sha256.Sum256(got)
 	if res == nil || !bytes.Equal(got, want) || hex.EncodeToString(sum[:]) != info.Sha256 ||
 		res.Sha256 != info.Sha256 || res.SizeBytes != uint64(len(want)) || res.DataBytes == 0 {
-		t.Fatalf("resp = %+v (el panel recibió %d bytes)", r, len(got))
+		t.Fatalf("resp = %+v (the panel received %d bytes)", r, len(got))
 	}
 }
 
 func TestBackupPushErrors(t *testing.T) {
 	e := newMigrateEnv(t)
 	name := preMigration(t, e).Filename
-	panelFor(t, e.a, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }) // caducada o ya usada
+	panelFor(t, e.a, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }) // expired or already used
 	cases := []struct {
 		id   uint64
 		m    *mcsmv1.BackupPush
@@ -129,15 +129,15 @@ func TestBackupPushErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		if r := e.call(t, c.id, c.m); errCode(r) != c.code {
-			t.Errorf("%d: resp = %+v, quería %s", c.id, r, c.code)
+			t.Errorf("%d: resp = %+v, wanted %s", c.id, r, c.code)
 		}
 	}
 }
 
 const migFile = "mig-20261012T040000.000Z-3.tar.zst"
 
-// worldArchive empaqueta un mundo (world/level.dat = level) como lo hace una copia y devuelve el
-// .tar.zst, su sha256 y lo que ocupa extraído.
+// worldArchive packs a world (world/level.dat = level) as a backup does and returns the
+// .tar.zst, its sha256 and what it takes extracted.
 func worldArchive(t *testing.T, level string) ([]byte, string, int64) {
 	t.Helper()
 	src := t.TempDir()
@@ -160,7 +160,7 @@ func worldArchive(t *testing.T, level string) ([]byte, string, int64) {
 	return buf.Bytes(), hex.EncodeToString(sum[:]), st.Bytes
 }
 
-// servePanel sirve arch en GET /agent/transfer/{xferID} (con Content-Length) y cuenta las descargas.
+// servePanel serves arch on GET /agent/transfer/{xferID} (with Content-Length) and counts the downloads.
 func servePanel(t *testing.T, e *backupEnv, arch []byte) *atomic.Int32 {
 	t.Helper()
 	gets := &atomic.Int32{}
@@ -195,28 +195,28 @@ func TestMigrateReceiveRestoresWorld(t *testing.T) {
 		t.Fatalf("level.dat = %q", got)
 	}
 	if b, _ := os.ReadFile(filepath.Join(e.migDir(), migrationMarker)); string(b) != "mig-1\n" {
-		t.Fatalf("marcador = %q", b)
+		t.Fatalf("marker = %q", b)
 	}
 	meta, err := backup.ReadMeta(filepath.Join(e.migDir(), "backups"), migFile)
 	if err != nil || meta.SHA256 != sum || meta.Trigger != backup.TriggerPreMigration || meta.SpecVersion != 3 {
 		t.Fatalf("meta = %+v, %v", meta, err)
 	}
 	if pre, _ := backup.ListPreRestore(filepath.Join(e.migDir(), "data")); len(pre) != 0 {
-		t.Fatalf("sin datos previos no hay pre-restore: %+v", pre)
+		t.Fatalf("without previous data there is no pre-restore: %+v", pre)
 	}
 	if e.a.rec.Held("m") {
-		t.Fatal("la reserva debe liberarse al terminar")
+		t.Fatal("the reservation must be released when finished")
 	}
 	if sp, _ := e.st.GetSpec("m"); sp != nil {
-		t.Fatal("recibir no crea la spec: la manda el panel después (ApplySpec)")
+		t.Fatal("receiving does not create the spec: the panel sends it afterwards (ApplySpec)")
 	}
-	// Un job_id repetido no descarga otra vez: reenvía su estado (§5.4).
+	// A repeated job_id does not download again: it resends its state (§5.4).
 	if r := e.call(t, 31, receiveMsg("rx-1", arch, sum, data)); r.GetAck() == nil {
-		t.Fatalf("repetido = %+v", r)
+		t.Fatalf("repeated = %+v", r)
 	}
 	e.settle(t)
 	if n := gets.Load(); n != 1 {
-		t.Fatalf("descargas = %d", n)
+		t.Fatalf("downloads = %d", n)
 	}
 }
 
@@ -229,14 +229,14 @@ func TestMigrateReceiveDamagedCopyLeavesNothing(t *testing.T) {
 	}
 	e.settle(t)
 	fin := e.col.final("rx-1")
-	if fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "dañada") {
+	if fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "corrupted") {
 		t.Fatalf("final = %+v", fin)
 	}
 	if _, err := os.Stat(e.migDir()); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("el directorio de la migración debe desaparecer: %v", err)
+		t.Fatalf("the migration directory must disappear: %v", err)
 	}
 	if e.a.rec.Held("m") {
-		t.Fatal("la reserva debe liberarse")
+		t.Fatal("the reservation must be released")
 	}
 }
 
@@ -244,30 +244,30 @@ func TestMigrateReceiveRefusals(t *testing.T) {
 	e := newMigrateEnv(t)
 	arch, sum, data := worldArchive(t, "LEVEL-MIG")
 	gets := servePanel(t, e, arch)
-	// Ya existe <DATA_ROOT>/mig (p. ej. un servidor borrado sin sus datos): ni se toca.
+	// <DATA_ROOT>/mig already exists (e.g. a server deleted without its data): it is not touched.
 	if err := os.MkdirAll(filepath.Join(e.migDir(), "data"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.call(t, 40, receiveMsg("rx-a", arch, sum, data)); errCode(r) != errcode.Exists {
-		t.Fatalf("directorio existente = %+v", r)
+		t.Fatalf("existing directory = %+v", r)
 	}
 	if _, err := os.Stat(filepath.Join(e.migDir(), "data")); err != nil {
-		t.Fatal("el directorio ajeno debe seguir")
+		t.Fatal("the foreign directory must remain")
 	}
-	// El servidor ya está en este nodo.
+	// The server is already on this node.
 	m := receiveMsg("rx-b", arch, sum, data)
-	m.ServerId, m.Slug, m.Filename = "a", "otro", "otro-20261012T040000.000Z-3.tar.zst"
+	m.ServerId, m.Slug, m.Filename = "a", "other", "other-20261012T040000.000Z-3.tar.zst"
 	if r := e.call(t, 41, m); errCode(r) != errcode.Exists {
-		t.Fatalf("servidor conocido = %+v", r)
+		t.Fatalf("known server = %+v", r)
 	}
-	// No cabe la copia más su extracción con el margen.
+	// The backup plus its extraction does not fit with the margin.
 	e.a.bk.freeSpace = func(string) (uint64, error) { return 100 << 20, nil }
 	m = receiveMsg("rx-c", arch, sum, data)
-	m.Slug, m.Filename = "nuevo", "nuevo-20261012T040000.000Z-3.tar.zst"
-	if r := e.call(t, 42, m); errCode(r) != errcode.TooLarge || !strings.Contains(r.GetError().GetMessage(), "espacio") {
-		t.Fatalf("sin espacio = %+v", r)
+	m.Slug, m.Filename = "new", "new-20261012T040000.000Z-3.tar.zst"
+	if r := e.call(t, 42, m); errCode(r) != errcode.TooLarge || !strings.Contains(r.GetError().GetMessage(), "space") {
+		t.Fatalf("without space = %+v", r)
 	}
-	// Petición mal formada.
+	// Malformed request.
 	m = receiveMsg("rx-d", arch, sum, data)
 	m.Sha256 = "xyz"
 	if r := e.call(t, 43, m); errCode(r) != errcode.InvalidRequest {
@@ -275,40 +275,40 @@ func TestMigrateReceiveRefusals(t *testing.T) {
 	}
 	e.settle(t)
 	if n := gets.Load(); n != 0 {
-		t.Fatalf("un rechazo no descarga nada: %d", n)
+		t.Fatalf("a rejection downloads nothing: %d", n)
 	}
-	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "nuevo")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("sin espacio no se crea nada")
+	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "new")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("without space nothing is created")
 	}
 }
 
-// Un fallo al restaurar (copia verificada pero imposible de extraer) también borra el directorio
-// de la migración entero y libera la reserva.
+// A failure when restoring (verified backup but impossible to extract) also deletes the whole migration
+// directory and releases the reservation.
 func TestMigrateReceiveRestoreFailureLeavesNothing(t *testing.T) {
 	e := newMigrateEnv(t)
 	arch, sum, data := worldArchive(t, "LEVEL-MIG")
 	servePanel(t, e, arch)
 	e.a.bk.restore = func(context.Context, backup.RestoreRequest) (backup.Meta, error) {
-		return backup.Meta{}, errors.New("extracción rota")
+		return backup.Meta{}, errors.New("broken extraction")
 	}
 	if r := e.call(t, 30, receiveMsg("rx-1", arch, sum, data)); r.GetAck() == nil {
 		t.Fatalf("resp = %+v", r)
 	}
 	e.settle(t)
 	fin := e.col.final("rx-1")
-	if fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "extracción rota") {
+	if fin == nil || fin.Status != jobFailed || !strings.Contains(fin.Message, "broken extraction") {
 		t.Fatalf("final = %+v", fin)
 	}
 	if _, err := os.Stat(e.migDir()); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("el directorio de la migración debe desaparecer: %v", err)
+		t.Fatalf("the migration directory must disappear: %v", err)
 	}
 	if e.a.rec.Held("m") {
-		t.Fatal("la reserva debe liberarse")
+		t.Fatal("the reservation must be released")
 	}
 }
 
-// Si el agente se cierra a mitad de la descarga, la recepción se corta, borra lo recibido y el job
-// queda «interrumpido»; la espera del cierre (bk.wait, dentro de waitAll) la incluye.
+// If the agent shuts down midway through the download, the receive is cut off, deletes what was received and the job
+// ends up "interrupted"; the shutdown wait (bk.wait, inside waitAll) includes it.
 func TestMigrateReceiveInterruptedByShutdown(t *testing.T) {
 	e := newMigrateEnv(t)
 	arch, sum, data := worldArchive(t, "LEVEL-MIG")
@@ -318,7 +318,7 @@ func TestMigrateReceiveInterruptedByShutdown(t *testing.T) {
 		_, _ = w.Write(arch[:len(arch)/2])
 		w.(http.Flusher).Flush()
 		close(reached)
-		<-r.Context().Done() // hasta que el agente corte la descarga
+		<-r.Context().Done() // until the agent cuts the download
 	})
 	if r := e.call(t, 30, receiveMsg("rx-1", arch, sum, data)); r.GetAck() == nil {
 		t.Fatalf("resp = %+v", r)
@@ -326,17 +326,17 @@ func TestMigrateReceiveInterruptedByShutdown(t *testing.T) {
 	waitClosed(t, reached)
 	e.cancel()
 	if !e.a.bk.wait(10 * time.Second) {
-		t.Fatal("wait no debe vencer: la recepción termina al cancelarse")
+		t.Fatal("wait must not expire: the receive ends when cancelled")
 	}
 	rec, _ := e.st.GetJob("rx-1")
-	if rec == nil || rec.Status != jobFailed || !strings.Contains(rec.Message, "interrumpid") {
+	if rec == nil || rec.Status != jobFailed || !strings.Contains(rec.Message, "interrupted") {
 		t.Fatalf("job = %+v", rec)
 	}
 	if _, err := os.Stat(e.migDir()); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("el directorio de la migración debe desaparecer: %v", err)
+		t.Fatalf("the migration directory must disappear: %v", err)
 	}
 	if e.a.rec.Held("m") {
-		t.Fatal("la reserva debe liberarse")
+		t.Fatal("the reservation must be released")
 	}
 }
 
@@ -351,26 +351,26 @@ func TestMigrateAbortRemovesGhostAndMarkedDir(t *testing.T) {
 		t.Fatalf("ApplySpec = %+v", r)
 	}
 	if c, _ := e.a.rec.Container(context.Background(), "m"); c == nil {
-		t.Fatal("el servidor del destino debe tener contenedor")
+		t.Fatal("the target server must have a container")
 	}
 	abort := &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}
 	if r := e.call(t, 32, abort); r.GetAck() == nil {
 		t.Fatalf("abort = %+v", r)
 	}
 	if c, _ := e.a.rec.Container(context.Background(), "m"); c != nil {
-		t.Fatal("el contenedor del destino debe borrarse")
+		t.Fatal("the target's container must be deleted")
 	}
 	if sp, _ := e.st.GetSpec("m"); sp != nil {
-		t.Fatal("la spec del destino debe olvidarse")
+		t.Fatal("the target's spec must be forgotten")
 	}
 	if tomb, _ := e.st.HasTombstone("m"); tomb {
-		t.Fatal("sin borrado pendiente")
+		t.Fatal("no pending deletion")
 	}
 	if _, err := os.Stat(e.migDir()); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("el directorio con el marcador de esta migración debe borrarse")
+		t.Fatal("the directory with this migration's marker must be deleted")
 	}
 	if r := e.call(t, 33, abort); r.GetAck() == nil {
-		t.Fatalf("repetirlo no hace nada: %+v", r)
+		t.Fatalf("repeating it does nothing: %+v", r)
 	}
 }
 
@@ -379,22 +379,22 @@ func TestMigrateAbortKeepsForeignDirAndWaitsForReceive(t *testing.T) {
 	if err := os.MkdirAll(e.migDir(), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(e.migDir(), migrationMarker), []byte("otra\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(e.migDir(), migrationMarker), []byte("another\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.call(t, 40, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}); r.GetAck() == nil {
 		t.Fatalf("abort = %+v", r)
 	}
 	if _, err := os.Stat(e.migDir()); err != nil {
-		t.Fatal("el directorio de otra migración se conserva")
+		t.Fatal("the directory of another migration is kept")
 	}
-	// Recepción en curso (reserva sin spec): busy, el panel reintenta.
+	// Receive in progress (reservation without a spec): busy, the panel retries.
 	release, err := e.a.rec.Hold("m", holdMigration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := e.call(t, 41, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "otra"}); errCode(r) != errcode.Busy {
-		t.Fatalf("en curso = %+v", r)
+	if r := e.call(t, 41, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "another"}); errCode(r) != errcode.Busy {
+		t.Fatalf("in progress = %+v", r)
 	}
 	release(context.Background())
 	if r := e.call(t, 42, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "../x", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
@@ -405,30 +405,30 @@ func TestMigrateAbortKeepsForeignDirAndWaitsForReceive(t *testing.T) {
 func TestMigrateRetireStopsAndSetsAsideData(t *testing.T) {
 	e := newMigrateEnv(t)
 	if !e.running(t) {
-		t.Fatal("precondición: el servidor está en marcha")
+		t.Fatal("precondition: the server is running")
 	}
 	retire := &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1}
 	if r := e.call(t, 50, retire); r.GetAck() == nil {
 		t.Fatalf("retire = %+v", r)
 	}
 	if c, _ := e.a.rec.Container(context.Background(), "a"); c != nil {
-		t.Fatal("el contenedor del origen debe borrarse")
+		t.Fatal("the source's container must be deleted")
 	}
 	if sp, _ := e.st.GetSpec("a"); sp != nil {
-		t.Fatal("la spec del origen debe olvidarse")
+		t.Fatal("the source's spec must be forgotten")
 	}
 	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("el directorio del servidor debe apartarse entero (el slug queda libre)")
+		t.Fatal("the server's directory must be set aside whole (the slug is left free)")
 	}
 	aside := filepath.Join(e.a.cfg.DataRoot, "alpha.migrated-20261012T040000.000Z", "data")
 	if got := readLevel(t, aside); got != "LEVEL-1" {
-		t.Fatalf("apartado = %q", got)
+		t.Fatalf("set aside = %q", got)
 	}
 	if r := e.call(t, 51, retire); r.GetAck() == nil {
-		t.Fatalf("repetirlo no hace nada: %+v", r)
+		t.Fatalf("repeating it does nothing: %+v", r)
 	}
 	if got := readLevel(t, aside); got != "LEVEL-1" {
-		t.Fatal("el apartado sigue igual")
+		t.Fatal("the set-aside directory stays the same")
 	}
 }
 
@@ -438,17 +438,17 @@ func TestMigrateRetireDeleteData(t *testing.T) {
 		t.Fatalf("retire = %+v", r)
 	}
 	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("con «borrar origen», <DATA_ROOT>/alpha desaparece entero")
+		t.Fatal("with \"delete source\", <DATA_ROOT>/alpha disappears entirely")
 	}
 	if c, _ := e.a.rec.Container(context.Background(), "a"); c != nil {
-		t.Fatal("el contenedor del origen debe borrarse")
+		t.Fatal("the source's container must be deleted")
 	}
 }
 
 func TestMigrateRetireRefusals(t *testing.T) {
 	e := newMigrateEnv(t)
-	if r := e.call(t, 60, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "otro", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
-		t.Fatalf("otro slug = %+v", r)
+	if r := e.call(t, 60, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "other", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("another slug = %+v", r)
 	}
 	release, err := e.a.rec.Hold("a", holdBackup)
 	if err != nil {
@@ -456,47 +456,47 @@ func TestMigrateRetireRefusals(t *testing.T) {
 	}
 	r := e.call(t, 61, &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1})
 	if errCode(r) != errcode.Busy || !strings.Contains(r.GetError().GetMessage(), holdBackup) {
-		t.Fatalf("reservado = %+v", r)
+		t.Fatalf("reserved = %+v", r)
 	}
 	release(context.Background())
 	if _, err := os.Stat(e.dataDir()); err != nil {
-		t.Fatal("rechazado: data sigue en su sitio")
+		t.Fatal("rejected: data stays in place")
 	}
 	if !e.running(t) {
-		t.Fatal("rechazado: el servidor sigue como estaba")
+		t.Fatal("rejected: the server stays as it was")
 	}
 }
 
-// MigrateAbort de un destino que llegó a arrancar (target_started): para y borra el contenedor
-// antes de borrar el directorio.
+// MigrateAbort of a target that got to start (target_started): it stops and deletes the container
+// before deleting the directory.
 func TestMigrateAbortRemovesRunningGhost(t *testing.T) {
 	e := newMigrateEnv(t)
 	arch, sum, data := worldArchive(t, "LEVEL-MIG")
 	servePanel(t, e, arch)
 	e.call(t, 30, receiveMsg("rx-1", arch, sum, data))
 	e.settle(t)
-	other := strings.Replace(specJSON, "25565", "25566", 1) // otro puerto: el de a está ocupado
+	other := strings.Replace(specJSON, "25565", "25566", 1) // another port: a's is taken
 	ghost := &mcsmv1.ServerSpec{ServerId: "m", Slug: "mig", Version: 4, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(other)}
 	if r := e.handle(31, &mcsmv1.ApplySpec{Server: ghost}); r.GetAck() == nil {
 		t.Fatalf("ApplySpec = %+v", r)
 	}
 	ins, err := e.fake.Inspect(context.Background(), e.a.rec.ContainerID(context.Background(), "m"))
 	if err != nil || !ins.Running {
-		t.Fatalf("precondición: la copia del destino está en marcha: %+v, %v", ins, err)
+		t.Fatalf("precondition: the target's copy is running: %+v, %v", ins, err)
 	}
 	if r := e.call(t, 32, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}); r.GetAck() == nil {
 		t.Fatalf("abort = %+v", r)
 	}
 	if list, _ := e.fake.ListManaged(context.Background()); len(list) != 1 || list[0].Labels["mcsm.server_id"] != "a" {
-		t.Fatalf("solo queda el contenedor de a: %+v", list)
+		t.Fatalf("only a's container remains: %+v", list)
 	}
 	if _, err := os.Stat(e.migDir()); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("el directorio de la migración debe borrarse")
+		t.Fatal("the migration directory must be deleted")
 	}
 }
 
-// Mientras el contenedor del origen no se haya podido borrar, sus datos no se apartan ni se
-// borran: busy, y el panel repite la orden. Cuando el borrado termina, el reintento los aparta.
+// As long as the source's container could not be deleted, its data is neither set aside nor
+// deleted: busy, and the panel repeats the order. When the deletion finishes, the retry sets it aside.
 func TestMigrateRetireKeepsDataWhileContainerExists(t *testing.T) {
 	for _, del := range []bool{false, true} {
 		t.Run(fmt.Sprintf("delete_data=%v", del), func(t *testing.T) {
@@ -512,31 +512,31 @@ func TestMigrateRetireKeepsDataWhileContainerExists(t *testing.T) {
 				t.Fatalf("data = %q", got)
 			}
 			if m, _ := filepath.Glob(filepath.Join(e.a.cfg.DataRoot, "alpha.migrated-*")); len(m) != 0 {
-				t.Fatalf("no se aparta nada: %v", m)
+				t.Fatalf("nothing is set aside: %v", m)
 			}
 			if running := e.running(t); running {
-				t.Fatal("el origen queda parado")
+				t.Fatal("the source stays stopped")
 			}
-			// El tick de lápidas acaba borrando el contenedor; el reintento del panel completa la retirada.
+			// The tombstone tick ends up deleting the container; the panel's retry completes the retirement.
 			eng.setFail(false)
 			if err := e.a.rec.Remove(context.Background(), "a", false); err != nil {
 				t.Fatal(err)
 			}
 			if r := e.call(t, 51, retire); r.GetAck() == nil {
-				t.Fatalf("reintento = %+v", r)
+				t.Fatalf("retry = %+v", r)
 			}
 			if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha")); !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("el slug queda libre")
+				t.Fatal("the slug is left free")
 			}
 			m, _ := filepath.Glob(filepath.Join(e.a.cfg.DataRoot, "alpha.migrated-*"))
 			if del != (len(m) == 0) {
-				t.Fatalf("apartados = %v", m)
+				t.Fatalf("set aside = %v", m)
 			}
 		})
 	}
 }
 
-// Ni MigrateAbort ni MigrateRetire tocan un directorio que usa otro servidor de este nodo.
+// Neither MigrateAbort nor MigrateRetire touch a directory used by another server on this node.
 func TestMigrateNeverTouchesAnotherServersDir(t *testing.T) {
 	e := newMigrateEnv(t)
 	if err := os.WriteFile(filepath.Join(e.a.cfg.DataRoot, "alpha", migrationMarker), []byte("mig-1\n"), 0o644); err != nil {
@@ -552,11 +552,11 @@ func TestMigrateNeverTouchesAnotherServersDir(t *testing.T) {
 		}
 	}
 	if got := readLevel(t, e.dataDir()); got != "LEVEL-1" || !e.running(t) {
-		t.Fatalf("el servidor a sigue intacto: %q", got)
+		t.Fatalf("server a stays intact: %q", got)
 	}
 }
 
-// Con el agente cerrándose no se empieza nada: busy.
+// With the agent shutting down nothing is started: busy.
 func TestMigrateAbortAndRetireWhileClosing(t *testing.T) {
 	e := newMigrateEnv(t)
 	e.cancel()
@@ -574,18 +574,18 @@ func TestMigrateAbortAndRetireWhileClosing(t *testing.T) {
 	}
 }
 
-// stopServer para "a" como el paso 1 de la migración (PowerAction stop: estado deseado parado).
+// stopServer stops "a" like migration step 1 (PowerAction stop: desired state stopped).
 func stopServer(t *testing.T, e *backupEnv, msgID uint64) {
 	t.Helper()
 	if r := e.handle(msgID, &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_STOP}); r.GetAck() == nil {
 		t.Fatalf("stop = %+v", r)
 	}
 	if e.running(t) {
-		t.Fatal("precondición: a parado")
+		t.Fatal("precondition: a stopped")
 	}
 }
 
-// receiveGhost: el destino recibe la copia de "m" (mig-1) y guarda su spec (paso 5), parada.
+// receiveGhost: the target receives the backup of "m" (mig-1) and stores its spec (step 5), stopped.
 func receiveGhost(t *testing.T, e *backupEnv) {
 	t.Helper()
 	arch, sum, data := worldArchive(t, "LEVEL-MIG")
@@ -607,8 +607,8 @@ func readMarkerFile(t *testing.T, dir, name string) string {
 	return strings.TrimSpace(string(b))
 }
 
-// I1: tras MigrateConfirm, un MigrateAbort de esa misma migración (p. ej. de un panel restaurado
-// desde una foto anterior al commit) no toca nada: ni spec, ni contenedor, ni datos ni copias.
+// I1: after MigrateConfirm, a MigrateAbort of that same migration (e.g. from a restored panel
+// from a snapshot prior to the commit) touches nothing: neither spec, nor container, nor data nor backups.
 func TestMigrateAbortAfterConfirmKeepsLiveServer(t *testing.T) {
 	e := newMigrateEnv(t)
 	receiveGhost(t, e)
@@ -617,70 +617,70 @@ func TestMigrateAbortAfterConfirmKeepsLiveServer(t *testing.T) {
 		t.Fatalf("confirm = %+v", r)
 	}
 	if got := readMarkerFile(t, e.migDir(), migrationMarker); got != "committed mig-1" {
-		t.Fatalf("marcador = %q", got)
+		t.Fatalf("marker = %q", got)
 	}
 	if r := e.call(t, 33, confirm); r.GetAck() == nil {
-		t.Fatalf("repetir confirm = %+v", r)
+		t.Fatalf("repeat confirm = %+v", r)
 	}
 	r := e.call(t, 34, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-1"})
 	if errCode(r) != errcode.InvalidRequest {
-		t.Fatalf("abort tras confirm = %+v", r)
+		t.Fatalf("abort after confirm = %+v", r)
 	}
 	if sp, _ := e.st.GetSpec("m"); sp == nil {
-		t.Fatal("la spec del servidor vivo se conserva")
+		t.Fatal("the live server's spec is kept")
 	}
 	if c, _ := e.a.rec.Container(context.Background(), "m"); c == nil {
-		t.Fatal("el contenedor del servidor vivo se conserva")
+		t.Fatal("the live server's container is kept")
 	}
 	if got := readLevel(t, filepath.Join(e.migDir(), "data")); got != "LEVEL-MIG" {
 		t.Fatalf("data = %q", got)
 	}
 	if m, _ := filepath.Glob(filepath.Join(e.migDir(), "backups", "*.tar.zst")); len(m) != 1 {
-		t.Fatalf("la copia recibida se conserva: %v", m)
+		t.Fatalf("the received backup is kept: %v", m)
 	}
 }
 
-// I1: con la spec en el nodo, MigrateAbort lee el marcador antes de tocar nada: si es de otra
-// migración (o no hay), invalid_request y la spec sigue.
+// I1: with the spec on the node, MigrateAbort reads the marker before touching anything: if it is from another
+// migration (or there is none), invalid_request and the spec stays.
 func TestMigrateAbortReadsMarkerBeforeForgetting(t *testing.T) {
 	e := newMigrateEnv(t)
 	receiveGhost(t, e)
 	if r := e.call(t, 32, &mcsmv1.MigrateAbort{ServerId: "m", Slug: "mig", MigrationId: "mig-2"}); errCode(r) != errcode.InvalidRequest {
-		t.Fatalf("abort de otra migración = %+v", r)
+		t.Fatalf("abort of another migration = %+v", r)
 	}
-	// El servidor "a" no llegó por migración (sin marcador): un abort con su slug no lo olvida.
+	// Server "a" did not arrive by migration (no marker): an abort with its slug does not forget it.
 	if r := e.call(t, 33, &mcsmv1.MigrateAbort{ServerId: "a", Slug: "alpha", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
-		t.Fatalf("abort de un servidor sin marcador = %+v", r)
+		t.Fatalf("abort of a server without a marker = %+v", r)
 	}
 	for _, id := range []string{"m", "a"} {
 		if sp, _ := e.st.GetSpec(id); sp == nil {
-			t.Fatalf("la spec de %s se conserva", id)
+			t.Fatalf("the spec of %s is kept", id)
 		}
 	}
 	if !e.running(t) || readLevel(t, e.dataDir()) != "LEVEL-1" {
-		t.Fatal("a sigue intacto y en marcha")
+		t.Fatal("a stays intact and running")
 	}
 }
 
 func TestMigrateConfirmRefusals(t *testing.T) {
 	e := newMigrateEnv(t)
 	if r := e.call(t, 40, &mcsmv1.MigrateConfirm{ServerId: "m", Slug: "mig", MigrationId: "mig-1"}); r.GetAck() == nil {
-		t.Fatalf("sin nada que confirmar = %+v", r)
+		t.Fatalf("nothing to confirm = %+v", r)
 	}
 	receiveGhost(t, e)
 	if r := e.call(t, 41, &mcsmv1.MigrateConfirm{ServerId: "m", Slug: "mig", MigrationId: "mig-2"}); errCode(r) != errcode.InvalidRequest {
-		t.Fatalf("marcador de otra migración = %+v", r)
+		t.Fatalf("marker of another migration = %+v", r)
 	}
-	if r := e.call(t, 42, &mcsmv1.MigrateConfirm{ServerId: "m", Slug: "otro", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
-		t.Fatalf("otro slug = %+v", r)
+	if r := e.call(t, 42, &mcsmv1.MigrateConfirm{ServerId: "m", Slug: "other", MigrationId: "mig-1"}); errCode(r) != errcode.InvalidRequest {
+		t.Fatalf("another slug = %+v", r)
 	}
 	if got := readMarkerFile(t, e.migDir(), migrationMarker); got != "mig-1" {
-		t.Fatalf("el marcador no cambia: %q", got)
+		t.Fatalf("the marker does not change: %q", got)
 	}
 }
 
-// I1: el servidor volvió a este nodo con otra migración (otra versión): la retirada de la
-// migración antigua no lo toca.
+// I1: the server came back to this node with another migration (another version): the retirement of the
+// old migration does not touch it.
 func TestMigrateRetireRefusesAnotherVersion(t *testing.T) {
 	e := newMigrateEnv(t)
 	back := &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 3, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(specJSON)}
@@ -689,20 +689,20 @@ func TestMigrateRetireRefusesAnotherVersion(t *testing.T) {
 	}
 	for i, del := range []bool{false, true} {
 		r := e.call(t, uint64(50+i), &mcsmv1.MigrateRetire{ServerId: "a", Slug: "alpha", MigrationId: "mig-1", SourceVersion: 1, DeleteData: del})
-		if errCode(r) != errcode.InvalidRequest || !strings.Contains(r.GetError().GetMessage(), "versión") {
-			t.Fatalf("retire con otra versión = %+v", r)
+		if errCode(r) != errcode.InvalidRequest || !strings.Contains(r.GetError().GetMessage(), "version") {
+			t.Fatalf("retire with another version = %+v", r)
 		}
 	}
 	if sp, _ := e.st.GetSpec("a"); sp == nil || !e.running(t) || readLevel(t, e.dataDir()) != "LEVEL-1" {
-		t.Fatal("el servidor vivo sigue intacto y en marcha")
+		t.Fatal("the live server stays intact and running")
 	}
 	if _, err := os.Stat(filepath.Join(e.a.cfg.DataRoot, "alpha", retiringMarker)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("sin marca de retirada")
+		t.Fatal("without a retirement mark")
 	}
 }
 
-// m1: un reintento de la retirada sin spec solo toca un <slug> con la marca .mcsm-retiring de esta
-// migración; un <slug> recién creado por una recepción (marcador sin confirmar) o ajeno no se toca.
+// m1: a retry of the retirement without a spec only touches a <slug> with this migration's .mcsm-retiring mark;
+// a <slug> freshly created by a receive (unconfirmed marker) or a foreign one is not touched.
 func TestMigrateRetireRetryOnlyTouchesItsMarkedDir(t *testing.T) {
 	fake := docker.NewFake()
 	eng := &failRemoveEngine{Fake: fake}
@@ -714,13 +714,13 @@ func TestMigrateRetireRetryOnlyTouchesItsMarkedDir(t *testing.T) {
 	}
 	dir := filepath.Join(e.a.cfg.DataRoot, "alpha")
 	if got := readMarkerFile(t, dir, retiringMarker); got != "mig-1" {
-		t.Fatalf("marca de retirada = %q", got)
+		t.Fatalf("retirement mark = %q", got)
 	}
 	eng.setFail(false)
 	if err := e.a.rec.Remove(context.Background(), "a", false); err != nil {
 		t.Fatal(err)
 	}
-	// Otro <slug> ocupa el sitio: una recepción en curso (marcador sin confirmar) y, después, uno sin marcas.
+	// Another <slug> takes the place: a receive in progress (unconfirmed marker) and, afterwards, one without marks.
 	aside := dir + ".kept"
 	if err := os.Rename(dir, aside); err != nil {
 		t.Fatal(err)
@@ -732,18 +732,18 @@ func TestMigrateRetireRetryOnlyTouchesItsMarkedDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r := e.call(t, 51, retire); errCode(r) != errcode.InvalidRequest {
-		t.Fatalf("recepción en curso = %+v", r)
+		t.Fatalf("receive in progress = %+v", r)
 	}
 	if err := os.Remove(filepath.Join(dir, migrationMarker)); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.call(t, 52, retire); errCode(r) != errcode.InvalidRequest {
-		t.Fatalf("directorio ajeno = %+v", r)
+		t.Fatalf("foreign directory = %+v", r)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "data")); err != nil {
-		t.Fatal("el directorio ajeno sigue intacto")
+		t.Fatal("the foreign directory stays intact")
 	}
-	// Con su marca, el reintento completa la retirada.
+	// With its mark, the retry completes the retirement.
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -751,14 +751,14 @@ func TestMigrateRetireRetryOnlyTouchesItsMarkedDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r := e.call(t, 53, retire); r.GetAck() == nil {
-		t.Fatalf("reintento = %+v", r)
+		t.Fatalf("retry = %+v", r)
 	}
 	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("con delete_data, <slug> se borra")
+		t.Fatal("with delete_data, <slug> is deleted")
 	}
 }
 
-// m4: abort, retire y confirm del mismo servidor se ejecutan de uno en uno.
+// m4: abort, retire and confirm of the same server run one at a time.
 func TestMigrateOpsSerializedPerServer(t *testing.T) {
 	e := newMigrateEnv(t)
 	unlock, err := e.a.bk.migLocks.lock(context.Background(), "a")
@@ -775,20 +775,20 @@ func TestMigrateOpsSerializedPerServer(t *testing.T) {
 		select {
 		case <-notify:
 		case <-deadline:
-			t.Fatal("el retire no llegó a esperar su turno")
+			t.Fatal("the retire did not get to wait for its turn")
 		}
 	}
 	for _, env := range e.col.all() {
 		if env.Id == 50 {
-			t.Fatalf("respondió sin su turno: %+v", env)
+			t.Fatalf("it responded without its turn: %+v", env)
 		}
 	}
 	if sp, _ := e.st.GetSpec("a"); sp == nil || !e.running(t) {
-		t.Fatal("sin su turno no toca nada")
+		t.Fatal("without its turn it touches nothing")
 	}
 	unlock()
 	var r *mcsmv1.Envelope
-	e.col.waitFor(t, "respuesta a 50", func() bool {
+	e.col.waitFor(t, "response to 50", func() bool {
 		for _, env := range e.col.all() {
 			if env.Id == 50 {
 				r = env
@@ -802,30 +802,30 @@ func TestMigrateOpsSerializedPerServer(t *testing.T) {
 	}
 }
 
-// m2: la copia previa a una migración exige el servidor parado y espera a las escrituras de archivos.
+// m2: the backup prior to a migration requires the server stopped and waits for the file writes.
 func TestBackupNowPreMigrationRefusesRunningServerAndWaitsFileWrites(t *testing.T) {
 	e := newMigrateEnv(t)
 	pre := func(id uint64, job string) *mcsmv1.Envelope {
 		return e.handle(id, &mcsmv1.BackupNow{ServerId: "a", JobId: job, Trigger: mcsmv1.BackupTrigger_BACKUP_TRIGGER_PRE_MIGRATION})
 	}
-	if r := pre(10, "job-1"); errCode(r) != errcode.InvalidRequest || !strings.Contains(r.GetError().GetMessage(), "en marcha") {
-		t.Fatalf("en marcha = %+v", r)
+	if r := pre(10, "job-1"); errCode(r) != errcode.InvalidRequest || !strings.Contains(r.GetError().GetMessage(), "running") {
+		t.Fatalf("running = %+v", r)
 	}
 	stopServer(t, e, 11)
 	e.a.bk.drainWait = 0
 	leave := e.a.fileWrites.enter("a")
-	if r := pre(12, "job-2"); errCode(r) != errcode.Busy || !strings.Contains(r.GetError().GetMessage(), "archivos") {
-		t.Fatalf("escrituras en curso = %+v", r)
+	if r := pre(12, "job-2"); errCode(r) != errcode.Busy || !strings.Contains(r.GetError().GetMessage(), "file") {
+		t.Fatalf("writes in progress = %+v", r)
 	}
 	leave()
 	if r := pre(13, "job-3"); r.GetAck() == nil {
-		t.Fatalf("parado y sin escrituras = %+v", r)
+		t.Fatalf("stopped and without writes = %+v", r)
 	}
 	e.settle(t)
 	if cr := e.col.created(); len(cr) != 1 {
-		t.Fatalf("una sola copia: %+v", cr)
+		t.Fatalf("a single backup: %+v", cr)
 	}
 	if e.a.rec.Held("a") {
-		t.Fatal("reserva liberada")
+		t.Fatal("reservation released")
 	}
 }

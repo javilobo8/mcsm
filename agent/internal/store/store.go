@@ -1,4 +1,4 @@
-// Package store persiste credenciales, specs y versiones aplicadas en bbolt.
+// Package store persists credentials, specs and applied versions in bbolt.
 package store
 
 import (
@@ -32,7 +32,7 @@ type Credentials struct {
 func Open(path string) (*Store, error) {
 	db, err := bbolt.Open(path, 0o600, &bbolt.Options{Timeout: time.Second})
 	if err != nil {
-		return nil, fmt.Errorf("store: abrir %s: %w", path, err)
+		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	err = db.Update(func(tx *bbolt.Tx) error {
 		for _, b := range [][]byte{bMeta, bSpecs, bApplied} {
@@ -67,7 +67,7 @@ func (s *Store) Credentials() (*Credentials, error) {
 
 func (s *Store) SaveCredentials(c Credentials) error {
 	if c.NodeID == "" || c.Token == "" {
-		return errors.New("store: credenciales vacías")
+		return errors.New("store: empty credentials")
 	}
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bMeta)
@@ -80,7 +80,7 @@ func (s *Store) SaveCredentials(c Credentials) error {
 
 func (s *Store) PutSpec(sp *mcsmv1.ServerSpec) error {
 	if sp.GetServerId() == "" {
-		return errors.New("store: spec sin server_id")
+		return errors.New("store: spec without server_id")
 	}
 	raw, err := proto.Marshal(sp)
 	if err != nil {
@@ -90,7 +90,7 @@ func (s *Store) PutSpec(sp *mcsmv1.ServerSpec) error {
 		if err := tx.Bucket(bSpecs).Put([]byte(sp.ServerId), raw); err != nil {
 			return err
 		}
-		return deleteTombstone(tx, sp.ServerId) // spec y lápida del mismo id no conviven
+		return deleteTombstone(tx, sp.ServerId) // a spec and a tombstone for the same id do not coexist
 	})
 }
 
@@ -134,7 +134,7 @@ func (s *Store) DeleteSpec(id string) error {
 		if err := tx.Bucket(bApplied).Delete([]byte(id)); err != nil {
 			return err
 		}
-		// plan-9: sin spec sobran su retención por bucle de crash y su save-on pendiente.
+		// plan-9: without a spec, its crash loop latch and its pending save-on are left over.
 		if err := deleteCrashLatch(tx, id); err != nil {
 			return err
 		}

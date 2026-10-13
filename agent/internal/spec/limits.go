@@ -5,11 +5,11 @@ import (
 	"sort"
 )
 
-// Topes de tamaño (auditoría L1), iguales a los de zod (panel/packages/shared/src/spec-limits.ts).
-// Una spec enorme deja al nodo desconectado en bucle (el WebSocket corta los mensajes de más de
-// 4 MiB y el panel reenvía el mismo SyncSpecs) y una variable de más de 128 KiB impide arrancar el
-// contenedor (E2BIG). Las entradas de lista y las URL ya están acotadas por sus regex (300 y ~1000
-// bytes) y la API key a 200. Las cadenas se miden en bytes UTF-8.
+// Size caps (audit L1), equal to zod's (panel/packages/shared/src/spec-limits.ts).
+// A huge spec leaves the node disconnected in a loop (the WebSocket cuts messages over
+// 4 MiB and the panel resends the same SyncSpecs) and a variable over 128 KiB prevents starting the
+// container (E2BIG). List entries and URLs are already bounded by their regexes (300 and ~1000
+// bytes) and the API key to 200. Strings are measured in UTF-8 bytes.
 const (
 	MaxListItems   = 1000
 	MaxStringBytes = 4 << 10
@@ -40,7 +40,7 @@ func (s Spec) validateLimits() error {
 	}
 	for _, l := range lists {
 		if l.n > MaxListItems {
-			return fmt.Errorf("spec: la lista %s tiene %d elementos (máx. %d)", l.name, l.n, MaxListItems)
+			return fmt.Errorf("spec: the %s list has %d elements (max. %d)", l.name, l.n, MaxListItems)
 		}
 	}
 
@@ -51,7 +51,7 @@ func (s Spec) validateLimits() error {
 	for i, pm := range s.Ports.Extra {
 		strs = append(strs, sizedString{fmt.Sprintf("ports.extra.%d.label", i), pm.Label})
 	}
-	// Claves ordenadas: con varias cadenas largas el error es siempre el mismo.
+	// Sorted keys: with several long strings the error is always the same.
 	for _, k := range sortedKeys(s.Env) {
 		strs = append(strs, sizedString{"env." + k, k}, sizedString{"env." + k, s.Env[k]})
 	}
@@ -60,17 +60,17 @@ func (s Spec) validateLimits() error {
 	}
 	for _, it := range strs {
 		if len(it.v) > MaxStringBytes {
-			return fmt.Errorf("spec: %s ocupa %d bytes (máx. %d)", it.name, len(it.v), MaxStringBytes)
+			return fmt.Errorf("spec: %s takes %d bytes (max. %d)", it.name, len(it.v), MaxStringBytes)
 		}
 	}
 
-	// Lo que de verdad llega al contenedor: variables generadas + env libre, "CLAVE=valor".
+	// What really reaches the container: generated variables + free-form env, "KEY=value".
 	total := 0
 	for _, kv := range s.envList() {
 		total += len(kv)
 	}
 	if total > MaxEnvBytes {
-		return fmt.Errorf("spec: el entorno del contenedor ocuparía %d bytes (máx. 96 KiB): recorta listas, propiedades o variables de entorno", total)
+		return fmt.Errorf("spec: the container environment would take %d bytes (max. 96 KiB): trim lists, properties or environment variables", total)
 	}
 	return nil
 }

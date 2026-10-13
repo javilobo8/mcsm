@@ -19,39 +19,39 @@ import (
 )
 
 const (
-	// filesShutdownWait es el tope de la espera a los Files* en curso al cerrar el agente.
+	// filesShutdownWait is the cap on the wait for the Files* in progress when the agent shuts down.
 	filesShutdownWait = 20 * time.Second
-	// orphanTempAge: al arrancar se borran los temporales de subidas sin tocar desde hace más.
+	// orphanTempAge: at startup, upload temporaries untouched for longer than this are deleted.
 	orphanTempAge = time.Hour
-	// maxTransfers acota las subidas y descargas simultáneas del nodo (descriptores, temporales
-	// y conexiones). La siguiente recibe busy al instante, sin consumir su transferencia.
+	// maxTransfers bounds the node's simultaneous uploads and downloads (descriptors, temporaries
+	// and connections). The next one gets busy instantly, without consuming its transfer.
 	maxTransfers = 4
-	// transferIdle: una transferencia que no mueve un byte durante un periodo entero se corta
-	// (se detecta entre 1 y 2 periodos después del último byte).
+	// transferIdle: a transfer that moves no byte during a whole period is cut off
+	// (detected between 1 and 2 periods after the last byte).
 	transferIdle = 60 * time.Second
 )
 
 var (
-	errTransfersBusy = fmt.Errorf("el nodo ya tiene %d transferencias de archivos en curso: espera a que termine alguna", maxTransfers)
-	errIdle          = errors.New("transferencia inactiva")
-	errFilesClosing  = errors.New("el agente se está cerrando: inténtalo de nuevo cuando vuelva a conectar")
+	errTransfersBusy = fmt.Errorf("the node already has %d file transfers in progress: wait for one to finish", maxTransfers)
+	errIdle          = errors.New("idle transfer")
+	errFilesClosing  = errors.New("the agent is shutting down: try again when it reconnects")
 )
 
-// transferGate cuenta las transferencias en curso, lleva el reloj del vigilante de
-// inactividad y registra los Files* en curso para que el cierre los espere. El valor cero es
-// utilizable.
+// transferGate counts the transfers in progress, carries the idle watchdog's clock and
+// registers the Files* in progress so that the shutdown waits for them. The zero value is
+// usable.
 type transferGate struct {
 	mu     sync.Mutex
 	active int
-	// after es el reloj del vigilante (nil → time.After). Solo lo cambian los tests.
+	// after is the watchdog's clock (nil → time.After). Only tests change it.
 	after func(time.Duration) <-chan time.Time
-	// ops cuenta los Files* en curso; closed impide que empiecen otros una vez iniciado el cierre
-	// (un Add con el contador a cero no puede competir con un Wait en marcha).
+	// ops counts the Files* in progress; closed prevents others from starting once the shutdown has begun
+	// (an Add with the counter at zero cannot race with a running Wait).
 	ops    sync.WaitGroup
 	closed bool
 }
 
-// enter registra un Files* que empieza; false si el agente ya se está cerrando.
+// enter registers a Files* that starts; false if the agent is already shutting down.
 func (g *transferGate) enter() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -64,11 +64,11 @@ func (g *transferGate) enter() bool {
 
 func (g *transferGate) leave() { g.ops.Done() }
 
-// wait cierra la entrada a Files* nuevos y espera, como mucho d, a que terminen los que están
-// en curso. Al cerrar, el contexto de vida ya está cancelado: las transferencias se cortan y
-// WriteFrom borra su temporal; lo que espera esto es esa limpieza (y una escritura o un borrado
-// que estén a medias), para que el proceso no salga dejando temporales huérfanos. Devuelve
-// false si venció el plazo.
+// wait closes the entry of new Files* and waits, for at most d, for those in progress to
+// finish. On shutdown, the life context is already cancelled: transfers are cut and
+// WriteFrom deletes its temporary; what this waits for is that cleanup (and a write or a deletion
+// that are half done), so the process does not exit leaving orphaned temporaries. It returns
+// false if the deadline expired.
 func (g *transferGate) wait(d time.Duration) bool {
 	g.mu.Lock()
 	g.closed = true
@@ -88,7 +88,7 @@ func (g *transferGate) wait(d time.Duration) bool {
 	}
 }
 
-// acquire reserva un hueco sin esperar: si no hay, errTransfersBusy.
+// acquire reserves a slot without waiting: if there is none, errTransfersBusy.
 func (g *transferGate) acquire() (release func(), err error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -110,7 +110,7 @@ func (g *transferGate) clock() func(time.Duration) <-chan time.Time {
 	return time.After
 }
 
-// progressReader marca moved cada vez que pasan bytes.
+// progressReader marks moved every time bytes pass.
 type progressReader struct {
 	r     io.Reader
 	moved *atomic.Bool
@@ -124,15 +124,15 @@ func (p progressReader) Read(b []byte) (int, error) {
 	return n, err
 }
 
-// withIdleGuard ejecuta fn con un contexto derivado de ctx que se cancela si pasa un periodo
-// entero de transferIdle sin que se mueva un byte por los lectores envueltos con track. Con
-// el cliente HTTP actual basta: en un GET los bytes se cuentan al leer el cuerpo y en un PUT
-// cuando net/http lee el origen para escribir en el socket (si el panel deja de leer, el
-// socket se llena y la lectura se detiene). Antes de volver espera a que el vigilante acabe.
+// withIdleGuard runs fn with a context derived from ctx that is cancelled if a whole transferIdle
+// period passes without a byte moving through the readers wrapped with track. With the
+// current HTTP client it is enough: in a GET the bytes are counted when reading the body and in a PUT
+// when net/http reads the source to write to the socket (if the panel stops reading, the
+// socket fills up and the read stops). Before returning it waits for the watchdog to finish.
 func (a *App) withIdleGuard(ctx context.Context, fn func(ctx context.Context, track func(io.Reader) io.Reader) error) error {
 	after := a.xfer.clock()
 	gctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil) // también si fn entra en pánico: el vigilante termina
+	defer cancel(nil) // also if fn panics: the watchdog ends
 	var moved atomic.Bool
 	done := make(chan struct{})
 	go func() {
@@ -153,15 +153,15 @@ func (a *App) withIdleGuard(ctx context.Context, fn func(ctx context.Context, tr
 	cancel(nil)
 	<-done
 	if err != nil && errors.Is(context.Cause(gctx), errIdle) {
-		return fmt.Errorf("%w: más de %d s sin moverse ningún byte", files.ErrTransfer, int(transferIdle.Seconds()))
+		return fmt.Errorf("%w: more than %d s without any byte moving", files.ErrTransfer, int(transferIdle.Seconds()))
 	}
 	return err
 }
 
-// errOverCap marca que el origen trajo más bytes que el tope.
-var errOverCap = errors.New("la subida supera el máximo")
+// errOverCap marks that the source brought more bytes than the cap.
+var errOverCap = errors.New("the upload exceeds the maximum")
 
-// capReader falla en cuanto el origen trae más de left bytes (subidas sin tamaño conocido).
+// capReader fails as soon as the source brings more than left bytes (uploads of unknown size).
 type capReader struct {
 	r    io.Reader
 	left int64
@@ -170,7 +170,7 @@ type capReader struct {
 
 func (c *capReader) Read(p []byte) (int, error) {
 	if int64(len(p)) > c.left+1 {
-		p = p[:c.left+1] // un byte de más basta para saber que se pasa
+		p = p[:c.left+1] // one extra byte is enough to know it exceeds
 	}
 	n, err := c.r.Read(p)
 	if int64(n) > c.left {
@@ -181,7 +181,7 @@ func (c *capReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// uploadMax es el tope de una subida (UPLOAD_MAX_BYTES; por defecto 4 GiB).
+// uploadMax is the cap on an upload (UPLOAD_MAX_BYTES; 4 GiB by default).
 func (a *App) uploadMax() int64 {
 	if a.cfg.UploadMax > 0 {
 		return a.cfg.UploadMax
@@ -190,7 +190,7 @@ func (a *App) uploadMax() int64 {
 }
 
 func errUploadTooLarge(limit int64) error {
-	return fmt.Errorf("%w: la subida supera el máximo de %s del nodo (UPLOAD_MAX_BYTES)", files.ErrTooLarge, humanBytes(limit))
+	return fmt.Errorf("%w: the upload exceeds the node's maximum of %s (UPLOAD_MAX_BYTES)", files.ErrTooLarge, humanBytes(limit))
 }
 
 func humanBytes(n int64) string {
@@ -203,10 +203,10 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%d bytes", n)
 }
 
-// serverScoped lo cumplen todos los mensajes Files*.
+// serverScoped is satisfied by all the Files* messages.
 type serverScoped interface{ GetServerId() string }
 
-// filesRequest devuelve el mensaje Files* del envelope, o nil si no lo es.
+// filesRequest returns the envelope's Files* message, or nil if it is not one.
 func filesRequest(env *mcsmv1.Envelope) serverScoped {
 	switch b := env.Body.(type) {
 	case *mcsmv1.Envelope_FilesList:
@@ -231,8 +231,8 @@ func filesRequest(env *mcsmv1.Envelope) serverScoped {
 	return nil
 }
 
-// serverFS devuelve el sistema de archivos confinado de un servidor de ESTE nodo (spec §9):
-// un server_id que no está en el store local no se atiende. files.Root valida el slug.
+// serverFS returns the confined filesystem of a server on THIS node (spec §9):
+// a server_id that is not in the local store is not served. files.Root validates the slug.
 func (a *App) serverFS(serverID string) (*files.FS, error) {
 	sp, err := a.st.GetSpec(serverID)
 	if err != nil {
@@ -248,32 +248,32 @@ func (a *App) serverFS(serverID string) (*files.FS, error) {
 	return files.New(root), nil
 }
 
-// sweepTemps borra los temporales huérfanos de subidas (files.SweepTemps) en los data de los
-// servidores de este nodo. Se lanza al arrancar, en segundo plano: recorrer un mundo grande lleva
-// su tiempo y las subidas nuevas no esperan (sus temporales son recientes y no se tocan).
+// sweepTemps deletes the orphaned upload temporaries (files.SweepTemps) in the data of
+// this node's servers. It is launched at startup, in the background: walking a large world takes
+// time and new uploads do not wait (their temporaries are recent and not touched).
 func (a *App) sweepTemps(ctx context.Context) {
 	specs, err := a.st.ListSpecs()
 	if err != nil {
-		a.log.Warn("barrido de temporales: no se pudieron listar los servidores", "err", err)
+		a.log.Warn("temporaries sweep: the servers could not be listed", "err", err)
 		return
 	}
 	for _, sp := range specs {
 		if p, err := spec.Parse(sp.SpecJson); err == nil && p.DataPath != "" {
-			continue // plan-6 (m3): sus datos no están en DATA_ROOT/<slug>/data
+			continue // plan-6 (m3): their data is not in DATA_ROOT/<slug>/data
 		}
 		root, err := files.Root(a.cfg.DataRoot, sp.Slug)
 		if err != nil {
 			continue
 		}
 		if _, err := os.Stat(root); err != nil {
-			continue // servidor sin datos todavía
+			continue // server without data yet
 		}
 		n, err := files.New(root).SweepTemps(ctx, orphanTempAge, time.Now())
 		if err != nil && ctx.Err() == nil {
-			a.log.Warn("barrido de temporales fallido", "server", sp.ServerId, "err", err)
+			a.log.Warn("temporaries sweep failed", "server", sp.ServerId, "err", err)
 		}
 		if n > 0 {
-			a.log.Info("borrados temporales huérfanos de subidas", "server", sp.ServerId, "n", n)
+			a.log.Info("orphaned upload temporaries deleted", "server", sp.ServerId, "n", n)
 		}
 		if ctx.Err() != nil {
 			return
@@ -281,20 +281,20 @@ func (a *App) sweepTemps(ctx context.Context) {
 	}
 }
 
-// transfers crea el cliente HTTP de transferencias con el token guardado del nodo.
+// transfers creates the HTTP transfers client with the node's stored token.
 func (a *App) transfers() (*conn.TransferClient, error) {
 	creds, err := a.st.Credentials()
 	if err != nil {
 		return nil, err
 	}
 	if creds == nil {
-		return nil, fmt.Errorf("%w: el agente no tiene credenciales", files.ErrTransfer)
+		return nil, fmt.Errorf("%w: the agent has no credentials", files.ErrTransfer)
 	}
 	return conn.NewTransferClient(a.cfg.PanelURL, creds.Token), nil
 }
 
-// entryToProto convierte una entrada. El nombre viene del disco y puede no ser UTF-8:
-// proto3 rechaza esos string y la respuesta entera se perdería al serializarla.
+// entryToProto converts an entry. The name comes from disk and may not be UTF-8:
+// proto3 rejects those strings and the whole response would be lost when serializing it.
 func entryToProto(e files.Entry) *mcsmv1.FileEntry {
 	return &mcsmv1.FileEntry{
 		Name: validUTF8(e.Name), Dir: e.Dir, Symlink: e.Symlink, Size: uint64(max(e.Size, 0)),
@@ -302,21 +302,21 @@ func entryToProto(e files.Entry) *mcsmv1.FileEntry {
 	}
 }
 
-// handleFiles atiende los Files* del panel (spec §5.3, §6.6) y responde con el mismo id:
-// un *Result, un Ack o un Error con el código de files.Code. Las transferencias responden
-// al terminar (el panel espera el resultado): Ack cuando el panel tiene el fichero entero
-// (descarga) o cuando está escrito en disco (subida).
+// handleFiles serves the panel's Files* (spec §5.3, §6.6) and answers with the same id:
+// a *Result, an Ack or an Error with files.Code's code. Transfers answer
+// when they finish (the panel waits for the result): Ack when the panel has the whole file
+// (download) or when it is written to disk (upload).
 //
-// ctx debe ser el contexto de vida del agente, no el de la sesión WS: un corte del
-// WebSocket no aborta una escritura ni una transferencia en curso (el panel las corta por
-// HTTP si las abandona). send sí es el de la sesión: si ya terminó, la respuesta se descarta.
+// ctx must be the agent's life context, not the WS session's: a WebSocket
+// drop does not abort a write or a transfer in progress (the panel cuts them over
+// HTTP if it abandons them). send is the session's: if it has already ended, the response is dropped.
 func (a *App) handleFiles(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv1.Envelope) error) {
 	req := filesRequest(env)
-	if req == nil { // Handle solo enruta Files* aquí
-		_ = send(errMsg(env.Id, errcode.Unsupported, fmt.Errorf("mensaje de archivos no soportado: %T", env.Body)))
+	if req == nil { // Handle only routes Files* here
+		_ = send(errMsg(env.Id, errcode.Unsupported, fmt.Errorf("files message not supported: %T", env.Body)))
 		return
 	}
-	// plan-6: con dataPath los datos están fuera de DATA_ROOT y el agente no los ve.
+	// plan-6: with dataPath the data is outside DATA_ROOT and the agent does not see it.
 	if err := a.externalData(req.GetServerId()); err != nil {
 		_ = send(errMsg(env.Id, errcode.ExternalData, err))
 		return
@@ -344,15 +344,15 @@ func (a *App) filesOp(ctx context.Context, env *mcsmv1.Envelope, req serverScope
 	if err != nil {
 		return nil, err
 	}
-	// Con el servidor reservado (copia, restauración o bloqueado sin data) no se escribe: una
-	// restauración aparta data con rename y lo escrito acabaría en el pre-restore. enter va
-	// antes de mirar la reserva (ver fileWrites). Las lecturas siguen: cada una ve el data
-	// viejo o el nuevo, entero (un fichero abierto conserva su inodo tras el rename).
+	// With the server reserved (backup, restore or blocked without data) nothing is written: a
+	// restore sets data aside with rename and what was written would end up in the pre-restore. enter goes
+	// before looking at the reservation (see fileWrites). Reads continue: each one sees the
+	// old or the new data, whole (an open file keeps its inode after the rename).
 	if isFilesMutation(env) {
 		leave := a.fileWrites.enter(req.GetServerId())
 		defer leave()
 		if reason := a.rec.HeldReason(req.GetServerId()); reason != "" {
-			return nil, fmt.Errorf("%w: no se pueden modificar sus archivos mientras dure la reserva", reconcile.Busy(reason))
+			return nil, fmt.Errorf("%w: its files cannot be modified while the reservation lasts", reconcile.Busy(reason))
 		}
 	}
 	switch b := env.Body.(type) {
@@ -400,16 +400,16 @@ func (a *App) filesOp(ctx context.Context, env *mcsmv1.Envelope, req serverScope
 	return ack(0), nil
 }
 
-// filesDownload sube el fichero al panel por PUT /agent/transfer/{id} y confirma al terminar.
-// El fichero se abre y el hueco se reserva antes de tocar la transferencia: una ruta mala o un
-// nodo ocupado no la consumen.
+// filesDownload uploads the file to the panel via PUT /agent/transfer/{id} and confirms when finished.
+// The file is opened and the slot reserved before touching the transfer: a bad path or a
+// busy node does not consume it.
 func (a *App) filesDownload(ctx context.Context, fsys *files.FS, m *mcsmv1.FilesDownload) error {
 	f, e, err := fsys.Open(m.Path)
 	if err != nil {
 		return err
 	}
-	// Put puede dejar el cuerpo leyéndose un instante tras volver con error; *os.File admite
-	// Close concurrente con Read (la lectura tardía falla con os.ErrClosed).
+	// Put may leave the body being read for a moment after returning with an error; *os.File allows
+	// Close concurrent with Read (the late read fails with os.ErrClosed).
 	defer f.Close()
 	xfer, err := a.transfers()
 	if err != nil {
@@ -421,8 +421,8 @@ func (a *App) filesDownload(ctx context.Context, fsys *files.FS, m *mcsmv1.Files
 	}
 	defer release()
 	return a.withIdleGuard(ctx, func(ctx context.Context, track func(io.Reader) io.Reader) error {
-		// LimitReader: si el fichero crece mientras se envía, se manda lo que medía al abrirlo;
-		// si encoge, Put falla por Content-Length y el panel no da por bueno un fichero incompleto.
+		// LimitReader: if the file grows while being sent, what it measured when opened is sent;
+		// if it shrinks, Put fails because of Content-Length and the panel does not accept an incomplete file.
 		if err := xfer.Put(ctx, m.TransferId, track(io.LimitReader(f, e.Size)), e.Size); err != nil {
 			return fmt.Errorf("%w: %v", files.ErrTransfer, err)
 		}
@@ -430,11 +430,11 @@ func (a *App) filesDownload(ctx context.Context, fsys *files.FS, m *mcsmv1.Files
 	})
 }
 
-// filesUpload valida el destino y el tamaño, descarga del panel por GET /agent/transfer/{id} y
-// escribe de forma atómica en streaming. Un cuerpo truncado nunca reemplaza el fichero y nada
-// supera UPLOAD_MAX_BYTES, tampoco una subida sin tamaño conocido (size = -1 y chunked).
+// filesUpload validates the destination and the size, downloads from the panel via GET /agent/transfer/{id} and
+// writes atomically as a stream. A truncated body never replaces the file and nothing
+// exceeds UPLOAD_MAX_BYTES, not even an upload of unknown size (size = -1 and chunked).
 func (a *App) filesUpload(ctx context.Context, fsys *files.FS, m *mcsmv1.FilesUpload) error {
-	// Todo lo que se puede rechazar sin la transferencia va antes de reclamarla.
+	// Everything that can be rejected without the transfer goes before claiming it.
 	if err := fsys.CheckWrite(m.Path); err != nil {
 		return err
 	}
@@ -462,14 +462,14 @@ func (a *App) filesUpload(ctx context.Context, fsys *files.FS, m *mcsmv1.FilesUp
 			expected = size
 		}
 		if size >= 0 && expected != size {
-			return fmt.Errorf("%w: el panel anuncia %d bytes y envía %d", files.ErrTransfer, m.Size, size)
+			return fmt.Errorf("%w: the panel announces %d bytes and sends %d", files.ErrTransfer, m.Size, size)
 		}
 		if expected > limit {
 			return errUploadTooLarge(limit)
 		}
 		src := track(body)
 		var capped *capReader
-		if expected < 0 { // sin tamaño: WriteFrom no pondría tope
+		if expected < 0 { // without a size: WriteFrom would set no cap
 			capped = &capReader{r: src, left: limit}
 			src = capped
 		}
@@ -481,7 +481,7 @@ func (a *App) filesUpload(ctx context.Context, fsys *files.FS, m *mcsmv1.FilesUp
 	})
 }
 
-// isFilesMutation indica si el Files* escribe en el data del servidor.
+// isFilesMutation reports whether the Files* writes to the server's data.
 func isFilesMutation(env *mcsmv1.Envelope) bool {
 	switch env.Body.(type) {
 	case *mcsmv1.Envelope_FilesWrite, *mcsmv1.Envelope_FilesMkdir, *mcsmv1.Envelope_FilesRename,

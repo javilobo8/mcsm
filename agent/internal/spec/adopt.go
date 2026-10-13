@@ -7,35 +7,35 @@ import (
 	"strings"
 )
 
-// Importación (plan-6, spec §6.7): carpeta de datos de un servidor importado y adopción.
+// Import (plan-6, spec §6.7): data folder of an imported server and adoption.
 
-// MaxDataPath es la longitud máxima de dataPath en bytes (DATA_PATH_MAX_BYTES en el panel).
+// MaxDataPath is the maximum length of dataPath in bytes (DATA_PATH_MAX_BYTES in the panel).
 const MaxDataPath = 1024
 
-// dataPathSegRe: cada tramo de dataPath, solo ASCII (letras, números, espacio y . _ @ + -). Sin
-// ":" (rompería el bind src:/data), "," ni "\". Misma regla en zod (fixture data-path-cases.json).
+// dataPathSegRe: each segment of dataPath, ASCII only (letters, digits, space and . _ @ + -). Without
+// ":" (it would break the src:/data bind), "," or "\". Same rule in zod (fixture data-path-cases.json).
 var dataPathSegRe = regexp.MustCompile(`^[A-Za-z0-9._@+ -]+$`)
 
-// DeniedDataPaths son zonas del sistema que nunca se montan en /data: el agente corre como root
-// y el entrypoint de itzg hace chown -R de /data. Se comparan por tramos (/etcetera sí vale).
+// DeniedDataPaths are system areas that are never mounted at /data: the agent runs as root
+// and itzg's entrypoint does chown -R on /data. They are compared by segments (/etcetera is fine).
 var DeniedDataPaths = []string{
 	"/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64", "/libx32", "/proc", "/run",
 	"/sbin", "/sys", "/usr", "/var/lib/docker", "/var/run",
 }
 
-// adoptIDRe: id completo del contenedor a adoptar (64 hex, como DOCKER_ID_RE en el panel). Un nombre o
-// un prefijo no valen: Docker los resolvería, quizá a otro contenedor.
+// adoptIDRe: full id of the container to adopt (64 hex, like DOCKER_ID_RE in the panel). A name or
+// a prefix is not valid: Docker would resolve them, perhaps to another container.
 var adoptIDRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-// Adopt lo añade el panel a la spec que envía de un servidor importado; nunca se guarda en la
-// spec del panel. ContainerID es el contenedor original y Version la versión de la spec con la
-// que se adoptó: el agente no lo recrea mientras la spec no la supere.
+// Adopt is added by the panel to the spec it sends for an imported server; it is never stored in the
+// panel's spec. ContainerID is the original container and Version the spec version it
+// was adopted with: the agent does not recreate it until the spec exceeds it.
 type Adopt struct {
 	ContainerID string `json:"containerId"`
 	Version     uint64 `json:"version"`
 }
 
-// pathWithin indica si child es parent o cuelga de él (rutas absolutas limpias).
+// pathWithin reports whether child is parent or hangs under it (clean absolute paths).
 func pathWithin(child, parent string) bool {
 	if parent == "/" {
 		return strings.HasPrefix(child, "/")
@@ -43,73 +43,73 @@ func pathWithin(child, parent string) bool {
 	return child == parent || strings.HasPrefix(child, parent+"/")
 }
 
-// ValidateDataPath valida dataPath sin conocer DATA_ROOT ("" = sin dataPath). La relación con
-// DATA_ROOT la comprueba BuildContainer.
+// ValidateDataPath validates dataPath without knowing DATA_ROOT ("" = no dataPath). The relation with
+// DATA_ROOT is checked by BuildContainer.
 func ValidateDataPath(p string) error {
 	if p == "" {
 		return nil
 	}
 	if len(p) > MaxDataPath {
-		return fmt.Errorf("spec: dataPath demasiado largo (máx. %d bytes)", MaxDataPath)
+		return fmt.Errorf("spec: dataPath too long (max. %d bytes)", MaxDataPath)
 	}
 	if !strings.HasPrefix(p, "/") {
-		return fmt.Errorf("spec: dataPath debe ser una ruta absoluta: %q", p)
+		return fmt.Errorf("spec: dataPath must be an absolute path: %q", p)
 	}
 	segs := strings.Split(p[1:], "/")
 	if len(segs) < 2 {
-		return fmt.Errorf("spec: dataPath %q es demasiado general: indica al menos dos niveles", p)
+		return fmt.Errorf("spec: dataPath %q is too general: give at least two levels", p)
 	}
 	for _, s := range segs {
 		if s == "" || s == "." || s == ".." {
-			return fmt.Errorf("spec: dataPath %q no está normalizada (sin //, «.» ni «..», sin / al final)", p)
+			return fmt.Errorf("spec: dataPath %q is not normalized (no //, \".\" or \"..\", no trailing /)", p)
 		}
 		if !dataPathSegRe.MatchString(s) {
-			return fmt.Errorf("spec: dataPath %q tiene caracteres no admitidos (letras y números ASCII, espacio y . _ @ + -)", p)
+			return fmt.Errorf("spec: dataPath %q has unsupported characters (ASCII letters and digits, space and . _ @ + -)", p)
 		}
 	}
 	for _, d := range DeniedDataPaths {
 		if pathWithin(p, d) {
-			return fmt.Errorf("spec: dataPath %q está en una zona del sistema (%s): no se monta", p, d)
+			return fmt.Errorf("spec: dataPath %q is in a system area (%s): it is not mounted", p, d)
 		}
 	}
 	return nil
 }
 
-// IsItzgImage indica si ref es itzg/minecraft-server (con o sin docker.io/, con etiqueta o digest).
+// IsItzgImage reports whether ref is itzg/minecraft-server (with or without docker.io/, with a tag or digest).
 func IsItzgImage(ref string) bool {
 	rest, ok := strings.CutPrefix(strings.TrimPrefix(ref, "docker.io/"), Image)
 	return ok && (rest == "" || rest[0] == ':' || rest[0] == '@')
 }
 
-// validateImport valida dataPath y adopt. Con dataPath no hay copias programadas: el agente no ve
-// esa carpeta (solo monta DATA_ROOT). Mismo criterio que dataPathCheck en el panel.
+// validateImport validates dataPath and adopt. With dataPath there are no scheduled backups: the agent does not see
+// that folder (it only mounts DATA_ROOT). Same criterion as dataPathCheck in the panel.
 func (s Spec) validateImport() error {
 	if err := ValidateDataPath(s.DataPath); err != nil {
 		return err
 	}
 	if s.DataPath != "" && s.Backups != nil && s.Backups.Enabled {
-		return fmt.Errorf("spec: las copias programadas no están disponibles con dataPath: el agente no ve esa carpeta (solo monta DATA_ROOT)")
+		return fmt.Errorf("spec: scheduled backups are not available with dataPath: the agent does not see that folder (it only mounts DATA_ROOT)")
 	}
 	if a := s.Adopt; a != nil {
 		if !adoptIDRe.MatchString(a.ContainerID) {
-			return fmt.Errorf("spec: adopt.containerId inválido %q", a.ContainerID)
+			return fmt.Errorf("spec: invalid adopt.containerId %q", a.ContainerID)
 		}
 		if a.Version == 0 {
-			return fmt.Errorf("spec: adopt.version debe ser al menos 1")
+			return fmt.Errorf("spec: adopt.version must be at least 1")
 		}
 	}
 	return nil
 }
 
-// dataDir es la carpeta del host montada en /data: dataPath si lo hay (fuera de DATA_ROOT y sin
-// contenerlo: nunca solapa los datos de los servidores gestionados) o <dataRoot>/<slug>/data.
+// dataDir is the host folder mounted at /data: dataPath if there is one (outside DATA_ROOT and not
+// containing it: it never overlaps the managed servers' data) or <dataRoot>/<slug>/data.
 func (s Spec) dataDir(slug, dataRoot string) (string, error) {
 	if s.DataPath == "" {
 		return filepath.Join(dataRoot, slug, "data"), nil
 	}
 	root := filepath.Clean(dataRoot)
 	if pathWithin(s.DataPath, root) || pathWithin(root, s.DataPath) {
-		return "", fmt.Errorf("spec: dataPath %q no puede estar dentro de DATA_ROOT (%s) ni contenerlo", s.DataPath, root)
+		return "", fmt.Errorf("spec: dataPath %q cannot be inside DATA_ROOT (%s) or contain it", s.DataPath, root)
 	}
 	return s.DataPath, nil
 }

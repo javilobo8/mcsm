@@ -25,16 +25,16 @@ func TestSetTokenAndReconnectDialWithTheNewToken(t *testing.T) {
 		if err != nil {
 			return
 		}
-		for { // Hello y lo que llegue, hasta que el cliente cierre
+		for { // Hello and whatever arrives, until the client closes
 			if _, _, err := c.Read(context.Background()); err != nil {
 				return
 			}
 		}
 	}))
 	defer srv.Close()
-	c := NewClient(Options{PanelURL: srv.URL, Token: "VIEJO", Handler: &captureHandler{}, Log: quiet,
+	c := NewClient(Options{PanelURL: srv.URL, Token: "OLD", Handler: &captureHandler{}, Log: quiet,
 		Hello: func(context.Context) *mcsmv1.Hello { return &mcsmv1.Hello{} }})
-	c.after = func(time.Duration) <-chan time.Time { // sin esperas entre sesiones
+	c.after = func(time.Duration) <-chan time.Time { // no waits between sessions
 		ch := make(chan time.Time, 1)
 		ch <- time.Now()
 		return ch
@@ -43,16 +43,16 @@ func TestSetTokenAndReconnectDialWithTheNewToken(t *testing.T) {
 	defer cancel()
 	go c.Run(ctx)
 	waitConnected(t, c)
-	c.SetToken("NUEVO")
+	c.SetToken("NEW")
 	c.Reconnect()
-	waitFor(t, "segunda sesión", func() bool {
+	waitFor(t, "second session", func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return len(tokens) >= 2
 	})
 	mu.Lock()
 	defer mu.Unlock()
-	if tokens[0] != "VIEJO" || tokens[1] != "NUEVO" {
+	if tokens[0] != "OLD" || tokens[1] != "NEW" {
 		t.Fatalf("tokens = %v", tokens)
 	}
 }

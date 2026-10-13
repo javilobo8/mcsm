@@ -15,7 +15,7 @@ func spec(id string, v uint64) *mcsmv1.ServerSpec {
 	return &mcsmv1.ServerSpec{ServerId: id, Slug: "s-" + id, Version: v, SpecJson: []byte(`{}`)}
 }
 
-// snapshot lee en UNA transacción si id tiene spec y si tiene lápida.
+// snapshot reads in ONE transaction whether id has a spec and whether it has a tombstone.
 func (s *Store) snapshot(t *testing.T, id string) (hasSpec, hasTomb bool) {
 	t.Helper()
 	err := s.db.View(func(tx *bbolt.Tx) error {
@@ -40,7 +40,7 @@ func TestTombstonesEmptyStore(t *testing.T) {
 		t.Fatalf("ListTombstones = %v, %v", list, err)
 	}
 	if err := s.DeleteTombstone("a"); err != nil {
-		t.Fatalf("DeleteTombstone sin bucket = %v", err)
+		t.Fatalf("DeleteTombstone without bucket = %v", err)
 	}
 }
 
@@ -60,10 +60,10 @@ func TestForgetWithTombstone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sp, _ := s.GetSpec("a"); sp != nil {
-		t.Fatal("debe borrar la spec")
+		t.Fatal("it must delete the spec")
 	}
 	if v, _ := s.Applied("a"); v != 0 {
-		t.Fatalf("debe borrar la versión aplicada: %d", v)
+		t.Fatalf("it must delete the applied version: %d", v)
 	}
 	if has, err := s.HasTombstone("a"); err != nil || !has {
 		t.Fatalf("HasTombstone = %v, %v", has, err)
@@ -73,13 +73,13 @@ func TestForgetWithTombstone(t *testing.T) {
 		t.Fatalf("ListTombstones = %+v, %v", list, err)
 	}
 	if specs, _ := s.ListSpecs(); len(specs) != 1 || specs[0].ServerId != "b" {
-		t.Fatalf("una lápida no es una spec: %v", specs)
+		t.Fatalf("a tombstone is not a spec: %v", specs)
 	}
 	if vers, _ := s.SpecVersions(); len(vers) != 1 {
-		t.Fatalf("una lápida no va en el Hello: %v", vers)
+		t.Fatalf("a tombstone does not go in the Hello: %v", vers)
 	}
 	if err := s.ForgetWithTombstone("", at); err == nil {
-		t.Fatal("id vacío debe fallar")
+		t.Fatal("an empty id must fail")
 	}
 }
 
@@ -92,7 +92,7 @@ func TestPutSpecClearsTombstone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if has, _ := s.HasTombstone("a"); has {
-		t.Fatal("guardar la spec anula la lápida")
+		t.Fatal("storing the spec clears the tombstone")
 	}
 	if list, _ := s.ListTombstones(); len(list) != 0 {
 		t.Fatalf("ListTombstones = %v", list)
@@ -106,7 +106,7 @@ func TestDeleteTombstone(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for i := 0; i < 2; i++ { // idempotente
+	for i := 0; i < 2; i++ { // idempotent
 		if err := s.DeleteTombstone("a"); err != nil {
 			t.Fatal(err)
 		}
@@ -140,9 +140,9 @@ func TestTombstonesSurviveReopen(t *testing.T) {
 	}
 }
 
-// Spec y lápida de un id nunca conviven ni faltan las dos a la vez: ForgetWithTombstone y
-// PutSpec son una sola transacción cada uno, así que un lector concurrente nunca ve un
-// estado intermedio.
+// A spec and a tombstone for an id never coexist nor are both missing at once: ForgetWithTombstone and
+// PutSpec are a single transaction each, so a concurrent reader never sees an
+// intermediate state.
 func TestForgetAndPutSpecAreAtomic(t *testing.T) {
 	s := open(t)
 	if err := s.PutSpec(spec("a", 1)); err != nil {
@@ -161,7 +161,7 @@ func TestForgetAndPutSpecAreAtomic(t *testing.T) {
 			default:
 			}
 			if hasSpec, hasTomb := s.snapshot(t, "a"); hasSpec == hasTomb {
-				t.Errorf("estado intermedio visible: spec=%v lápida=%v", hasSpec, hasTomb)
+				t.Errorf("intermediate state visible: spec=%v tombstone=%v", hasSpec, hasTomb)
 				return
 			}
 		}

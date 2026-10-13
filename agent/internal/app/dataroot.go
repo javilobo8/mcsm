@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// sysProbe es lo que la comprobación de DATA_ROOT consulta del sistema (inyectable en tests).
+// sysProbe is what the DATA_ROOT check queries from the system (injectable in tests).
 type sysProbe struct {
 	inContainer func() bool
 	mountinfo   func() ([]byte, error)
@@ -30,13 +30,13 @@ var hostProbe = sysProbe{
 }
 
 type mountEntry struct {
-	root       string // ruta dentro del sistema de ficheros de origen
+	root       string // path inside the source filesystem
 	mountPoint string
 	superOpts  string
 }
 
-// parseMountinfo lee /proc/self/mountinfo (proc(5)): campos 4 (root) y 5 (punto de
-// montaje), y las opciones del superbloque tras el separador "-".
+// parseMountinfo reads /proc/self/mountinfo (proc(5)): fields 4 (root) and 5 (mount
+// point), and the superblock options after the "-" separator.
 func parseMountinfo(b []byte) []mountEntry {
 	var out []mountEntry
 	sc := bufio.NewScanner(bytes.NewReader(b))
@@ -57,7 +57,7 @@ func parseMountinfo(b []byte) []mountEntry {
 	return out
 }
 
-// unescapeMount deshace los escapes octales de mountinfo (\040 espacio, \011 tab…).
+// unescapeMount undoes mountinfo's octal escapes (\040 space, \011 tab…).
 func unescapeMount(s string) string {
 	if !strings.Contains(s, `\`) {
 		return s
@@ -76,40 +76,40 @@ func unescapeMount(s string) string {
 	return b.String()
 }
 
-// within indica si p es dir o está dentro de dir.
+// within reports whether p is dir or is inside dir.
 func within(p, dir string) bool {
 	return dir == "/" || p == dir || strings.HasPrefix(p, dir+"/")
 }
 
-// checkDataRoot comprueba el requisito de spec §6.1: dentro de un contenedor, DATA_ROOT
-// debe ser un montaje del host con la misma ruta. Si no, el agente leería y escribiría
-// <DATA_ROOT>/<slug> en su propio contenedor mientras los servidores usan el del host
-// (copias vacías, árboles de archivos vacíos), sin ningún error. Falla si DATA_ROOT no
-// existe, no se puede escribir o no está montado desde el host; avisa si el montaje
-// parece venir de otra ruta del host (mountinfo no permite asegurarlo).
+// checkDataRoot checks the spec §6.1 requirement: inside a container, DATA_ROOT
+// must be a host mount with the same path. Otherwise, the agent would read and write
+// <DATA_ROOT>/<slug> in its own container while the servers use the host's
+// (empty backups, empty file trees), without any error. It fails if DATA_ROOT does not
+// exist, cannot be written or is not mounted from the host; it warns if the mount
+// seems to come from another host path (mountinfo cannot guarantee it).
 func checkDataRoot(dataRoot string, p sysProbe, log *slog.Logger) error {
 	if !p.inContainer() {
-		log.Info("el agente no corre en un contenedor: DATA_ROOT es una ruta del host", "data_root", dataRoot)
+		log.Info("the agent is not running in a container: DATA_ROOT is a host path", "data_root", dataRoot)
 		return nil
 	}
-	mountHint := fmt.Sprintf("móntalo con la misma ruta dentro y fuera: -v %s:%s", dataRoot, dataRoot)
+	mountHint := fmt.Sprintf("mount it at the same path inside and outside: -v %s:%s", dataRoot, dataRoot)
 	st, err := os.Stat(dataRoot)
 	if err != nil {
-		return fmt.Errorf("DATA_ROOT %s no existe dentro del contenedor del agente: %s", dataRoot, mountHint)
+		return fmt.Errorf("DATA_ROOT %s does not exist inside the agent's container: %s", dataRoot, mountHint)
 	}
 	if !st.IsDir() {
-		return fmt.Errorf("DATA_ROOT %s no es un directorio", dataRoot)
+		return fmt.Errorf("DATA_ROOT %s is not a directory", dataRoot)
 	}
 	f, err := os.CreateTemp(dataRoot, ".mcsm-write-check-*")
 	if err != nil {
-		return fmt.Errorf("no se puede escribir en DATA_ROOT %s: %w", dataRoot, err)
+		return fmt.Errorf("cannot write to DATA_ROOT %s: %w", dataRoot, err)
 	}
 	f.Close()
 	_ = os.Remove(f.Name())
 
 	raw, err := p.mountinfo()
 	if err != nil {
-		return fmt.Errorf("leer /proc/self/mountinfo para comprobar DATA_ROOT: %w", err)
+		return fmt.Errorf("read /proc/self/mountinfo to check DATA_ROOT: %w", err)
 	}
 	var best *mountEntry
 	for _, m := range parseMountinfo(raw) {
@@ -118,11 +118,11 @@ func checkDataRoot(dataRoot string, p sysProbe, log *slog.Logger) error {
 		}
 	}
 	if best == nil || best.mountPoint == "/" {
-		return fmt.Errorf("DATA_ROOT %s no está montado desde el host (está dentro del contenedor del agente): %s", dataRoot, mountHint)
+		return fmt.Errorf("DATA_ROOT %s is not mounted from the host (it is inside the agent's container): %s", dataRoot, mountHint)
 	}
 
-	// Ruta del directorio dentro del sistema de ficheros de origen. En btrfs, root lleva
-	// delante el subvolumen montado (subvol=/@home → root /@home/...): se quita.
+	// Path of the directory inside the source filesystem. On btrfs, root carries the mounted
+	// subvolume in front (subvol=/@home → root /@home/...): it is removed.
 	root := best.root
 	for _, opt := range strings.Split(best.superOpts, ",") {
 		if sub, ok := strings.CutPrefix(opt, "subvol="); ok && sub != "/" && within(root, sub) {
@@ -130,11 +130,11 @@ func checkDataRoot(dataRoot string, p sysProbe, log *slog.Logger) error {
 		}
 	}
 	rel := path.Join(root, strings.TrimPrefix(dataRoot, best.mountPoint))
-	// La ruta en el host es <donde está montado el origen>/<rel>: con un montaje espejo,
-	// DATA_ROOT termina en rel. Si rel es "/" no se puede saber nada.
+	// The path on the host is <where the source is mounted>/<rel>: with a mirror mount,
+	// DATA_ROOT ends in rel. If rel is "/" nothing can be known.
 	if rel != "/" && dataRoot != rel && !strings.HasSuffix(dataRoot, rel) {
-		log.Warn("DATA_ROOT parece montado desde otra ruta del host: los servidores verían otro directorio que el agente; usa la misma ruta dentro y fuera",
-			"data_root", dataRoot, "origen", rel, "montaje", best.mountPoint)
+		log.Warn("DATA_ROOT seems to be mounted from another host path: the servers would see a different directory than the agent; use the same path inside and outside",
+			"data_root", dataRoot, "source", rel, "mount", best.mountPoint)
 	}
 	return nil
 }

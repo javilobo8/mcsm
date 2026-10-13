@@ -21,7 +21,7 @@ func TestCredentials(t *testing.T) {
 	s := open(t)
 	c, err := s.Credentials()
 	if err != nil || c != nil {
-		t.Fatalf("esperaba nil,nil; got %v,%v", c, err)
+		t.Fatalf("expected nil,nil; got %v,%v", c, err)
 	}
 	if err := s.SaveCredentials(Credentials{NodeID: "n1", Token: "tok"}); err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestCredentials(t *testing.T) {
 func TestSpecs(t *testing.T) {
 	s := open(t)
 	if sp, _ := s.GetSpec("missing"); sp != nil {
-		t.Fatal("GetSpec de id inexistente debe devolver nil")
+		t.Fatal("GetSpec of a nonexistent id must return nil")
 	}
 	a := &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(`{"x":1}`)}
 	b := &mcsmv1.ServerSpec{ServerId: "b", Slug: "beta", Version: 5}
@@ -69,9 +69,9 @@ func TestSpecs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if sp, _ := s.GetSpec("a"); sp != nil {
-		t.Fatal("a debería haberse borrado")
+		t.Fatal("a should have been deleted")
 	}
 	if v, _ := s.Applied("a"); v != 0 {
-		t.Fatal("DeleteSpec debe borrar también applied")
+		t.Fatal("DeleteSpec must also delete applied")
 	}
 }

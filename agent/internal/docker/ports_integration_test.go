@@ -15,9 +15,9 @@ import (
 	"github.com/moby/moby/api/types/network"
 )
 
-// TestMobyPortsMissingAfterFailedStart reproduce el fallo de Docker 29.7.2 (plan-8): tras un start
-// fallido por el puerto del host, el siguiente arranca sin publicar los puertos. Inspect lo detecta
-// (PortsMissing). Solo contenedores mcsm-test-ports-…, que se borran.
+// TestMobyPortsMissingAfterFailedStart reproduces Docker 29.7.2's failure (plan-8): after a start
+// that failed on the host port, the next one starts without publishing the ports. Inspect detects it
+// (PortsMissing). Only mcsm-test-ports-… containers, which are deleted.
 func TestMobyPortsMissingAfterFailedStart(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -52,10 +52,10 @@ func TestMobyPortsMissingAfterFailedStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if ins, err := m.Inspect(ctx, blocker); err != nil || !ins.Running || ins.PortsMissing {
-		t.Fatalf("el primero publica su puerto: %+v %v", ins, err)
+		t.Fatalf("the first one publishes its port: %+v %v", ins, err)
 	}
 	if err := m.Start(ctx, victim); err == nil {
-		t.Fatal("el puerto está ocupado: el arranque debe fallar")
+		t.Fatal("the port is taken: the start must fail")
 	}
 	if err := m.Remove(ctx, blocker); err != nil {
 		t.Fatal(err)
@@ -68,6 +68,6 @@ func TestMobyPortsMissingAfterFailedStart(t *testing.T) {
 		t.Fatalf("inspect = %+v %v", ins, err)
 	}
 	if !ins.PortsMissing {
-		t.Skip("este Docker publica los puertos tras un arranque fallido (sin el fallo de 29.7.2)")
+		t.Skip("this Docker publishes the ports after a failed start (without the 29.7.2 failure)")
 	}
 }

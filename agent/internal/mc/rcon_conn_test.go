@@ -28,7 +28,7 @@ func TestRconConnReusesOneConnection(t *testing.T) {
 		}
 	}
 	if n := accepted.Load(); n != 1 {
-		t.Fatalf("conexiones = %d, want 1", n)
+		t.Fatalf("connections = %d, want 1", n)
 	}
 }
 
@@ -36,7 +36,7 @@ func TestRconConnWrongPassword(t *testing.T) {
 	host, port := fakeRcon(t, "secret")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := DialRcon(ctx, host, port, "mala"); err == nil || !strings.Contains(err.Error(), "contraseña incorrecta") {
+	if _, err := DialRcon(ctx, host, port, "wrong"); err == nil || !strings.Contains(err.Error(), "wrong password") {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -49,15 +49,15 @@ func TestRconConnClosedAfterError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = c.conn.Close() // la conexión se rompe (servidor reiniciado)
+	_ = c.conn.Close() // the connection breaks (server restarted)
 	if _, err := c.Command(ctx, "tps"); err == nil {
-		t.Fatal("esperaba error con la conexión rota")
+		t.Fatal("expected an error with the broken connection")
 	}
-	if _, err := c.Command(ctx, "tps"); err == nil || !strings.Contains(err.Error(), "sesión cerrada") {
-		t.Fatalf("tras un error la sesión debe quedar cerrada: %v", err)
+	if _, err := c.Command(ctx, "tps"); err == nil || !strings.Contains(err.Error(), "session closed") {
+		t.Fatalf("after an error the session must be left closed: %v", err)
 	}
 	if err := c.Close(); err != nil {
-		t.Fatalf("Close idempotente: %v", err)
+		t.Fatalf("idempotent Close: %v", err)
 	}
 }
 
@@ -68,12 +68,12 @@ func TestRconDeadlinePolicy(t *testing.T) {
 	short, cancel2 := context.WithDeadline(context.Background(), now.Add(time.Second))
 	defer cancel2()
 	if d := rconDeadline(context.Background(), now); !d.Equal(now.Add(rconTimeout)) {
-		t.Fatalf("sin deadline: %v", d)
+		t.Fatalf("no deadline: %v", d)
 	}
 	if d := rconDeadline(long, now); !d.Equal(now.Add(30 * time.Second)) {
-		t.Fatalf("deadline largo del llamador debe respetarse: %v", d)
+		t.Fatalf("the caller's long deadline must be respected: %v", d)
 	}
 	if d := rconDeadline(short, now); !d.Equal(now.Add(time.Second)) {
-		t.Fatalf("deadline corto: %v", d)
+		t.Fatalf("short deadline: %v", d)
 	}
 }

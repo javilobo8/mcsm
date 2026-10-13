@@ -14,27 +14,27 @@ import (
 	"time"
 )
 
-// ErrTransferNotFound: el panel respondió 404 al transfer_id (caducado, ya usado o de otro nodo).
-var ErrTransferNotFound = errors.New("el panel no reconoce la transferencia (caducada, ya usada o de otro nodo)")
+// ErrTransferNotFound: the panel answered 404 to the transfer_id (expired, already used or from another node).
+var ErrTransferNotFound = errors.New("the panel does not recognize the transfer (expired, already used or from another node)")
 
-// errTransferAuth: el panel rechazó el token del nodo (401/403). No se reintenta: el mismo
-// token volvería a fallar.
-var errTransferAuth = errors.New("el panel rechazó el token del nodo")
+// errTransferAuth: the panel rejected the node token (401/403). It is not retried: the same
+// token would fail again.
+var errTransferAuth = errors.New("the panel rejected the node token")
 
-// transferIDRe: 32 bytes aleatorios en base64url sin relleno, como los genera el panel.
+// transferIDRe: 32 random bytes in unpadded base64url, as the panel generates them.
 var transferIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
 const (
-	// transferHeaderTimeout acota la espera de la respuesta una vez enviada la petición entera
-	// (en un PUT, tras el último byte del cuerpo). Los cuerpos no tienen plazo: un envío grande
-	// puede tardar lo que haga falta y solo lo corta el context.
+	// transferHeaderTimeout bounds the wait for the response once the whole request has been sent
+	// (in a PUT, after the last byte of the body). Bodies have no deadline: a large upload
+	// can take as long as it needs and only the context cuts it off.
 	transferHeaderTimeout = 60 * time.Second
-	panelErrBodyMax       = 4 << 10 // bytes leídos del cuerpo de una respuesta de error
-	panelErrMsgMax        = 300     // bytes del mensaje del panel que pasan al error
+	panelErrBodyMax       = 4 << 10 // bytes read from the body of an error response
+	panelErrMsgMax        = 300     // bytes of the panel's message that go into the error
 )
 
-// newTransferHTTP crea el cliente de transferencias. Plazos solo para conectar y para esperar
-// cabeceras; nunca para el cuerpo completo.
+// newTransferHTTP creates the transfer client. Deadlines only for connecting and for waiting for
+// headers; never for the whole body.
 func newTransferHTTP(headerTimeout time.Duration) *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
@@ -42,39 +42,39 @@ func newTransferHTTP(headerTimeout time.Duration) *http.Client {
 			DialContext:           (&net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}).DialContext,
 			TLSHandshakeTimeout:   dialTimeout,
 			ResponseHeaderTimeout: headerTimeout,
-			// Una conexión por transferencia (son pocas y largas): sin conexiones reutilizadas
-			// net/http no reintenta por su cuenta una petición que el panel pudo recibir (un GET
-			// repetido encontraría la transferencia ya consumida) y no quedan goroutines ociosas.
+			// One connection per transfer (they are few and long): without reused connections
+			// net/http does not retry on its own a request the panel may have received (a repeated
+			// GET would find the transfer already consumed) and no idle goroutines are left.
 			DisableKeepAlives: true,
-			// Bytes tal cual: Content-Length es el tamaño real y no hay descompresión sin tope.
+			// Bytes as they are: Content-Length is the real size and there is no uncapped decompression.
 			DisableCompression: true,
 		},
-		// Sin redirecciones: un 302 convertiría el PUT en un GET sin cuerpo que "funcionaría" y
-		// llevaría la petición, con el token, a otra ruta.
+		// No redirects: a 302 would turn the PUT into a body-less GET that would "work" and
+		// would carry the request, with the token, to another path.
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 }
 
 var transferHTTP = newTransferHTTP(transferHeaderTimeout)
 
-// TransferClient hace las transferencias HTTP salientes del agente (spec §5.1): GET y PUT
-// /agent/transfer/{id} contra el panel con el token del nodo. No escribe logs y sus errores
-// nunca llevan el token.
+// TransferClient makes the agent's outbound HTTP transfers (spec §5.1): GET and PUT
+// /agent/transfer/{id} against the panel with the node token. It writes no logs and its errors
+// never carry the token.
 type TransferClient struct {
 	base  string
 	token string
 	http  *http.Client
 }
 
-// NewTransferClient crea un cliente para el panel en panelURL con el token del nodo.
+// NewTransferClient creates a client for the panel at panelURL with the node token.
 func NewTransferClient(panelURL, token string) *TransferClient {
 	return &TransferClient{base: strings.TrimRight(panelURL, "/"), token: token, http: transferHTTP}
 }
 
-// do envía la petición y devuelve la respuesta solo si es 2xx (el llamante cierra su cuerpo).
+// do sends the request and returns the response only if it is 2xx (the caller closes its body).
 func (c *TransferClient) do(ctx context.Context, method, id string, body io.Reader, size int64) (*http.Response, error) {
 	if !transferIDRe.MatchString(id) {
-		return nil, errors.New("transfer_id inválido")
+		return nil, errors.New("invalid transfer_id")
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.base+"/agent/transfer/"+id, body)
 	if err != nil {
@@ -105,13 +105,13 @@ func (c *TransferClient) statusErr(resp *http.Response) error {
 	case code == http.StatusUnauthorized || code == http.StatusForbidden:
 		return fmt.Errorf("%w (%d)", errTransferAuth, code)
 	default:
-		return fmt.Errorf("el panel respondió %d: %s", code, c.panelMessage(resp))
+		return fmt.Errorf("the panel responded %d: %s", code, c.panelMessage(resp))
 	}
 }
 
-// panelMessage extrae el mensaje de una respuesta de error del panel ({"error": "…"}), sin el
-// token y en UTF-8 válido. Otro cuerpo (la página de un proxy, por ejemplo) no se copia: queda
-// el texto del estado HTTP.
+// panelMessage extracts the message from a panel error response ({"error": "…"}), without the
+// token and as valid UTF-8. Any other body (a proxy's page, for example) is not copied: the
+// HTTP status text remains.
 func (c *TransferClient) panelMessage(resp *http.Response) string {
 	msg := http.StatusText(resp.StatusCode)
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, panelErrBodyMax))
@@ -128,15 +128,15 @@ func (c *TransferClient) panelMessage(resp *http.Response) string {
 		msg = msg[:panelErrMsgMax] + "…"
 	}
 	if msg == "" {
-		msg = "sin detalle"
+		msg = "no detail"
 	}
 	return strings.ToValidUTF8(msg, "�")
 }
 
-// Get abre una transferencia panel → agente. Devuelve el cuerpo en streaming (el llamante lo
-// cierra) y su tamaño, o -1 si el panel no envió Content-Length. Con Content-Length el cuerpo
-// entrega exactamente esos bytes: si el panel corta antes, la lectura falla con
-// io.ErrUnexpectedEOF. Cancelar ctx corta también la lectura del cuerpo.
+// Get opens a panel → agent transfer. It returns the body as a stream (the caller closes
+// it) and its size, or -1 if the panel did not send Content-Length. With Content-Length the body
+// delivers exactly those bytes: if the panel cuts off early, the read fails with
+// io.ErrUnexpectedEOF. Cancelling ctx also cuts the body read.
 func (c *TransferClient) Get(ctx context.Context, id string) (io.ReadCloser, int64, error) {
 	resp, err := c.do(ctx, http.MethodGet, id, nil, 0)
 	if err != nil {
@@ -145,9 +145,9 @@ func (c *TransferClient) Get(ctx context.Context, id string) (io.ReadCloser, int
 	return scrubBody{resp.Body}, resp.ContentLength, nil
 }
 
-// netCause deja de un error de red solo su causa: sin la URL de *url.Error (lleva el
-// transfer_id) ni las direcciones de *net.OpError y *net.DNSError. El mensaje acaba en el
-// navegador (Error del agente → 502 con su texto). errors.Is sigue viendo la causa
+// netCause leaves a network error with only its cause: without the *url.Error URL (it carries the
+// transfer_id) or the addresses of *net.OpError and *net.DNSError. The message ends up in the
+// browser (agent Error → 502 with its text). errors.Is still sees the cause
 // (context.Canceled, ECONNREFUSED, io.ErrUnexpectedEOF…).
 func netCause(err error) error {
 	var ue *url.Error
@@ -156,7 +156,7 @@ func netCause(err error) error {
 	}
 	var dns *net.DNSError
 	if errors.As(err, &dns) {
-		return fmt.Errorf("no se puede resolver el nombre del panel: %s", dns.Err)
+		return fmt.Errorf("cannot resolve the panel's name: %s", dns.Err)
 	}
 	var op *net.OpError
 	if errors.As(err, &op) && op.Err != nil {
@@ -165,8 +165,8 @@ func netCause(err error) error {
 	return err
 }
 
-// scrubBody limpia con netCause los errores de lectura del cuerpo (un RST del panel a mitad
-// trae las direcciones de la conexión).
+// scrubBody cleans body read errors with netCause (a RST from the panel midway
+// brings the connection's addresses).
 type scrubBody struct{ io.ReadCloser }
 
 func (b scrubBody) Read(p []byte) (int, error) {
@@ -177,24 +177,24 @@ func (b scrubBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// readerOnly oculta Close (y cualquier otro método) del cuerpo del llamante.
+// readerOnly hides Close (and any other method) of the caller's body.
 type readerOnly struct{ io.Reader }
 
-// Put envía body en una transferencia agente → panel y vuelve cuando el panel responde 2xx
-// (lo ha recibido y entregado entero). size >= 0 fija Content-Length (0 envía un cuerpo vacío)
-// y la petición falla si body no trae exactamente size bytes; -1 usa chunked. Put no cierra
-// body; como en net/http, tras un error body aún puede estar leyéndose un instante en otra
-// goroutine: el llamante no debe reutilizarlo, solo cerrarlo (*os.File e io.Pipe lo admiten).
+// Put sends body in an agent → panel transfer and returns when the panel answers 2xx
+// (it has received and handed over all of it). size >= 0 sets Content-Length (0 sends an empty body)
+// and the request fails if body does not carry exactly size bytes; -1 uses chunked. Put does not close
+// body; as in net/http, after an error body may still be read for a moment in another
+// goroutine: the caller must not reuse it, only close it (*os.File and io.Pipe support this).
 func (c *TransferClient) Put(ctx context.Context, id string, body io.Reader, size int64) error {
 	if body == nil {
 		body = http.NoBody
 	}
 	switch {
 	case size == 0:
-		body = http.NoBody // con ContentLength 0 y un cuerpo no nulo, net/http usaría chunked
+		body = http.NoBody // with ContentLength 0 and a non-nil body, net/http would use chunked
 	case size > 0 && size+1 > 0:
-		// Si body trae de más, net/http leería el resto entero para medirlo (con un origen que
-		// no acaba, para siempre); un byte de más basta para fallar.
+		// If body carries too much, net/http would read the rest in full to measure it (with a source that
+		// never ends, forever); one extra byte is enough to fail.
 		body = io.LimitReader(body, size+1)
 	default:
 		if size < 0 {

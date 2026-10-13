@@ -8,16 +8,16 @@ import (
 )
 
 var (
-	// colorCode son los códigos de formato heredados (§a, §l, §x…) que Paper deja en la
-	// salida de los comandos por RCON.
+	// colorCode are the legacy formatting codes (§a, §l, §x…) that Paper leaves in the
+	// output of commands over RCON.
 	colorCode = regexp.MustCompile(`§[0-9a-fk-orxA-FK-ORX]`)
 	tpsLine   = regexp.MustCompile(`(?i)TPS from last ([^:\n]+):([^\n]*)`)
 	number    = regexp.MustCompile(`^\*?\s*([0-9]+(?:\.[0-9]+)?)`)
 )
 
-// ParseTPS extrae el TPS del último minuto de la salida del comando `tps` de Paper
-// ("TPS from last 1m, 5m, 15m: 20.0, 20.0, 20.0") o Purpur (añade "5s" delante).
-// Admite códigos de color § y el prefijo * con el que Paper marca valores recortados.
+// ParseTPS extracts the last-minute TPS from the output of Paper's `tps` command
+// ("TPS from last 1m, 5m, 15m: 20.0, 20.0, 20.0") or Purpur's (adds "5s" in front).
+// It accepts § color codes and the * prefix with which Paper marks capped values.
 func ParseTPS(out string) (float64, bool) {
 	m := tpsLine.FindStringSubmatch(colorCode.ReplaceAllString(out, ""))
 	if m == nil {

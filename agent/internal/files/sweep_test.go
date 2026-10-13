@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
-// Solo se borran ficheros normales con el nombre exacto de un temporal, viejos y dentro de la
-// raíz; ni enlaces, ni carpetas, ni nada a lo que se llegue por un enlace.
+// Only regular files with the exact name of a temporary, old and inside the
+// root are deleted; no links, no folders, nothing reached through a link.
 func TestSweepTempsRemovesOnlyOldOrphansInside(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
-	now := time.Now().Add(2 * time.Hour) // todo lo creado ahora tiene 2 h para el barrido
+	now := time.Now().Add(2 * time.Hour) // everything created now is 2 h old for the sweep
 	write := func(p string, age time.Duration) string {
 		t.Helper()
 		full := filepath.Join(root, p)
@@ -38,10 +38,10 @@ func TestSweepTempsRemovesOnlyOldOrphansInside(t *testing.T) {
 	if err := os.MkdirAll(dirTmp, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Un enlace con nombre de temporal hacia fuera y una carpeta enlazada hacia fuera con un
-	// temporal dentro: ninguno se toca.
+	// A link named like a temporary pointing outside and a linked folder pointing outside with a
+	// temporary inside: neither is touched.
 	victim := filepath.Join(outside, ".mcsm-tmp-2222222222222222")
-	if err := os.WriteFile(victim, []byte("fuera"), 0o644); err != nil {
+	if err := os.WriteFile(victim, []byte("outside"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(victim, now.Add(-5*time.Hour), now.Add(-5*time.Hour)); err != nil {
@@ -51,7 +51,7 @@ func TestSweepTempsRemovesOnlyOldOrphansInside(t *testing.T) {
 	if err := os.Symlink(victim, linkTmp); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(root, "fuera")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(root, "out")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -60,16 +60,16 @@ func TestSweepTempsRemovesOnlyOldOrphansInside(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n != 2 {
-		t.Fatalf("borrados = %d; quiero 2", n)
+		t.Fatalf("deleted = %d; want 2", n)
 	}
 	for _, p := range []string{oldTop, oldNested} {
 		if _, err := os.Lstat(p); !os.IsNotExist(err) {
-			t.Errorf("%s sigue ahí (err %v)", p, err)
+			t.Errorf("%s is still there (err %v)", p, err)
 		}
 	}
 	for _, p := range []string{recent, notHex, shortName, normal, dirTmp, linkTmp, victim} {
 		if _, err := os.Lstat(p); err != nil {
-			t.Errorf("%s no debería haberse borrado: %v", p, err)
+			t.Errorf("%s should not have been deleted: %v", p, err)
 		}
 	}
 }
@@ -83,6 +83,6 @@ func TestSweepTempsStopsWithContext(t *testing.T) {
 	cancel()
 	n, err := New(root).SweepTemps(ctx, time.Hour, time.Now().Add(2*time.Hour))
 	if err == nil || n != 0 {
-		t.Fatalf("n = %d, err = %v; quiero 0 y el error del contexto", n, err)
+		t.Fatalf("n = %d, err = %v; want 0 and the context error", n, err)
 	}
 }

@@ -14,12 +14,12 @@ import (
 	"mcsm/agent/internal/spec"
 )
 
-// Importación de contenedores existentes (plan-6, spec §6.7).
+// Import of existing containers (plan-6, spec §6.7).
 
-// importScanTimeout acota el escaneo (una lista y un inspect por contenedor del host).
+// importScanTimeout bounds the scan (one list and one inspect per host container).
 const importScanTimeout = 20 * time.Second
 
-// handleImportScan responde con los candidatos a importar. Solo lee: usa el contexto de la sesión.
+// handleImportScan answers with the import candidates. It only reads: it uses the session's context.
 func (a *App) handleImportScan(ctx context.Context, id uint64, send func(*mcsmv1.Envelope) error) {
 	cctx, cancel := context.WithTimeout(ctx, importScanTimeout)
 	defer cancel()
@@ -42,7 +42,7 @@ func (a *App) handleImportScan(ctx context.Context, id uint64, send func(*mcsmv1
 	}}})
 }
 
-// handleImportAdopt adopta un contenedor (toca Docker y el store: contexto de vida del agente).
+// handleImportAdopt adopts a container (it touches Docker and the store: the agent's life context).
 func (a *App) handleImportAdopt(id uint64, m *mcsmv1.ImportAdopt, send func(*mcsmv1.Envelope) error) {
 	sp := m.GetServer()
 	if err := validSpecMsg(sp); err != nil {
@@ -56,7 +56,7 @@ func (a *App) handleImportAdopt(id uint64, m *mcsmv1.ImportAdopt, send func(*mcs
 	_ = send(ack(id))
 }
 
-// adoptErrCode traduce un fallo de Reconciler.Adopt al Error.code del protocolo.
+// adoptErrCode translates a Reconciler.Adopt failure to the protocol's Error.code.
 func adoptErrCode(err error) string {
 	switch {
 	case errors.Is(err, reconcile.ErrAdoptNotFound):
@@ -74,8 +74,8 @@ func adoptErrCode(err error) string {
 	}
 }
 
-// serverContainers es lo que mide el muestreador de métricas (stats.Containers): los contenedores
-// gestionados y los adoptados, con mcsm.server_id y mcsm.slug (ping a mcsm-<slug>, el alias de red).
+// serverContainers is what the metrics sampler measures (stats.Containers): the managed and adopted
+// containers, with mcsm.server_id and mcsm.slug (ping to mcsm-<slug>, the network alias).
 type serverContainers struct{ a *App }
 
 func (c serverContainers) ListManaged(ctx context.Context) ([]docker.Container, error) {
@@ -86,21 +86,21 @@ func (c serverContainers) Stats(ctx context.Context, id string) (docker.Stats, e
 	return c.a.eng.Stats(ctx, id)
 }
 
-// errExternalData: el servidor guarda sus datos fuera de DATA_ROOT (dataPath) y el agente no los ve
-// (solo monta DATA_ROOT, spec §6.1): ni copias ni archivos.
-var errExternalData = errors.New("datos fuera de DATA_ROOT")
+// errExternalData: the server keeps its data outside DATA_ROOT (dataPath) and the agent does not see it
+// (it only mounts DATA_ROOT, spec §6.1): neither backups nor files.
+var errExternalData = errors.New("data outside DATA_ROOT")
 
 func externalDataSpec(s spec.Spec) error {
 	if s.DataPath == "" {
 		return nil
 	}
-	return fmt.Errorf("%w: los datos de este servidor están en %s, fuera de DATA_ROOT, y el agente no los ve; "+
-		"no hay copias de seguridad ni archivos. Para tenerlos, elimina el servidor sin borrar datos, mueve esa carpeta "+
-		"a DATA_ROOT/<slug>/data y vuelve a importarlo", errExternalData, s.DataPath)
+	return fmt.Errorf("%w: the data of this server is at %s, outside DATA_ROOT, and the agent does not see it; "+
+		"there are no backups or files. To have them, remove the server without deleting data, move that folder "+
+		"to DATA_ROOT/<slug>/data and import it again", errExternalData, s.DataPath)
 }
 
-// externalData es externalDataSpec para un servidor del store; nil si no existe o su spec no se lee
-// (de eso responde quien llama).
+// externalData is externalDataSpec for a server in the store; nil if it does not exist or its spec cannot be read
+// (the caller is responsible for that).
 func (a *App) externalData(serverID string) error {
 	sp, err := a.st.GetSpec(serverID)
 	if err != nil || sp == nil {

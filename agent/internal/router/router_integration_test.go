@@ -32,8 +32,8 @@ import (
 	"mcsm/agent/internal/store"
 )
 
-// handshake es un handshake de Minecraft (estado 1, status) hacia addr:port, como lo envía un
-// cliente: mc-router lo lee para elegir el servidor por addr.
+// handshake is a Minecraft handshake (state 1, status) to addr:port, as a client
+// sends it: mc-router reads it to choose the server by addr.
 func handshake(addr string, port uint16) []byte {
 	varint := func(b *bytes.Buffer, v int) {
 		for {
@@ -49,19 +49,19 @@ func handshake(addr string, port uint16) []byte {
 		}
 	}
 	var body bytes.Buffer
-	varint(&body, 0x00) // id del paquete
-	varint(&body, 769)  // protocolo (1.21.4)
+	varint(&body, 0x00) // packet id
+	varint(&body, 769)  // protocol (1.21.4)
 	varint(&body, len(addr))
 	body.WriteString(addr)
 	_ = binary.Write(&body, binary.BigEndian, port)
-	varint(&body, 1) // siguiente estado: status
+	varint(&body, 1) // next state: status
 	var pkt bytes.Buffer
 	varint(&pkt, body.Len())
 	pkt.Write(body.Bytes())
 	return pkt.Bytes()
 }
 
-// dialRouter conecta al router con el hostname dado y devuelve lo que responde el backend.
+// dialRouter connects to the router with the given hostname and returns what the backend answers.
 func dialRouter(t *testing.T, port int, host string) string {
 	t.Helper()
 	c, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(port), 2*time.Second)
@@ -75,8 +75,8 @@ func dialRouter(t *testing.T, port int, host string) string {
 	return string(b)
 }
 
-// loginRouter envía un handshake de login (estado 2) y el Login Start con el nombre del jugador, como
-// un cliente que intenta entrar; mc-router lo usa para la lista del autoscale.
+// loginRouter sends a login handshake (state 2) and the Login Start with the player's name, like
+// a client trying to join; mc-router uses it for the autoscale list.
 func loginRouter(t *testing.T, port int, host, player string) string {
 	t.Helper()
 	c, err := net.DialTimeout("tcp", "127.0.0.1:"+strconv.Itoa(port), 2*time.Second)
@@ -86,7 +86,7 @@ func loginRouter(t *testing.T, port int, host, player string) string {
 	defer c.Close()
 	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
 	hs := handshake(host, uint16(port))
-	hs[len(hs)-1] = 2 // siguiente estado: login
+	hs[len(hs)-1] = 2 // next state: login
 	var body bytes.Buffer
 	body.WriteByte(0x00) // Login Start
 	body.WriteByte(byte(len(player)))
@@ -98,7 +98,7 @@ func loginRouter(t *testing.T, port int, host, player string) string {
 	return string(b)
 }
 
-// syncBuffer es un bytes.Buffer seguro para el log del proxy (lo escriben sus goroutines).
+// syncBuffer is a bytes.Buffer safe for the proxy's log (its goroutines write to it).
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -126,9 +126,9 @@ func freePort(t *testing.T) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-// TestRouterRoutesByHostname levanta un mc-router real (mcsm-test-router-…) y dos backends
-// (alpine con nc que responden su nombre) con etiquetas mc-router.host, y comprueba que cada
-// hostname llega a su backend por el puerto del router. Solo recursos mcsm-test-*; se borran.
+// TestRouterRoutesByHostname brings up a real mc-router (mcsm-test-router-…) and two backends
+// (alpine with nc that answer their name) with mc-router.host labels, and checks that each
+// hostname reaches its backend through the router's port. Only mcsm-test-* resources; they are deleted.
 func TestRouterRoutesByHostname(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -158,7 +158,7 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	if err := eng.EnsureImage(ctx, "alpine:3.22"); err != nil {
 		t.Fatal(err)
 	}
-	for _, be := range []struct{ name, host string }{{"backend-a", "survival.lan"}, {"backend-b", "creativo.lan"}} {
+	for _, be := range []struct{ name, host string }{{"backend-a", "survival.lan"}, {"backend-b", "creative.lan"}} {
 		labels := map[string]string{"mcsm.test": "true", spec.LabelRouterHost: be.host, spec.LabelRouterNetwork: netName}
 		id, err := eng.Create(ctx, "mcsm-test-r"+be.name+"-"+tag,
 			&container.Config{Image: "alpine:3.22", Cmd: []string{"nc", "-lk", "-p", "25565", "-e", "echo", be.name}, Labels: labels},
@@ -178,17 +178,17 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	}
 	defer st.Close()
 	name := "mcsm-test-router-" + tag
-	// plan-9: mc-router habla con Docker a través del proxy de lista blanca del agente.
-	// El router (usuario 65532) monta el directorio del socket: tiene que poder atravesarlo, como el .mcsm-router
-	// (0755) del agente; t.TempDir lo crea 0700.
+	// plan-9: mc-router talks to Docker through the agent's allowlist proxy.
+	// The router (user 65532) mounts the socket directory: it has to be able to traverse it, like the agent's .mcsm-router
+	// (0755); t.TempDir creates it 0700.
 	sockDir := t.TempDir()
 	if err := os.Chmod(sockDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	sock := filepath.Join(sockDir, "docker.sock")
 	var proxyLog syncBuffer
-	// startProxy arranca un proxy en sock (como el agente al arrancar) y devuelve cómo pararlo (como al cerrarse:
-	// el socket se borra). El del agente siguiente es otro inodo en el mismo directorio.
+	// startProxy starts a proxy at sock (like the agent on startup) and returns how to stop it (like on shutdown:
+	// the socket is deleted). The next agent's is another inode in the same directory.
 	var pxMu sync.Mutex
 	var px *dockerproxy.Proxy
 	startProxy := func() (stop func()) {
@@ -200,7 +200,7 @@ func TestRouterRoutesByHostname(t *testing.T) {
 					return err
 				}
 				if ins.Labels[spec.LabelRouterHost] == "" {
-					return errors.New("sin hostname de router")
+					return errors.New("no router hostname")
 				}
 				return nil
 			}})
@@ -241,7 +241,7 @@ func TestRouterRoutesByHostname(t *testing.T) {
 		t.Fatalf("observed = %+v", obs)
 	}
 
-	// Sondeo de un recurso externo (descubrimiento de mc-router, límite de 1 conexión/s): aquí sí se espera.
+	// Probing an external resource (mc-router discovery, 1 connection/s limit): waiting is appropriate here.
 	poll := func(host, reply string) string {
 		got := ""
 		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); {
@@ -256,18 +256,18 @@ func TestRouterRoutesByHostname(t *testing.T) {
 		}
 		return got
 	}
-	for _, want := range []struct{ host, reply string }{{"survival.lan", "backend-a"}, {"creativo.lan", "backend-b"}} {
+	for _, want := range []struct{ host, reply string }{{"survival.lan", "backend-a"}, {"creative.lan", "backend-b"}} {
 		if got := poll(want.host, want.reply); !strings.Contains(got, want.reply) {
-			t.Fatalf("%s respondió %q, se esperaba %s", want.host, got, want.reply)
+			t.Fatalf("%s answered %q, expected %s", want.host, got, want.reply)
 		}
 	}
-	<-time.After(time.Second) // límite de conexiones de mc-router
-	if got := dialRouter(t, port, "desconocido.lan"); strings.Contains(got, "backend") {
-		t.Fatalf("un hostname sin servidor no debe llegar a ninguno: %q", got)
+	<-time.After(time.Second) // mc-router's connection limit
+	if got := dialRouter(t, port, "unknown.lan"); strings.Contains(got, "backend") {
+		t.Fatalf("a hostname without a server must not reach any: %q", got)
 	}
 
-	// m5: el agente se reinicia (proxy nuevo, otro inodo en el mismo directorio): el router NO se reinicia y mc-router
-	// se vuelve a conectar solo; ve un servidor creado después (eventos y lista por el proxy nuevo).
+	// m5: the agent restarts (new proxy, another inode in the same directory): the router does NOT restart and mc-router
+	// reconnects by itself; it sees a server created afterwards (events and list through the new proxy).
 	routerID := obs.ContainerId
 	insBefore, err := eng.Inspect(ctx, routerID)
 	if err != nil {
@@ -276,9 +276,9 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	stopProxy()
 	stopProxy = startProxy()
 	if obs := m.Reconcile(ctx); obs.State != "running" || obs.Error != "" || obs.ContainerId != routerID {
-		t.Fatalf("tras un proxy nuevo: %+v", obs)
+		t.Fatalf("after a new proxy: %+v", obs)
 	}
-	labelsD := map[string]string{"mcsm.test": "true", spec.LabelRouterHost: "tras-proxy.lan", spec.LabelRouterNetwork: netName}
+	labelsD := map[string]string{"mcsm.test": "true", spec.LabelRouterHost: "after-proxy.lan", spec.LabelRouterNetwork: netName}
 	backendD, err := eng.Create(ctx, "mcsm-test-rbackend-d-"+tag,
 		&container.Config{Image: "alpine:3.22", Cmd: []string{"nc", "-lk", "-p", "25565", "-e", "echo", "backend-d"}, Labels: labelsD},
 		&container.HostConfig{}, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{netName: {}}})
@@ -292,20 +292,20 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	got := ""
 	for deadline := time.Now().Add(90 * time.Second); time.Now().Before(deadline) && !strings.Contains(got, "backend-d"); {
 		<-time.After(time.Second)
-		got = dialRouter(t, port, "tras-proxy.lan")
+		got = dialRouter(t, port, "after-proxy.lan")
 	}
 	if !strings.Contains(got, "backend-d") {
-		t.Fatalf("tras un proxy nuevo, mc-router no ve un servidor nuevo: %q", got)
+		t.Fatalf("after a new proxy, mc-router does not see a new server: %q", got)
 	}
 	if insAfter, err := eng.Inspect(ctx, routerID); err != nil || !insAfter.StartedAt.Equal(insBefore.StartedAt) {
-		t.Fatalf("el router no se reinicia con un proxy nuevo: %v → %+v %v", insBefore.StartedAt, insAfter, err)
+		t.Fatalf("the router does not restart with a new proxy: %v → %+v %v", insBefore.StartedAt, insAfter, err)
 	}
-	if err := eng.Stop(ctx, backendD, time.Second); err != nil { // fuera de las comprobaciones de autoscale
+	if err := eng.Stop(ctx, backendD, time.Second); err != nil { // outside the autoscale checks
 		t.Fatal(err)
 	}
 
-	// Autoscale con lista de jugadores (S3): un intruso no despierta un servidor dormido; un jugador
-	// de la lista sí. backend-a es el primero creado. Parada tras 1 min sin jugadores.
+	// Autoscale with a player list (S3): an intruder does not wake a sleeping server; a player
+	// on the list does. backend-a is the first created. Stops after 1 min without players.
 	autoscale := func(players ...string) {
 		t.Helper()
 		if err := m.Apply(&mcsmv1.RouterSpec{HostPort: uint32(port), Autoscale: true, AutoscaleDownAfterMinutes: 1, AutoscaleAllowPlayers: players}); err != nil {
@@ -316,14 +316,14 @@ func TestRouterRoutesByHostname(t *testing.T) {
 			created = append(created, obs.ContainerId)
 		}
 		if obs.State != "running" || obs.Error != "" {
-			t.Fatalf("con autoscale y lista: %+v", obs)
+			t.Fatalf("with autoscale and list: %+v", obs)
 		}
 	}
 	isRunning := func(id string) bool {
 		ins, err := eng.Inspect(ctx, id)
 		return err == nil && ins.Running
 	}
-	// wake intenta entrar como player cada segundo hasta que id esté en marcha (máx. 30 s).
+	// wake tries to join as player every second until id is running (max. 30 s).
 	wake := func(host, player, id string) bool {
 		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); {
 			_ = loginRouter(t, port, host, player)
@@ -339,30 +339,30 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	if err := eng.Stop(ctx, backendA, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 5; i++ { // un intento por segundo durante 5 s
-		_ = loginRouter(t, port, "survival.lan", "intruso")
+	for i := 0; i < 5; i++ { // one attempt per second for 5 s
+		_ = loginRouter(t, port, "survival.lan", "intruder")
 		<-time.After(time.Second)
 		if isRunning(backendA) {
-			t.Fatal("un jugador fuera de la lista no debe despertar el servidor")
+			t.Fatal("a player not on the list must not wake the server")
 		}
 	}
 	if !wake("survival.lan", "amigo", backendA) {
-		t.Fatal("un jugador de la lista despierta el servidor")
+		t.Fatal("a player on the list wakes the server")
 	}
 
-	// Cambiar la lista recrea el router: los servidores dormidos se siguen despertando.
+	// Changing the list recreates the router: sleeping servers are still woken up.
 	if err := eng.Stop(ctx, backendA, time.Second); err != nil {
 		t.Fatal(err)
 	}
-	autoscale("amigo", "otro")
-	if !wake("survival.lan", "otro", backendA) {
-		t.Fatal("tras recrear el router, un servidor dormido se despierta")
+	autoscale("friend", "other")
+	if !wake("survival.lan", "other", backendA) {
+		t.Fatal("after recreating the router, a sleeping server wakes up")
 	}
 
-	// Un servidor bajo demanda recién creado (también al liberar una reserva tras aparcarlo): mc-router
-	// no ve un contenedor que nunca arrancó, así que el agente lo arranca; mc-router lo duerme al
-	// minuto sin jugadores y después lo despierta quien entra.
-	labels := map[string]string{"mcsm.test": "true", spec.LabelRouterHost: "nuevo.lan", spec.LabelRouterNetwork: netName}
+	// A freshly created on-demand server (also when releasing a reservation after parking it): mc-router
+	// does not see a container that never started, so the agent starts it; mc-router puts it to sleep after a
+	// minute without players and afterwards whoever joins wakes it.
+	labels := map[string]string{"mcsm.test": "true", spec.LabelRouterHost: "new.lan", spec.LabelRouterNetwork: netName}
 	fresh, err := eng.Create(ctx, "mcsm-test-rbackend-c-"+tag,
 		&container.Config{Image: "alpine:3.22", Cmd: []string{"nc", "-lk", "-p", "25565", "-e", "echo", "backend-c"}, Labels: labels},
 		&container.HostConfig{}, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{netName: {}}})
@@ -379,56 +379,56 @@ func TestRouterRoutesByHostname(t *testing.T) {
 		slept = !isRunning(fresh)
 	}
 	if !slept {
-		t.Fatal("mc-router duerme un servidor que arrancó otro y al que no entra nadie")
+		t.Fatal("mc-router puts to sleep a server that started on its own and that nobody joins")
 	}
-	if !wake("nuevo.lan", "amigo", fresh) {
-		t.Fatal("y después lo despierta un jugador de la lista")
-	}
-
-	// Lo que mc-router pidió y el proxy denegó (si algo le faltara, aparecería aquí).
-	if l := proxyLog.String(); strings.Contains(l, "denegada") || strings.Contains(l, "filtros inválidos") {
-		t.Logf("peticiones de mc-router denegadas por el proxy:\n%s", proxyLog.String())
+	if !wake("new.lan", "friend", fresh) {
+		t.Fatal("and afterwards a player on the list wakes it")
 	}
 
-	// Por el proxy no se puede crear nada ni ver el entorno de un contenedor.
+	// What mc-router asked for and the proxy denied (if anything were missing, it would show up here).
+	if l := proxyLog.String(); strings.Contains(l, "denied") || strings.Contains(l, "invalid filters") {
+		t.Logf("mc-router requests denied by the proxy:\n%s", proxyLog.String())
+	}
+
+	// Nothing can be created through the proxy nor can a container's env be seen.
 	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		var d net.Dialer
 		return d.DialContext(ctx, "unix", sock)
 	}}}
 	res, err := hc.Post("http://docker/v1.47/containers/create", "application/json", strings.NewReader(`{"Image":"alpine:3.22"}`))
 	if err != nil || res.StatusCode != http.StatusForbidden {
-		t.Fatalf("create por el proxy: %v %v", res, err)
+		t.Fatalf("create through the proxy: %v %v", res, err)
 	}
 	res.Body.Close()
 	res, err = hc.Get("http://docker/v1.47/containers/" + created[0] + "/json")
 	if err != nil || res.StatusCode != http.StatusOK {
-		t.Fatalf("inspect por el proxy: %v %v", res, err)
+		t.Fatalf("inspect through the proxy: %v %v", res, err)
 	}
 	body, _ := io.ReadAll(res.Body)
 	res.Body.Close()
 	if strings.Contains(string(body), `"Env"`) {
-		t.Fatal("el inspect por el proxy no lleva el entorno")
+		t.Fatal("the inspect through the proxy carries no env")
 	}
-	// Un contenedor sin mc-router.host (el propio router) no existe para el router: ni en el inspect ni en la lista.
+	// A container without mc-router.host (the router itself) does not exist for the router: neither in the inspect nor in the list.
 	res, err = hc.Get("http://docker/v1.47/containers/" + name + "/json")
 	if err != nil || res.StatusCode != http.StatusNotFound {
-		t.Fatalf("inspect de un contenedor ajeno por el proxy: %v %v", res, err)
+		t.Fatalf("inspect of a foreign container through the proxy: %v %v", res, err)
 	}
 	res.Body.Close()
 	res, err = hc.Get("http://docker/v1.47/containers/json?all=1")
 	if err != nil || res.StatusCode != http.StatusOK {
-		t.Fatalf("list por el proxy: %v %v", res, err)
+		t.Fatalf("list through the proxy: %v %v", res, err)
 	}
 	body, _ = io.ReadAll(res.Body)
 	res.Body.Close()
 	if strings.Contains(string(body), name) || !strings.Contains(string(body), "backend-c") {
-		t.Fatalf("la lista por el proxy solo trae los servidores del router: %s", body)
+		t.Fatalf("the list through the proxy only brings the router's servers: %s", body)
 	}
 
 	if err := m.Clear(); err != nil {
 		t.Fatal(err)
 	}
 	if obs := m.Reconcile(ctx); obs.State != "missing" || obs.Error != "" {
-		t.Fatalf("tras Clear: %+v", obs)
+		t.Fatalf("after Clear: %+v", obs)
 	}
 }

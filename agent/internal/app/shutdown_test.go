@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// Las esperas del cierre (Files* y copias) corren a la vez: cada una solo termina cuando
-// la otra ya ha empezado. En serie, la primera no volvería nunca.
+// The shutdown waits (Files* and backups) run at the same time: each one only finishes when
+// the other has already started. In series, the first would never return.
 func TestWaitAllRunsWaitsInParallel(t *testing.T) {
 	aStarted, bStarted := make(chan struct{}), make(chan struct{})
 	done := make(chan bool, 1)
@@ -19,18 +19,18 @@ func TestWaitAllRunsWaitsInParallel(t *testing.T) {
 	select {
 	case ok := <-done:
 		if ok {
-			t.Fatal("waitAll = true con una espera vencida")
+			t.Fatal("waitAll = true with an expired wait")
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("las esperas del cierre no corren en paralelo")
+		t.Fatal("the shutdown waits do not run in parallel")
 	}
 }
 
 func TestWaitAllTrueWhenAllFinish(t *testing.T) {
 	if !waitAll(func() bool { return true }, func() bool { return true }) {
-		t.Fatal("waitAll = false con todas las esperas a tiempo")
+		t.Fatal("waitAll = false with all the waits on time")
 	}
 	if !waitAll() {
-		t.Fatal("waitAll() sin esperas = false")
+		t.Fatal("waitAll() without waits = false")
 	}
 }

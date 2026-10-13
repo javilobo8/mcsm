@@ -27,13 +27,13 @@ func TestScanListsOnlyForeignItzg(t *testing.T) {
 	f := docker.NewFake()
 	f.ImageEnvs["itzg/minecraft-server:java21"] = []string{"PATH=/usr/bin", "TYPE=VANILLA", "UID=1000"}
 	ext := mk(t, f, "survival", "itzg/minecraft-server:java21",
-		map[string]string{"com.docker.compose.project": "casa", "com.docker.compose.service": "survival", "otra": "x"},
+		map[string]string{"com.docker.compose.project": "home", "com.docker.compose.service": "survival", "other": "x"},
 		[]string{"PATH=/usr/bin", "TYPE=PAPER", "UID=1000", "EULA=TRUE", "RCON_PASSWORD=s3cr3t-rcon", "MOTD=caf\xe9"},
 		&container.HostConfig{
 			Binds:         []string{"/home/lobo/mc/survival:/data", "/home/lobo/mc/mods:/mods:ro"},
 			RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyUnlessStopped},
 			Resources:     container.Resources{Memory: 4 << 30, NanoCPUs: 2e9},
-			NetworkMode:   "casa_default",
+			NetworkMode:   "home_default",
 			PortBindings: network.PortMap{
 				network.MustParsePort("25565/tcp"): {{HostPort: "25565"}},
 				network.MustParsePort("19132/udp"): {{HostIP: netip.MustParseAddr("0.0.0.0"), HostPort: "19132"}},
@@ -42,27 +42,27 @@ func TestScanListsOnlyForeignItzg(t *testing.T) {
 	if err := f.Start(ctx, ext); err != nil {
 		t.Fatal(err)
 	}
-	mk(t, f, "mcsm-otro", "itzg/minecraft-server:java21", map[string]string{"mcsm.managed": "true"}, nil, &container.HostConfig{})
+	mk(t, f, "mcsm-other", "itzg/minecraft-server:java21", map[string]string{"mcsm.managed": "true"}, nil, &container.HostConfig{})
 	mk(t, f, "web", "nginx:1.27", nil, nil, &container.HostConfig{})
-	adopted := mk(t, f, "adoptado", "itzg/minecraft-server", nil, nil, &container.HostConfig{})
+	adopted := mk(t, f, "adopted", "itzg/minecraft-server", nil, nil, &container.HostConfig{})
 
 	list, err := Scan(ctx, f, func(id string) bool { return id == adopted })
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(list) != 1 {
-		t.Fatalf("candidatos = %v", list)
+		t.Fatalf("candidates = %v", list)
 	}
 	c := list[0]
 	if c.ContainerId != ext || c.Name != "survival" || c.Image != "itzg/minecraft-server:java21" || c.State != "running" ||
-		c.RestartPolicy != "unless-stopped" || c.MemoryLimitBytes != 4<<30 || c.NanoCpus != 2e9 || c.NetworkMode != "casa_default" {
-		t.Fatalf("candidato = %+v", c)
+		c.RestartPolicy != "unless-stopped" || c.MemoryLimitBytes != 4<<30 || c.NanoCpus != 2e9 || c.NetworkMode != "home_default" {
+		t.Fatalf("candidate = %+v", c)
 	}
 	wantEnv := map[string]string{"TYPE": "PAPER", "EULA": "TRUE", "RCON_PASSWORD": "s3cr3t-rcon", "MOTD": "caf�"}
 	if !reflect.DeepEqual(c.Env, wantEnv) {
-		t.Fatalf("env = %v (sin las variables idénticas a la imagen; UTF-8 saneado)", c.Env)
+		t.Fatalf("env = %v (without the variables identical to the image; UTF-8 sanitized)", c.Env)
 	}
-	if !reflect.DeepEqual(c.Labels, map[string]string{"com.docker.compose.project": "casa", "com.docker.compose.service": "survival"}) {
+	if !reflect.DeepEqual(c.Labels, map[string]string{"com.docker.compose.project": "home", "com.docker.compose.service": "survival"}) {
 		t.Fatalf("labels = %v", c.Labels)
 	}
 	if len(c.Ports) != 2 || c.Ports[0].ContainerPort != 19132 || c.Ports[0].HostIp != "" || c.Ports[1].HostPort != 25565 || c.Ports[1].Proto != "tcp" {
@@ -82,7 +82,7 @@ func TestScanWithoutImageEnvSendsAll(t *testing.T) {
 	}
 }
 
-// goneEngine simula un contenedor borrado entre la lista y el inspect.
+// goneEngine simulates a container deleted between the list and the inspect.
 type goneEngine struct {
 	*docker.Fake
 	gone string
@@ -108,25 +108,25 @@ func TestScanSkipsContainerRemovedMidway(t *testing.T) {
 type failEngine struct{ *docker.Fake }
 
 func (failEngine) ListAll(context.Context) ([]docker.Container, error) {
-	return nil, errors.New("daemon caído")
+	return nil, errors.New("daemon down")
 }
 
 func TestScanReportsListError(t *testing.T) {
 	if _, err := Scan(context.Background(), failEngine{docker.NewFake()}, func(string) bool { return false }); err == nil {
-		t.Fatal("un fallo de Docker se devuelve")
+		t.Fatal("a Docker failure is returned")
 	}
 }
 
 func TestUserEnv(t *testing.T) {
-	got := UserEnv([]string{"A=1", "B=2", "C=x=y", "MALA", "=v"}, []string{"A=1", "B=3"})
+	got := UserEnv([]string{"A=1", "B=2", "C=x=y", "BAD", "=v"}, []string{"A=1", "B=3"})
 	want := map[string]string{"B": "2", "C": "x=y"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("UserEnv = %v", got)
 	}
 }
 
-// m7: el usuario con el que corre el contenedor (--user) viaja al panel, que propone UID/GID para que
-// itzg no cambie el propietario de /data al recrearlo.
+// m7: the user the container runs as (--user) travels to the panel, which proposes UID/GID so that
+// itzg does not change the owner of /data when recreating it.
 func TestScanSendsContainerUser(t *testing.T) {
 	f := docker.NewFake()
 	id, err := f.Create(context.Background(), "mc", &container.Config{Image: "itzg/minecraft-server", User: "1001:1001"}, &container.HostConfig{}, nil)

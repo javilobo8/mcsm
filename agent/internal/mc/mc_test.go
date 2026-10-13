@@ -18,14 +18,14 @@ func splitAddr(t *testing.T, ln net.Listener) (string, uint16) {
 	return "127.0.0.1", uint16(n)
 }
 
-// fakeRcon implementa lo justo del protocolo Source RCON:
-// paquete = int32 longitud, int32 id, int32 tipo, cuerpo\0, \0
+// fakeRcon implements just enough of the Source RCON protocol:
+// packet = int32 length, int32 id, int32 type, body\0, \0
 func fakeRcon(t *testing.T, password string) (host string, port uint16) {
 	t.Helper()
 	return startFakeRcon(t, password, nil)
 }
 
-// startFakeRcon es fakeRcon contando las conexiones aceptadas en accepted (si no es nil).
+// startFakeRcon is fakeRcon counting the accepted connections in accepted (if not nil).
 func startFakeRcon(t *testing.T, password string, accepted *atomic.Int32) (host string, port uint16) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -115,9 +115,9 @@ func readVarint(r io.ByteReader) (int, error) {
 	}
 }
 
-// fakeSLP responde al Server List Ping moderno con una respuesta grabada y
-// contesta al ping (lo que mide la latencia) con el mismo payload; pings
-// cuenta los pings recibidos.
+// fakeSLP answers the modern Server List Ping with a recorded response and
+// answers the ping (what measures latency) with the same payload; pings
+// counts the pings received.
 func fakeSLP(t *testing.T, statusJSON string) (host string, port uint16, pings *atomic.Int32) {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -152,7 +152,7 @@ func fakeSLP(t *testing.T, statusJSON string) (host string, port uint16, pings *
 						if len(pkt) == 1 { // status request
 							s := []byte(statusJSON)
 							send(c, 0x00, append(varint(len(s)), s...))
-						} // si no, es el handshake
+						} // otherwise, it is the handshake
 					case 0x01: // ping
 						pings.Add(1)
 						send(c, 0x01, pkt[1:])
@@ -185,12 +185,12 @@ func TestRcon(t *testing.T) {
 		t.Fatalf("out = %q", out)
 	}
 	if _, err := Rcon(ctx, host, port, "wrong", "list"); err == nil {
-		t.Fatal("contraseña incorrecta debe fallar")
+		t.Fatal("a wrong password must fail")
 	}
 }
 
 func TestRconContextCancelled(t *testing.T) {
-	// servidor que acepta y nunca responde
+	// server that accepts and never responds
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -210,14 +210,14 @@ func TestRconContextCancelled(t *testing.T) {
 	defer cancel()
 	start := time.Now()
 	if _, err := Rcon(ctx, host, port, "x", "list"); err == nil {
-		t.Fatal("esperaba error")
+		t.Fatal("expected an error")
 	}
 	if time.Since(start) > 3*time.Second {
-		t.Fatal("Rcon no respeta el contexto")
+		t.Fatal("Rcon does not respect the context")
 	}
 }
 
-const paperStatus = `{"version":{"name":"Paper 1.21.4","protocol":769},"players":{"max":20,"online":3,"sample":[]},"description":{"text":"hola"}}`
+const paperStatus = `{"version":{"name":"Paper 1.21.4","protocol":769},"players":{"max":20,"online":3,"sample":[]},"description":{"text":"hello"}}`
 
 func TestStatusOnline(t *testing.T) {
 	host, port, _ := fakeSLP(t, paperStatus)
@@ -225,7 +225,7 @@ func TestStatusOnline(t *testing.T) {
 	defer cancel()
 	st := Status(ctx, host, port)
 	if !st.Online {
-		t.Fatal("debería estar online")
+		t.Fatal("should be online")
 	}
 	if st.PlayersOnline != 3 || st.PlayersMax != 20 || st.Version != "Paper 1.21.4" {
 		t.Fatalf("status = %v", st)
@@ -236,30 +236,30 @@ func TestStatusOffline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	start := time.Now()
-	st := Status(ctx, "127.0.0.1", 1) // nadie escucha
+	st := Status(ctx, "127.0.0.1", 1) // nobody listening
 	if st.Online {
-		t.Fatal("debería estar offline")
+		t.Fatal("should be offline")
 	}
 	if time.Since(start) > 4*time.Second {
-		t.Fatal("el ping no debe tardar más que su timeout")
+		t.Fatal("the ping must not take longer than its timeout")
 	}
 }
 
 func TestStatusLatencyFromPing(t *testing.T) {
-	// en local (como en la red Docker) el RTT del ping es de decenas de µs:
-	// la latencia sale del ping/pong y, aunque sea submilisegundo, no es 0
+	// locally (as on the Docker network) the ping RTT is tens of µs:
+	// the latency comes from the ping/pong and, even if sub-millisecond, it is not 0
 	host, port, pings := fakeSLP(t, paperStatus)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	st := Status(ctx, host, port)
 	if !st.Online {
-		t.Fatal("debería estar online")
+		t.Fatal("should be online")
 	}
 	if pings.Load() == 0 {
-		t.Fatal("el ping de estado debe enviar el ping (Ping: true) para medir la latencia")
+		t.Fatal("the status ping must send the ping (Ping: true) to measure latency")
 	}
 	if st.LatencyMs == 0 {
-		t.Fatalf("status = %v; una latencia medida no debe reportarse como 0", st)
+		t.Fatalf("status = %v; a measured latency must not be reported as 0", st)
 	}
 }
 
