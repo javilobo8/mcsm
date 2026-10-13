@@ -23,53 +23,53 @@ import (
 )
 
 const (
-	// scheduleRefreshEvery: cada cuánto se sincroniza el programador con las specs guardadas
-	// (ApplySpec y SyncSpecs las cambian) y se revisan los servidores bloqueados sin datos.
+	// scheduleRefreshEvery: how often the scheduler is synchronized with the stored specs
+	// (ApplySpec and SyncSpecs change them) and the servers blocked without data are reviewed.
 	scheduleRefreshEvery = 15 * time.Second
-	// rconCommandTimeout acota cada comando de una copia en caliente (save-all flush en un
-	// mundo grande tarda; mc.Rcon respeta el plazo del contexto).
+	// rconCommandTimeout bounds each command of a hot backup (save-all flush on a large
+	// world takes a while; mc.Rcon respects the context's deadline).
 	rconCommandTimeout = 2 * time.Minute
-	// resumeOnStartTimeout acota el save-on que se envía al arrancar por una copia interrumpida.
+	// resumeOnStartTimeout bounds the save-on sent at startup for an interrupted backup.
 	resumeOnStartTimeout = 15 * time.Second
-	// defaultReleaseWait es lo que un job espera a la reconciliación que hace la liberación de
-	// la reserva antes de terminar y dejarla en segundo plano.
+	// defaultReleaseWait is how long a job waits for the reconciliation done by releasing
+	// the reservation before finishing and leaving it in the background.
 	defaultReleaseWait = 3 * time.Minute
-	// fileWritesDrainWait es lo que una restauración, ya con el servidor reservado, espera a
-	// las escrituras de archivos que estaban en curso antes de apartar data. Muy por debajo
-	// del plazo de 30 s con que el panel espera la respuesta a BackupRestore.
+	// fileWritesDrainWait is how long a restore, with the server already reserved, waits for
+	// the file writes that were in progress before setting data aside. Well below
+	// the 30 s deadline with which the panel waits for the BackupRestore response.
 	fileWritesDrainWait = 10 * time.Second
-	// shutdownWait es el tope de la espera a las copias en curso al cerrar el agente: el
-	// save-on de una copia cancelada tiene su propio plazo de 15 s. Los docker-compose dan al
-	// agente stop_grace_period: 30s.
+	// shutdownWait is the cap on the wait for backups in progress when the agent shuts down: the
+	// save-on of a cancelled backup has its own 15 s deadline. The docker-compose files give the
+	// agent stop_grace_period: 30s.
 	shutdownWait = 25 * time.Second
-	// outboxSize: avisos al panel pendientes de entrega como mucho; los que no caben se descartan.
+	// outboxSize: at most this many notices to the panel pending delivery; those that do not fit are dropped.
 	outboxSize = 256
-	// maxInventoryBytes deja margen bajo el maxPayload de 4 MiB del WS del panel: un mensaje
-	// mayor cerraría la conexión, y cada reconexión volvería a pedir el inventario.
+	// maxInventoryBytes leaves margin under the panel WS's 4 MiB maxPayload: a larger message
+	// would close the connection, and each reconnection would ask for the inventory again.
 	maxInventoryBytes = 3 << 20
-	// pruneReason es el motivo de los BackupDeleted de la poda; deleteReason, el de los
-	// borrados que pide el panel.
+	// pruneReason is the reason of the pruning's BackupDeleted; deleteReason, that of the
+	// deletions the panel requests.
 	pruneReason  = "poda"
 	deleteReason = "borrada"
-	// inventoryEvery: cada cuánto el agente manda el inventario sin que se lo pidan (además de
-	// tras cada Hello, cuando lo pide el panel). Repone avisos descartados por la cola (un job
-	// que se quedaría «running» en el panel) y un BackupList que falló y nadie reintenta.
+	// inventoryEvery: how often the agent sends the inventory unprompted (besides
+	// after each Hello, when the panel asks for it). It restores notices dropped by the queue (a job
+	// that would stay "running" in the panel) and a BackupList that failed and nobody retries.
 	inventoryEvery = 10 * time.Minute
-	// maxParallelJobs: copias y restauraciones a la vez en el nodo (comprimen, leen y escriben
-	// el disco entero; varias copias a la misma hora tendrían N mundos en save-off a la vez).
-	// Las demás esperan en cola, con su servidor reservado y su mundo guardando con normalidad.
+	// maxParallelJobs: backups and restores at once on the node (they compress, read and write
+	// the whole disk; several backups at the same time would have N worlds in save-off at once).
+	// The rest wait in the queue, with their server reserved and their world saving normally.
 	maxParallelJobs = 2
 )
 
 var (
-	errUnknownServer = errors.New("servidor desconocido en este nodo")
-	errBadRequest    = errors.New("petición inválida")
-	errBadSpec       = errors.New("la spec guardada no se puede leer")
-	errClosing       = errors.New("el agente se está cerrando")
-	errOutboxFull    = errors.New("cola de avisos al panel llena")
+	errUnknownServer = errors.New("unknown server on this node")
+	errBadRequest    = errors.New("invalid request")
+	errBadSpec       = errors.New("the stored spec cannot be read")
+	errClosing       = errors.New("the agent is shutting down")
+	errOutboxFull    = errors.New("panel notice queue full")
 )
 
-// backupErrCode traduce un fallo de una petición de copias al Error.code del protocolo.
+// backupErrCode translates a failure of a backup request to the protocol's Error.code.
 func backupErrCode(err error) string {
 	switch {
 	case errors.Is(err, reconcile.ErrBusy):
@@ -87,14 +87,14 @@ func backupErrCode(err error) string {
 	}
 }
 
-// backupService orquesta copias y restauraciones (spec §6.5): jobs idempotentes por job_id
-// (§5.4), reserva del servidor en el reconciliador (Hold) para que un ApplySpec no recree el
-// contenedor a mitad, RCON, poda, inventario para el panel, programación por cron y la
-// recuperación tras un cierre o un crash a mitad de un job.
+// backupService orchestrates backups and restores (spec §6.5): idempotent jobs by job_id
+// (§5.4), reservation of the server in the reconciler (Hold) so an ApplySpec does not recreate the
+// container midway, RCON, pruning, inventory for the panel, cron scheduling and
+// recovery after a shutdown or crash midway through a job.
 //
-// Todo lo que muta Docker o disco usa el contexto de vida del agente (App.life), no el de la
-// sesión WS: un job no muere con la conexión. Los avisos al panel (JobProgress,
-// BackupCreated, BackupDeleted) salen por out, que nunca bloquea a quien los emite.
+// Everything that mutates Docker or disk uses the agent's life context (App.life), not the
+// WS session's: a job does not die with the connection. Notices to the panel (JobProgress,
+// BackupCreated, BackupDeleted) go out through out, which never blocks whoever emits them.
 type backupService struct {
 	a       *App
 	clock   backup.Clock
@@ -103,9 +103,9 @@ type backupService struct {
 	sched   *backup.Scheduler
 	players *backup.PlayerWatch
 	out     *outbox
-	slots   chan struct{} // semáforo de maxParallelJobs (ver withSlot)
+	slots   chan struct{} // maxParallelJobs semaphore (see withSlot)
 
-	// Inyectables en tests.
+	// Injectable in tests.
 	restore        func(ctx context.Context, req backup.RestoreRequest) (backup.Meta, error)
 	recoverDisk    func(backupsDir, dataDir, slug string) (backup.Recovery, error)
 	freeSpace      func(dir string) (uint64, error) // nil: statfs
@@ -113,24 +113,24 @@ type backupService struct {
 	drainWait      time.Duration // ver fileWritesDrainWait
 	inventoryLimit int
 
-	// invMu ordena el inventario respecto a los avisos de copias: se calcula y se encola bajo
-	// invMu, y BackupCreated/BackupDeleted también se encolan bajo invMu, en la misma cola
-	// FIFO. Así el panel nunca recibe antes que el inventario el aviso de un cambio que el
-	// listado ya no vio (una copia nueva que el inventario daría por borrada) ni, después, un
-	// inventario que aún lista una copia ya borrada y anunciada (que la resucitaría).
+	// invMu orders the inventory with respect to the backup notices: it is computed and queued under
+	// invMu, and BackupCreated/BackupDeleted are also queued under invMu, in the same FIFO
+	// queue. This way the panel never receives before the inventory the notice of a change the
+	// listing did not see (a new backup the inventory would consider deleted) nor, afterwards, an
+	// inventory that still lists a backup already deleted and announced (which would resurrect it).
 	invMu sync.Mutex
 
 	mu      sync.Mutex
-	closed  bool                             // wait empezó: no se lanzan tareas nuevas
-	blocked map[string]func(context.Context) // servidores sin datos → su reserva (ver block)
+	closed  bool                             // wait started: no new tasks are launched
+	blocked map[string]func(context.Context) // servers without data → their reservation (see block)
 
 	saveOnMu sync.Mutex
-	saveOn   map[string]*saveOnRetry // plan-9: reintentos de save-on por servidor (retrySaveOn)
+	saveOn   map[string]*saveOnRetry // plan-9: save-on retries per server (retrySaveOn)
 
-	wg sync.WaitGroup // copias, restauraciones y liberaciones en curso (los tests esperan con wg.Wait)
-	// plan-7: MigrateAbort, MigrateRetire y MigrateConfirm de un mismo servidor, de uno en uno.
+	wg sync.WaitGroup // backups, restores and releases in progress (tests wait with wg.Wait)
+	// plan-7: MigrateAbort, MigrateRetire and MigrateConfirm of the same server, one at a time.
 	migLocks keyedLocks
-	loops    sync.WaitGroup // bucles de start
+	loops    sync.WaitGroup // start loops
 }
 
 func newBackupService(a *App, clock backup.Clock) *backupService {
@@ -142,16 +142,16 @@ func newBackupService(a *App, clock backup.Clock) *backupService {
 		slots:   make(chan struct{}, maxParallelJobs),
 		saveOn:  map[string]*saveOnRetry{},
 	}
-	// a.send se lee al entregar: se fija antes de lanzar goroutines (Run o el test).
-	b.out = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, a.log, "avisos de copias y jobs")
+	// a.send is read on delivery: it is set before launching goroutines (Run or the test).
+	b.out = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, a.log, "backup and job notices")
 	b.jobs = jobs.New(a.st, b.out.post, clock.Now)
 	b.players = backup.NewPlayerWatch(clock.Now)
 	b.sched = backup.NewScheduler(clock, b.onSchedule)
 	return b
 }
 
-// spawn ejecuta fn en segundo plano, contada en wg, salvo si el agente ya se está cerrando
-// (wait empezó): entonces devuelve false y no la ejecuta.
+// spawn runs fn in the background, counted in wg, unless the agent is already shutting down
+// (wait started): then it returns false and does not run it.
 func (b *backupService) spawn(fn func()) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -166,7 +166,7 @@ func (b *backupService) spawn(fn func()) bool {
 	return true
 }
 
-// loop ejecuta un bucle de fondo contado en loops.
+// loop runs a background loop counted in loops.
 func (b *backupService) loop(fn func()) {
 	b.loops.Add(1)
 	go func() {
@@ -175,25 +175,25 @@ func (b *backupService) loop(fn func()) {
 	}()
 }
 
-// recoverAtStart deja el nodo coherente tras un cierre o un crash a mitad de un job. Se llama al
-// arrancar, antes de la primera reconciliación y de aceptar jobs:
+// recoverAtStart leaves the node coherent after a shutdown or crash midway through a job. It is called at
+// startup, before the first reconciliation and before accepting jobs:
 //
-//  1. save-on a los servidores en marcha cuya copia quedó a medias (save-off no caduca: el
-//     mundo seguiría sin autoguardado), ANTES de marcar el job: si el agente vuelve a caer
-//     aquí, el siguiente arranque lo reintenta.
-//  2. FailInterrupted: los jobs RUNNING pasan a FAILED «interrumpido» (y se olvidan los
-//     terminados hace más de jobs.KeepFor: es la poda de jobs al arrancar).
-//  3. Disco de cada servidor (backup.RecoverInterrupted): fuera los restos y, si data falta
-//     tras un intercambio a medias, los datos originales de vuelta. Si no se pueden devolver,
-//     el servidor queda bloqueado (block): sin arrancar y con el error en Observed.
+//  1. save-on to the running servers whose backup was left half done (save-off does not expire: the
+//     world would stay without autosave), BEFORE marking the job: if the agent falls again
+//     here, the next startup retries it.
+//  2. FailInterrupted: RUNNING jobs become FAILED "interrupted" (and those finished more than
+//     jobs.KeepFor ago are forgotten: it is the job pruning at startup).
+//  3. Each server's disk (backup.RecoverInterrupted): leftovers out and, if data is missing
+//     after a half-done swap, the original data back. If it cannot be returned,
+//     the server stays blocked (block): not started and with the error in Observed.
 func (b *backupService) recoverAtStart(ctx context.Context) {
 	b.resumeInterrupted(ctx)
 	if err := b.jobs.FailInterrupted(); err != nil {
-		b.a.log.Warn("marcar los jobs interrumpidos", "err", err)
+		b.a.log.Warn("mark the interrupted jobs", "err", err)
 	}
 	specs, err := b.a.st.ListSpecs()
 	if err != nil {
-		b.a.log.Error("listar specs para recuperar copias y restauraciones", "err", err)
+		b.a.log.Error("list specs to recover backups and restores", "err", err)
 		return
 	}
 	for _, sp := range specs {
@@ -201,11 +201,11 @@ func (b *backupService) recoverAtStart(ctx context.Context) {
 	}
 }
 
-// resumeInterrupted envía save-on a los servidores en marcha con una copia RUNNING en el store.
+// resumeInterrupted sends save-on to the running servers with a RUNNING backup in the store.
 func (b *backupService) resumeInterrupted(ctx context.Context) {
 	recs, err := b.a.st.ListJobs()
 	if err != nil {
-		b.a.log.Warn("listar jobs al arrancar", "err", err)
+		b.a.log.Warn("list jobs at startup", "err", err)
 		return
 	}
 	var wg sync.WaitGroup
@@ -227,78 +227,78 @@ func (b *backupService) resumeInterrupted(ctx context.Context) {
 func (b *backupService) resumeSaves(ctx context.Context, serverID string) {
 	t, err := b.target(serverID)
 	if err != nil {
-		return // retirado o ilegible: no hay a quién enviar save-on
+		return // withdrawn or unreadable: nobody to send save-on to
 	}
 	running, err := b.isRunning(ctx, serverID)
 	if err == nil && !running {
-		return // parado: al arrancar, el servidor vuelve a guardar solo
+		return // stopped: on startup, the server saves by itself again
 	}
-	// En marcha, o sin poder comprobarlo (Docker no responde): save-on es idempotente y contra
-	// un servidor parado falla enseguida. Sin él, FailInterrupted olvidaría el job.
+	// Running, or unable to check (Docker does not respond): save-on is idempotent and against
+	// a stopped server it fails immediately. Without it, FailInterrupted would forget the job.
 	cctx, cancel := context.WithTimeout(ctx, resumeOnStartTimeout)
 	defer cancel()
 	if _, err := b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on"); err != nil {
-		b.a.log.Error("una copia interrumpida pudo dejar el guardado automático desactivado y save-on falló: ejecuta save-on en la consola", "server", t.slug, "err", err)
-		b.markSaveOn(serverID) // plan-9 (m7): retrySaveOn lo reintenta
+		b.a.log.Error("an interrupted backup may have left autosave disabled and save-on failed: run save-on in the console", "server", t.slug, "err", err)
+		b.markSaveOn(serverID) // plan-9 (m7): retrySaveOn retries it
 		return
 	}
-	b.a.log.Warn("copia interrumpida por el cierre del agente: guardado automático reactivado (save-on)", "server", t.slug)
+	b.a.log.Warn("backup interrupted by the agent shutting down: autosave re-enabled (save-on)", "server", t.slug)
 }
 
 func (b *backupService) recoverServer(serverID string) {
 	t, err := b.target(serverID)
 	if err != nil {
-		b.a.log.Warn("recuperar copias y restauraciones", "server", serverID, "err", err)
+		b.a.log.Warn("recover backups and restores", "server", serverID, "err", err)
 		return
 	}
-	if t.spec.DataPath != "" { // plan-6 (m3): el agente no ve esa carpeta y nunca copia ni restaura ahí
+	if t.spec.DataPath != "" { // plan-6 (m3): the agent does not see that folder and never backs up or restores there
 		return
 	}
 	rec, err := b.recoverDisk(t.backupsDir, t.dataDir, t.slug)
 	for _, p := range rec.Removed {
-		b.a.log.Info("resto de una copia o restauración interrumpida borrado", "server", t.slug, "path", p)
+		b.a.log.Info("leftover of an interrupted backup or restore deleted", "server", t.slug, "path", p)
 	}
 	for _, w := range rec.Warnings {
-		b.a.log.Warn("restos de una copia o restauración interrumpida", "server", t.slug, "aviso", w)
+		b.a.log.Warn("leftovers of an interrupted backup or restore", "server", t.slug, "warning", w)
 	}
 	if rec.RolledBack != "" {
-		b.a.log.Warn("restauración interrumpida: los datos originales vuelven a data", "server", t.slug, "desde", rec.RolledBack)
+		b.a.log.Warn("interrupted restore: the original data goes back to data", "server", t.slug, "from", rec.RolledBack)
 	}
 	if err == nil {
 		return
 	}
-	release, herr := b.a.rec.Hold(serverID, "sin directorio de datos")
+	release, herr := b.a.rec.Hold(serverID, "no data directory")
 	if herr != nil {
-		b.a.log.Error("no se pudo bloquear un servidor sin datos", "server", t.slug, "err", herr)
+		b.a.log.Error("could not block a server without data", "server", t.slug, "err", herr)
 		return
 	}
 	b.block(serverID, release, dataMissingMsg(t.dataDir, err))
 }
 
 func dataMissingMsg(dataDir string, err error) string {
-	return fmt.Sprintf("%v. El servidor no se arrancará hasta que exista %s: devuelve ahí los datos (o crea la carpeta vacía para empezar un mundo nuevo)", err, dataDir)
+	return fmt.Sprintf("%v. The server will not be started until %s exists: put the data back there (or create the empty folder to start a new world)", err, dataDir)
 }
 
-// block deja un servidor reservado (release es su reserva), parado y con msg en Observed
-// hasta que su directorio de datos vuelva a existir (checkBlocked). Sin data, liberarlo lo
-// arrancaría: Docker crearía un data vacío y el servidor generaría un mundo nuevo.
+// block leaves a server reserved (release is its reservation), stopped and with msg in Observed
+// until its data directory exists again (checkBlocked). Without data, releasing it would
+// start it: Docker would create an empty data and the server would generate a new world.
 func (b *backupService) block(serverID string, release func(context.Context), msg string) {
 	b.a.rec.HoldError(serverID, msg)
-	// plan-8: mc-router arrancaría un servidor bajo demanda aunque esté reservado, y Docker le crearía
-	// un data vacío: se aparca (sin contenedor) hasta que vuelvan los datos.
+	// plan-8: mc-router would start an on-demand server even if it is reserved, and Docker would create
+	// an empty data for it: it is parked (without a container) until the data returns.
 	if _, err := b.a.rec.Park(b.a.life, serverID); err != nil {
-		b.a.log.Error("no se pudo aparcar un servidor sin datos", "server", serverID, "err", err)
+		b.a.log.Error("could not park a server without data", "server", serverID, "err", err)
 	}
 	b.mu.Lock()
 	b.blocked[serverID] = release
 	b.mu.Unlock()
-	b.a.log.Error("servidor sin directorio de datos: no se arrancará", "server", serverID, "motivo", msg)
-	b.a.observeAsync(b.a.life, serverID) // el error, al panel cuanto antes
+	b.a.log.Error("server without a data directory: it will not be started", "server", serverID, "reason", msg)
+	b.a.observeAsync(b.a.life, serverID) // the error, to the panel as soon as possible
 }
 
-// checkBlocked reintenta recuperar los datos de los servidores bloqueados y libera los que
-// vuelven a tenerlos (devueltos a mano, o una carpeta vacía para empezar de cero) y los que
-// el panel retiró (la liberación completa el borrado de su contenedor).
+// checkBlocked retries recovering the data of the blocked servers and releases those that
+// have it again (returned by hand, or an empty folder to start from scratch) and those
+// the panel withdrew (the release completes the deletion of their container).
 func (b *backupService) checkBlocked() {
 	b.mu.Lock()
 	ids := make([]string, 0, len(b.blocked))
@@ -337,12 +337,12 @@ func (b *backupService) unblock(serverID string) {
 	if !ok {
 		return
 	}
-	b.a.log.Info("servidor desbloqueado: vuelve a tener directorio de datos o se retiró", "server", serverID)
+	b.a.log.Info("server unblocked: it has a data directory again or was withdrawn", "server", serverID)
 	b.spawn(func() { release(b.a.life) })
 }
 
-// start arranca la cola de avisos al panel, el programador y su refresco cada 15 s (que
-// también revisa los servidores bloqueados) y el inventario periódico. recoverAtStart va antes.
+// start starts the queue of notices to the panel, the scheduler and its 15 s refresh (which
+// also reviews the blocked servers) and the periodic inventory. recoverAtStart goes first.
 func (b *backupService) start(ctx context.Context) {
 	b.refreshSchedules()
 	b.loop(func() { b.out.run(ctx) })
@@ -371,10 +371,10 @@ func (b *backupService) start(ctx context.Context) {
 	})
 }
 
-// wait espera, como mucho d, a las copias, restauraciones y liberaciones en curso y a los
-// bucles de start. Se llama al cerrar el agente, con su contexto de vida ya cancelado: una
-// copia en caliente aborta y su defer envía save-on (con plazo propio). Desde aquí no se
-// lanzan tareas nuevas. Devuelve false si venció el tope.
+// wait waits, for at most d, for the backups, restores and releases in progress and for the
+// start loops. It is called when the agent shuts down, with its life context already cancelled: a
+// hot backup aborts and its defer sends save-on (with its own deadline). From here no
+// new tasks are launched. It returns false if the cap expired.
 func (b *backupService) wait(d time.Duration) bool {
 	b.mu.Lock()
 	b.closed = true
@@ -391,16 +391,16 @@ func (b *backupService) wait(d time.Duration) bool {
 	case <-done:
 		return true
 	case <-t.C:
-		b.a.log.Warn("cierre sin esperar a las copias en curso: venció el plazo", "plazo", d)
+		b.a.log.Warn("shutting down without waiting for the backups in progress: the deadline expired", "deadline", d)
 		return false
 	}
 }
 
-// refreshSchedules sincroniza el programador con las specs guardadas.
+// refreshSchedules synchronizes the scheduler with the stored specs.
 func (b *backupService) refreshSchedules() {
 	specs, err := b.a.st.ListSpecs()
 	if err != nil {
-		b.a.log.Warn("leer specs para programar copias", "err", err)
+		b.a.log.Warn("read specs to schedule backups", "err", err)
 		return
 	}
 	want := map[string]string{}
@@ -418,19 +418,19 @@ func (b *backupService) refreshSchedules() {
 	}
 	for id, expr := range want {
 		if err := b.sched.Set(id, expr); err != nil {
-			b.a.log.Warn("cron de copias inválido", "server", id, "err", err)
+			b.a.log.Warn("invalid backup cron", "server", id, "err", err)
 		}
 	}
 }
 
-// target es un servidor del nodo con lo que necesitan sus copias.
+// target is a node server with what its backups need.
 //
-// La sección backups de la spec se usa tal cual: el panel guarda y envía la spec ya parseada
-// por zod, con todos los valores por defecto puestos, y el agente no los repite (dos fuentes
-// de verdad que podrían divergir). Una sección parcial (spec escrita a mano o panel antiguo)
-// se queda con los ceros de Go, que fallan hacia guardar más: sin exclusiones, sin poda y sin
-// omitir copias por falta de jugadores. Sin sección, las copias manuales usan
-// spec.DefaultBackupExcludes y no hay programación.
+// The spec's backups section is used as is: the panel stores and sends the spec already parsed
+// by zod, with all the default values set, and the agent does not repeat them (two sources
+// of truth that could diverge). A partial section (hand-written spec or old panel)
+// keeps Go's zeros, which fail toward saving more: no exclusions, no pruning and no
+// skipping backups for lack of players. Without a section, manual backups use
+// spec.DefaultBackupExcludes and there is no schedule.
 type target struct {
 	serverID   string
 	slug       string
@@ -440,8 +440,8 @@ type target struct {
 	backupsDir string
 }
 
-// target resuelve un servidor del store. El agente solo opera sobre servidores de su nodo
-// (spec §9): uno que no está en el store es errUnknownServer.
+// target resolves a server from the store. The agent only operates on its own node's servers
+// (spec §9): one that is not in the store is errUnknownServer.
 func (b *backupService) target(serverID string) (*target, error) {
 	sp, err := b.a.st.GetSpec(serverID)
 	if err != nil {
@@ -467,7 +467,7 @@ func (b *backupService) target(serverID string) (*target, error) {
 func (b *backupService) handleBackupNow(id uint64, m *mcsmv1.BackupNow, send func(*mcsmv1.Envelope) error) {
 	trigger := backup.TriggerFromProto(m.GetTrigger())
 	if trigger != backup.TriggerManual && trigger != backup.TriggerPreMigration {
-		_ = send(errMsg(id, errcode.InvalidRequest, fmt.Errorf("tipo de copia no admitido desde el panel: %s", trigger)))
+		_ = send(errMsg(id, errcode.InvalidRequest, fmt.Errorf("backup type not allowed from the panel: %s", trigger)))
 		return
 	}
 	if err := b.startBackup(m.GetJobId(), m.GetServerId(), trigger); err != nil {
@@ -493,10 +493,10 @@ func (b *backupService) handleBackupDelete(id uint64, m *mcsmv1.BackupDelete, se
 	_ = send(ack(id))
 }
 
-// handleBackupList encola el inventario como mensaje no solicitado (id 0) y responde Ack. Va
-// por la cola de avisos (ver invMu), así que puede llegar antes o después del Ack, e incluso
-// en la sesión siguiente: lleva el id de la petición en request_id para que el panel lo
-// correlacione.
+// handleBackupList queues the inventory as an unsolicited message (id 0) and answers Ack. It goes
+// through the notice queue (see invMu), so it may arrive before or after the Ack, and even
+// in the next session: it carries the request's id in request_id so the panel
+// can correlate it.
 func (b *backupService) handleBackupList(id uint64, m *mcsmv1.BackupList, send func(*mcsmv1.Envelope) error) {
 	if err := b.postInventory(m.GetServerId(), id); err != nil {
 		_ = send(errMsg(id, backupErrCode(err), err))
@@ -505,8 +505,8 @@ func (b *backupService) handleBackupList(id uint64, m *mcsmv1.BackupList, send f
 	_ = send(ack(id))
 }
 
-// postInventory calcula el inventario y lo encola, todo bajo invMu. requestID es el id del
-// BackupList al que contesta (0: periódico).
+// postInventory computes the inventory and queues it, all under invMu. requestID is the id of the
+// BackupList it answers (0: periodic).
 func (b *backupService) postInventory(serverID string, requestID uint64) error {
 	b.invMu.Lock()
 	defer b.invMu.Unlock()
@@ -518,26 +518,26 @@ func (b *backupService) postInventory(serverID string, requestID uint64) error {
 	return b.out.post(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupInventory{BackupInventory: inv}})
 }
 
-// periodicInventory manda el inventario de todo el nodo sin que lo pidan (cada inventoryEvery).
-// Con request_id 0 el panel solo aplica lo positivo (altas de copias y estados de jobs).
+// periodicInventory sends the whole node's inventory unprompted (every inventoryEvery).
+// With request_id 0 the panel only applies the positive (new backups and job states).
 func (b *backupService) periodicInventory() {
 	if err := b.postInventory("", 0); err != nil {
-		b.a.log.Warn("inventario periódico de copias", "err", err)
+		b.a.log.Warn("periodic backup inventory", "err", err)
 	}
 }
 
-// postChange encola un aviso de copia (BackupCreated, BackupDeleted) bajo invMu.
+// postChange queues a backup notice (BackupCreated, BackupDeleted) under invMu.
 func (b *backupService) postChange(e *mcsmv1.Envelope) {
 	b.invMu.Lock()
 	defer b.invMu.Unlock()
 	_ = b.out.post(e)
 }
 
-// startBackup registra el job, reserva el servidor y lanza la copia en segundo plano. Con
-// un job_id ya conocido no repite nada: reenvía el estado guardado (spec §5.4).
+// startBackup registers the job, reserves the server and launches the backup in the background. With
+// an already known job_id it repeats nothing: it resends the stored state (spec §5.4).
 func (b *backupService) startBackup(jobID, serverID, trigger string) error {
 	if jobID == "" {
-		return fmt.Errorf("%w: falta job_id", errBadRequest)
+		return fmt.Errorf("%w: job_id is missing", errBadRequest)
 	}
 	t, err := b.target(serverID)
 	if err != nil {
@@ -560,12 +560,12 @@ func (b *backupService) startBackup(jobID, serverID, trigger string) error {
 		return err
 	}
 	if trigger == backup.TriggerPreMigration {
-		// plan-7: la copia que se migra se hace en frío y sin escrituras a medias (como una
-		// restauración): un arranque o una subida que llegaran después del paso 1 la dejarían
-		// desfasada respecto a lo que siga escribiendo el origen.
+		// plan-7: the backup being migrated is made cold and without half-done writes (like a
+		// restore): a start or an upload arriving after step 1 would leave it out of
+		// sync with whatever the source keeps writing.
 		if err := b.preMigrationReady(serverID, j); err != nil {
-			// En línea, como al fallar el lanzamiento: el servidor está parado o sin cambios (la
-			// reconciliación es inmediata) y el panel lo vuelve a arrancar en cuanto recibe el error.
+			// Inline, as when the launch fails: the server is stopped or unchanged (the
+			// reconciliation is immediate) and the panel starts it again as soon as it receives the error.
 			release(b.a.life)
 			b.finish(j, err, "")
 			return err
@@ -574,11 +574,11 @@ func (b *backupService) startBackup(jobID, serverID, trigger string) error {
 	return b.launchBackup(j, serverID, trigger, release)
 }
 
-// holdBackup es el motivo de la reserva de una copia.
-const holdBackup = "copia de seguridad"
+// holdBackup is the reason for a backup's reservation.
+const holdBackup = "backup"
 
-// launchBackup lanza en segundo plano la copia de un job ya registrado y con el servidor
-// reservado. Si el agente se está cerrando, libera y cierra el job.
+// launchBackup launches in the background the backup of an already registered job with the server
+// reserved. If the agent is shutting down, it releases and closes the job.
 func (b *backupService) launchBackup(j *jobs.Job, serverID, trigger string, release func(context.Context)) error {
 	if !b.spawn(func() { b.runBackupJob(serverID, trigger, j, release) }) {
 		release(b.a.life)
@@ -597,17 +597,17 @@ func (b *backupService) runBackupJob(serverID, trigger string, j *jobs.Job, rele
 	})
 	err = interrupted(ctx, err)
 	b.releaseHold(j, serverID, release)
-	b.finish(j, err, "Copia creada: "+meta.Filename)
+	b.finish(j, err, "Backup created: "+meta.Filename)
 }
 
-// withSlot ejecuta fn con uno de los maxParallelJobs huecos del nodo. Se toma antes de
-// save-off (copia) o de parar el servidor (restauración); si no hay, el job lo dice y espera
-// en cola sin fallar. Solo falla si el agente se cierra mientras espera.
+// withSlot runs fn with one of the node's maxParallelJobs slots. It is taken before
+// save-off (backup) or before stopping the server (restore); if there is none, the job says so and waits
+// in the queue without failing. It only fails if the agent shuts down while waiting.
 func (b *backupService) withSlot(ctx context.Context, j *jobs.Job, fn func() error) error {
 	select {
 	case b.slots <- struct{}{}:
 	default:
-		j.Progress(0, "En cola: esperando a que terminen otras copias o restauraciones del nodo")
+		j.Progress(0, "Queued: waiting for other backups or restores on the node to finish")
 		select {
 		case b.slots <- struct{}{}:
 		case <-ctx.Done():
@@ -618,36 +618,36 @@ func (b *backupService) withSlot(ctx context.Context, j *jobs.Job, fn func() err
 	return fn()
 }
 
-// interrupted explica un fallo causado por el cierre del agente (contexto de vida cancelado).
+// interrupted explains a failure caused by the agent shutting down (life context cancelled).
 func interrupted(ctx context.Context, err error) error {
 	if err != nil && ctx.Err() != nil {
-		return fmt.Errorf("interrumpido: el agente se está cerrando (%w)", err)
+		return fmt.Errorf("interrupted: the agent is shutting down (%w)", err)
 	}
 	return err
 }
 
-// finish cierra el job y registra si no se pudo guardar su estado final.
+// finish closes the job and records if its final state could not be saved.
 func (b *backupService) finish(j *jobs.Job, err error, okMsg string) {
 	if perr := j.Done(err, okMsg); perr != nil {
-		b.a.log.Error("guardar el final del job", "job", j.ID(), "err", perr)
+		b.a.log.Error("save the job's final state", "job", j.ID(), "err", perr)
 	}
 }
 
-// releaseHold libera la reserva, lo que reconcilia el servidor: aplica la spec que llegó
-// durante el job y lo vuelve a su estado deseado. Va con el contexto de vida del agente y sin
-// plazo propio: si la spec aplazada cambia la imagen, un plazo podría cortar el pull con el
-// contenedor viejo ya borrado y dejar el servidor caído hasta el siguiente tick con backoff.
-// Si tarda más de releaseWait, el job deja de esperarla y termina; la reconciliación sigue en
-// segundo plano (contada en wg). Al cerrar el agente se cancela, y el servidor se reconcilia
-// en el siguiente arranque.
+// releaseHold releases the reservation, which reconciles the server: it applies the spec that arrived
+// during the job and returns it to its desired state. It goes with the agent's life context and without
+// a deadline of its own: if the deferred spec changes the image, a deadline could cut the pull with the
+// old container already deleted and leave the server down until the next tick with backoff.
+// If it takes longer than releaseWait, the job stops waiting for it and finishes; the reconciliation continues in the
+// background (counted in wg). When the agent shuts down it is cancelled, and the server is reconciled
+// on the next startup.
 func (b *backupService) releaseHold(j *jobs.Job, serverID string, release func(context.Context)) {
 	if sp, err := b.a.st.GetSpec(serverID); err == nil && sp != nil {
 		if applied, _ := b.a.st.Applied(serverID); applied != sp.Version {
-			j.Log(fmt.Sprintf("aplicando la configuración que llegó durante el job (versión %d)", sp.Version))
+			j.Log(fmt.Sprintf("applying the configuration that arrived during the job (version %d)", sp.Version))
 		}
 	}
 	done := make(chan struct{})
-	b.wg.Add(1) // quien llama es un job contado en wg: el contador no está a cero
+	b.wg.Add(1) // the caller is a job counted in wg: the counter is not at zero
 	go func() {
 		defer b.wg.Done()
 		defer close(done)
@@ -656,7 +656,7 @@ func (b *backupService) releaseHold(j *jobs.Job, serverID string, release func(c
 	select {
 	case <-done:
 	case <-b.clock.Until(b.clock.Now().Add(b.releaseWait)):
-		j.Log("la configuración pendiente se sigue aplicando en segundo plano (p. ej. descargando una imagen nueva)")
+		j.Log("the pending configuration keeps being applied in the background (e.g. downloading a new image)")
 	}
 }
 
@@ -675,7 +675,7 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 		return backup.Meta{}, err
 	}
 	if live != nil {
-		j.Log("servidor en marcha: copia en caliente con save-off / save-all flush / save-on")
+		j.Log("server running: hot backup with save-off / save-all flush / save-on")
 		host, pass := spec.ContainerName(t.slug), t.spec.RconPassword
 		req.Rcon = func(ctx context.Context, cmd string) (string, error) {
 			cctx, cancel := context.WithTimeout(ctx, rconCommandTimeout)
@@ -684,17 +684,17 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 		}
 		req.Running = func(ctx context.Context) error { return b.stillRunning(ctx, serverID, live) }
 	} else {
-		j.Log("servidor parado: copia directa")
-		// plan-8: sin contenedor, mc-router no puede despertarlo a mitad de una copia en frío.
+		j.Log("server stopped: direct backup")
+		// plan-8: without a container, mc-router cannot wake it midway through a cold backup.
 		if parked, err := b.a.rec.Park(ctx, serverID); err != nil {
 			return backup.Meta{}, err
 		} else if parked {
-			j.Log("servidor bajo demanda aparcado: su contenedor se recrea al terminar")
+			j.Log("on-demand server parked: its container is recreated when finished")
 		}
 	}
 	meta, err := backup.Create(ctx, req)
-	if err != nil { // una copia fallida no queda en disco: ni se anuncia ni se poda
-		if errors.Is(err, backup.ErrResume) { // plan-9 (m6): el mundo pudo quedar en save-off
+	if err != nil { // a failed backup does not stay on disk: it is neither announced nor pruned
+		if errors.Is(err, backup.ErrResume) { // plan-9 (m6): the world may have been left in save-off
 			b.markSaveOn(serverID)
 		}
 		return backup.Meta{}, err
@@ -704,16 +704,16 @@ func (b *backupService) runBackup(ctx context.Context, serverID, trigger string,
 	return meta, nil
 }
 
-// isRunning dice si el contenedor del servidor está en marcha. Si Docker no deja comprobarlo
-// devuelve error, nunca «parado»: una copia lo tomaría por fría (sin save-off) y una
-// restauración intercambiaría data con el servidor escribiendo.
+// isRunning says whether the server's container is running. If Docker does not allow checking it,
+// it returns an error, never "stopped": a backup would take it for cold (without save-off) and a
+// restore would swap data with the server writing.
 func (b *backupService) isRunning(ctx context.Context, serverID string) (bool, error) {
 	ins, err := b.runningContainer(ctx, serverID)
 	return ins != nil, err
 }
 
-// runningContainer devuelve la inspección del contenedor del servidor si está en marcha, o nil
-// si no existe o está parado. Mismos errores que isRunning.
+// runningContainer returns the inspection of the server's container if it is running, or nil
+// if it does not exist or is stopped. Same errors as isRunning.
 func (b *backupService) runningContainer(ctx context.Context, serverID string) (*docker.Inspect, error) {
 	c, err := b.a.rec.Container(ctx, serverID)
 	if err != nil {
@@ -735,42 +735,42 @@ func (b *backupService) runningContainer(ctx context.Context, serverID string) (
 	return ins, nil
 }
 
-// stillRunning comprueba durante una copia en caliente que el contenedor del servidor es el
-// mismo que al empezar (id) y que no se ha parado ni reiniciado desde entonces (StartedAt):
-// mc-router lo para por inactividad sin mirar la reserva, y Minecraft guarda al pararse aunque
-// haya save-off. Una parada envuelve backup.ErrServerStopped; un fallo de Docker, no.
+// stillRunning checks during a hot backup that the server's container is the same
+// as at the start (id) and that it has not stopped or restarted since (StartedAt):
+// mc-router stops it for inactivity without looking at the reservation, and Minecraft saves when stopping even with
+// save-off. A stop wraps backup.ErrServerStopped; a Docker failure does not.
 func (b *backupService) stillRunning(ctx context.Context, serverID string, was *docker.Inspect) error {
 	c, err := b.a.rec.Container(ctx, serverID)
 	if err != nil {
 		return fmt.Errorf("Docker: %w", err)
 	}
 	if c == nil || c.ID != was.ID {
-		return fmt.Errorf("%w (su contenedor ya no es el mismo)", backup.ErrServerStopped)
+		return fmt.Errorf("%w (its container is no longer the same)", backup.ErrServerStopped)
 	}
 	ins, err := b.a.eng.Inspect(ctx, c.ID)
 	switch {
 	case errors.Is(err, docker.ErrNotFound):
-		return fmt.Errorf("%w (su contenedor ya no existe)", backup.ErrServerStopped)
+		return fmt.Errorf("%w (its container no longer exists)", backup.ErrServerStopped)
 	case err != nil:
 		return fmt.Errorf("Docker: %w", err)
 	case !ins.Running:
-		return fmt.Errorf("%w (su contenedor ya no está en marcha)", backup.ErrServerStopped)
+		return fmt.Errorf("%w (its container is no longer running)", backup.ErrServerStopped)
 	case !ins.StartedAt.Equal(was.StartedAt):
-		return fmt.Errorf("%w (su contenedor se reinició)", backup.ErrServerStopped)
+		return fmt.Errorf("%w (its container restarted)", backup.ErrServerStopped)
 	}
 	return nil
 }
 
 func errCheckContainer(err error) error {
-	return fmt.Errorf("no se pudo comprobar si el servidor está en marcha (Docker: %w); no se hace nada", err)
+	return fmt.Errorf("could not check whether the server is running (Docker: %w); nothing is done", err)
 }
 
-// announce avisa al panel de una copia nueva (también de los datos pre-restore).
+// announce notifies the panel of a new backup (also of the pre-restore data).
 func (b *backupService) announce(m backup.Meta, serverID, jobID string) {
 	b.postChange(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupCreated{BackupCreated: &mcsmv1.BackupCreated{Backup: m.Info(serverID), JobId: jobID}}})
 }
 
-// prune aplica keepDays/keepCount a las copias programadas tras cada copia (spec §6.5).
+// prune applies keepDays/keepCount to the scheduled backups after each backup (spec §6.5).
 func (b *backupService) prune(t *target) {
 	cfg := t.spec.Backups
 	if cfg == nil {
@@ -778,12 +778,12 @@ func (b *backupService) prune(t *target) {
 	}
 	metas, err := backup.List(t.backupsDir, t.slug)
 	if err != nil {
-		b.a.log.Warn("listar copias para podar", "server", t.slug, "err", err)
+		b.a.log.Warn("list backups to prune", "server", t.slug, "err", err)
 		return
 	}
 	for _, name := range backup.PrunePlan(metas, cfg.KeepDays, cfg.KeepCount, b.clock.Now()) {
 		if err := backup.Delete(t.backupsDir, t.dataDir, t.slug, name); err != nil {
-			b.a.log.Warn("podar copia", "server", t.slug, "file", name, "err", err)
+			b.a.log.Warn("prune backup", "server", t.slug, "file", name, "err", err)
 			continue
 		}
 		b.postChange(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupDeleted{BackupDeleted: &mcsmv1.BackupDeleted{
@@ -792,10 +792,10 @@ func (b *backupService) prune(t *target) {
 	}
 }
 
-// startRestore valida, registra el job, reserva el servidor y restaura en segundo plano.
+// startRestore validates, registers the job, reserves the server and restores in the background.
 func (b *backupService) startRestore(jobID, serverID, filename string) error {
 	if jobID == "" {
-		return fmt.Errorf("%w: falta job_id", errBadRequest)
+		return fmt.Errorf("%w: job_id is missing", errBadRequest)
 	}
 	t, err := b.target(serverID)
 	if err != nil {
@@ -805,7 +805,7 @@ func (b *backupService) startRestore(jobID, serverID, filename string) error {
 		return err
 	}
 	if !backup.ValidName(t.slug, filename) {
-		return fmt.Errorf("%w: nombre de copia inválido %q", errBadRequest, filename)
+		return fmt.Errorf("%w: invalid backup name %q", errBadRequest, filename)
 	}
 	j, existing, err := b.jobs.Begin(jobID, serverID, jobs.TypeRestore)
 	if err != nil {
@@ -815,15 +815,15 @@ func (b *backupService) startRestore(jobID, serverID, filename string) error {
 		b.jobs.Replay(existing)
 		return nil
 	}
-	release, err := b.a.rec.Hold(serverID, "restauración")
+	release, err := b.a.rec.Hold(serverID, "restore")
 	if err != nil {
 		b.finish(j, err, "")
 		return err
 	}
 	if err := b.drainFileWrites(serverID, j); err != nil {
-		// La respuesta no espera a la liberación: reconcilia y aplicaría (pull incluido) una
-		// spec que llegó durante la espera, más allá del plazo con que el panel espera esta
-		// respuesta.
+		// The response does not wait for the release: it reconciles and would apply (pull included) a
+		// spec that arrived during the wait, beyond the deadline with which the panel waits for this
+		// response.
 		b.releaseAsync(release)
 		b.finish(j, err, "")
 		return err
@@ -836,18 +836,18 @@ func (b *backupService) startRestore(jobID, serverID, filename string) error {
 	return nil
 }
 
-// releaseAsync libera una reserva en segundo plano con el contexto de vida del agente,
-// contada en wg (la espera del cierre la incluye). Si el agente ya se cierra, libera en línea:
-// con el contexto cancelado la reconciliación no espera, y el siguiente arranque la completa.
+// releaseAsync releases a reservation in the background with the agent's life context,
+// counted in wg (the shutdown wait includes it). If the agent is already shutting down, it releases inline:
+// with the context cancelled the reconciliation does not wait, and the next startup completes it.
 func (b *backupService) releaseAsync(release func(context.Context)) {
 	if !b.spawn(func() { release(b.a.life) }) {
 		release(b.a.life)
 	}
 }
 
-// drainFileWrites espera, como mucho drainWait, a que terminen las escrituras de archivos
-// que ya estaban en curso en serverID al reservarlo (las nuevas ya responden busy). Si no
-// terminan, la restauración no empieza: ErrBusy. Ver fileWrites.
+// drainFileWrites waits, for at most drainWait, for the file writes that were already in progress
+// on serverID when reserving it to finish (new ones already answer busy). If they do not
+// finish, the restore does not start: ErrBusy. See fileWrites.
 func (b *backupService) drainFileWrites(serverID string, j *jobs.Job) error {
 	drained := b.a.fileWrites.drained(serverID)
 	select {
@@ -855,12 +855,12 @@ func (b *backupService) drainFileWrites(serverID string, j *jobs.Job) error {
 		return nil
 	default:
 	}
-	j.Progress(0, "Esperando a que terminen las operaciones de archivos en curso")
+	j.Progress(0, "Waiting for the file operations in progress to finish")
 	select {
 	case <-drained:
 		return nil
 	case <-b.clock.Until(b.clock.Now().Add(b.drainWait)):
-		return fmt.Errorf("%w: hay operaciones de archivos en curso en el servidor (subidas, escrituras o borrados); espera a que terminen y vuelve a intentarlo", reconcile.ErrBusy)
+		return fmt.Errorf("%w: there are file operations in progress on the server (uploads, writes or deletions); wait for them to finish and try again", reconcile.ErrBusy)
 	case <-b.a.life.Done():
 		return errClosing
 	}
@@ -870,17 +870,17 @@ func (b *backupService) runRestoreJob(t *target, filename string, j *jobs.Job, r
 	ctx := b.a.life
 	err := b.withSlot(ctx, j, func() error { return b.runRestore(ctx, t.serverID, filename, j) })
 	if errors.Is(err, backup.ErrDataMissing) {
-		// Sin liberar: la liberación reconciliaría y arrancaría el servidor sobre un data vacío.
+		// Not released: releasing would reconcile and start the server over an empty data.
 		b.block(t.serverID, release, dataMissingMsg(t.dataDir, err))
 		b.finish(j, err, "")
 		return
 	}
 	err = interrupted(ctx, err)
 	if err == nil {
-		j.Progress(95, "Volviendo a arrancar el servidor si estaba en marcha")
+		j.Progress(95, "Starting the server again if it was running")
 	}
-	b.releaseHold(j, t.serverID, release) // reconcilia: lo arranca si su estado deseado es running
-	b.finish(j, err, "Restauración completada desde "+filename)
+	b.releaseHold(j, t.serverID, release) // reconciles: it starts it if its desired state is running
+	b.finish(j, err, "Restore completed from "+filename)
 }
 
 func (b *backupService) runRestore(ctx context.Context, serverID, filename string, j *jobs.Job) error {
@@ -893,26 +893,26 @@ func (b *backupService) runRestore(ctx context.Context, serverID, filename strin
 		return errCheckContainer(err)
 	}
 	if c != nil {
-		j.Progress(1, "Parando el servidor")
-		// plan-8: un servidor bajo demanda se aparca (se borra su contenedor) para que mc-router no lo
-		// arranque sobre el mundo viejo si alguien intenta entrar durante la restauración.
+		j.Progress(1, "Stopping the server")
+		// plan-8: an on-demand server is parked (its container is deleted) so mc-router does not
+		// start it over the old world if someone tries to join during the restore.
 		parked, err := b.a.rec.Park(ctx, serverID)
 		if err != nil {
-			return fmt.Errorf("parar el servidor: %w", err)
+			return fmt.Errorf("stop the server: %w", err)
 		}
 		if parked {
-			j.Log("servidor bajo demanda aparcado: su contenedor se recrea al terminar")
+			j.Log("on-demand server parked: its container is recreated when finished")
 		} else if err := b.a.eng.Stop(ctx, c.ID, reconcile.StopTimeout); err != nil && !errors.Is(err, docker.ErrNotFound) {
-			return fmt.Errorf("parar el servidor: %w", err)
+			return fmt.Errorf("stop the server: %w", err)
 		}
 		running, err := b.isRunning(ctx, serverID)
 		if err != nil {
 			return err
 		}
 		if running {
-			return errors.New("el servidor sigue en marcha: no se restaura")
+			return errors.New("the server is still running: it is not restored")
 		}
-		j.Log("servidor parado")
+		j.Log("server stopped")
 	}
 	pre, err := b.restore(ctx, backup.RestoreRequest{
 		ServerID: serverID, Slug: t.slug, Filename: filename, DataDir: t.dataDir, BackupsDir: t.backupsDir,
@@ -922,37 +922,37 @@ func (b *backupService) runRestore(ctx context.Context, serverID, filename strin
 		return err
 	}
 	if pre.Filename != "" {
-		b.announce(pre, serverID, "") // los datos previos se registran como copia pre_restore
+		b.announce(pre, serverID, "") // the previous data is registered as a pre_restore backup
 	}
 	return nil
 }
 
-// deleteBackup borra una copia o un directorio pre-restore. Con el servidor reservado (copia,
-// restauración o sin datos) responde ocupado: un pre-restore puede ser lo único que queda.
+// deleteBackup deletes a backup or a pre-restore directory. With the server reserved (backup,
+// restore or without data) it answers busy: a pre-restore may be the only thing left.
 func (b *backupService) deleteBackup(serverID, filename string) error {
 	t, err := b.target(serverID)
 	if err != nil {
 		return err
 	}
 	if !backup.ValidName(t.slug, filename) && !backup.ValidPreRestoreName(t.dataDir, filename) {
-		return fmt.Errorf("%w: nombre de copia inválido %q", errBadRequest, filename)
+		return fmt.Errorf("%w: invalid backup name %q", errBadRequest, filename)
 	}
 	if reason := b.a.rec.HeldReason(serverID); reason != "" {
-		return fmt.Errorf("%w: no se pueden borrar copias mientras dure la reserva", reconcile.Busy(reason))
+		return fmt.Errorf("%w: backups cannot be deleted while the reservation lasts", reconcile.Busy(reason))
 	}
 	if err := backup.Delete(t.backupsDir, t.dataDir, t.slug, filename); err != nil {
 		return err
 	}
-	// Por la cola, detrás de un inventario que aún la listara (el Ack puede adelantarse a él).
+	// Through the queue, behind an inventory that still listed it (the Ack may get ahead of it).
 	b.postChange(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_BackupDeleted{BackupDeleted: &mcsmv1.BackupDeleted{
 		ServerId: serverID, Filename: filename, Reason: deleteReason,
 	}}})
 	return nil
 }
 
-// inventory lista copias (y datos pre-restore) y jobs recientes; serverID vacío = todo el
-// nodo. Un servidor cuyo listado falla, o que no cabe en inventoryLimit, se omite entero
-// (fuera de server_ids): el panel no marca nada suyo como borrado.
+// inventory lists backups (and pre-restore data) and recent jobs; empty serverID = the whole
+// node. A server whose listing fails, or that does not fit in inventoryLimit, is omitted entirely
+// (out of server_ids): the panel marks nothing of its as deleted.
 func (b *backupService) inventory(serverID string) (*mcsmv1.BackupInventory, error) {
 	var specs []*mcsmv1.ServerSpec
 	if serverID != "" {
@@ -979,15 +979,15 @@ func (b *backupService) inventory(serverID string) (*mcsmv1.BackupInventory, err
 	for _, sp := range specs {
 		infos, err := b.listing(sp.ServerId)
 		if err != nil {
-			b.a.log.Warn("inventario de copias", "server", sp.Slug, "err", err)
+			b.a.log.Warn("backup inventory", "server", sp.Slug, "err", err)
 			continue
 		}
-		n := len(sp.ServerId) + 8 // etiqueta y longitud de cada elemento repetido: holgado
+		n := len(sp.ServerId) + 8 // tag and length of each repeated element: generous
 		for _, info := range infos {
 			n += proto.Size(info) + 8
 		}
 		if size+n > b.inventoryLimit {
-			b.a.log.Warn("inventario de copias demasiado grande: este servidor se omite (borra copias antiguas)", "server", sp.Slug, "copias", len(infos))
+			b.a.log.Warn("backup inventory too large: this server is omitted (delete old backups)", "server", sp.Slug, "backups", len(infos))
 			continue
 		}
 		size += n
@@ -1007,7 +1007,7 @@ func (b *backupService) listing(serverID string) ([]*mcsmv1.BackupInfo, error) {
 		return nil, err
 	}
 	var pre []backup.Meta
-	if t.spec.DataPath == "" { // plan-6 (m3): con dataPath no hay restauraciones ni el agente ve la carpeta
+	if t.spec.DataPath == "" { // plan-6 (m3): with dataPath there are no restores and the agent does not see the folder
 		if pre, err = backup.ListPreRestore(t.dataDir); err != nil {
 			return nil, err
 		}
@@ -1019,25 +1019,25 @@ func (b *backupService) listing(serverID string) ([]*mcsmv1.BackupInfo, error) {
 	return out, nil
 }
 
-// onSchedule lo llama el programador desde su bucle: vuelve enseguida (la copia va en su
-// propia goroutine) para no retrasar los disparos de otros servidores, que maxLate saltaría.
+// onSchedule is called by the scheduler from its loop: it returns right away (the backup runs in its
+// own goroutine) so as not to delay other servers' firings, which maxLate would skip.
 func (b *backupService) onSchedule(serverID string) {
 	b.spawn(func() { b.scheduled(serverID) })
 }
 
-// scheduled ejecuta un disparo. Vuelve a comprobar que el servidor sigue en el nodo y la
-// programación activa: entre el disparo y aquí pudo llegar un Remove o una spec nueva que el
-// refresco del programador aún no recogió. Un servidor sin data (aún no arrancado nunca) o
-// ya reservado (otra copia en curso, un cron más rápido que la copia, o bloqueado sin datos)
-// se omite con un aviso en el log, sin job: un job FAILED en cada disparo solo sería ruido.
-// Por eso aquí la reserva va antes que el job.
+// scheduled runs a firing. It checks again that the server is still on the node and the
+// schedule active: between the firing and here a Remove or a new spec may have arrived that the
+// scheduler's refresh has not picked up yet. A server without data (never started yet) or
+// already reserved (another backup in progress, a cron faster than the backup, or blocked without data)
+// is skipped with a log warning, without a job: a FAILED job on every firing would only be noise.
+// That is why here the reservation goes before the job.
 func (b *backupService) scheduled(serverID string) {
 	t, err := b.target(serverID)
 	if errors.Is(err, errUnknownServer) {
 		return
 	}
 	if err != nil {
-		b.a.log.Warn("copia programada", "server", serverID, "err", err)
+		b.a.log.Warn("scheduled backup", "server", serverID, "err", err)
 		return
 	}
 	cfg := t.spec.Backups
@@ -1045,31 +1045,31 @@ func (b *backupService) scheduled(serverID string) {
 		return
 	}
 	if fi, err := os.Lstat(t.dataDir); err != nil || !fi.IsDir() {
-		b.a.log.Warn("copia programada omitida: el servidor aún no tiene directorio de datos", "server", t.slug)
+		b.a.log.Warn("scheduled backup skipped: the server does not have a data directory yet", "server", t.slug)
 		return
 	}
 	if !backup.ShouldRun(cfg.OnlyIfPlayersSince, b.lastBackup(t), b.players.LastSeen(serverID), b.players.Since()) {
-		b.a.log.Info("copia programada omitida: nadie se ha conectado desde la última", "server", t.slug)
+		b.a.log.Info("scheduled backup skipped: nobody has connected since the last one", "server", t.slug)
 		return
 	}
 	release, err := b.a.rec.Hold(serverID, holdBackup)
 	if err != nil {
-		b.a.log.Warn("copia programada omitida", "server", t.slug, "err", err)
+		b.a.log.Warn("scheduled backup skipped", "server", t.slug, "err", err)
 		return
 	}
 	j, _, err := b.jobs.Begin(jobs.NewID(), serverID, jobs.TypeBackup)
 	if err != nil {
 		release(b.a.life)
-		b.a.log.Warn("copia programada", "server", t.slug, "err", err)
+		b.a.log.Warn("scheduled backup", "server", t.slug, "err", err)
 		return
 	}
 	if err := b.launchBackup(j, serverID, backup.TriggerScheduled, release); err != nil {
-		b.a.log.Warn("copia programada", "server", t.slug, "err", err)
+		b.a.log.Warn("scheduled backup", "server", t.slug, "err", err)
 	}
 }
 
-// lastBackup es el INICIO de la copia más reciente (ShouldRun lo exige: con el fin, un
-// jugador que entró durante la copia contaría como anterior a ella).
+// lastBackup is the START of the most recent backup (ShouldRun demands it: with the end, a
+// player who joined during the backup would count as earlier than it).
 func (b *backupService) lastBackup(t *target) time.Time {
 	metas, err := backup.List(t.backupsDir, t.slug)
 	if err != nil || len(metas) == 0 {
@@ -1078,48 +1078,48 @@ func (b *backupService) lastBackup(t *target) time.Time {
 	return metas[0].StartedAt
 }
 
-// markSaveOn anota que el guardado automático de serverID pudo quedar desactivado (save-on falló al terminar una
-// copia o al arrancar el agente) y avisa al panel. retrySaveOn lo reintenta (m6/m7 del Plan 4).
+// markSaveOn records that serverID's autosave may have been left disabled (save-on failed at the end of a
+// backup or when the agent started) and notifies the panel. retrySaveOn retries it (m6/m7 of Plan 4).
 func (b *backupService) markSaveOn(serverID string) {
 	if err := b.a.st.MarkSaveOnPending(serverID, b.clock.Now()); err != nil {
-		b.a.log.Error("anotar save-on pendiente", "server", serverID, "err", err)
+		b.a.log.Error("record pending save-on", "server", serverID, "err", err)
 	}
 	b.a.emitEvent(serverID, mcsmv1.EventLevel_EVENT_LEVEL_WARN, KindSaveOnPending,
-		"El guardado automático puede haber quedado desactivado (save-on falló). El agente lo reintenta (cada 30 s a 5 min); si puedes, ejecuta save-on en la consola")
+		"Autosave may have been left disabled (save-on failed). The agent retries (every 30 s to 5 min); if you can, run save-on in the console")
 }
 
-// Reintentos de save-on (plan-9, m6/m7 del Plan 4).
+// save-on retries (plan-9, m6/m7 of Plan 4).
 const (
-	// saveOnRetryTimeout acota la comprobación de Docker y el RCON del reintento: el servidor está reservado mientras.
+	// saveOnRetryTimeout bounds the retry's Docker check and RCON: the server is reserved meanwhile.
 	saveOnRetryTimeout = 5 * time.Second
-	// saveOnBackoffMin y saveOnBackoffMax: espera tras cada fallo de un servidor (se duplica hasta el tope). Un
-	// éxito, o el servidor parado o retirado, la reinicia.
+	// saveOnBackoffMin and saveOnBackoffMax: wait after each failure of a server (it doubles up to the cap). A
+	// success, or the server stopped or withdrawn, resets it.
 	saveOnBackoffMin = 30 * time.Second
 	saveOnBackoffMax = 5 * time.Minute
 )
 
-// saveOnRetry es el estado en memoria de los reintentos de un servidor.
+// saveOnRetry is the in-memory state of a server's retries.
 type saveOnRetry struct {
 	fails   int
-	next    time.Time // no antes de esto
-	running bool      // hay un reintento en curso
+	next    time.Time // not before this
+	running bool      // a retry is in progress
 }
 
-// saveOnOutcome es el resultado de un reintento.
+// saveOnOutcome is the result of a retry.
 type saveOnOutcome int
 
 const (
-	saveOnSkipped saveOnOutcome = iota // reservado u ocupado: la siguiente pasada, sin penalización
-	saveOnFailed                       // Docker o RCON fallaron: espera creciente
-	saveOnDone                         // reactivado, o ya no hace falta (parado, retirado)
+	saveOnSkipped saveOnOutcome = iota // reserved or busy: the next pass, without penalty
+	saveOnFailed                       // Docker or RCON failed: growing wait
+	saveOnDone                         // re-enabled, or no longer needed (stopped, withdrawn)
 )
 
-// retrySaveOn lanza, cada uno en su goroutine, los reintentos de save-on de los servidores pendientes que toquen
-// (ver saveOnBackoffMin). No espera a ninguno ni lanza dos del mismo servidor a la vez.
+// retrySaveOn launches, each in its own goroutine, the save-on retries of the pending servers that are due
+// (see saveOnBackoffMin). It waits for none nor launches two for the same server at once.
 func (b *backupService) retrySaveOn(ctx context.Context) {
 	ids, err := b.a.st.SaveOnPending()
 	if err != nil {
-		b.a.log.Warn("listar save-on pendientes", "err", err)
+		b.a.log.Warn("list pending save-on", "err", err)
 		return
 	}
 	now := b.clock.Now()
@@ -1142,7 +1142,7 @@ func (b *backupService) retrySaveOn(ctx context.Context) {
 	}
 }
 
-// finishSaveOn anota el resultado de un reintento: el éxito olvida el estado y el fallo alarga la espera.
+// finishSaveOn records the result of a retry: success forgets the state and failure lengthens the wait.
 func (b *backupService) finishSaveOn(id string, out saveOnOutcome) {
 	b.saveOnMu.Lock()
 	defer b.saveOnMu.Unlock()
@@ -1164,14 +1164,14 @@ func (b *backupService) finishSaveOn(id string, out saveOnOutcome) {
 	}
 }
 
-// holdSaveOn es el motivo de la reserva corta con la que retrySaveOn envía save-on.
-const holdSaveOn = "reactivando el guardado automático"
+// holdSaveOn is the reason for the short reservation with which retrySaveOn sends save-on.
+const holdSaveOn = "re-enabling autosave"
 
-// retryOneSaveOn reintenta el save-on de id con el servidor reservado mientras comprueba Docker y envía el RCON (las
-// dos cosas, como mucho saveOnRetryTimeout; la liberación de la reserva reconcilia después, fuera de ese plazo): una
-// copia en caliente que arrancara entre la comprobación y el RCON haría save-off y este
-// save-on le reactivaría el guardado a mitad del tar. Con la reserva, esa copia recibe busy. TryHold no espera: si el
-// servidor está reservado u ocupado, se salta. No usa withSlot: no es un job ni escribe en disco.
+// retryOneSaveOn retries id's save-on with the server reserved while it checks Docker and sends the RCON (both
+// things, at most saveOnRetryTimeout; the reservation's release reconciles afterwards, outside that deadline): a
+// hot backup that started between the check and the RCON would do save-off and this
+// save-on would re-enable saving midway through the tar. With the reservation, that backup gets busy. TryHold does not wait: if the
+// server is reserved or busy, it is skipped. It does not use withSlot: it is not a job nor does it write to disk.
 func (b *backupService) retryOneSaveOn(ctx context.Context, id string) saveOnOutcome {
 	t, err := b.target(id)
 	if errors.Is(err, errUnknownServer) {
@@ -1186,7 +1186,7 @@ func (b *backupService) retryOneSaveOn(ctx context.Context, id string) saveOnOut
 		return saveOnSkipped
 	}
 	defer release(ctx)
-	// Todo lo que se hace con el servidor reservado (la comprobación de Docker y el RCON) cabe en saveOnRetryTimeout.
+	// Everything done with the server reserved (the Docker check and the RCON) fits in saveOnRetryTimeout.
 	cctx, cancel := context.WithTimeout(ctx, saveOnRetryTimeout)
 	defer cancel()
 	running, err := b.isRunning(cctx, id)
@@ -1195,36 +1195,36 @@ func (b *backupService) retryOneSaveOn(ctx context.Context, id string) saveOnOut
 	}
 	if !running {
 		_ = b.a.st.ClearSaveOnPending(id)
-		b.a.log.Info("save-on pendiente olvidado: el servidor está parado y guardará al arrancar", "server", t.slug)
+		b.a.log.Info("pending save-on forgotten: the server is stopped and will save on startup", "server", t.slug)
 		return saveOnDone
 	}
 	_, err = b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on")
 	if err != nil {
-		b.a.log.Warn("reintento de save-on fallido", "server", t.slug, "err", err)
+		b.a.log.Warn("save-on retry failed", "server", t.slug, "err", err)
 		return saveOnFailed
 	}
 	if err := b.a.st.ClearSaveOnPending(id); err != nil {
-		b.a.log.Warn("borrar save-on pendiente", "server", t.slug, "err", err)
+		b.a.log.Warn("delete pending save-on", "server", t.slug, "err", err)
 	}
-	b.a.log.Info("guardado automático reactivado (save-on)", "server", t.slug)
-	b.a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_INFO, KindSaveOnResumed, "Guardado automático reactivado (save-on)")
+	b.a.log.Info("autosave re-enabled (save-on)", "server", t.slug)
+	b.a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_INFO, KindSaveOnResumed, "Autosave re-enabled (save-on)")
 	return saveOnDone
 }
 
-// outbox entrega al panel, en orden y sin bloquear a quien los emite, los avisos de copias y
-// jobs. Un job emite desde la copia (con el mundo en save-off) y Tracker.Begin lo hace con su
-// mutex tomado: un envío lento —con la sesión WS medio caída cada escritura espera hasta
-// 10 s— no debe frenarlos. Con la cola llena el aviso se descarta: el inventario que el panel
-// pide tras cada Hello repone el estado. plan-9: los Event van por otra outbox (App.events).
+// outbox delivers to the panel, in order and without blocking whoever emits them, the backup and
+// job notices. A job emits from the backup (with the world in save-off) and Tracker.Begin does so
+// with its mutex held: a slow send —with the WS session half dead each write waits up to
+// 10 s— must not hold them back. With the queue full the notice is dropped: the inventory the panel
+// asks for after each Hello restores the state. plan-9: Events go through another outbox (App.events).
 type outbox struct {
 	deliver func(*mcsmv1.Envelope) error
 	ch      chan outItem
 	log     *slog.Logger
-	what    string // qué lleva la cola, para el aviso de descartes (p. ej. «avisos de copias y jobs»)
+	what    string // what the queue carries, for the drop warning (e.g. "backup and job notices")
 	dropped atomic.Uint64
 }
 
-// outItem es un aviso o, con mark, una marca que se cierra al llegar a ella (tests).
+// outItem is a notice or, with mark, a mark that is closed on reaching it (tests).
 type outItem struct {
 	env  *mcsmv1.Envelope
 	mark chan struct{}
@@ -1234,7 +1234,7 @@ func newOutbox(deliver func(*mcsmv1.Envelope) error, size int, log *slog.Logger,
 	return &outbox{deliver: deliver, ch: make(chan outItem, size), log: log, what: what}
 }
 
-// post encola un aviso sin bloquear.
+// post queues a notice without blocking.
 func (o *outbox) post(e *mcsmv1.Envelope) error {
 	select {
 	case o.ch <- outItem{env: e}:
@@ -1245,7 +1245,7 @@ func (o *outbox) post(e *mcsmv1.Envelope) error {
 	}
 }
 
-// run entrega los avisos hasta que ctx termina.
+// run delivers the notices until ctx ends.
 func (o *outbox) run(ctx context.Context) {
 	var reported uint64
 	for {
@@ -1257,9 +1257,9 @@ func (o *outbox) run(ctx context.Context) {
 				close(it.mark)
 				continue
 			}
-			_ = o.deliver(it.env) // sin conexión falla al instante: el inventario lo repone
+			_ = o.deliver(it.env) // without a connection it fails instantly: the inventory restores it
 			if d := o.dropped.Load(); d != reported {
-				o.log.Warn(o.what+" descartados: la cola hacia el panel estaba llena", "nuevos", d-reported, "total", d)
+				o.log.Warn(o.what+" dropped: the queue to the panel was full", "new", d-reported, "total", d)
 				reported = d
 			}
 		}

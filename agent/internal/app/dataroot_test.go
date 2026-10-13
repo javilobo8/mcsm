@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// probe construye un sysProbe de test con un mountinfo fijo.
+// probe builds a test sysProbe with a fixed mountinfo.
 func probe(inContainer bool, mountinfo string) sysProbe {
 	return sysProbe{
 		inContainer: func() bool { return inContainer },
@@ -34,9 +34,9 @@ func checkWithLog(t *testing.T, dataRoot string, p sysProbe) (error, string) {
 
 func TestCheckDataRootOutsideContainerSkips(t *testing.T) {
 	p := probe(false, "")
-	p.mountinfo = func() ([]byte, error) { return nil, errors.New("no debe leerse") }
-	if err, _ := checkWithLog(t, "/no/existe", p); err != nil {
-		t.Fatalf("fuera de un contenedor DATA_ROOT ya es una ruta del host: %v", err)
+	p.mountinfo = func() ([]byte, error) { return nil, errors.New("must not be read") }
+	if err, _ := checkWithLog(t, "/no/such", p); err != nil {
+		t.Fatalf("outside a container DATA_ROOT is already a host path: %v", err)
 	}
 }
 
@@ -47,7 +47,7 @@ func TestCheckDataRootMirrorMountOK(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.Contains(log, "WARN") {
-		t.Fatalf("sin avisos con un montaje espejo: %s", log)
+		t.Fatalf("no warnings with a mirror mount: %s", log)
 	}
 }
 
@@ -58,13 +58,13 @@ func TestCheckDataRootParentMountOK(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err, log := checkWithLog(t, dir, probe(true, overlayRoot+bindLine(parent, parent, "rw"))); err != nil || strings.Contains(log, "WARN") {
-		t.Fatalf("un montaje espejo de un directorio padre también vale: %v %s", err, log)
+		t.Fatalf("a mirror mount of a parent directory is also valid: %v %s", err, log)
 	}
 }
 
 func TestCheckDataRootBtrfsSubvolumeOK(t *testing.T) {
 	dir := t.TempDir()
-	// En el host, /home es el subvolumen @home: root lleva el prefijo del subvolumen.
+	// On the host, /home is the @home subvolume: root carries the subvolume prefix.
 	err, log := checkWithLog(t, dir, probe(true, overlayRoot+bindLine("/@home"+dir, dir, "rw,subvol=/@home")))
 	if err != nil || strings.Contains(log, "WARN") {
 		t.Fatalf("err=%v log=%s", err, log)
@@ -74,22 +74,22 @@ func TestCheckDataRootBtrfsSubvolumeOK(t *testing.T) {
 func TestCheckDataRootNotMountedFails(t *testing.T) {
 	dir := t.TempDir()
 	err, _ := checkWithLog(t, dir, probe(true, overlayRoot))
-	if err == nil || !strings.Contains(err.Error(), "no está montado desde el host") || !strings.Contains(err.Error(), "-v "+dir+":"+dir) {
+	if err == nil || !strings.Contains(err.Error(), "is not mounted from the host") || !strings.Contains(err.Error(), "-v "+dir+":"+dir) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestCheckDataRootMissingFails(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "no-existe")
+	dir := filepath.Join(t.TempDir(), "nonexistent")
 	err, _ := checkWithLog(t, dir, probe(true, overlayRoot))
-	if err == nil || !strings.Contains(err.Error(), "no existe") {
+	if err == nil || !strings.Contains(err.Error(), "does not exist") {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestCheckDataRootNotWritableFails(t *testing.T) {
 	if os.Geteuid() == 0 {
-		t.Skip("root escribe en cualquier directorio")
+		t.Skip("root writes to any directory")
 	}
 	dir := t.TempDir()
 	if err := os.Chmod(dir, 0o555); err != nil {
@@ -97,22 +97,22 @@ func TestCheckDataRootNotWritableFails(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 	err, _ := checkWithLog(t, dir, probe(true, overlayRoot+bindLine(dir, dir, "rw")))
-	if err == nil || !strings.Contains(err.Error(), "no se puede escribir") {
+	if err == nil || !strings.Contains(err.Error(), "cannot write") {
 		t.Fatalf("err = %v", err)
 	}
 }
 
-// Montado, pero desde otra ruta del host (-v /data/mc:/srv/minecraft): los contenedores
-// de los servidores verían otro directorio. mountinfo no da la ruta del host con certeza,
-// así que solo se avisa.
+// Mounted, but from another host path (-v /data/mc:/srv/minecraft): the servers'
+// containers would see a different directory. mountinfo does not give the host path with certainty,
+// so it only warns.
 func TestCheckDataRootDifferentHostPathWarns(t *testing.T) {
 	dir := t.TempDir()
-	err, log := checkWithLog(t, dir, probe(true, overlayRoot+bindLine("/datos/otra-ruta", dir, "rw")))
+	err, log := checkWithLog(t, dir, probe(true, overlayRoot+bindLine("/data/other-path", dir, "rw")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(log, "WARN") || !strings.Contains(log, "misma ruta") {
-		t.Fatalf("debe avisar: %s", log)
+	if !strings.Contains(log, "WARN") || !strings.Contains(log, "same path") {
+		t.Fatalf("it must warn: %s", log)
 	}
 }
 

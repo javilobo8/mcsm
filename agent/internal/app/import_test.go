@@ -13,7 +13,7 @@ import (
 	"mcsm/agent/internal/errcode"
 )
 
-// foreignItzg crea y arranca un contenedor itzg ajeno con ese bind de /data.
+// foreignItzg creates and starts a foreign itzg container with that /data bind.
 func foreignItzg(t *testing.T, fake *docker.Fake, name, dataSrc string) string {
 	t.Helper()
 	ctx := context.Background()
@@ -43,11 +43,11 @@ func TestImportScanResult(t *testing.T) {
 	s := newSink()
 	a.send = s.send
 	fake.ImageEnvs["itzg/minecraft-server:java21"] = []string{"EULA=TRUE"}
-	id := foreignItzg(t, fake, "viejo", "/home/lobo/mc/viejo")
+	id := foreignItzg(t, fake, "old", "/home/lobo/mc/old")
 	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 5, Body: &mcsmv1.Envelope_ImportScan{ImportScan: &mcsmv1.ImportScan{}}}, s.send)
 	res := s.waitID(t, 5).GetImportScanResult()
 	if res == nil || res.DataRoot != a.cfg.DataRoot || len(res.Candidates) != 1 || res.Candidates[0].ContainerId != id || len(res.Candidates[0].Env) != 0 {
-		t.Fatalf("resultado = %+v", res)
+		t.Fatalf("result = %+v", res)
 	}
 }
 
@@ -56,11 +56,11 @@ func TestImportAdoptAndErrors(t *testing.T) {
 	s := newSink()
 	a.send = s.send
 	ctx := context.Background()
-	id := foreignItzg(t, fake, "viejo", filepath.Join(a.cfg.DataRoot, "viejo", "data"))
+	id := foreignItzg(t, fake, "old", filepath.Join(a.cfg.DataRoot, "old", "data"))
 
-	a.Handle(ctx, adoptEnv(9, "s1", "viejo", adoptJSON(id)), s.send)
+	a.Handle(ctx, adoptEnv(9, "s1", "old", adoptJSON(id)), s.send)
 	if e := s.waitID(t, 9); e.GetAck() == nil {
-		t.Fatalf("respuesta = %v", e)
+		t.Fatalf("response = %v", e)
 	}
 	if ad, _ := st.Adoption("s1"); ad == nil || ad.ContainerID != id {
 		t.Fatalf("adoption = %+v", ad)
@@ -69,15 +69,15 @@ func TestImportAdoptAndErrors(t *testing.T) {
 		t.Fatalf("ContainerID = %q", got)
 	}
 
-	// Escaneo posterior: el adoptado ya no es candidato.
+	// Later scan: the adopted one is no longer a candidate.
 	a.Handle(ctx, &mcsmv1.Envelope{Id: 10, Body: &mcsmv1.Envelope_ImportScan{ImportScan: &mcsmv1.ImportScan{}}}, s.send)
 	if res := s.waitID(t, 10).GetImportScanResult(); res == nil || len(res.Candidates) != 0 {
-		t.Fatalf("resultado = %+v", res)
+		t.Fatalf("result = %+v", res)
 	}
 
-	// Otro contenedor itzg (parado) cuyo /data no es el de la spec.
-	other, err := fake.Create(ctx, "otro-mc", &container.Config{Image: "itzg/minecraft-server:java21"},
-		&container.HostConfig{Binds: []string{"/home/lobo/mc/otro:/data"}}, nil)
+	// Another itzg container (stopped) whose /data is not the spec's.
+	other, err := fake.Create(ctx, "other-mc", &container.Config{Image: "itzg/minecraft-server:java21"},
+		&container.HostConfig{Binds: []string{"/home/lobo/mc/other:/data"}}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,17 +88,17 @@ func TestImportAdoptAndErrors(t *testing.T) {
 		js     []byte
 		want   string
 	}{
-		{11, "s2", "otro", adoptJSON(docker.FakeID(999)), errcode.NotFound},
-		{12, "s3", "viejo", adoptJSON(id), errcode.Exists},           // ya adoptado por s1
-		{13, "s4", "otro", adoptJSON(other), errcode.InvalidRequest}, // su /data no es DATA_ROOT/otro/data
+		{11, "s2", "other", adoptJSON(docker.FakeID(999)), errcode.NotFound},
+		{12, "s3", "old", adoptJSON(id), errcode.Exists},              // already adopted by s1
+		{13, "s4", "other", adoptJSON(other), errcode.InvalidRequest}, // its /data is not DATA_ROOT/other/data
 		{14, "s5", "Mal Slug", adoptJSON(id), errcode.InvalidSpec},
-		{15, "s6", "otro", []byte(`{"type":"PAPER"}`), errcode.InvalidSpec},
+		{15, "s6", "other", []byte(`{"type":"PAPER"}`), errcode.InvalidSpec},
 	}
 	for _, c := range cases {
 		a.Handle(ctx, adoptEnv(c.id, c.server, c.slug, c.js), s.send)
 		e := s.waitID(t, c.id)
 		if e.GetError() == nil || e.GetError().Code != c.want {
-			t.Errorf("caso %d: respuesta = %v; want %s", c.id, e, c.want)
+			t.Errorf("case %d: response = %v; want %s", c.id, e, c.want)
 		}
 	}
 }
