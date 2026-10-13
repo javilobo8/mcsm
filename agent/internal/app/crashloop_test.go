@@ -36,7 +36,15 @@ func eventsOf(t *testing.T, a *App, s *sink) []*mcsmv1.Event {
 // crashApp: agente con el servidor "a" en marcha y su cola de eventos funcionando.
 func crashApp(t *testing.T) (*App, *docker.Fake, *sink, string) {
 	t.Helper()
-	a, fake, _ := newApp(t)
+	fake := docker.NewFake()
+	a, s, cid := crashAppEngine(t, fake)
+	return a, fake, s, cid
+}
+
+// crashAppEngine es crashApp sobre un Engine cualquiera (envoltorios del fake).
+func crashAppEngine(t *testing.T, eng docker.Engine) (*App, *sink, string) {
+	t.Helper()
+	a, _ := newAppEngine(t, eng)
 	s := newSink()
 	s.ch = make(chan *mcsmv1.Envelope, 1024)
 	a.send = s.send
@@ -49,7 +57,7 @@ func crashApp(t *testing.T) (*App, *docker.Fake, *sink, string) {
 	if cid == "" {
 		t.Fatal("sin contenedor")
 	}
-	return a, fake, s, cid
+	return a, s, cid
 }
 
 func die(cid string, code string) docker.Event {
@@ -226,5 +234,39 @@ func TestCoalescedCrashLoopStopUsesTheLatestDecision(t *testing.T) {
 	}
 	if loops != 1 {
 		t.Fatalf("eventos crash_loop = %d", loops)
+	}
+}
+
+// startHook llama a onStart antes de cada Start del motor de debajo.
+type startHook struct {
+	docker.Engine
+	onStart func()
+}
+
+func (e *startHook) Start(ctx context.Context, id string) error {
+	if f := e.onStart; f != nil {
+		f()
+	}
+	return e.Engine.Start(ctx, id)
+}
+
+// OOS1: la cuenta de crashes empieza de cero ANTES del arranque manual: un cierre con error que llegue mientras el
+// Power está en curso no se suma a los de antes (no dispararía con la generación nueva y retendría el servidor que
+// el usuario acaba de arrancar).
+func TestManualStartResetsTheCountBeforeStarting(t *testing.T) {
+	hook := &startHook{Engine: docker.NewFake()}
+	a, s, cid := crashAppEngine(t, hook)
+	for i := 0; i < crashloop.MaxCrashes; i++ {
+		a.onDie("a", die(cid, "1"))
+	}
+	hook.onStart = func() { a.onDie("a", die("durante-el-arranque", "1")) }
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART}}}, s.send)
+	hook.onStart = nil
+	waitBackground(t, a)
+	if l, _ := a.st.CrashLatch("a"); l != nil {
+		t.Fatalf("retención del servidor recién arrancado = %+v", l)
+	}
+	if n, _ := a.crashes.Record("a"); n != 2 {
+		t.Fatalf("la cuenta tras Arrancar = %d (el cierre durante el arranque y este)", n)
 	}
 }

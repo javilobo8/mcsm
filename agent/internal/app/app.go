@@ -394,13 +394,14 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		_ = send(ack(env.Id))
 
 	case *mcsmv1.Envelope_PowerAction:
+		// plan-9: arrancar a mano empieza la cuenta de crashes de cero (el reconciliador borra la retención). Antes del
+		// Power: un cierre con error que llegue mientras arranca no debe sumarse a los de antes.
+		if act := b.PowerAction.Action; act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
+			a.crashes.Reset(b.PowerAction.ServerId)
+		}
 		if err := a.rec.Power(life, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
 			_ = send(errMsg(env.Id, busyOr(err, errcode.PowerFailed), err))
 			return
-		}
-		// plan-9: arrancar a mano empieza la cuenta de crashes de cero (el reconciliador ya borró la retención).
-		if act := b.PowerAction.Action; act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
-			a.crashes.Reset(b.PowerAction.ServerId)
 		}
 		_ = send(ack(env.Id))
 
