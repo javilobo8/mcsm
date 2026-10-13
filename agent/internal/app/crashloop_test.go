@@ -270,3 +270,29 @@ func TestManualStartResetsTheCountBeforeStarting(t *testing.T) {
 		t.Fatalf("la cuenta tras Arrancar = %d (el cierre durante el arranque y este)", n)
 	}
 }
+
+// OOS2: una parada por bucle decidida antes de que llegue una versión nueva de la spec (p. ej. más memoria) no
+// retiene esa versión nueva: la configuración nueva se prueba.
+func TestQueuedCrashLoopStopYieldsToANewSpecVersion(t *testing.T) {
+	a, fake, s, cid := crashApp(t)
+	for i := 0; i < cap(a.sem); i++ {
+		a.sem <- struct{}{}
+	}
+	for i := 0; i < crashloop.MaxCrashes+1; i++ {
+		a.onDie("a", die(cid, "1"))
+	}
+	v2 := specMsg("a", "alpha", 2)
+	v2.SpecJson = []byte(strings.Replace(specJSON, `"2G"`, `"3G"`, 1))
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_ApplySpec{ApplySpec: &mcsmv1.ApplySpec{Server: v2}}}, s.send)
+	for i := 0; i < cap(a.sem); i++ {
+		<-a.sem
+	}
+	waitBackground(t, a)
+	if l, _ := a.st.CrashLatch("a"); l != nil {
+		t.Fatalf("retención de la versión nueva = %+v", l)
+	}
+	ins, err := fake.Inspect(context.Background(), a.rec.ContainerID(context.Background(), "a"))
+	if err != nil || !ins.Running {
+		t.Fatalf("la versión nueva sigue en marcha: %+v %v", ins, err)
+	}
+}

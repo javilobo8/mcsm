@@ -222,3 +222,37 @@ func TestCrashLoopStopUnlessStartedYieldsToPower(t *testing.T) {
 		t.Fatal("retiene y para")
 	}
 }
+
+// OOS2: una versión nueva de la spec (Apply o la de SyncSpecs) cuenta como un arranque nuevo; la misma versión no.
+func TestStartGenBumpsOnNewSpecVersions(t *testing.T) {
+	r, st, _, _, _ := setup(t)
+	ctx := context.Background()
+	put(t, st, "a", "alpha", 1, running, specJSON)
+	if err := r.Reconcile(ctx, "a"); err != nil {
+		t.Fatal(err)
+	}
+	g0 := r.StartGen("a")
+	if err := r.StoreForce(&mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 1, DesiredState: running, SpecJson: []byte(specJSON)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Apply(ctx, &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 1, DesiredState: running, SpecJson: []byte(specJSON)}); err != nil {
+		t.Fatal(err)
+	}
+	if r.StartGen("a") != g0 {
+		t.Fatal("la misma versión no cambia la generación")
+	}
+	v2 := []byte(strings.Replace(specJSON, `"2G"`, `"3G"`, 1))
+	if err := r.Apply(ctx, &mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 2, DesiredState: running, SpecJson: v2}); err != nil {
+		t.Fatal(err)
+	}
+	g1 := r.StartGen("a")
+	if g1 == g0 {
+		t.Fatal("Apply de una versión nueva cambia la generación")
+	}
+	if err := r.StoreForce(&mcsmv1.ServerSpec{ServerId: "a", Slug: "alpha", Version: 3, DesiredState: running, SpecJson: v2}); err != nil {
+		t.Fatal(err)
+	}
+	if r.StartGen("a") == g1 {
+		t.Fatal("StoreForce de una versión nueva cambia la generación")
+	}
+}
