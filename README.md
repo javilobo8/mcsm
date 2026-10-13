@@ -4,15 +4,19 @@ Panel self-hosted para gestionar servidores de Minecraft (imagen `itzg/minecraft
 
 ## Puesta en marcha (máquina principal)
 
+Las imágenes se publican en GitHub Container Registry con cada versión: `ghcr.io/javilobo8/mcsm-panel` y `ghcr.io/javilobo8/mcsm-agent` (`linux/amd64` y `linux/arm64`; tags `X.Y.Z`, `X.Y` y `latest`). De este repositorio solo necesitas `deploy/` (los compose y `.env.example`).
+
 1. `docker network create mcsm 2>/dev/null || true` (red compartida por el agente y los servidores; los compose la declaran como externa).
-2. `cp deploy/.env.example deploy/.env` y edita `PANEL_PUBLIC_URL` (`http://<ip-de-esta-máquina>:8080`, con el puerto: es la dirección que se pone en el `docker run` de los demás nodos; si lo dejas vacío, el panel usa la dirección con la que lo abres en el navegador) y `DATA_ROOT` (ruta absoluta).
-3. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build panel`
+2. `cp deploy/.env.example deploy/.env` y edita `PANEL_PUBLIC_URL` (`http://<ip-de-esta-máquina>:8080`, con el puerto: es la dirección que se pone en el `docker run` de los demás nodos; si lo dejas vacío, el panel usa la dirección con la que lo abres en el navegador) y `DATA_ROOT` (ruta absoluta). Fija también `MCSM_VERSION` (p. ej. `0.9.0`; vacío = `latest`) para que una actualización sea siempre un paso consciente.
+3. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d panel`
 4. Abre `http://<ip>:8080` y crea la contraseña (mínimo 8 caracteres). El panel recién instalado escribe en su log un **token de configuración inicial** (`docker compose -f deploy/docker-compose.yml logs panel`, línea «Token de configuración inicial») y la web lo pide para crear la contraseña; o fíjalo tú con `PANEL_SETUP_TOKEN` en `deploy/.env`. Así cierra la ventana del «primer visitante» (una web de Internet no puede fijar la contraseña por DNS rebinding). Ve a **Nodos → Añadir nodo**, pon en «Directorio de datos» el mismo `DATA_ROOT` del `.env` y copia el token en `ENROLL_TOKEN` del `.env`. El token caduca a los 15 minutos y sirve una sola vez.
-5. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build agent`. El nodo aparece como conectado. Este agente llega al panel por la red interna del compose (`http://panel:8080`). El alta queda guardada en el volumen `mcsm_agent-data`: a partir de ahí `ENROLL_TOKEN` se ignora.
+5. `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d agent`. El nodo aparece como conectado. Este agente llega al panel por la red interna del compose (`http://panel:8080`). El alta queda guardada en el volumen `mcsm_agent-data`: a partir de ahí `ENROLL_TOKEN` se ignora.
+
+**Construir desde el código** (en vez de descargar las imágenes): añade `-f deploy/docker-compose.build.yml` a cada `docker compose` y `--build` a los `up` (p. ej. `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env up -d --build panel`). Así las imágenes se llaman `mcsm-panel:latest` y `mcsm-agent:latest`, y el `docker run` de **Añadir nodo** usa `mcsm-agent:latest`, que tendrás que construir en cada nodo (`docker build -t mcsm-agent:latest agent/`).
 
 ## Añadir otra máquina
 
-Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → Añadir nodo** copia el `docker run` que se muestra y ejecútalo allí antes de 15 minutos (necesita la imagen `mcsm-agent`: constrúyela con `docker build -t mcsm-agent:latest agent/` con el repositorio clonado allí, o cópiala desde la principal con `docker save mcsm-agent:latest | ssh <usuario>@<nodo> docker load`; o usa `deploy/docker-compose.node.yml` con `PANEL_URL` y `ENROLL_TOKEN`).
+Crea la red (`docker network create mcsm 2>/dev/null || true`). En **Nodos → Añadir nodo** copia el `docker run` que se muestra y ejecútalo allí antes de 15 minutos. Usa la imagen del agente de la misma versión que el panel (`ghcr.io/javilobo8/mcsm-agent:<versión>`), que Docker descarga solo; con un panel construido desde el código es `mcsm-agent:latest` y hay que construirla allí. O usa `deploy/docker-compose.node.yml` con `PANEL_URL`, `ENROLL_TOKEN` y `MCSM_VERSION` en su `.env` (con un agente construido allí, `MCSM_AGENT_IMAGE=mcsm-agent:latest`).
 
 `DATA_ROOT` se monta en el agente **con la misma ruta dentro y fuera** (`-v /srv/minecraft:/srv/minecraft`): el agente lo comprueba al arrancar y no arranca si no está montado desde el host.
 
@@ -44,13 +48,15 @@ Si sospechas que el token de un nodo se ha filtrado, rotarlo no basta: borra el 
 
 ## Actualizar
 
-**Primero los agentes y luego el panel.** Un agente antiguo rechaza lo que no conoce, pero un panel nuevo puede pedirle cosas que todavía no sabe hacer. En cada máquina, `git pull` y:
+**Primero los agentes y luego el panel.** Un agente antiguo rechaza lo que no conoce, pero un panel nuevo puede pedirle cosas que todavía no sabe hacer. Usa la misma versión en todas las máquinas: en cada `.env`, `MCSM_VERSION=<nueva>` (con `latest`, basta con descargar de nuevo). Las notas de cada versión están en las [Releases](https://github.com/javilobo8/mcsm/releases).
 
 1. Agentes.
-   - En la máquina principal: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --no-deps agent` (`--no-deps`: sin él, Compose también reconstruiría y reiniciaría el panel).
-   - En los nodos con compose: `docker compose -f deploy/docker-compose.node.yml --env-file deploy/.env up -d --build`.
-   - En los nodos con `docker run`: `docker build -t mcsm-agent:latest agent/`, luego `docker stop mcsm-agent && docker rm mcsm-agent` (con `stop` tiene sus 30 s para terminar; `rm -f` lo mata en el acto) y vuelve a lanzar el mismo `docker run`. El volumen `mcsm-agent-data` conserva el alta, así que el `ENROLL_TOKEN` caducado da igual.
-2. Panel: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --no-deps panel`.
+   - En la máquina principal: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env pull agent` y `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --no-deps agent` (`--no-deps`: sin él, Compose también reiniciaría el panel).
+   - En los nodos con compose: `docker compose -f deploy/docker-compose.node.yml --env-file deploy/.env pull` y `docker compose -f deploy/docker-compose.node.yml --env-file deploy/.env up -d`.
+   - En los nodos con `docker run`: `docker pull ghcr.io/javilobo8/mcsm-agent:<nueva>`, luego `docker stop mcsm-agent && docker rm mcsm-agent` (con `stop` tiene sus 30 s para terminar; `rm -f` lo mata en el acto) y vuelve a lanzar el mismo `docker run` cambiando la versión de la imagen. El volumen `mcsm-agent-data` conserva el alta, así que el `ENROLL_TOKEN` caducado da igual.
+2. Panel: `docker compose -f deploy/docker-compose.yml --env-file deploy/.env pull panel` y `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --no-deps panel`.
+
+Construyendo desde el código: `git pull` en cada máquina y los mismos pasos con `-f deploy/docker-compose.build.yml` y `up -d --build` en vez de `pull` (en los nodos con `docker run`, `docker build -t mcsm-agent:latest agent/`).
 
 El agente muestra su versión (`agent/VERSION`) en **Nodos**. Las imágenes base (Node, `docker:dind`, Playwright…) van fijadas por digest; para subirlas de versión, consulta el nuevo con `docker buildx imagetools inspect <imagen>:<tag>` y cambia tag y digest a la vez.
 
@@ -219,6 +225,18 @@ Tests:
 `pnpm e2e` (= `bash deploy/e2e/run.sh`) construye el compose de despliegue como proyecto `mcsm-test-e2e` (panel en el puerto 18080, servidores en 26600–26620), añade un segundo nodo en `docker:dind` y lanza Playwright en un contenedor. Las capturas quedan en `panel/apps/e2e/screenshots/` y los logs en `deploy/data/e2e/logs/`. `bash deploy/e2e/run.sh up|test|down` ejecuta cada fase por separado y `E2E_KEEP=1` deja todo levantado al terminar. Solo toca recursos `mcsm-test-e2e*`.
 
 Protocolo: edita `proto/`, luego `pnpm gen` y commitea lo generado.
+
+### CI y versiones
+
+GitHub Actions ejecuta en cada push a `master` y en cada PR `buf lint`, `buf breaking` (contra la rama destino del PR), que el código generado esté al día, `go vet` y `go test -race` del agente, y typecheck, tests y build del panel (`.github/workflows/ci.yml`). La integración con Docker real y la E2E solo se ejecutan en local.
+
+Para publicar una versión:
+
+1. Sube `agent/VERSION` (p. ej. `0.10.0`), commitea y haz push.
+2. Crea la Release con el tag `v` + esa versión: `gh release create v0.10.0 --generate-notes` (o desde la web). Si es una prerelease (`--prerelease` o un sufijo como `-rc.1`), no mueve `latest` ni `X.Y`.
+3. `.github/workflows/release.yml` comprueba que el tag coincide con `agent/VERSION`, repite las comprobaciones de la CI, construye las dos imágenes para `linux/amd64` y `linux/arm64` en runners nativos y las publica en `ghcr.io/javilobo8/` con atestación de procedencia y SBOM. La imagen del panel lleva fijada la del agente de su misma versión (el `docker run` de **Añadir nodo**).
+
+La primera vez que se publican, GitHub crea los paquetes `mcsm-panel` y `mcsm-agent` como **privados**: en GitHub → tu perfil → **Packages** → cada paquete → **Package settings** → **Change visibility** → **Public**. Solo hace falta una vez por paquete (y no se puede deshacer).
 
 ## Seguridad
 

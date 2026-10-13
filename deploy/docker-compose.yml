@@ -1,9 +1,10 @@
 # Requiere la red compartida: docker network create mcsm
+# Imágenes publicadas en GHCR; MCSM_VERSION (en .env) fija la versión, vacío = latest. Para construir desde el
+# código, añade -f deploy/docker-compose.build.yml.
 name: mcsm
 services:
   panel:
-    build: { context: .., dockerfile: deploy/panel.Dockerfile }
-    image: mcsm-panel:latest
+    image: ghcr.io/javilobo8/mcsm-panel:${MCSM_VERSION:-latest}
     init: true
     restart: unless-stopped
     ports: ["8080:8080"]
@@ -15,8 +16,7 @@ services:
     volumes:
       - panel-data:/data
   agent:
-    build: { context: ../agent }
-    image: mcsm-agent:latest
+    image: ghcr.io/javilobo8/mcsm-agent:${MCSM_VERSION:-latest}
     # docker stop mata a los 10 s; al pararlo, el agente espera a la vez, hasta 25 s, a sus
     # operaciones de archivos y a las copias en curso (save-on) antes de salir.
     stop_grace_period: 30s
