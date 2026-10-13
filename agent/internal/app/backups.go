@@ -139,7 +139,7 @@ func newBackupService(a *App, clock backup.Clock) *backupService {
 		slots:   make(chan struct{}, maxParallelJobs),
 	}
 	// a.send se lee al entregar: se fija antes de lanzar goroutines (Run o el test).
-	b.out = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, a.log)
+	b.out = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, a.log, "avisos de copias y jobs")
 	b.jobs = jobs.New(a.st, b.out.post, clock.Now)
 	b.players = backup.NewPlayerWatch(clock.Now)
 	b.sched = backup.NewScheduler(clock, b.onSchedule)
@@ -1073,11 +1073,12 @@ func (b *backupService) lastBackup(t *target) time.Time {
 // jobs. Un job emite desde la copia (con el mundo en save-off) y Tracker.Begin lo hace con su
 // mutex tomado: un envío lento —con la sesión WS medio caída cada escritura espera hasta
 // 10 s— no debe frenarlos. Con la cola llena el aviso se descarta: el inventario que el panel
-// pide tras cada Hello repone el estado.
+// pide tras cada Hello repone el estado. plan-9: los Event van por otra outbox (App.events).
 type outbox struct {
 	deliver func(*mcsmv1.Envelope) error
 	ch      chan outItem
 	log     *slog.Logger
+	what    string // qué lleva la cola, para el aviso de descartes (p. ej. «avisos de copias y jobs»)
 	dropped atomic.Uint64
 }
 
@@ -1087,8 +1088,8 @@ type outItem struct {
 	mark chan struct{}
 }
 
-func newOutbox(deliver func(*mcsmv1.Envelope) error, size int, log *slog.Logger) *outbox {
-	return &outbox{deliver: deliver, ch: make(chan outItem, size), log: log}
+func newOutbox(deliver func(*mcsmv1.Envelope) error, size int, log *slog.Logger, what string) *outbox {
+	return &outbox{deliver: deliver, ch: make(chan outItem, size), log: log, what: what}
 }
 
 // post encola un aviso sin bloquear.
@@ -1116,7 +1117,7 @@ func (o *outbox) run(ctx context.Context) {
 			}
 			_ = o.deliver(it.env) // sin conexión falla al instante: el inventario lo repone
 			if d := o.dropped.Load(); d != reported {
-				o.log.Warn("avisos de copias y jobs descartados: la cola hacia el panel estaba llena", "nuevos", d-reported, "total", d)
+				o.log.Warn(o.what+" descartados: la cola hacia el panel estaba llena", "nuevos", d-reported, "total", d)
 				reported = d
 			}
 		}

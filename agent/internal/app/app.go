@@ -108,7 +108,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot)})
 	a.rec.SetOnDemand(a.onDemand)
 	// plan-9: cola de Event (a.send se lee al entregar) y el drift del reconciliador, sin bloquear su lock.
-	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log)
+	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log, "eventos para el panel (Event)")
 	a.rec.SetEventSink(func(id, kind, msg string) { a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_WARN, kind, msg) })
 	return a
 }
