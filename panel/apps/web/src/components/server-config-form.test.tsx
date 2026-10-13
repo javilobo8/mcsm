@@ -15,7 +15,7 @@ const server: ServerDto = {
   id: "s1", nodeId: "n1", name: "Supervivencia", slug: "supervivencia", specVersion: 3, desiredState: "running",
   observed: null, observedSpecVersion: 3, observedAt: null, createdAt: "", updatedAt: "", importedFrom: null,
   spec: {
-    imageTag: "java21", type: "FABRIC", version: "1.21.4", memory: "4G", properties: { motd: "Hola" }, env: {},
+    imageTag: "java21", type: "FABRIC", version: "1.21.4", memory: "4G", properties: { motd: "Hola" }, env: {}, build: "",
     resources: { cpus: 0, memLimit: "" }, restartPolicy: "unless-stopped",
     mods: { modrinthProjects: ["lithium"], curseforgeFiles: [], urls: [] },
     ports: { game: 25565, extra: [] }, rconPassword: "secretosecreto",

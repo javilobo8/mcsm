@@ -12,7 +12,7 @@ describe("plantillas", () => {
     expect(t).not.toHaveProperty("rconPassword");
     expect(t).not.toHaveProperty("curseforgeApiKey");
     const { ports: _p, rconPassword: _r, ...rest } = modded;
-    expect(t).toEqual(rest);
+    expect(t).toEqual({ ...rest, build: "" });
   });
   it("una plantilla se instancia como SpecInput válida añadiendo solo puertos", () => {
     const t = specToTemplate(modded);

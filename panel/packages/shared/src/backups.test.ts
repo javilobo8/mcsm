@@ -44,7 +44,7 @@ describe("backupsSchema", () => {
 
 describe("spec con backups", () => {
   it("la sección es opcional: la fixture sin backups no cambia", () => {
-    expect(specSchema.parse(fixture)).toEqual(fixture);
+    expect(specSchema.parse(fixture)).toEqual({ ...fixture, build: "" });
   });
   it("valida la sección si viene y rellena sus valores por defecto", () => {
     expect(specSchema.safeParse({ ...fixture, backups: { enabled: true, cron: "0 4 * * MON" } }).success).toBe(false);
