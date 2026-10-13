@@ -69,7 +69,7 @@ export function NodeDetailPage() {
         </ul>
       </section>
       <ConfirmDialog open={confirm} title={`Rotar el token de «${n.name}»`}
-        description="El agente recibe un token nuevo, lo guarda y se reconecta con él; el anterior deja de valer cuando lo haga. Úsalo si el token pudo filtrarse (copia del volumen del agente, otra máquina…)."
+        description="El agente recibe un token nuevo, lo guarda y se reconecta con él; el anterior deja de valer cuando lo haga. Sirve para renovarlo de forma periódica. Si sospechas que el token se ha filtrado, rotarlo no basta (quien lo tenga podría recibir el nuevo): borra el nodo y vuelve a darlo de alta."
         confirmLabel="Rotar token" pending={rotate.isPending} error={rotate.error ? (rotate.error instanceof ApiError ? rotate.error.message : "Error inesperado") : null}
         onConfirm={() => rotate.mutate()} onCancel={() => setConfirm(false)} />
     </div>
