@@ -23,7 +23,7 @@ export function RouterBadge({ status }: { status: RouterStatus }) {
   return <Badge variant="outline" className={tones[status.tone]} title={status.detail ?? undefined}>{status.label}</Badge>;
 }
 
-/** Formulario del router de un nodo (dentro del diálogo). Exportado para los tests. */
+/** Router form of a node (inside the dialog). Exported for the tests. */
 export function NodeRouterForm({ node, router, onSaved }: { node: NodeDto; router: RouterDto; onSaved: (r: RouterDto) => void }) {
   const [form, setForm] = useState(() => routerFormFrom(router.spec));
   const errors = routerFormErrors(form);
@@ -33,55 +33,55 @@ export function NodeRouterForm({ node, router, onSaved }: { node: NodeDto; route
   return (
     <form className="flex flex-col gap-4" onSubmit={dialogSubmit(() => { if (!invalid) save.mutate(); })}>
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-zinc-400">Estado:</span> <RouterBadge status={status} />
+        <span className="text-zinc-400">Status:</span> <RouterBadge status={status} />
         {router.observed?.image && <span className="font-mono text-xs text-zinc-500">{router.observed.image}</span>}
       </div>
       {status.detail && <p role="alert" className="text-xs text-red-400">{status.detail}</p>}
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" className="size-4 accent-emerald-500" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-        Activar el router en este nodo
+        Enable the router on this node
       </label>
       <div className="flex max-w-xs flex-col gap-1.5">
-        <Label htmlFor="router-port">Puerto del host</Label>
+        <Label htmlFor="router-port">Host port</Label>
         <Input id="router-port" inputMode="numeric" value={form.port} aria-invalid={!!errors.port} onChange={(e) => setForm({ ...form, port: e.target.value })} />
         {errors.port
           ? <p role="alert" className="text-xs text-red-400">{errors.port}</p>
-          : <p className="text-xs text-muted-foreground">25565 es el puerto por defecto de Minecraft: así los jugadores no escriben puerto. Ningún servidor del nodo puede publicarlo.</p>}
+          : <p className="text-xs text-muted-foreground">25565 is Minecraft's default port, so players do not have to type a port. No server on the node can publish it.</p>}
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" className="size-4 accent-emerald-500" checked={form.autoscale} onChange={(e) => setForm({ ...form, autoscale: e.target.checked })} />
-        Autoscale: arrancar al entrar un jugador y parar sin jugadores
+        Autoscale: start when a player joins and stop when there are no players
       </label>
       {form.autoscale && (
         <div className="flex max-w-xs flex-col gap-1.5">
-          <Label htmlFor="router-minutes">Minutos sin jugadores hasta parar</Label>
+          <Label htmlFor="router-minutes">Minutes without players until stopping</Label>
           <Input id="router-minutes" inputMode="numeric" value={form.minutes} aria-invalid={!!errors.minutes} onChange={(e) => setForm({ ...form, minutes: e.target.value })} />
           {errors.minutes && <p role="alert" className="text-xs text-red-400">{errors.minutes}</p>}
           <p className="text-xs text-muted-foreground">
-            Los servidores con hostname quedan bajo demanda: mc-router los arranca cuando alguien intenta entrar y los para tras esos minutos sin jugadores; el panel deja de arrancarlos y pararlos por su cuenta. Parar desde el panel no impide que un jugador lo vuelva a arrancar al entrar. Al recrearse (cambio de configuración, restauración, copia en frío) un servidor dormido arranca y mc-router lo vuelve a dormir tras esos minutos sin jugadores.
+            Servers with a hostname become on-demand: mc-router starts them when someone tries to join and stops them after those minutes without players; the panel stops starting and stopping them on its own. Stopping from the panel does not prevent a player from starting it again by joining. When a sleeping server is recreated (configuration change, restore, cold backup) it starts and mc-router puts it back to sleep after those minutes without players.
           </p>
         </div>
       )}
       {form.autoscale && (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="router-players">Jugadores que pueden despertar servidores</Label>
-          <Textarea id="router-players" rows={3} value={form.players} aria-invalid={!!errors.players} placeholder="Uno por línea (nombre o UUID)"
+          <Label htmlFor="router-players">Players who can wake servers</Label>
+          <Textarea id="router-players" rows={3} value={form.players} aria-invalid={!!errors.players} placeholder="One per line (name or UUID)"
             onChange={(e) => setForm({ ...form, players: e.target.value })} />
           {errors.players
             ? <p role="alert" className="text-xs text-red-400">{errors.players}</p>
-            : <p className="text-xs text-muted-foreground">Vacío: cualquiera que llegue al puerto del router despierta los servidores dormidos (y con varios a la vez, el nodo se puede quedar sin memoria). Cambiar la lista reinicia el router: los jugadores conectados por él se desconectan.</p>}
+            : <p className="text-xs text-muted-foreground">Empty: anyone who reaches the router port wakes the sleeping servers (and with several at once, the node can run out of memory). Changing the list restarts the router: players connected through it are disconnected.</p>}
         </div>
       )}
       <p className="text-xs text-muted-foreground">
-        El router (itzg/mc-router) usa el socket de Docker del nodo para encontrar los servidores con hostname (y, con autoscale, arrancarlos y pararlos): tiene control total de Docker en esa máquina, lo que equivale a root, y montarlo en solo lectura no lo limita. Va endurecido y con la imagen fijada, pero actívalo solo en nodos de confianza. Si el socket no da acceso a su grupo (o Docker funciona en modo rootless) el router no verá los servidores. Los jugadores entran por el hostname de cada servidor (Configuración → Red) con un DNS local que apunte a esta máquina; cada servidor sigue teniendo también su puerto propio.
+        The router (itzg/mc-router) uses the node's Docker socket to find the servers with a hostname (and, with autoscale, start and stop them): it has full control of Docker on that machine, which is equivalent to root, and mounting it read-only does not limit it. It runs hardened and with the image pinned, but enable it only on trusted nodes. If the socket does not give access to its group (or Docker runs in rootless mode) the router will not see the servers. Players join through each server's hostname (Configuration → Network) with a local DNS pointing at this machine; each server also keeps its own port.
       </p>
-      <Button type="submit" disabled={save.isPending || invalid}>{save.isPending ? "Guardando…" : "Guardar"}</Button>
+      <Button type="submit" disabled={save.isPending || invalid}>{save.isPending ? "Saving…" : "Save"}</Button>
       {save.error && <p role="alert" className="text-sm text-red-400">{save.error.message}</p>}
     </form>
   );
 }
 
-/** Celda de la tabla de Nodos: estado del router y diálogo para configurarlo. */
+/** Cell of the Nodes table: router status and dialog to configure it. */
 export function NodeRouterCell({ node }: { node: NodeDto }) {
   const router = useNodeRouter(node.id);
   const qc = useQueryClient();
@@ -92,12 +92,12 @@ export function NodeRouterCell({ node }: { node: NodeDto }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="ghost" aria-label={`Router del nodo ${node.name}: ${status.label}`}><RouterBadge status={status} /></Button>
+        <Button size="sm" variant="ghost" aria-label={`Router of node ${node.name}: ${status.label}`}><RouterBadge status={status} /></Button>
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Router de «{node.name}»</DialogTitle>
-          <DialogDescription>mc-router: entrada de jugadores por hostname en un único puerto del nodo.</DialogDescription>
+          <DialogTitle>Router of “{node.name}”</DialogTitle>
+          <DialogDescription>mc-router: player entry by hostname on a single node port.</DialogDescription>
         </DialogHeader>
         {open && <NodeRouterForm node={node} router={router.data} onSaved={(r) => { qc.setQueryData(routerKey(node.id), r); setOpen(false); }} />}
       </DialogContent>

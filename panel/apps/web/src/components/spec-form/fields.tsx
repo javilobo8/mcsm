@@ -5,16 +5,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { listToText, kvToText, parseKv, parseLines, readNumberField, shouldResyncNumber, validateListItems, type ListItemKind } from "@/lib/spec-edit";
 
-/** Notifica errores de campo al formulario (null = el campo vuelve a ser válido). */
+/** Reports field errors to the form (null = the field is valid again). */
 export type ReportError = (field: string, message: string | null) => void;
 
 export const hintId = (id: string) => `${id}-hint`;
 export const errId = (id: string) => `${id}-err`;
-/** Valor de aria-describedby para un campo con hint y/o error. */
+/** Value of aria-describedby for a field with a hint and/or an error. */
 export const describedBy = (id: string, hint: unknown, error: string | null | undefined) =>
   [hint ? hintId(id) : null, error ? errId(id) : null].filter(Boolean).join(" ") || undefined;
 
-/** Envuelve UN control: le inyecta aria-describedby con el hint y el error presentes (el control debe aceptar esa prop). */
+/** Wraps ONE control: injects aria-describedby with the hint and error present (the control must accept that prop). */
 export function Field({ id, label, hint, error, children }: { id: string; label: string; hint?: React.ReactNode; error?: string | null; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -26,7 +26,7 @@ export function Field({ id, label, hint, error, children }: { id: string; label:
   );
 }
 
-/** Lista en un textarea (una entrada por línea). Guarda su propio texto para no comerse los saltos de línea al escribir. */
+/** List in a textarea (one entry per line). Keeps its own text so it does not swallow line breaks while typing. */
 export function ListField({ id, label, value, onChange, onError, kind = "entry", placeholder, hint, rows = 4 }: {
   id: string; label: string; value: readonly string[] | undefined; onChange: (v: string[]) => void;
   onError?: ReportError; kind?: ListItemKind; placeholder?: string; hint?: React.ReactNode; rows?: number;
@@ -34,7 +34,7 @@ export function ListField({ id, label, value, onChange, onError, kind = "entry",
   const [text, setText] = useState(() => listToText(value));
   const [error, setError] = useState<string | null>(null);
   useEffect(() => () => onError?.(id, null), [id, onError]);
-  // Resincroniza si el padre reemplaza el valor (no si es el eco de lo emitido).
+  // Resyncs if the parent replaces the value (not if it is the echo of what was emitted).
   const emitted = useRef(listToText(value));
   useEffect(() => {
     const incoming = listToText(value);
@@ -57,17 +57,17 @@ export function ListField({ id, label, value, onChange, onError, kind = "entry",
   );
 }
 
-/** Pares clave=valor en un textarea. Si una línea es inválida, avisa con onError y no propaga el valor. */
+/** Key=value pairs in a textarea. If a line is invalid, it reports through onError and does not propagate the value. */
 export function KvField({ id, label, value, onChange, onError, placeholder, hint, rows = 6, validate }: {
   id: string; label: string; value: Record<string, string> | undefined; onChange: (v: Record<string, string>) => void;
   onError: ReportError; placeholder?: string; hint?: React.ReactNode; rows?: number;
-  /** Validación extra de los pares ya parseados (claves reservadas…): mensaje o null. Si falla, no se propaga el valor. */
+  /** Extra validation of the already parsed pairs (reserved keys…): message or null. If it fails, the value is not propagated. */
   validate?: (kv: Record<string, string>) => string | null;
 }) {
   const [text, setText] = useState(() => kvToText(value));
   const [error, setError] = useState<string | null>(null);
   useEffect(() => () => onError(id, null), [id, onError]);
-  // Resincroniza si el padre reemplaza el valor (recarga, descartar cambios); no si es eco de lo que escribimos.
+  // Resyncs if the parent replaces the value (reload, discard changes); not if it is the echo of what we typed.
   const emitted = useRef(kvToText(value));
   useEffect(() => {
     const incoming = kvToText(value);
@@ -95,7 +95,7 @@ export function KvField({ id, label, value, onChange, onError, placeholder, hint
   );
 }
 
-/** Número opcional (vacío = undefined). Solo acepta enteros NO negativos (o decimales no negativos con integer=false): si hace falta un negativo, ampliar la regex.  Avisa con onError si no es un número válido en [min, max]. */
+/** Optional number (empty = undefined). Only accepts NON-negative integers (or non-negative decimals with integer=false): if a negative is needed, extend the regex.  Reports through onError if it is not a valid number in [min, max]. */
 export function NumberField({ id, label, value, onChange, onError, min, max, integer = true, placeholder, hint, zeroIsEmpty }: {
   zeroIsEmpty?: boolean;
   id: string; label: string; value: number | undefined; onChange: (v: number | undefined) => void; onError: ReportError;
@@ -105,13 +105,13 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
   const [error, setError] = useState<string | null>(null);
   useEffect(() => () => onError(id, null), [id, onError]);
   const emitted = useRef(value);
-  // Solo cuando cambia el valor del padre: `text` y `zeroIsEmpty` se leen pero no son dependencias a propósito.
-  // Con `text` el efecto correría a cada tecla y compararía el valor anterior del padre con lo que se está
-  // escribiendo (pisaría "0." o un texto inválido aún no corregido); la decisión está en shouldResyncNumber.
+  // Only when the parent's value changes: `text` and `zeroIsEmpty` are read but deliberately not dependencies.
+  // With `text` the effect would run on every keystroke and compare the parent's previous value with what is being
+  // typed (it would overwrite "0." or an invalid text not yet corrected); the decision is in shouldResyncNumber.
   useEffect(() => {
     if (!shouldResyncNumber({ text, incoming: value, emitted: emitted.current, zeroIsEmpty })) { emitted.current = value; return; }
     emitted.current = value; setText(value === undefined ? "" : String(value)); setError(null); onError(id, null);
-  }, [value, id, onError]); // eslint-disable-line react-hooks/exhaustive-deps -- ver el comentario de arriba
+  }, [value, id, onError]); // eslint-disable-line react-hooks/exhaustive-deps -- see the comment above
   const update = (t: string) => {
     setText(t);
     const r = readNumberField(t, { label, integer, min, max });
@@ -126,10 +126,10 @@ export function NumberField({ id, label, value, onChange, onError, min, max, int
   );
 }
 
-const DEFAULT = "__default__"; // Radix Select no admite value=""
+const DEFAULT = "__default__"; // Radix Select does not support value=""
 
-/** Select con opción "(por defecto)" que equivale a no fijar el valor. */
-export function OptionalSelect({ id, value, options, onChange, defaultLabel = "(por defecto)", "aria-describedby": describedby }: {
+/** Select with a "(default)" option equivalent to not setting the value. */
+export function OptionalSelect({ id, value, options, onChange, defaultLabel = "(default)", "aria-describedby": describedby }: {
   id: string; "aria-describedby"?: string; value: string | undefined; options: readonly { value: string; label: string }[]; onChange: (v: string | undefined) => void; defaultLabel?: string;
 }) {
   const known = value === undefined || options.some((o) => o.value === value);
@@ -145,7 +145,7 @@ export function OptionalSelect({ id, value, options, onChange, defaultLabel = "(
   );
 }
 
-/** Select obligatorio; si el valor actual no está en la lista (p. ej. un tipo importado) se añade. */
+/** Required select; if the current value is not in the list (e.g. an imported type) it is added. */
 export function RequiredSelect({ id, value, options, onChange, "aria-describedby": describedby }: {
   id: string; "aria-describedby"?: string; value: string; options: readonly { value: string; label: string }[]; onChange: (v: string) => void;
 }) {
@@ -159,8 +159,8 @@ export function RequiredSelect({ id, value, options, onChange, "aria-describedby
 }
 
 /**
- * Texto de una línea con validación: si `validate` falla avisa con onError y NO propaga el valor
- * (el spec conserva el último válido). `externalError` suma un error que depende de otro campo.
+ * Single-line text with validation: if `validate` fails it reports through onError and does NOT propagate the value
+ * (the spec keeps the last valid one). `externalError` adds an error that depends on another field.
  */
 export function ValidatedInput({ id, label, value, onChange, onError, validate, externalError, placeholder, hint }: {
   id: string; label: string; value: string; onChange: (v: string) => void; onError: ReportError;

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ServerConfigForm } from "./server-config-form";
 import type { ServerDto } from "@/lib/api";
 
-// Sin RouterProvider: useBlocker se sustituye por un espía (el resto del router, el real).
+// Without RouterProvider: useBlocker is replaced by a spy (the rest of the router is the real one).
 const { blockers } = vi.hoisted(() => ({ blockers: [] as { disabled?: boolean; enableBeforeUnload?: () => boolean }[] }));
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
@@ -12,25 +12,25 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 }));
 
 const server: ServerDto = {
-  id: "s1", nodeId: "n1", name: "Supervivencia", slug: "supervivencia", specVersion: 3, desiredState: "running",
+  id: "s1", nodeId: "n1", name: "Survival", slug: "survival", specVersion: 3, desiredState: "running",
   observed: null, observedSpecVersion: 3, observedAt: null, createdAt: "", updatedAt: "", importedFrom: null,
   spec: {
-    imageTag: "java21", type: "FABRIC", version: "1.21.4", memory: "4G", properties: { motd: "Hola" }, env: {}, build: "",
+    imageTag: "java21", type: "FABRIC", version: "1.21.4", memory: "4G", properties: { motd: "Hello" }, env: {}, build: "",
     resources: { cpus: 0, memLimit: "" }, restartPolicy: "unless-stopped",
     mods: { modrinthProjects: ["lithium"], curseforgeFiles: [], urls: [] },
     ports: { game: 25565, extra: [] }, rconPassword: "secretosecreto",
   },
 };
 
-describe("ServerConfigForm (render en servidor)", () => {
-  it("pinta el formulario por secciones, oculta RCON y ofrece guardar como plantilla", () => {
+describe("ServerConfigForm (server render)", () => {
+  it("renders the form by sections, hides RCON and offers to save as a template", () => {
     const html = renderToString(<QueryClientProvider client={new QueryClient()}><ServerConfigForm server={server} /></QueryClientProvider>);
-    expect(html).toContain("Supervivencia");
-    expect(html).toContain("mcsm-supervivencia");
-    expect(html).toContain("Guardar como plantilla");
-    expect(html).toContain("Revisar y aplicar");
+    expect(html).toContain("Survival");
+    expect(html).toContain("mcsm-survival");
+    expect(html).toContain("Save as template");
+    expect(html).toContain("Review and apply");
     expect(html).not.toContain("secretosecreto");
-    // Registra la guarda de salida, desactivada mientras no haya cambios sin guardar.
+    // Registers the exit guard, disabled while there are no unsaved changes.
     expect(blockers.at(-1)).toMatchObject({ disabled: true });
     expect(blockers.at(-1)?.enableBeforeUnload?.()).toBe(false);
   });

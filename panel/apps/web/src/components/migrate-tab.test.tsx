@@ -13,11 +13,11 @@ const server = {
   spec: { imageTag: "java21", type: "PAPER", version: "1.21.4", memory: "2G", ports: { game: 25565, extra: [] } },
 } as unknown as ServerDto;
 const nodes: NodeDto[] = [
-  { id: "a", name: "Casa", dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "", tokenRotationPending: false },
-  { id: "b", name: "Garaje", dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "", tokenRotationPending: false },
+  { id: "a", name: "Home", dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "", tokenRotationPending: false },
+  { id: "b", name: "Garage", dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "", tokenRotationPending: false },
 ];
 const job = (over: Partial<JobDto>): JobDto => ({
-  id: "j1", type: "migrate", serverId: "s1", nodeId: "a", status: "running", progress: 40, message: "Paso 3/7 · Subir la copia al panel: subiendo",
+  id: "j1", type: "migrate", serverId: "s1", nodeId: "a", status: "running", progress: 40, message: "Step 3/7 · Upload the backup to the panel: uploading",
   payload: {}, createdAt: "2026-10-12T04:00:00Z", updatedAt: "", startedAt: null, finishedAt: null, ...over,
 });
 
@@ -30,52 +30,52 @@ function render(jobs: JobDto[], migration: MigrationDto | null = null, s: Server
 }
 
 describe("MigrateTab", () => {
-  it("MigrationSteps marca el paso en curso por el progreso", () => {
+  it("MigrationSteps marks the current step by progress", () => {
     const html = renderToString(<MigrationSteps job={{ progress: 40, status: "running" }} />);
     expect(html).toContain("3. Upload the backup to the panel");
     expect(html).toMatch(/aria-current="step"[^>]*>[\s\S]*?3\. Upload the backup to the panel/);
   });
 
-  it("con una migración en curso enseña el progreso y no el formulario", () => {
+  it("with a migration in progress it shows the progress and not the form", () => {
     const html = render([job({})]);
-    expect(html).toContain("Paso 3/7 · Subir la copia al panel: subiendo");
+    expect(html).toContain("Step 3/7 · Upload the backup to the panel: uploading");
     expect(html).toContain("40%");
-    expect(html).not.toContain("Migrar…");
+    expect(html).not.toContain("Migrate…");
   });
 
-  it("sin migración en curso enseña el formulario y la última que falló", () => {
-    const html = render([job({ status: "failed", progress: 85, message: "Paso 6/7 (Arrancar y comprobar en el destino): puerto ocupado" })]);
-    expect(html).toContain("La última migración falló");
-    expect(html).toContain("puerto ocupado");
-    expect(html).toContain("Migrar…");
-    expect(html).toContain("Borrar el origen al terminar");
+  it("without a migration in progress it shows the form and the last one that failed", () => {
+    const html = render([job({ status: "failed", progress: 85, message: "Step 6/7 (Start and check on the target): port in use" })]);
+    expect(html).toContain("The last migration failed");
+    expect(html).toContain("port in use");
+    expect(html).toContain("Migrate…");
+    expect(html).toContain("Delete the source when finished");
   });
 
-  it("un importado aún en su contenedor original avisa de que la retirada del origen lo eliminará (Planes 6 y 7)", () => {
+  it("an imported server still in its original container warns that removing the source will delete it (Plans 6 and 7)", () => {
     const original = "c".repeat(64);
     const imported = {
       ...server, observed: { containerId: original },
-      importedFrom: { containerId: original, containerName: "mc-viejo", specVersion: 1, importedAt: "", composeProject: "", composeService: "" },
+      importedFrom: { containerId: original, containerName: "mc-old", specVersion: 1, importedAt: "", composeProject: "", composeService: "" },
     } as unknown as ServerDto;
-    expect(render([], null, imported)).toContain("contenedor original «mc-viejo»");
-    expect(render([])).not.toContain("contenedor original");
+    expect(render([], null, imported)).toContain("original container “mc-old”");
+    expect(render([])).not.toContain("original container");
   });
 
-  it("un servidor con hostname avisa del DNS hacia el nodo destino (Planes 7 y 8)", () => {
+  it("a server with a hostname warns about DNS pointing to the target node (Plans 7 and 8)", () => {
     const routed = { ...server, spec: { ...server.spec, router: { enabled: true, hostname: "survival.lan" } } } as unknown as ServerDto;
-    expect(render([], null, routed)).toContain("el hostname «survival.lan» tiene que resolver a la IP del nodo destino");
+    expect(render([], null, routed)).toContain("the hostname “survival.lan” has to resolve to the IP of the target node");
     expect(render([])).not.toContain("hostname");
   });
 
-  it("una migración atascada enseña lo pendiente con su motivo y la acción de cerrarla a mano (M4)", () => {
+  it("a stuck migration shows what is pending with its reason and the action to close it by hand (M4)", () => {
     const stuck: MigrationDto = {
       id: "j0", serverId: "s1", sourceNodeId: "a", targetNodeId: "b", sourceSlug: "survival", targetSlug: "survival", targetPort: 25565,
       targetVersion: 2, wasRunning: true, deleteSource: false, phase: "committed", sourcePending: true, targetPending: false, targetStarted: true,
-      targetConfirmPending: false, error: null, pendingError: "Retirar el origen: el contenedor aún no se ha podido borrar", createdAt: "", updatedAt: "",
+      targetConfirmPending: false, error: null, pendingError: "Remove the source: the container could not be deleted yet", createdAt: "", updatedAt: "",
     };
-    const html = render([job({ id: "j0", status: "ok", progress: 100, message: "Migración completada" })], stuck);
-    expect(html).toContain("se reintenta cada 30 s: el contenedor aún no se ha podido borrar");
-    expect(html).toContain("Cerrar la migración a mano…");
-    expect(render([job({ status: "failed" })])).not.toContain("Cerrar la migración a mano…");
+    const html = render([job({ id: "j0", status: "ok", progress: 100, message: "Migration completed" })], stuck);
+    expect(html).toContain("retried every 30 s: the container could not be deleted yet");
+    expect(html).toContain("Close the migration by hand…");
+    expect(render([job({ status: "failed" })])).not.toContain("Close the migration by hand…");
   });
 });

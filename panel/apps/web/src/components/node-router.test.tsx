@@ -10,34 +10,34 @@ const node: NodeDto = {
   hostInfo: null, lastSeenAt: null, createdAt: "2026-10-12T00:00:00.000Z", tokenRotationPending: false,
 };
 const router: RouterDto = {
-  nodeId: "n1", spec: { enabled: true, port: 25565, autoscale: true, autoscaleDownAfterMinutes: 15, autoscaleAllowPlayers: ["amigo"] },
+  nodeId: "n1", spec: { enabled: true, port: 25565, autoscale: true, autoscaleDownAfterMinutes: 15, autoscaleAllowPlayers: ["friend"] },
   observed: {
     configured: true, state: "created", containerId: "c", image: "itzg/mc-router:1.47.1", hostPort: 25565, autoscale: true,
-    error: "Bind for 0.0.0.0:25565 failed: port is already allocated", autoscaleDownAfterMinutes: 15, autoscaleAllowPlayers: ["amigo"],
+    error: "Bind for 0.0.0.0:25565 failed: port is already allocated", autoscaleDownAfterMinutes: 15, autoscaleAllowPlayers: ["friend"],
   },
   observedAt: null, updatedAt: null,
 };
 const render = (r: RouterDto) =>
   renderToString(<QueryClientProvider client={new QueryClient()}><NodeRouterForm node={node} router={r} onSaved={() => {}} /></QueryClientProvider>);
 
-describe("NodeRouterForm (render en servidor, sin DOM)", () => {
-  it("muestra el estado, el error del agente y los campos con sus valores", () => {
+describe("NodeRouterForm (server render, no DOM)", () => {
+  it("shows the status, the agent's error and the fields with their values", () => {
     const html = render(router);
-    for (const t of ["Error", "port is already allocated", "Puerto del host", "25565", "Minutos sin jugadores", "15", "itzg/mc-router:1.47.1", "socket de Docker"]) expect(html).toContain(t);
+    for (const t of ["Error", "port is already allocated", "Host port", "25565", "Minutes without players", "15", "itzg/mc-router:1.47.1", "Docker socket"]) expect(html).toContain(t);
   });
-  it("avisa de que el router equivale a root en el nodo (m1) y de qué hace Parar con autoscale (m2)", () => {
+  it("warns that the router is equivalent to root on the node (m1) and what Stop does with autoscale (m2)", () => {
     const html = render(router);
-    expect(html).toContain("equivale a root");
-    expect(html).toContain("Parar desde el panel no impide");
+    expect(html).toContain("equivalent to root");
+    expect(html).toContain("Stopping from the panel does not prevent");
   });
-  it("con autoscale pide la lista de jugadores que pueden despertar servidores (S3)", () => {
+  it("with autoscale asks for the list of players who can wake servers (S3)", () => {
     const html = render(router);
-    expect(html).toContain("Jugadores que pueden despertar servidores");
-    expect(html).toContain("amigo");
+    expect(html).toContain("Players who can wake servers");
+    expect(html).toContain("friend");
   });
-  it("sin autoscale no pide minutos ni jugadores", () => {
+  it("without autoscale it asks for neither minutes nor players", () => {
     const html = render({ ...router, spec: { ...router.spec, autoscale: false } });
-    expect(html).not.toContain("Minutos sin jugadores");
-    expect(html).not.toContain("Jugadores que pueden despertar servidores");
+    expect(html).not.toContain("Minutes without players");
+    expect(html).not.toContain("Players who can wake servers");
   });
 });

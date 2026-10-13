@@ -11,27 +11,27 @@ const base = {
   spec: { ...defaultSpecInput(), ports: { game: 25565, extra: [] } },
 } as unknown as ServerDto;
 
-describe("ImportNotices (render en servidor)", () => {
-  it("un servidor del panel no pinta nada", () => {
+describe("ImportNotices (server render)", () => {
+  it("a panel server renders nothing", () => {
     expect(renderToString(<ImportNotices server={base} />)).toBe("");
   });
-  it("un importado aún adoptado explica la recreación y el dataPath", () => {
+  it("an imported server still adopted explains the recreation and the dataPath", () => {
     const s = {
       ...base,
       observed: { containerId: ID } as ServerDto["observed"],
-      importedFrom: { containerId: ID, containerName: "mc-viejo", specVersion: 1, importedAt: "", composeProject: "", composeService: "" },
+      importedFrom: { containerId: ID, containerName: "mc-old", specVersion: 1, importedAt: "", composeProject: "", composeService: "" },
       spec: { ...base.spec, dataPath: "/home/lobo/mc/survival" },
     } as ServerDto;
     const html = renderToString(<ImportNotices server={s} />);
-    expect(html).toContain("mc-viejo");
+    expect(html).toContain("mc-old");
     expect(html).toContain("mcsm-survival");
     expect(html).toContain("/home/lobo/mc/survival");
   });
 });
 
 describe("ExternalDataNote", () => {
-  it("pinta la explicación como nota", () => {
-    const html = renderToString(<ExternalDataNote text="Los datos están en /home/lobo/mc" />);
+  it("renders the explanation as a note", () => {
+    const html = renderToString(<ExternalDataNote text="The data is in /home/lobo/mc" />);
     expect(html).toContain('role="note"');
     expect(html).toContain("/home/lobo/mc");
   });
