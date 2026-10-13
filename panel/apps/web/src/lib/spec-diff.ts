@@ -2,13 +2,14 @@ export interface DiffLine { label: string; before: string; after: string }
 
 const NONE = "—";
 const UNMANAGED = "(sin gestionar)";
+const MANAGED = "gestionada por el panel";
 // Secciones opcionales: ausente = el panel no las gestiona; vacía es un cambio real.
-const OPTIONAL_LABELS = new Set(["Operadores", "Whitelist"]);
+const OPTIONAL_LABELS = new Set(["Operadores", "Whitelist", "Mods (sección)", "Plugins (sección)"]);
 
 const TOP_LABELS: Record<string, string> = {
   type: "Tipo", version: "Versión de Minecraft", imageTag: "Java (imagen)", memory: "Memoria JVM",
   restartPolicy: "Política de reinicio", modpack: "Modpack", whitelist: "Whitelist", ops: "Operadores",
-  router: "Router (mc-router)",
+  router: "Router (mc-router)", mods: "Mods (sección)", plugins: "Plugins (sección)",
 };
 const NESTED_LABELS: Record<string, string> = {
   "resources.cpus": "Límite de CPUs", "resources.memLimit": "Límite de RAM del contenedor",
@@ -66,6 +67,7 @@ function flatten(spec: Obj): Map<string, string> {
     else if (k === "whitelist") out.set(TOP_LABELS.whitelist!, showWhitelist(v));
     else if (k === "router") out.set(TOP_LABELS.router!, showRouter(v));
     else if ((k === "resources" || k === "ports" || k === "mods" || k === "plugins") && isObj(v)) {
+      if (k === "mods" || k === "plugins") out.set(TOP_LABELS[k]!, MANAGED); // plan-9: la sección en sí (ausente ≠ presente)
       for (const [sk, sv] of Object.entries(v)) {
         const path = `${k}.${sk}`;
         out.set(NESTED_LABELS[path] ?? path, path === "ports.extra" ? showPorts(sv) : show(sv));

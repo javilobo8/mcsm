@@ -42,12 +42,9 @@ describe("planApply", () => {
     const r = planApply("A", base, "A", { ...base, whitelist: { enabled: true, players: [] } });
     expect(r.ok && r.pending.changes).toEqual([{ label: "Whitelist", before: "(sin gestionar)", after: expect.stringMatching(/nadie podrá entrar salvo los ops/) }]);
   });
-  it("un PATCH cuyo diff queda vacío es «sin cambios» y no promete recreación", () => {
-    // mods presente y vacío frente a ausente: el diff no lo distingue (todo «—»)
+  it("mods de ausente a presente y vacía es un cambio aplicable (el agente sincroniza las listas)", () => {
     const r = planApply("A", base, "A", { ...base, mods: { modrinthProjects: [], curseforgeFiles: [], urls: [] } });
-    expect(r).toEqual({ ok: false, error: "No hay cambios que aplicar" });
-    const renamed = planApply("A", base, "B", { ...base, mods: { modrinthProjects: [], curseforgeFiles: [], urls: [] } });
-    expect(renamed).toMatchObject({ ok: true, pending: { name: "B", spec: undefined, recreate: false } });
+    expect(r).toMatchObject({ ok: true, pending: { recreate: true, changes: [{ label: "Mods (sección)", before: "(sin gestionar)", after: "gestionada por el panel" }] } });
   });
 });
 

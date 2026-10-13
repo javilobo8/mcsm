@@ -12,8 +12,7 @@ export type ApplyPlan = { ok: true; pending: PendingApply } | { ok: false; error
 /**
  * Prepara «Aplicar»: PATCH mínimo (merge de primer nivel), y un diff entre lo guardado y lo que quedará tras el
  * merge del panel. Cualquier cambio de spec recrea el contenedor; solo el nombre no. Si el diff de la spec queda
- * vacío (p. ej. una sección de mods presente y vacía frente a ausente) no se envía ni se promete recreación:
- * solo se aplica lo que el diálogo enseña.
+ * vacío no se envía ni se promete recreación: solo se aplica lo que el diálogo enseña.
  */
 export function planApply(baseName: string, baseSpec: EditableSpec, name: string, edited: EditableSpec): ApplyPlan {
   const trimmed = name.trim();
