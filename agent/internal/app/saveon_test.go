@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
+	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/jobs"
 	"mcsm/agent/internal/reconcile"
 )
@@ -318,3 +320,69 @@ func TestRetrySaveOnRunsInBackgroundWithoutOverlap(t *testing.T) {
 }
 
 const hangGuard = 10 * time.Second // solo evita colgar la suite
+
+// deadlineEngine anota, mientras watch esté activo, el plazo que le queda a cada consulta a Docker.
+type deadlineEngine struct {
+	docker.Engine
+	watch atomic.Bool
+	mu    sync.Mutex
+	left  []time.Duration // -1: sin plazo
+}
+
+func (e *deadlineEngine) note(ctx context.Context) {
+	if !e.watch.Load() {
+		return
+	}
+	left := time.Duration(-1)
+	if dl, ok := ctx.Deadline(); ok {
+		left = time.Until(dl)
+	}
+	e.mu.Lock()
+	e.left = append(e.left, left)
+	e.mu.Unlock()
+}
+
+func (e *deadlineEngine) ListManaged(ctx context.Context) ([]docker.Container, error) {
+	e.note(ctx)
+	return e.Engine.ListManaged(ctx)
+}
+
+func (e *deadlineEngine) Inspect(ctx context.Context, id string) (*docker.Inspect, error) {
+	e.note(ctx)
+	return e.Engine.Inspect(ctx, id)
+}
+
+// N2: con el servidor reservado, también la comprobación de Docker (isRunning) va dentro de los 5 s del reintento.
+func TestRetrySaveOnBoundsTheDockerCheckToo(t *testing.T) {
+	fake := docker.NewFake()
+	eng := &deadlineEngine{Engine: fake}
+	e := newBackupEnvEngine(t, eng, fake, backupsSpecJSON)
+	if err := e.st.MarkSaveOnPending("a", time.Unix(1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	var rconLeft time.Duration
+	e.a.rcon = func(ctx context.Context, host string, port uint16, pass, cmd string) (string, error) {
+		if cmd == "save-on" {
+			eng.watch.Store(false) // lo de después (la liberación de la reserva reconcilia) no cuenta
+			if dl, ok := ctx.Deadline(); ok {
+				rconLeft = time.Until(dl)
+			}
+		}
+		return e.rc.fn(ctx, host, port, pass, cmd)
+	}
+	eng.watch.Store(true)
+	retrySettle(t, e)
+	eng.mu.Lock()
+	defer eng.mu.Unlock()
+	if len(eng.left) == 0 {
+		t.Fatal("no se consultó a Docker")
+	}
+	for _, l := range eng.left {
+		if l < 0 || l > saveOnRetryTimeout {
+			t.Fatalf("consulta a Docker con el servidor reservado y plazo %v (máximo %v)", l, saveOnRetryTimeout)
+		}
+	}
+	if rconLeft <= 0 || rconLeft > eng.left[len(eng.left)-1] {
+		t.Fatalf("el RCON comparte el mismo plazo: %v tras %v", rconLeft, eng.left)
+	}
+}

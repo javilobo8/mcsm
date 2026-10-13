@@ -1090,7 +1090,7 @@ func (b *backupService) markSaveOn(serverID string) {
 
 // Reintentos de save-on (plan-9, m6/m7 del Plan 4).
 const (
-	// saveOnRetryTimeout acota el RCON del reintento: el servidor está reservado mientras dura.
+	// saveOnRetryTimeout acota la comprobación de Docker y el RCON del reintento: el servidor está reservado mientras.
 	saveOnRetryTimeout = 5 * time.Second
 	// saveOnBackoffMin y saveOnBackoffMax: espera tras cada fallo de un servidor (se duplica hasta el tope). Un
 	// éxito, o el servidor parado o retirado, la reinicia.
@@ -1167,8 +1167,9 @@ func (b *backupService) finishSaveOn(id string, out saveOnOutcome) {
 // holdSaveOn es el motivo de la reserva corta con la que retrySaveOn envía save-on.
 const holdSaveOn = "reactivando el guardado automático"
 
-// retryOneSaveOn reintenta el save-on de id con el servidor reservado mientras dura el RCON (como mucho
-// saveOnRetryTimeout): una copia en caliente que arrancara entre la comprobación y el RCON haría save-off y este
+// retryOneSaveOn reintenta el save-on de id con el servidor reservado mientras comprueba Docker y envía el RCON (las
+// dos cosas, como mucho saveOnRetryTimeout; la liberación de la reserva reconcilia después, fuera de ese plazo): una
+// copia en caliente que arrancara entre la comprobación y el RCON haría save-off y este
 // save-on le reactivaría el guardado a mitad del tar. Con la reserva, esa copia recibe busy. TryHold no espera: si el
 // servidor está reservado u ocupado, se salta. No usa withSlot: no es un job ni escribe en disco.
 func (b *backupService) retryOneSaveOn(ctx context.Context, id string) saveOnOutcome {
@@ -1185,7 +1186,10 @@ func (b *backupService) retryOneSaveOn(ctx context.Context, id string) saveOnOut
 		return saveOnSkipped
 	}
 	defer release(ctx)
-	running, err := b.isRunning(ctx, id)
+	// Todo lo que se hace con el servidor reservado (la comprobación de Docker y el RCON) cabe en saveOnRetryTimeout.
+	cctx, cancel := context.WithTimeout(ctx, saveOnRetryTimeout)
+	defer cancel()
+	running, err := b.isRunning(cctx, id)
 	if err != nil {
 		return saveOnFailed
 	}
@@ -1194,9 +1198,7 @@ func (b *backupService) retryOneSaveOn(ctx context.Context, id string) saveOnOut
 		b.a.log.Info("save-on pendiente olvidado: el servidor está parado y guardará al arrancar", "server", t.slug)
 		return saveOnDone
 	}
-	cctx, cancel := context.WithTimeout(ctx, saveOnRetryTimeout)
 	_, err = b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on")
-	cancel()
 	if err != nil {
 		b.a.log.Warn("reintento de save-on fallido", "server", t.slug, "err", err)
 		return saveOnFailed
