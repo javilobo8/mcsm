@@ -318,7 +318,7 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	}
 
 	// Lo que mc-router pidió y el proxy denegó (si algo le faltara, aparecería aquí).
-	if strings.Contains(proxyLog.String(), "denegada") {
+	if l := proxyLog.String(); strings.Contains(l, "denegada") || strings.Contains(l, "filtros inválidos") {
 		t.Logf("peticiones de mc-router denegadas por el proxy:\n%s", proxyLog.String())
 	}
 
@@ -340,6 +340,21 @@ func TestRouterRoutesByHostname(t *testing.T) {
 	res.Body.Close()
 	if strings.Contains(string(body), `"Env"`) {
 		t.Fatal("el inspect por el proxy no lleva el entorno")
+	}
+	// Un contenedor sin mc-router.host (el propio router) no existe para el router: ni en el inspect ni en la lista.
+	res, err = hc.Get("http://docker/v1.47/containers/" + name + "/json")
+	if err != nil || res.StatusCode != http.StatusNotFound {
+		t.Fatalf("inspect de un contenedor ajeno por el proxy: %v %v", res, err)
+	}
+	res.Body.Close()
+	res, err = hc.Get("http://docker/v1.47/containers/json?all=1")
+	if err != nil || res.StatusCode != http.StatusOK {
+		t.Fatalf("list por el proxy: %v %v", res, err)
+	}
+	body, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if strings.Contains(string(body), name) || !strings.Contains(string(body), "backend-c") {
+		t.Fatalf("la lista por el proxy solo trae los servidores del router: %s", body)
 	}
 
 	if err := m.Clear(); err != nil {

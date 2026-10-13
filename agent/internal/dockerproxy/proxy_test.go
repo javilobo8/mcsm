@@ -7,10 +7,13 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -111,14 +114,15 @@ func TestStripEnv(t *testing.T) {
 
 // upstream es un Docker falso escuchando en un socket unix.
 type upstream struct {
-	mu     sync.Mutex
-	got    []string
-	events chan string
+	mu      sync.Mutex
+	got     []string
+	queries map[string]string // última query cruda recibida por ruta
+	events  chan string
 }
 
 func startUpstream(t *testing.T, dir string) (*upstream, string) {
 	t.Helper()
-	u := &upstream{events: make(chan string, 4)}
+	u := &upstream{events: make(chan string, 4), queries: map[string]string{}}
 	path := filepath.Join(dir, "docker.sock")
 	ln, err := net.Listen("unix", path)
 	if err != nil {
@@ -127,6 +131,7 @@ func startUpstream(t *testing.T, dir string) (*upstream, string) {
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u.mu.Lock()
 		u.got = append(u.got, r.Method+" "+r.URL.Path)
+		u.queries[r.URL.Path] = r.URL.RawQuery
 		u.mu.Unlock()
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/events"):
@@ -142,7 +147,12 @@ func startUpstream(t *testing.T, dir string) (*upstream, string) {
 				}
 			}
 		case strings.HasSuffix(r.URL.Path, "/json") && strings.Contains(r.URL.Path, "/containers/") && !strings.HasSuffix(r.URL.Path, "/containers/json"):
-			_, _ = io.WriteString(w, `{"Id":"abc","Config":{"Env":["RCON_PASSWORD=SECRETO"],"Labels":{}}}`)
+			// «abc» es un servidor con hostname de router; cualquier otro, un contenedor ajeno del host.
+			if strings.Contains(r.URL.Path, "/containers/abc/") {
+				_, _ = io.WriteString(w, `{"Id":"abc","Config":{"Env":["RCON_PASSWORD=SECRETO"],"Labels":{"mc-router.host":"a.lan"}}}`)
+			} else {
+				_, _ = io.WriteString(w, `{"Id":"ajeno","Config":{"Cmd":["--password","AJENO"],"Labels":{"otra":"x"}}}`)
+			}
 		default:
 			w.WriteHeader(204)
 		}
@@ -150,6 +160,12 @@ func startUpstream(t *testing.T, dir string) (*upstream, string) {
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(func() { _ = srv.Close() })
 	return u, path
+}
+
+func (u *upstream) query(path string) string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.queries[path]
 }
 
 func (u *upstream) requests() []string {
@@ -285,5 +301,130 @@ func TestProxyDeniesTrickyRequestsOnTheWire(t *testing.T) {
 	}
 	if got := up.requests(); len(got) != 0 {
 		t.Fatalf("al Docker real llegó: %v", got)
+	}
+}
+
+// filtersOf decodifica el parámetro filters de una query en forma canónica (clave → valores ordenados).
+func filtersOf(t *testing.T, rawQuery string) map[string][]string {
+	t.Helper()
+	q, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(q["filters"]); n != 1 {
+		t.Fatalf("filters aparece %d veces en %q", n, rawQuery)
+	}
+	var m map[string]map[string]bool
+	if err := json.Unmarshal([]byte(q.Get("filters")), &m); err != nil {
+		t.Fatalf("filters %q: %v", q.Get("filters"), err)
+	}
+	out := map[string][]string{}
+	for k, vs := range m {
+		for v := range vs {
+			out[k] = append(out[k], v)
+		}
+		slices.Sort(out[k])
+	}
+	return out
+}
+
+func TestRestrictFilters(t *testing.T) {
+	for _, c := range []struct {
+		name, query string
+		want        map[string][]string
+		bad         bool
+	}{
+		{"sin filtros", "", map[string][]string{"label": {"mc-router.host"}}, false},
+		{"otros parámetros", "all=1", map[string][]string{"label": {"mc-router.host"}}, false},
+		{"otros filtros", "filters=" + url.QueryEscape(`{"status":["running"],"type":["container"]}`),
+			map[string][]string{"label": {"mc-router.host"}, "status": {"running"}, "type": {"container"}}, false},
+		{"label previo (lista)", "filters=" + url.QueryEscape(`{"label":["mcsm.managed=true"]}`),
+			map[string][]string{"label": {"mc-router.host", "mcsm.managed=true"}}, false},
+		// Docker ignora el valor del mapa (cuenta la clave): se conserva igual.
+		{"label previo (mapa)", "filters=" + url.QueryEscape(`{"label":{"a=b":true,"c":false}}`),
+			map[string][]string{"label": {"a=b", "c", "mc-router.host"}}, false},
+		{"ya trae el nuestro", "filters=" + url.QueryEscape(`{"label":["mc-router.host"]}`),
+			map[string][]string{"label": {"mc-router.host"}}, false},
+		{"filters vacío", "filters=", map[string][]string{"label": {"mc-router.host"}}, false},
+		{"JSON inválido", "filters=" + url.QueryEscape(`{"label":`), nil, true},
+		{"label con tipo raro", "filters=" + url.QueryEscape(`{"label":"mc-router.host"}`), nil, true},
+		{"no es un objeto", "filters=" + url.QueryEscape(`["label"]`), nil, true},
+		{"filters repetido", "filters=" + url.QueryEscape(`{}`) + "&filters=" + url.QueryEscape(`{}`), nil, true},
+		{"query ilegible", "filters=%zz", nil, true},
+	} {
+		got, err := restrictFilters(c.query)
+		if c.bad {
+			if err == nil {
+				t.Errorf("%s: debe rechazarse; dio %q", c.name, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if f := filtersOf(t, got); !maps.EqualFunc(f, c.want, slices.Equal) {
+			t.Errorf("%s: filtros = %v, se esperaba %v", c.name, f, c.want)
+		}
+		if c.query == "all=1" && !strings.Contains(got, "all=1") {
+			t.Errorf("%s: se pierden los demás parámetros: %q", c.name, got)
+		}
+	}
+}
+
+// El router solo ve los contenedores con hostname de router: list y events llevan el filtro, el inspect de otro
+// contenedor es un 404 (sin cuerpo del Docker real) y un filters inválido es un 400 que no llega a Docker.
+func TestProxyOnlyShowsRouterContainers(t *testing.T) {
+	dir := t.TempDir()
+	up, upPath := startUpstream(t, dir)
+	listen := filepath.Join(dir, "p.sock")
+	p := New(Options{Listen: listen, Upstream: upPath, UID: -1, GID: -1, Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err := p.Listen(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go p.Serve(ctx)
+	c := unixClient(listen)
+	get := func(path string) (int, string) {
+		t.Helper()
+		res, err := c.Get("http://docker" + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		if strings.HasSuffix(strings.SplitN(path, "?", 2)[0], "/events") {
+			return res.StatusCode, ""
+		}
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+
+	if code, _ := get("/v1.47/containers/json?all=1&filters=" + url.QueryEscape(`{"label":{"x=y":true}}`)); code != 204 {
+		t.Fatalf("list = %d", code)
+	}
+	if f := filtersOf(t, up.query("/v1.47/containers/json")); !slices.Equal(f["label"], []string{"mc-router.host", "x=y"}) {
+		t.Fatalf("list a Docker con filtros %v", f)
+	}
+	if code, _ := get("/v1.47/events?filters=" + url.QueryEscape(`{"type":["container"]}`)); code != 200 {
+		t.Fatalf("events = %d", code)
+	}
+	if f := filtersOf(t, up.query("/v1.47/events")); !slices.Equal(f["label"], []string{"mc-router.host"}) || !slices.Equal(f["type"], []string{"container"}) {
+		t.Fatalf("events a Docker con filtros %v", f)
+	}
+	before := len(up.requests())
+	if code, _ := get("/v1.47/containers/json?filters=" + url.QueryEscape(`{"label":`)); code != 400 {
+		t.Fatalf("filters inválido = %d", code)
+	}
+	if len(up.requests()) != before {
+		t.Fatal("un filters inválido no llega a Docker")
+	}
+
+	code, body := get("/v1.47/containers/ajeno/json")
+	if code != 404 || strings.Contains(body, "AJENO") || strings.Contains(body, "otra") {
+		t.Fatalf("inspect ajeno = %d %s", code, body)
+	}
+	if code, body := get("/v1.47/containers/abc/json"); code != 200 || !strings.Contains(body, "a.lan") || strings.Contains(body, "SECRETO") {
+		t.Fatalf("inspect del router = %d %s", code, body)
 	}
 }

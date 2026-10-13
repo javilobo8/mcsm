@@ -1,6 +1,7 @@
 // Package dockerproxy sirve a mc-router una API de Docker recortada (★ del Plan 8): solo lo que necesita para
 // descubrir los servidores (ping, versión, info, listar, inspeccionar sin entorno, eventos) y, con autoscale,
-// arrancar y parar los servidores que la política del agente permita. Todo lo demás (crear contenedores, exec,
+// arrancar y parar los servidores que la política del agente permita. Listar, eventos e inspeccionar se limitan a los
+// contenedores con la etiqueta mc-router.host: el resto de contenedores del host no existen para el router. Todo lo demás (crear contenedores, exec,
 // imágenes, redes, volúmenes…) es 403: el router deja de tener root en el nodo a través del socket.
 package dockerproxy
 
@@ -16,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,6 +25,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"mcsm/agent/internal/spec"
 )
 
 // Op es una operación permitida de la API de Docker.
@@ -44,6 +48,60 @@ const MaxSocketPath = 100
 
 // maxInspectBytes acota el inspect que se reescribe (uno normal ocupa unos KiB).
 const maxInspectBytes = 4 << 20
+
+// routerLabel: el router solo ve los contenedores con esta etiqueta (los servidores con hostname). Los demás
+// contenedores del host —con sus Cmd, Args, etiquetas y montajes— no existen para él (defensa en profundidad).
+const routerLabel = spec.LabelRouterHost
+
+// restrictFilters añade label=routerLabel al parámetro filters de un list o de events, fusionándolo con los
+// filtros que ya traiga (Docker exige todas las etiquetas pedidas: un label propio solo estrecha). Acepta las dos
+// formas de Docker ({"k":["v"]} y {"k":{"v":true}}; del mapa cuenta la clave, como en Docker) y devuelve la query
+// con un único filters en forma de mapa. Un filters ilegible o repetido es un error (400).
+func restrictFilters(rawQuery string) (string, error) {
+	q, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", fmt.Errorf("query ilegible: %w", err)
+	}
+	vals := q["filters"]
+	if len(vals) > 1 {
+		return "", errors.New("filters repetido")
+	}
+	merged := map[string]map[string]bool{}
+	if len(vals) == 1 && vals[0] != "" {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(vals[0]), &raw); err != nil {
+			return "", fmt.Errorf("filters inválido: %w", err)
+		}
+		for k, v := range raw {
+			set := map[string]bool{}
+			var list []string
+			if err := json.Unmarshal(v, &list); err == nil {
+				for _, s := range list {
+					set[s] = true
+				}
+			} else {
+				var m map[string]bool
+				if err := json.Unmarshal(v, &m); err != nil {
+					return "", fmt.Errorf("filters inválido (%s): %w", k, err)
+				}
+				for s := range m {
+					set[s] = true
+				}
+			}
+			merged[k] = set
+		}
+	}
+	if merged["label"] == nil {
+		merged["label"] = map[string]bool{}
+	}
+	merged["label"][routerLabel] = true
+	enc, err := json.Marshal(merged)
+	if err != nil {
+		return "", err
+	}
+	q.Set("filters", string(enc))
+	return q.Encode(), nil
+}
 
 var (
 	// prefixRe separa el prefijo de versión opcional (/v1.47) del resto. Solo caracteres de ruta sencillos.
@@ -164,7 +222,7 @@ func New(o Options) *Proxy {
 }
 
 func (p *Proxy) modify(res *http.Response) error {
-	op, _, _ := Classify(res.Request.Method, res.Request.URL.Path, res.Request.URL.RawPath)
+	op, container, _ := Classify(res.Request.Method, res.Request.URL.Path, res.Request.URL.RawPath)
 	if op != OpInspect || res.StatusCode != http.StatusOK {
 		return nil
 	}
@@ -175,6 +233,20 @@ func (p *Proxy) modify(res *http.Response) error {
 	}
 	if len(body) > maxInspectBytes {
 		return errors.New("inspect demasiado grande")
+	}
+	var probe struct{ Config *inspectConfig }
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return fmt.Errorf("inspect ilegible: %w", err)
+	}
+	if _, routed := probe.Config.labels()[routerLabel]; !routed {
+		// Un contenedor que no es del router no existe para él: el 404 de Docker, sin nada del cuerpo real.
+		clean, _ := json.Marshal(map[string]string{"message": "No such container: " + container})
+		res.StatusCode, res.Status = http.StatusNotFound, "404 Not Found"
+		res.Header = http.Header{"Content-Type": []string{"application/json"}}
+		res.Body = io.NopCloser(bytes.NewReader(clean))
+		res.ContentLength = int64(len(clean))
+		res.Header.Set("Content-Length", strconv.Itoa(len(clean)))
+		return nil
 	}
 	clean, err := StripEnv(body)
 	if err != nil {
@@ -193,6 +265,15 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.opts.Log.Warn("proxy del router: petición denegada", "method", r.Method, "path", r.URL.Path)
 		writeErr(w, http.StatusForbidden, "mcsm: operación no permitida al router")
 		return
+	}
+	if op == OpList || op == OpEvents {
+		q, err := restrictFilters(r.URL.RawQuery)
+		if err != nil {
+			p.opts.Log.Warn("proxy del router: filtros inválidos", "path", r.URL.Path, "err", err)
+			writeErr(w, http.StatusBadRequest, "mcsm: "+err.Error())
+			return
+		}
+		r.URL.RawQuery = q
 	}
 	if (op == OpStart || op == OpStop) && p.opts.Policy != nil {
 		if err := p.opts.Policy(r.Context(), op, container); err != nil {
@@ -295,4 +376,15 @@ func (p *Proxy) Since() time.Time {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.since
+}
+
+// inspectConfig es lo que el proxy lee del Config de un inspect.
+type inspectConfig struct{ Labels map[string]string }
+
+// labels devuelve las etiquetas de un Config de inspect (nil si no hay Config).
+func (c *inspectConfig) labels() map[string]string {
+	if c == nil {
+		return nil
+	}
+	return c.Labels
 }
