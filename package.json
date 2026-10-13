@@ -1,6 +1,7 @@
 {
   "name": "mcsm",
   "private": true,
+  "license": "MIT",
   "packageManager": "pnpm@12.10.1",
   "scripts": {
     "gen": "buf generate",

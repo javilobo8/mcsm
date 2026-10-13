@@ -249,3 +249,7 @@ Pensado para una LAN doméstica y un único administrador. El agente monta el so
 - Los servidores corren sin privilegios extra: sin capacidades salvo las que necesita la imagen para arrancar (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`), con `no-new-privileges`, límite de procesos y límite de memoria (por defecto, memoria de la JVM + 1G). Las funciones de itzg que necesitan más capacidades (autopausa/autostop con knockd) no están soportadas.
 - **Cabeceras y límite de intentos.** La web se sirve con una CSP restrictiva y `frame-ancestors 'none'`. Los fallos de login tienen un límite global (30 por minuto): si alguien de la LAN fuerza contraseñas, también bloquea un minuto al administrador; reiniciar el panel lo vacía.
 - **Secretos en la consola.** La consola oculta la contraseña RCON y la API key de CurseForge.
+
+## Licencia
+
+[MIT](LICENSE).
