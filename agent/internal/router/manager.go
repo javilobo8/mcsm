@@ -149,7 +149,18 @@ func (m *Manager) reconcileLocked(ctx context.Context, sp *mcsmv1.RouterSpec) er
 	}
 	if m.opts.ProxyReady != nil {
 		if err := m.opts.ProxyReady(); err != nil {
-			return fmt.Errorf("el proxy del socket de Docker para el router no está listo: %w", err)
+			err = fmt.Errorf("el proxy del socket de Docker para el router no está listo: %w", err)
+			// plan-9 (S2): un router de otra versión (el del Plan 8 monta el socket real de Docker) no puede seguir
+			// en marcha mientras tanto: se borra. Uno de esta versión monta el socket del proxy y se deja.
+			if existing != nil {
+				b, berr := BuildContainer(sp, m.opts.Name, m.opts.Network, m.opts.ProxySocket, m.opts.FilesDir)
+				if berr != nil || existing.Labels[LabelHash] != b.Hash {
+					if rerr := m.remove(ctx, existing); rerr != nil {
+						return fmt.Errorf("%w (y no se pudo retirar el router anterior: %v)", err, rerr)
+					}
+				}
+			}
+			return err
 		}
 	}
 	b, err := BuildContainer(sp, m.opts.Name, m.opts.Network, m.opts.ProxySocket, m.opts.FilesDir)

@@ -408,3 +408,47 @@ func TestRouterRestartsOnceAfterANewProxy(t *testing.T) {
 		t.Fatal("solo una vez")
 	}
 }
+
+// S2: si el proxy no escucha, un router de una versión anterior (el del Plan 8 monta el socket real de Docker) no
+// sigue en marcha: se borra y el error queda en el estado del router. Uno de esta versión (monta el socket del
+// proxy) se deja.
+func TestProxyNotReadyRemovesAnOldRouter(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "a.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	fake := docker.NewFake()
+	ctx := context.Background()
+	old, err := fake.Create(ctx, ContainerName, &container.Config{Labels: map[string]string{
+		"mcsm.managed": "true", LabelRouter: "true", LabelHash: "hash-del-plan-8"}},
+		&container.HostConfig{Binds: []string{HostSocket + ":" + HostSocket + ":ro"}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fake.Start(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	ready := errors.New("no escucha")
+	m := New(fake, st, Options{Network: "mcsm", ProxySocket: "/x/docker.sock", ProxyReady: func() error { return ready }})
+	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
+	obs := m.Reconcile(ctx)
+	if !strings.Contains(obs.Error, "proxy") || obs.State != "missing" {
+		t.Fatalf("observed = %+v", obs)
+	}
+	if _, ok := fake.Containers[old]; ok {
+		t.Fatal("el router con el socket real de Docker se borra")
+	}
+
+	// Uno de esta versión (creado con el proxy listo) se queda aunque el proxy deje de escuchar.
+	ready = nil
+	m.failedAt = time.Time{} // sin esperar a RetryAfter
+	if obs := m.Reconcile(ctx); obs.State != "running" {
+		t.Fatalf("observed = %+v", obs)
+	}
+	ready = errors.New("no escucha")
+	m.failedAt = time.Time{}
+	if obs := m.Reconcile(ctx); !strings.Contains(obs.Error, "proxy") || obs.State != "running" {
+		t.Fatalf("observed = %+v", obs)
+	}
+}
