@@ -324,13 +324,13 @@ func TestSendErrorsAreIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	j.Progress(50, "half")
-	j.Log("linea")
+	j.Log("line")
 	if err := j.Done(nil, "ok"); err != nil {
 		t.Fatal(err)
 	}
 	tr.Replay(j.Record())
 	rec, _ := st.GetJob("j1")
-	if calls == 0 || rec.Status != ok || rec.Progress != 100 || rec.Log != "linea\n" {
+	if calls == 0 || rec.Status != ok || rec.Progress != 100 || rec.Log != "line\n" {
 		t.Fatalf("calls=%d rec=%+v", calls, rec)
 	}
 }
@@ -338,12 +338,12 @@ func TestSendErrorsAreIgnored(t *testing.T) {
 func TestReplayRunningJob(t *testing.T) {
 	tr, _, s, _ := setup(t)
 	j, _, _ := tr.Begin("j1", "srv", TypeRestore)
-	j.Progress(40, "Restaurando")
+	j.Progress(40, "Restoring")
 	_, old, _ := tr.Begin("j1", "srv", TypeRestore)
 	n := len(s.all())
 	tr.Replay(old)
 	got := s.all()
-	if len(got) != n+1 || got[n].Status != running || got[n].Progress != 40 || got[n].Message != "Restaurando" || got[n].Type != TypeRestore {
+	if len(got) != n+1 || got[n].Status != running || got[n].Progress != 40 || got[n].Message != "Restoring" || got[n].Type != TypeRestore {
 		t.Fatalf("Replay = %+v", got[n:])
 	}
 }
@@ -387,7 +387,7 @@ func TestNothingIsSentAfterTheTerminalMessage(t *testing.T) {
 				defer wg.Done()
 				for i := 0; i < 20; i++ {
 					j.Progress(uint32(i), fmt.Sprintf("g%d-%d", g, i))
-					j.Log(fmt.Sprintf("g%d linea %d", g, i))
+					j.Log(fmt.Sprintf("g%d line %d", g, i))
 				}
 			}(g)
 		}

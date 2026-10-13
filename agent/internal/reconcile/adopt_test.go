@@ -193,7 +193,7 @@ func TestFirstSpecChangeRecreatesWithSameData(t *testing.T) {
 	want := []string{"Stop " + id, "Remove " + id, "EnsureImage itzg/minecraft-server:java21", "Create mcsm-alpha", "Start " + list[0].ID}
 	for i, w := range want {
 		if i >= len(fake.Calls) || !strings.HasPrefix(fake.Calls[i], w) {
-			t.Fatalf("calls = %v; want prefijos %v", fake.Calls, want)
+			t.Fatalf("calls = %v; want prefixes %v", fake.Calls, want)
 		}
 	}
 	if ad, _ := st.Adoption("a"); ad != nil {
@@ -213,7 +213,7 @@ func TestAdoptChecks(t *testing.T) {
 				c.Labels = map[string]string{spec.LabelManaged: "true"}
 			})
 		}, ErrAdoptConflict},
-		{"no es itzg", func(t *testing.T, f *docker.Fake, root string) string {
+		{"not itzg", func(t *testing.T, f *docker.Fake, root string) string {
 			return external(t, f, "web", filepath.Join(root, "alpha", "data"), false, func(c *container.Config, _ *container.HostConfig) { c.Image = "nginx:1.27" })
 		}, ErrAdoptMismatch},
 		{"another /data", func(t *testing.T, f *docker.Fake, root string) string {
@@ -431,7 +431,7 @@ func TestDataPathCreateNeverMkdirs(t *testing.T) {
 	if len(list) != 1 || dataSource(t, fake, list[0].ID) != extDataPath {
 		t.Fatalf("container = %+v", list)
 	}
-	if _, err := os.Stat("/mcsm-test-noexiste"); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat("/mcsm-test-nonexistent"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("the agent does not create folders outside DATA_ROOT: %v", err)
 	}
 }

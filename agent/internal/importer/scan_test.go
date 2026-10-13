@@ -118,7 +118,7 @@ func TestScanReportsListError(t *testing.T) {
 }
 
 func TestUserEnv(t *testing.T) {
-	got := UserEnv([]string{"A=1", "B=2", "C=x=y", "MALA", "=v"}, []string{"A=1", "B=3"})
+	got := UserEnv([]string{"A=1", "B=2", "C=x=y", "BAD", "=v"}, []string{"A=1", "B=3"})
 	want := map[string]string{"B": "2", "C": "x=y"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("UserEnv = %v", got)

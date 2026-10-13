@@ -4110,7 +4110,7 @@ type ImportCandidate struct {
 	NanoCpus         int64                  `protobuf:"varint,10,opt,name=nano_cpus,json=nanoCpus,proto3" json:"nano_cpus,omitempty"`                          // 0 = no limit
 	NetworkMode      string                 `protobuf:"bytes,11,opt,name=network_mode,json=networkMode,proto3" json:"network_mode,omitempty"`                  // bridge|host|none|container:<id>|<user network>
 	Networks         []string               `protobuf:"bytes,12,rep,name=networks,proto3" json:"networks,omitempty"`
-	Labels           map[string]string      `protobuf:"bytes,13,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // solo com.docker.compose.project y com.docker.compose.service
+	Labels           map[string]string      `protobuf:"bytes,13,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // only com.docker.compose.project and com.docker.compose.service
 	User             string                 `protobuf:"bytes,14,opt,name=user,proto3" json:"user,omitempty"`                                                                               // Config.User (--user): "" = the image's; "uid[:gid]" or a name
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache

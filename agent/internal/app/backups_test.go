@@ -1268,7 +1268,7 @@ func TestRecoverUnrecoverableDataBlocksServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	failing := func(string, string, string) (backup.Recovery, error) {
-		return backup.Recovery{}, fmt.Errorf("%w: simulado", backup.ErrDataMissing)
+		return backup.Recovery{}, fmt.Errorf("%w: simulated", backup.ErrDataMissing)
 	}
 	e.a.bk.recoverDisk = failing
 	e.a.bk.recoverAtStart(context.Background())
@@ -1311,7 +1311,7 @@ func TestRecoverUnrecoverableDataBlocksServer(t *testing.T) {
 func TestBlockedServerRemovedByPanelIsReleased(t *testing.T) {
 	e := newBackupEnv(t, specJSON)
 	e.a.bk.recoverDisk = func(string, string, string) (backup.Recovery, error) {
-		return backup.Recovery{}, fmt.Errorf("%w: simulado", backup.ErrDataMissing)
+		return backup.Recovery{}, fmt.Errorf("%w: simulated", backup.ErrDataMissing)
 	}
 	if err := os.RemoveAll(e.dataDir()); err != nil {
 		t.Fatal(err)

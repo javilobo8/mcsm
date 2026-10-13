@@ -188,7 +188,7 @@ func TestRecoverRollbackFailureIsDataMissing(t *testing.T) {
 func TestRecoverAmbiguousPreRestoresBlock(t *testing.T) {
 	dataDir, backupsDir, pre, _ := crashedSwap(t, t0.Add(time.Hour))
 	old := filepath.Join(filepath.Dir(dataDir), PreRestoreName(dataDir, t0))
-	mustWrite(t, filepath.Join(old, "world", "level.dat"), "ANTIGUO", 0o644)
+	mustWrite(t, filepath.Join(old, "world", "level.dat"), "OLD", 0o644)
 	rec, err := RecoverInterrupted(backupsDir, dataDir, "survival")
 	if !errors.Is(err, ErrDataMissing) || rec.RolledBack != "" || !strings.Contains(err.Error(), filepath.Base(old)) || !strings.Contains(err.Error(), filepath.Base(pre)) {
 		t.Fatalf("rec = %+v, err = %v", rec, err)
@@ -203,7 +203,7 @@ func TestRecoverAmbiguousPreRestoresBlock(t *testing.T) {
 func TestRecoverPreRestoreWithoutMetaNotNewestBlocks(t *testing.T) {
 	dataDir, backupsDir, pre, _ := crashedSwap(t, t0)
 	newer := filepath.Join(filepath.Dir(dataDir), PreRestoreName(dataDir, t0.Add(time.Hour)))
-	mustWrite(t, filepath.Join(newer, "world", "level.dat"), "OTRO", 0o644)
+	mustWrite(t, filepath.Join(newer, "world", "level.dat"), "OTHER", 0o644)
 	mustWrite(t, newer+MetaExt, "{}", 0o640)
 	_, err := RecoverInterrupted(backupsDir, dataDir, "survival")
 	if !errors.Is(err, ErrDataMissing) || exists(dataDir) || !exists(pre) {

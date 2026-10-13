@@ -59,7 +59,7 @@ func TestRouterValidate(t *testing.T) {
 		r    *Router
 		ok   bool
 	}{
-		{"ausente", nil, true},
+		{"absent", nil, true},
 		{"disabled without hostname", &Router{}, true},
 		{"disabled with hostname", &Router{Hostname: "survival.lan"}, true},
 		{"enabled", &Router{Enabled: true, Hostname: "survival.lan"}, true},

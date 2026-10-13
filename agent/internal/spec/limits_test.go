@@ -115,6 +115,6 @@ func TestLimitsGeneratedEnv(t *testing.T) {
 	}
 	s.Mods = &ModSources{URLs: big}
 	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "96 KiB") {
-		t.Fatalf("mods enormes: err = %v", err)
+		t.Fatalf("huge mods: err = %v", err)
 	}
 }

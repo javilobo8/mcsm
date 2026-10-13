@@ -71,7 +71,7 @@ type App struct {
 	mu      sync.Mutex // protege streams
 	streams map[uint64]*logStream
 
-	fmu     sync.Mutex // protege flights y forced
+	fmu     sync.Mutex // protects flights and forced
 	flights map[string]*flight
 	forced  map[string]bool // reconciliations requested without backoff (SyncSpecs), pending execution
 	sem     chan struct{}
@@ -610,7 +610,7 @@ func (a *App) eventLoop(ctx context.Context) {
 				if ev.Action == "destroy" {
 					a.hub.Reset(id)
 				}
-				// plan-9: crashes y OOM (spec §10).
+				// plan-9: crashes and OOM (spec §10).
 				switch ev.Action {
 				case "die":
 					a.onDie(id, ev)

@@ -19,7 +19,7 @@ func (m *Moby) Stats(ctx context.Context, id string) (Stats, error) {
 	defer res.Body.Close()
 	var s container.StatsResponse
 	if err := json.NewDecoder(res.Body).Decode(&s); err != nil {
-		return Stats{}, fmt.Errorf("docker: decodificar stats: %w", err)
+		return Stats{}, fmt.Errorf("docker: decode stats: %w", err)
 	}
 	return statsFrom(&s), nil
 }

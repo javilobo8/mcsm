@@ -530,7 +530,7 @@ func TestMigrateRetireKeepsDataWhileContainerExists(t *testing.T) {
 			}
 			m, _ := filepath.Glob(filepath.Join(e.a.cfg.DataRoot, "alpha.migrated-*"))
 			if del != (len(m) == 0) {
-				t.Fatalf("apartados = %v", m)
+				t.Fatalf("set aside = %v", m)
 			}
 		})
 	}

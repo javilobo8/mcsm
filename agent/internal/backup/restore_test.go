@@ -480,9 +480,9 @@ func TestRestoreHungSyncIsAbandonedOnCancel(t *testing.T) {
 
 func TestRestoreSyncFailureDoesNotSwap(t *testing.T) {
 	dataDir, backupsDir, m := changedWorld(t)
-	stubSync(t, func(string) error { return errors.New("EIO simulado") })
+	stubSync(t, func(string) error { return errors.New("EIO simulated") })
 	_, err := Restore(context.Background(), restoreReq(dataDir, backupsDir, m.Filename, t0.Add(time.Hour)))
-	if err == nil || !strings.Contains(err.Error(), "EIO simulado") {
+	if err == nil || !strings.Contains(err.Error(), "EIO simulated") {
 		t.Fatalf("err = %v", err)
 	}
 	assertUntouched(t, dataDir)

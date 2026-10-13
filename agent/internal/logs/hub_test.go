@@ -62,15 +62,15 @@ func TestReplayAndSharedFollower(t *testing.T) {
 	h := NewHub(eng)
 	ch1, unsub1, _ := h.Subscribe("a", id, 100)
 	defer unsub1()
-	f.WriteLog(id, "2026-10-12T10:00:00Z uno\n2026-10-12T10:00:01Z dos\n")
+	f.WriteLog(id, "2026-10-12T10:00:00Z one\n2026-10-12T10:00:01Z two\n")
 	recv(t, ch1)
 	recv(t, ch1)
 	ch2, unsub2, _ := h.Subscribe("a", id, 100)
 	defer unsub2()
-	if got := recv(t, ch2).Text; got != "uno" {
+	if got := recv(t, ch2).Text; got != "one" {
 		t.Fatalf("replay[0] = %q", got)
 	}
-	if got := recv(t, ch2).Text; got != "dos" {
+	if got := recv(t, ch2).Text; got != "two" {
 		t.Fatalf("replay[1] = %q", got)
 	}
 	if calls := eng.logsCalls.Load(); calls != 1 {

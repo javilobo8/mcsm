@@ -248,10 +248,10 @@ func TestRename(t *testing.T) {
 		t.Fatalf("Rename into itself = %v", err)
 	}
 	must(t, os.Symlink(outside, filepath.Join(root, "evildir")))
-	if err := fsys.Rename("server.properties", "evildir/robado"); !errors.Is(err, ErrOutside) {
+	if err := fsys.Rename("server.properties", "evildir/stolen"); !errors.Is(err, ErrOutside) {
 		t.Fatalf("Rename outwards = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(outside, "robado")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(outside, "stolen")); !os.IsNotExist(err) {
 		t.Fatal("nothing must appear outside")
 	}
 }

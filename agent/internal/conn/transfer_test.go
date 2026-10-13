@@ -238,10 +238,10 @@ func TestTransferDoesNotFollowRedirects(t *testing.T) {
 	c := NewTransferClient(srv.URL, "tok")
 	// a 302 would turn the PUT into a body-less GET that would "work"
 	if err := c.Put(context.Background(), tid, strings.NewReader("hello"), 5); err == nil || !strings.Contains(err.Error(), "302") {
-		t.Fatalf("PUT redirigido = %v", err)
+		t.Fatalf("PUT redirected = %v", err)
 	}
 	if _, _, err := c.Get(context.Background(), tid); err == nil || !strings.Contains(err.Error(), "302") {
-		t.Fatalf("GET redirigido = %v", err)
+		t.Fatalf("GET redirected = %v", err)
 	}
 	if followed.Load() {
 		t.Fatal("redirects must not be followed")

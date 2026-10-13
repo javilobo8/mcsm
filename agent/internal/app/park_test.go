@@ -105,7 +105,7 @@ func TestBlockedOnDemandServerIsParked(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.a.bk.recoverDisk = func(string, string, string) (backup.Recovery, error) {
-		return backup.Recovery{}, fmt.Errorf("%w: simulado", backup.ErrDataMissing)
+		return backup.Recovery{}, fmt.Errorf("%w: simulated", backup.ErrDataMissing)
 	}
 	e.a.bk.recoverAtStart(context.Background())
 	if !e.a.rec.Held("a") {

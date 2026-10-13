@@ -60,7 +60,7 @@ type Client struct {
 	mu        sync.Mutex // protects only the ws pointer; coder/websocket serializes writes
 	ws        *websocket.Conn
 	connected atomic.Bool
-	tokMu     sync.Mutex // protege tok (plan-9: RotateToken lo cambia)
+	tokMu     sync.Mutex // protects tok (plan-9: RotateToken changes it)
 	tok       string
 }
 

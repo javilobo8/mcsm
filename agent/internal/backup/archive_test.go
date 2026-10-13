@@ -387,7 +387,7 @@ func TestExtractRejectsUnsupportedTypeWithContent(t *testing.T) {
 				t.Fatal(err)
 			}
 			tw := tar.NewWriter(enc)
-			if err := tw.WriteHeader(&tar.Header{Name: "raro", Typeflag: unknown, Mode: 0o644, Size: int64(len(c.body))}); err != nil {
+			if err := tw.WriteHeader(&tar.Header{Name: "odd", Typeflag: unknown, Mode: 0o644, Size: int64(len(c.body))}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := tw.Write([]byte(c.body)); err != nil {
@@ -889,7 +889,7 @@ func TestWriteEntryNeverReadsOutsideSource(t *testing.T) {
 			base := t.TempDir()
 			src, outside := filepath.Join(base, "src"), filepath.Join(base, "outside")
 			mustWrite(t, filepath.Join(outside, "secret"), "SECRET", 0o644)
-			mustWrite(t, filepath.Join(src, "world", "secret"), "publico", 0o644)
+			mustWrite(t, filepath.Join(src, "world", "secret"), "public", 0o644)
 			info, err := os.Lstat(filepath.Join(src, "world", "secret"))
 			if err != nil {
 				t.Fatal(err)

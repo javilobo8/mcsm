@@ -246,8 +246,8 @@ func must(t *testing.T, err error) {
 func TestDanglingSymlinkOutside(t *testing.T) {
 	fsys, root, outside := layout(t)
 	target := filepath.Join(outside, "nonexistent")
-	must(t, os.Symlink(target, filepath.Join(root, "colgante")))
-	_, _, err := fsys.Read("colgante", 0)
+	must(t, os.Symlink(target, filepath.Join(root, "dangling")))
+	_, _, err := fsys.Read("dangling", 0)
 	if !errors.Is(err, ErrOutside) && !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Read = %v; want path_outside or not_found", err)
 	}

@@ -266,7 +266,7 @@ func TestSampleSkipsStoppedUnlabeledAndResetCounters(t *testing.T) {
 	stopped := w.server("b", "beta", "VANILLA", false)
 	w.eng.SetStats(stopped, docker.Stats{CPUTotalNs: 1, SystemCPUNs: 1})
 	// managed container without server_id: ignored
-	if _, err := w.eng.Create(ctx, "mcsm-raro", &container.Config{Labels: map[string]string{spec.LabelManaged: "true"}}, &container.HostConfig{}, nil); err != nil {
+	if _, err := w.eng.Create(ctx, "mcsm-odd", &container.Config{Labels: map[string]string{spec.LabelManaged: "true"}}, &container.HostConfig{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	w.eng.SetStats(run, st(5e9, 10e9))
@@ -330,7 +330,7 @@ func TestTPSOnlyPaperPurpurEvery30sOverOneSession(t *testing.T) {
 	w := newWorld(t)
 	ctx := context.Background()
 	paper := w.server("p", "paper", "paper", true)
-	purpur := w.server("u", "morado", "PURPUR", true)
+	purpur := w.server("u", "purple", "PURPUR", true)
 	for _, cid := range []string{paper, purpur} {
 		w.eng.SetStats(cid, st(1e9, 10e9))
 	}

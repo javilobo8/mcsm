@@ -249,7 +249,7 @@ func TestFakeListManagedFiltersAndCopiesLabels(t *testing.T) {
 	if len(list) != 1 || list[0].ID != id {
 		t.Fatalf("list = %+v", list)
 	}
-	list[0].Labels["mcsm.managed"] = "mutado"
+	list[0].Labels["mcsm.managed"] = "mutated"
 	ins, _ := f.Inspect(ctx, id)
 	ins.Labels["other"] = "x"
 	ins2, _ := f.Inspect(ctx, id)

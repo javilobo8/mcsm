@@ -355,6 +355,6 @@ func TestTryHoldDoesNotWaitForTheServerLock(t *testing.T) {
 	}
 	release(context.Background())
 	if r.Held("a") {
-		t.Fatal("liberado")
+		t.Fatal("released")
 	}
 }

@@ -377,7 +377,7 @@
   }
  },
  {
-  "name": "CF_API_KEY en env libre",
+  "name": "CF_API_KEY in the free-form env",
   "ok": false,
   "merge": {
    "env": {

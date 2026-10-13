@@ -1878,7 +1878,7 @@ export type ImportCandidate = Message<"mcsm.v1.ImportCandidate"> & {
   networks: string[];
 
   /**
-   * solo com.docker.compose.project y com.docker.compose.service
+   * only com.docker.compose.project and com.docker.compose.service
    *
    * @generated from field: map<string, string> labels = 13;
    */

@@ -215,8 +215,8 @@ func TestContentHash(t *testing.T) {
 	cf := base
 	cf.Mods = &ModSources{CurseforgeFiles: []string{"jei"}}
 	cf1, cf2 := cf, cf
-	cf1.CurseForgeAPIKey = "uno"
-	cf2.CurseForgeAPIKey = "dos"
+	cf1.CurseForgeAPIKey = "one"
+	cf2.CurseForgeAPIKey = "two"
 	if hashOfSpec(t, cf1) == hashOfSpec(t, cf2) {
 		t.Error("changing the API key must recreate the servers that use CurseForge")
 	}

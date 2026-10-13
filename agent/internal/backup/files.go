@@ -59,7 +59,7 @@ type Meta struct {
 // Dir is a server's backups directory: <dataRoot>/<slug>/backups.
 func Dir(dataRoot, slug string) string { return filepath.Join(dataRoot, slug, "backups") }
 
-// Filename es <slug>-<YYYYMMDDTHHMMSS.mmmZ>-<spec_version>.tar.zst (spec §6.5).
+// Filename is <slug>-<YYYYMMDDTHHMMSS.mmmZ>-<spec_version>.tar.zst (spec §6.5).
 func Filename(slug string, t time.Time, specVersion uint64) string {
 	return fmt.Sprintf("%s-%s-%d%s", slug, t.UTC().Format(tsLayout), specVersion, Ext)
 }

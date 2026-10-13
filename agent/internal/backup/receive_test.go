@@ -180,8 +180,8 @@ func TestCheckSpace(t *testing.T) {
 }
 
 func TestMigratedName(t *testing.T) {
-	got := MigratedName("/srv/minecraft/uno", time.Date(2026, 10, 12, 4, 0, 0, 0, time.FixedZone("x", 3600)))
-	if got != "uno.migrated-20261012T030000.000Z" {
+	got := MigratedName("/srv/minecraft/one", time.Date(2026, 10, 12, 4, 0, 0, 0, time.FixedZone("x", 3600)))
+	if got != "one.migrated-20261012T030000.000Z" {
 		t.Fatalf("got %q", got)
 	}
 }

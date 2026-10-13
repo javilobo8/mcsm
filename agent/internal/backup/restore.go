@@ -103,7 +103,7 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 		if sum != m.SHA256 {
 			return Meta{}, fmt.Errorf("the backup is corrupted: sha256 %s, expected %s", sum, m.SHA256)
 		}
-		req.Log("sha256 verificado")
+		req.Log("sha256 verified")
 	case merr == nil:
 		req.Log("warning: the backup's metadata carries no sha256; restoring without verifying")
 	case errors.Is(merr, fs.ErrNotExist):
