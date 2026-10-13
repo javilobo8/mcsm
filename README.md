@@ -25,7 +25,7 @@ Si sospechas que el token de un nodo se ha filtrado, rotarlo no basta: borra el 
 ## Ajustes
 
 - **Contraseña.** Al cambiarla se cierran todas las sesiones, también las de otros navegadores.
-- **URL del panel.** La guardada manda sobre `PANEL_PUBLIC_URL`; es la del comando de alta de nodos y el `Origin` que acepta el WebSocket. Las escrituras (`POST`/`PUT`/`PATCH`/`DELETE` bajo `/api/`) con un `Origin` que no sea el del panel dan 403, y el login también es una escritura. Detrás de un proxy inverso que reescriba `Host`, ni siquiera podrías entrar para cambiarla aquí: fija `PANEL_PUBLIC_URL` en el entorno del panel (`deploy/.env`) con la dirección con la que entras por el proxy, o haz que el proxy conserve `Host` (en nginx, `proxy_set_header Host $http_host;`).
+- **URL del panel.** La guardada manda sobre `PANEL_PUBLIC_URL`; es la del comando de alta de nodos y el `Origin` que acepta el WebSocket. Las escrituras (`POST`/`PUT`/`PATCH`/`DELETE` bajo `/api/`) con un `Origin` que no sea el del panel dan 403, y el login también es una escritura. Detrás de un proxy inverso que reescriba `Host`, el login por el proxy da 403: entra directamente por `http://<ip>:8080` y guarda aquí la dirección con la que entras por el proxy, fija `PANEL_PUBLIC_URL` en el entorno del panel (`deploy/.env`; solo cuenta si no hay una guardada aquí) o haz que el proxy conserve `Host` (en nginx, `proxy_set_header Host $http_host;`).
 - **Rango de puertos de juego.** Solo se usa para servidores nuevos sin puerto.
 - **API key de CurseForge.** Si la guardada no es válida, la página lo avisa.
 

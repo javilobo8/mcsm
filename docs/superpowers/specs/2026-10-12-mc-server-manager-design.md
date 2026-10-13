@@ -466,7 +466,8 @@ administración, no una landing.
 - **Crash del servidor MC**: evento `die` con exit code ≠ 0 que nadie pidió → `Event` `crash` y, si
   `restartPolicy` lo permite, Docker lo reinicia. Cada parada pedida (Stop/Kill/Remove del agente o
   parada que el proxy deja hacer a mc-router) explica un solo `die` de ese contenedor en los 3 min
-  siguientes; no cuentan los de un servidor reservado ni los de contenedores sin la spec del agente.
+  siguientes; no cuentan los de un servidor reservado, los de contenedores sin la spec del agente ni los de
+  un importado adoptado que aún no se ha recreado con las etiquetas `mcsm.*`.
   Con más de 3 en una hora el agente lo para y lo **retiene** (guardado en su store): ni el
   reconciliador, ni Docker, ni mc-router lo arrancan hasta un **Arrancar** manual o una versión
   nueva de la spec; emite `Event` `crash_loop` y el panel pone su estado deseado en parado. Un OOM

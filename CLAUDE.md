@@ -198,10 +198,14 @@ conocer.)
 - Relojes: el panel acepta el `ts` del agente con ±45 s (`MAX_CLOCK_SKEW_SECONDS` en shared);
   la frescura en la web se mide con la hora de llegada local.
 - Cron: solo ASCII imprimible y espacio/tab, igual en Go y zod (fixture `cron-cases.json`).
-- E2E con Docker en esta máquina: nftables descarta contenedor → host, así que el panel
-  corre como contenedor `mcsm-test-panel` en la red `mcsm` (imagen de
-  `deploy/panel.Dockerfile`) y el agente usa `PANEL_URL=http://mcsm-test-panel:8080`. El
-  navegador automatizado no abre `localhost:8080`: las comprobaciones visuales son manuales.
+- E2E con Docker en esta máquina: nftables descarta contenedor → host, así que todo va en
+  contenedores. `bash deploy/e2e/run.sh` (proyecto `mcsm-test-e2e`, panel en 18080, puertos
+  de juego 26600–26620, nodo B en `docker:dind` unido a la red de los servidores, Playwright
+  en su contenedor) corre la suite de `panel/apps/e2e` y deja capturas en
+  `panel/apps/e2e/screenshots/` (así se hacen las comprobaciones visuales: Claude in Chrome no
+  abre `localhost:8080`). En esta máquina hay PRODUCCIÓN del usuario (`mcsm-panel-1`,
+  `mcsm-agent-1`, `mcsm-agent`, red `mcsm`, volúmenes `mcsm_*`, puertos 8080 y 25565–25600):
+  compara `docker ps -a`/`network ls`/`volume ls` antes y después de cualquier prueba.
 - Tras cada fusión busca duplicados que git no marca: claves YAML repetidas (`docker compose
   config`), flags repetidos en snippets, `var`/`const` homónimas en un paquete Go, tests
   duplicados; y compara `pnpm gen` con lo commiteado.
@@ -237,8 +241,8 @@ conocer.)
 - Web: el contenido de cada pestaña del servidor lleva `key={s.id}`; todo formulario con
   estado sucio registra `useTabGuard` (y `useBlocker`); los diálogos con `<form>` usan
   `dialogSubmit`.
-- Verificación completa: añade `buf breaking --against ".git#ref=feat/plan-1"` (funciona en
-  worktrees) mientras `feat/plan-1` sea la base.
+- Verificación completa: añade `buf breaking --against ".git#ref=master"` (funciona en
+  worktrees) y `go vet -tags integration ./...`.
 - Docker 29.7.2: tras un `start` fallido por el puerto, el siguiente arranca **sin publicar
   puertos** (aunque se pare y se vuelva a arrancar). Por eso `startOrDiscard` (arrancar,
   comprobar `Inspect.PortsMissing` y, si falla, borrar para recrear; nunca un `Adopted`) y el
@@ -261,3 +265,29 @@ conocer.)
   `ErrSourceChanged`; una copia fallida (también con `save-on` fallido) nunca deja fichero ni se
   anuncia. Ventana residual conocida: un stop que empieza durante el tar con Minecraft aún
   guardando en ambas comprobaciones (para servidores bajo demanda, preferir copias en frío).
+- Bucles de crash (§10): el motor del agente va envuelto (`crashloop.Engine`) y cada
+  Stop/Kill/Remove, y cada parada que el proxy deja hacer a mc-router, anota en
+  `crashloop.Intents` una intención que absorbe UN `die` de ese contenedor (3 min). Cuentan los
+  `die` con exit ≠ 0 no pedidos y sin reserva; >3 en 1 h → `CrashLoopStop` retiene (bucket
+  `crash_latch`, atado a la versión) hasta Power start/restart o versión nueva; `StartGen`
+  descarta paradas en cola tras un Arrancar o una versión nueva. El panel pone el deseado en
+  parado si el `ts` del `crash_loop` es posterior a `servers.desired_changed_at` (todo cambio de
+  `desired_state` actualiza esa columna).
+- `Event` (Envelope 24) es no solicitado (id = 0) y sale por la cola `App.events` (outbox): sin
+  conexión se pierde; lo importante queda también en `Observed.error`. Kinds en `agent.proto`;
+  el panel añade `token_rotated`. Envelope 24/120/121 y migraciones 080–082 ya están usados.
+- mc-router nunca recibe el socket de Docker: monta de solo lectura el DIRECTORIO
+  `<DATA_ROOT>/.mcsm-router/` y habla con el socket filtrado del agente (`dockerproxy`: solo
+  contenedores con `mc-router.host`, sin cuerpos, API ≥ 1.24, start/stop por `routerPolicy`) y
+  se reconecta solo si el agente se reinicia. Tocar binds/cmd del router cambia
+  `mcsm.router_hash` (se recrea una vez al actualizar).
+- Panel: escrituras bajo `/api/` con `Origin` ajeno → 403 (sin `Origin` pasan: agente, curl).
+  URL pública y rango de puertos salen de `app.settings` (`SettingsService`), nunca de
+  `config.publicUrl`/`config.gamePortRange`. Cambiar la contraseña borra todas las sesiones,
+  da cookie nueva y cierra sus WS con 4401 (la web usa `expectSessionChange` y
+  `holdUnauthorized` durante la mutación). Rotación de token: hash pendiente guardado antes de
+  enviar `RotateToken`, promovido en la primera conexión con él.
+- Hora del agente: las filas (jobs, eventos) se crean con la hora del PANEL; la del agente solo
+  en `started_at`/`finished_at`/`agentAt`, saneada con `lib/time.ts`.
+- save-on pendiente: reintento en segundo plano con `rec.TryHold` (nunca espera al lock), RCON
+  ≤ 5 s y backoff 30 s → 5 min.
