@@ -16,7 +16,7 @@ sus criterios de aceptación para que no haya que volver a diseñar.
 | 6 | [Importación de servidores existentes](2026-10-12-06-importacion.md) | §6.7, §7 `ImportService`, §8 (Nodos → Importar) | hecho (rama `feat/wave-b`) |
 | 7 | [Migración entre nodos](2026-10-12-07-migracion.md) | §7 `MigrationService` | hecho (rama `feat/wave-b`) |
 | 8 | [mc-router](2026-10-12-08-mc-router.md) | §4 `router_deployments`, §7 `RouterService` | hecho (rama `feat/wave-b`) |
-| 9 | Pruebas de interfaz y pulido | §11 (Playwright), §8 (Ajustes) | aplazado: lista en `.superpowers/sdd/plan-9-inputs.md` (local) |
+| 9 | [Pruebas de interfaz y pulido](2026-10-12-09-pulido.md) | §11 (Playwright), §8 (Ajustes), §5.2–5.3, §9, §10 | detallado (36 tareas en lotes; rama `feat/plan-9`), pendiente de ejecutar |
 
 Ejecución en oleadas paralelas: ver [COORDINATION.md](COORDINATION.md).
 
