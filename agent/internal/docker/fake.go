@@ -84,6 +84,8 @@ func (f *Fake) record(format string, args ...any) {
 
 func (f *Fake) Version(context.Context) (string, error) { return "fake-29.0", nil }
 
+func (f *Fake) HostName(context.Context) (string, error) { return "fake-host", nil }
+
 func (f *Fake) EnsureNetwork(_ context.Context, name string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()

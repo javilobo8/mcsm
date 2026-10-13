@@ -229,8 +229,11 @@ func (a *App) hello(ctx context.Context) *mcsmv1.Hello {
 	}
 	vctx, cancel := context.WithTimeout(ctx, helloDockerTTL)
 	dv, _ := a.eng.Version(vctx)
+	host, herr := a.eng.HostName(vctx) // plan-9: el host del daemon, no el id del contenedor del agente
 	cancel()
-	host, _ := os.Hostname()
+	if herr != nil || host == "" {
+		host, _ = os.Hostname()
+	}
 	info := &mcsmv1.HostInfo{Hostname: host, Cpus: uint32(runtime.NumCPU()), Os: runtime.GOOS, Arch: runtime.GOARCH}
 	if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
 		info.MemTotalBytes = vm.Total

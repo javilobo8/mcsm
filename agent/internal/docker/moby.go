@@ -26,6 +26,14 @@ func NewMoby() (*Moby, error) {
 	return &Moby{cli: cli}, nil
 }
 
+func (m *Moby) HostName(ctx context.Context) (string, error) {
+	res, err := m.cli.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		return "", err
+	}
+	return res.Info.Name, nil
+}
+
 func (m *Moby) Version(ctx context.Context) (string, error) {
 	v, err := m.cli.ServerVersion(ctx, client.ServerVersionOptions{})
 	if err != nil {
