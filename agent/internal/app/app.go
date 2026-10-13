@@ -18,6 +18,7 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/backup"
 	"mcsm/agent/internal/conn"
+	"mcsm/agent/internal/crashloop"
 	"mcsm/agent/internal/docker"
 	"mcsm/agent/internal/errcode"
 	"mcsm/agent/internal/logs"
@@ -82,12 +83,21 @@ type App struct {
 	bk         *backupService // plan-4: copias, restauraciones, jobs y programación
 	// plan-8: mc-router del nodo (router.go).
 	router *router.Manager
+	// plan-9: incidencias para el panel (Event), en su propia cola FIFO; bucles de crash.
+	events  *outbox
+	crashes *crashloop.Tracker
+	intents *crashloop.Intents
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
 func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App {
+	// plan-9 (fuera de ancla): todas las piezas usan el motor envuelto, que anota las paradas que pide el agente
+	// para no contarlas como crashes.
+	intents := crashloop.NewIntents(time.Now)
+	eng = crashloop.Engine{Engine: eng, Intents: intents}
 	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{},
-		flights: map[string]*flight{}, forced: map[string]bool{}, sem: make(chan struct{}, maxConcurrent), life: context.Background()}
+		flights: map[string]*flight{}, forced: map[string]bool{}, sem: make(chan struct{}, maxConcurrent), life: context.Background(),
+		intents: intents, crashes: crashloop.NewTracker(time.Now)}
 	a.send = func(*mcsmv1.Envelope) error { return conn.ErrNotConnected }
 	a.rec = reconcile.New(st, eng, cfg.DataRoot, cfg.Network, func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		return a.status(ctx, host, port)
@@ -97,6 +107,9 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	// plan-8: mc-router del nodo; con su autoscale, los servidores con hostname van bajo demanda.
 	a.router = router.New(eng, st, router.Options{Name: cfg.RouterName, Network: cfg.Network, FilesDir: routerFilesDir(cfg.DataRoot)})
 	a.rec.SetOnDemand(a.onDemand)
+	// plan-9: cola de Event (a.send se lee al entregar) y el drift del reconciliador, sin bloquear su lock.
+	a.events = newOutbox(func(e *mcsmv1.Envelope) error { return a.send(e) }, outboxSize, log)
+	a.rec.SetEventSink(func(id, kind, msg string) { a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_WARN, kind, msg) })
 	return a
 }
 
@@ -179,6 +192,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	// ── plan-8 ──
 	go a.routerLoop(ctx)
 	// ── plan-9 ──
+	go a.events.run(ctx)
 	client.Run(ctx)
 	// Cierre (ctx ya cancelado), las dos esperas EN PARALELO para que el total no pase de
 	// shutdownWait (25 s < stop_grace_period de 30 s):
@@ -360,6 +374,10 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 		if err := a.rec.Power(life, b.PowerAction.ServerId, b.PowerAction.Action); err != nil {
 			_ = send(errMsg(env.Id, busyOr(err, errcode.PowerFailed), err))
 			return
+		}
+		// plan-9: arrancar a mano empieza la cuenta de crashes de cero (el reconciliador ya borró la retención).
+		if act := b.PowerAction.Action; act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_START || act == mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART {
+			a.crashes.Reset(b.PowerAction.ServerId)
 		}
 		_ = send(ack(env.Id))
 
@@ -559,6 +577,14 @@ func (a *App) eventLoop(ctx context.Context) {
 				}
 				if ev.Action == "destroy" {
 					a.hub.Reset(id)
+				}
+				// plan-9: crashes y OOM (spec §10).
+				switch ev.Action {
+				case "die":
+					a.onDie(id, ev)
+				case "oom":
+					a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_WARN, KindOOM,
+						"Docker ha matado el servidor por falta de memoria: sube la memoria o el límite del contenedor en Configuración → Recursos")
 				}
 				switch ev.Action {
 				case "start", "die", "stop", "kill", "destroy", "oom", "health_status: healthy", "health_status: unhealthy", "restart":
