@@ -95,6 +95,23 @@ func waitBackground(t *testing.T, a *App) {
 	}
 }
 
+// runEventLoop arranca el bucle de eventos y, al acabar el test, lo para y espera a que salga. La limpieza se
+// registra después que la de newApp, así que corre antes de su bg.Wait: un dispatch del bucle (bg.Add) a la vez
+// que ese Wait es una carrera.
+func runEventLoop(t *testing.T, a *App) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		a.eventLoop(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+}
+
 func specMsg(id, slug string, v uint64) *mcsmv1.ServerSpec {
 	return &mcsmv1.ServerSpec{ServerId: id, Slug: slug, Version: v, DesiredState: mcsmv1.DesiredState_DESIRED_STATE_RUNNING, SpecJson: []byte(specJSON)}
 }
@@ -620,7 +637,7 @@ func TestBlockedServerDoesNotStallOthers(t *testing.T) {
 		return &mcsmv1.McStatus{Online: true}
 	}
 	defer close(release)
-	go a.eventLoop(ctx)
+	runEventLoop(t, a)
 	slowEv := docker.Event{Action: "die", Labels: map[string]string{"mcsm.server_id": "slow"}}
 	fastEv := docker.Event{Action: "die", Labels: map[string]string{"mcsm.server_id": "fast"}}
 	deadline := time.After(3 * time.Second)
@@ -648,10 +665,8 @@ func TestEventTriggersObserve(t *testing.T) {
 	a, fake, _ := newApp(t)
 	s := newSink()
 	a.send = s.send
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	applyAndWait(t, a, s, "a", "alpha")
-	go a.eventLoop(ctx)
+	runEventLoop(t, a)
 	deadline := time.After(3 * time.Second)
 	for {
 		fake.EmitEvent(docker.Event{Action: "die", Labels: map[string]string{"mcsm.server_id": "a"}})
