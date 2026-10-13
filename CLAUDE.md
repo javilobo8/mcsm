@@ -291,3 +291,11 @@ conocer.)
   en `started_at`/`finished_at`/`agentAt`, saneada con `lib/time.ts`.
 - save-on pendiente: reintento en segundo plano con `rec.TryHold` (nunca espera al lock), RCON
   ≤ 5 s y backoff 30 s → 5 min.
+- `build` (plan 10): variable de itzg por tipo (`BUILD_ENV` en shared, `buildEnvKeys` en Go; Folia es
+  `FOLIABUILD`, sin guion bajo). Vacío no emite nada (hash intacto); con valor exige tipo con build y
+  versión concreta, y prohíbe su variable en `env` (fixture `build-cases.json`). La web no añade `build`
+  a specs antiguas que no lo tienen (sin diff fantasma).
+- Listas de versiones: `app.versions` (`VersionCatalog`, `api/src/versions/`) consulta las fuentes
+  oficiales con caché en memoria (listas 1 h, builds 15 min, stale si la fuente cae); los tests inyectan
+  `fetch` y nunca tocan la red. Fuente nueva = adaptador en `versions/sources.ts` + host en
+  `allowedSource`. Solo builds STABLE de Paper/Folia (los experimentales exigen `*_CHANNEL`).

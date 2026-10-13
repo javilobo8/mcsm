@@ -17,6 +17,7 @@ sus criterios de aceptación para que no haya que volver a diseñar.
 | 7 | [Migración entre nodos](2026-10-12-07-migracion.md) | §7 `MigrationService` | hecho (rama `feat/wave-b`) |
 | 8 | [mc-router](2026-10-12-08-mc-router.md) | §4 `router_deployments`, §7 `RouterService` | hecho (rama `feat/wave-b`) |
 | 9 | [Pruebas de interfaz y pulido](2026-10-12-09-pulido.md) | §11 (Playwright), §8 (Ajustes), §5.2–5.3, §9, §10 | hecho (rama `feat/plan-9-int`) |
+| 10 | [Selector de versiones](2026-10-13-10-selector-versiones.md) | [spec propia](../specs/2026-10-13-selector-versiones-design.md) | hecho (rama `feat/plan-10`) |
 
 Ejecución en oleadas paralelas: ver [COORDINATION.md](COORDINATION.md).
 

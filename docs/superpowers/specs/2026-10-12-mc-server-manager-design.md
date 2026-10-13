@@ -174,6 +174,7 @@ inyecta como `CF_API_KEY` en los servidores que lo pidan), preferencias de UI.
   "imageTag": "java21",                 // java8 | java17 | java21 | java25 | latest
   "type": "PAPER",                      // VANILLA, PAPER, PURPUR, SPIGOT, FABRIC, FORGE, NEOFORGE, QUILT, ... o AUTO_CURSEFORGE/MODRINTH vía modpack
   "version": "1.21.4",                  // o LATEST / SNAPSHOT
+  "build": "",                          // plan 10: build/loader → PAPER_BUILD, FOLIABUILD, PURPUR_BUILD, FABRIC_LOADER_VERSION, QUILT_LOADER_VERSION, FORGE_VERSION o NEOFORGE_VERSION según el tipo; vacío = el último
   "memory": "4G",
   "modpack": {                          // opcional
     "platform": "MODRINTH" | "AUTO_CURSEFORGE" | "FTBA",
@@ -196,7 +197,7 @@ inyecta como `CF_API_KEY` en los servidores que lo pidan), preferencias de UI.
 
 El **agente** transforma la spec en una `ContainerConfig` + `HostConfig` determinista:
 nombre `mcsm-<slug>`, etiquetas `mcsm.*`, bind `<data_root>/<slug>/data:/data`, env
-generado (TYPE, VERSION, MEMORY, EULA=TRUE, RCON_PASSWORD, MODRINTH_PROJECTS…,
+generado (TYPE, VERSION, la variable de `build` del tipo, MEMORY, EULA=TRUE, RCON_PASSWORD, MODRINTH_PROJECTS…,
 propiedades mapeadas a sus variables itzg), puertos, límites, política de reinicio, y
 etiquetas `mc-router.host=<hostname>` y `mc-router.network=<red del agente>` solo si
 `router.enabled` (sin sección, o desactivada, el contenedor y su hash no cambian). La función
