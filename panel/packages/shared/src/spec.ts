@@ -6,6 +6,7 @@ import { limitsCheck } from "./spec-limits.js";
 import { serverRouterSchema } from "./router.js";
 import { backupsSchema } from "./backups.js";
 import { dataPathCheck, dataPathSchema } from "./data-path.js";
+import { buildCheck } from "./versions.js";
 
 export const RESERVED_ENV = new Set([
   "EULA", "TYPE", "VERSION", "MEMORY", "ENABLE_RCON", "RCON_PASSWORD", "RCON_PORT", "SERVER_PORT", "CUSTOM_SERVER_PROPERTIES",
@@ -74,6 +75,8 @@ const baseFields = {
   // ── plan-8 ──
   router: serverRouterSchema.optional(),
   // ── plan-9 ──
+  // ── plan-10 ──
+  build: z.string().default(""),
 };
 
 function memLimitCheck(s: { memory: string; resources: { memLimit: string } }, ctx: z.RefinementCtx) {
@@ -83,11 +86,16 @@ function memLimitCheck(s: { memory: string; resources: { memLimit: string } }, c
 }
 
 /** Validaciones de objeto completo: memoria y, debajo de las anclas, las de cada plan. */
-function specChecks(s: Parameters<typeof memLimitCheck>[0] & Parameters<typeof contentCheck>[0] & Parameters<typeof limitsCheck>[0], ctx: z.RefinementCtx) {
+function specChecks(
+  s: Parameters<typeof memLimitCheck>[0] & Parameters<typeof contentCheck>[0] & Parameters<typeof limitsCheck>[0] & Parameters<typeof buildCheck>[0],
+  ctx: z.RefinementCtx,
+) {
   memLimitCheck(s, ctx);
   // ── plan-3 ──
   contentCheck(s, ctx);
   limitsCheck(s, ctx);
+  // ── plan-10 ──
+  buildCheck(s, ctx);
 }
 
 /** Spec completa, tal y como se persiste y se envía al agente. */

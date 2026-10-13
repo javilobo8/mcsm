@@ -86,3 +86,11 @@ describe("origen al pulsar Crear", () => {
     expect(creationSource("t1", undefined, spec)).toBeNull();
   });
 });
+
+describe("summarizeSpec: build (plan 10)", () => {
+  it("el build fijado sale con la etiqueta de su tipo, justo tras la versión", () => {
+    const lines = summarizeSpec({ ...defaultSpecInput(), type: "PAPER", version: "1.20.1", build: "178" });
+    expect(lines.slice(1, 3)).toEqual([{ label: "Versión de Minecraft", value: "1.20.1" }, { label: "Build de Paper", value: "178" }]);
+    expect(summarizeSpec({ ...defaultSpecInput(), type: "PAPER" }).map((l) => l.label)).not.toContain("Build de Paper");
+  });
+});

@@ -3,6 +3,7 @@ import { apiPath } from "./api";
 import type { EditableSpec } from "./spec-edit";
 import { typeLabel } from "./spec-catalog";
 import { scheduleSummary } from "./backups";
+import { buildLabel } from "./versions";
 
 export interface WizardTarget { nodeId: string; name: string; port?: number; start: boolean }
 
@@ -25,6 +26,8 @@ export function summarizeSpec(spec: TemplateSpec | EditableSpec): { label: strin
   const lines = [
     { label: "Tipo", value: typeLabel(spec.type) },
     { label: "Versión de Minecraft", value: spec.version },
+    // plan-10: `build` falta en plantillas antiguas.
+    ...(spec.build ? [{ label: buildLabel(spec.type) ?? "Build", value: spec.build }] : []),
     { label: "Java", value: spec.imageTag },
     { label: "Memoria", value: spec.memory + (spec.resources.memLimit ? ` (límite ${spec.resources.memLimit})` : "") },
   ];

@@ -18,7 +18,7 @@ describe("casos compartidos con el agente Go (proto/fixtures/spec-content-cases.
 
 describe("spec con contenido", () => {
   it("acepta spec-modded.json sin cambios", () => {
-    expect(specSchema.parse(modded)).toEqual(modded);
+    expect(specSchema.parse(modded)).toEqual({ ...modded, build: "" });
   });
   it("la spec del Plan 1 sigue sin campos nuevos tras parsear (no cambia lo que se guarda)", () => {
     const parsed = specSchema.parse(base);

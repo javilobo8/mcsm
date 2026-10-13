@@ -8,7 +8,7 @@ export const SERVER = "test-e2e-uno";
 
 /** Captura de página completa para la revisión visual (las mira el controlador). */
 export async function shot(page: Page, name: string): Promise<void> {
-  await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+  await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true, animations: "disabled" });
 }
 
 export async function nodeId(api: APIRequestContext, name: string): Promise<string> {

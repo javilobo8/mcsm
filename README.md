@@ -28,6 +28,7 @@ Si sospechas que el token de un nodo se ha filtrado, rotarlo no basta: borra el 
 - **URL del panel.** La guardada manda sobre `PANEL_PUBLIC_URL`; es la del comando de alta de nodos y el `Origin` que acepta el WebSocket. Las escrituras (`POST`/`PUT`/`PATCH`/`DELETE` bajo `/api/`) con un `Origin` que no sea el del panel dan 403, y el login también es una escritura. Detrás de un proxy inverso que reescriba `Host`, el login por el proxy da 403: entra directamente por `http://<ip>:8080` y guarda aquí la dirección con la que entras por el proxy, fija `PANEL_PUBLIC_URL` en el entorno del panel (`deploy/.env`; solo cuenta si no hay una guardada aquí) o haz que el proxy conserve `Host` (en nginx, `proxy_set_header Host $http_host;`).
 - **Rango de puertos de juego.** Solo se usa para servidores nuevos sin puerto.
 - **API key de CurseForge.** Si la guardada no es válida, la página lo avisa.
+- **Versiones y builds.** Al crear o editar un servidor, el panel consulta por HTTPS las fuentes oficiales (`piston-meta.mojang.com`, `fill.papermc.io`, `api.purpurmc.org`, `hub.spigotmc.org`, `meta.fabricmc.net`, `meta.quiltmc.org`, `files.minecraftforge.net`, `maven.neoforged.net`) para listar versiones de Minecraft y builds; las listas se guardan en memoria (1 h las versiones, 15 min los builds). Sin salida a Internet desde el panel la versión se puede escribir a mano. El campo **Build / loader** (Paper, Folia, Purpur, Fabric, Quilt, Forge, NeoForge) fija el build o la versión del loader; vacío = el último al arrancar.
 
 ## Puertos y cortafuegos
 

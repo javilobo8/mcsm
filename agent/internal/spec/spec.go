@@ -121,6 +121,10 @@ type Spec struct {
 	// Router: entrada por hostname con el mc-router del nodo. nil = ausente (hash sin cambios).
 	Router *Router `json:"router,omitempty"`
 	// ── plan-9 ──
+	// ── plan-10 ──
+	// Build: build o versión del loader (PAPER_BUILD, FABRIC_LOADER_VERSION…). Vacío = el último:
+	// no entra en el entorno y el hash no cambia.
+	Build string `json:"build,omitempty"`
 }
 
 type Ports struct {
@@ -257,6 +261,10 @@ func (s Spec) Validate() error {
 		return err
 	}
 	// ── plan-9 ──
+	// ── plan-10 ──
+	if err := s.validateBuild(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -383,6 +391,8 @@ func (s Spec) envList() []string {
 	// ── plan-7 ──
 	// ── plan-8 ──
 	// ── plan-9 ──
+	// ── plan-10 ──
+	s.buildEnvVars(m)
 	for k, v := range s.Env {
 		m[k] = v
 	}

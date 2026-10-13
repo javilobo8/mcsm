@@ -8,7 +8,12 @@ test("crear un servidor, verlo arrancar, usar la consola y ver sus gráficas", a
   await page.getByRole("radio", { name: /Desde cero/ }).click();
   await page.locator("#sf-type").click();
   await page.getByRole("option", { name: "Vanilla", exact: true }).click();
-  await page.locator("#sf-version").fill("1.21.4");
+  // plan-10: combobox. Con red sale la opción de la lista; sin ella, «Usar «1.21.4»».
+  await page.locator("#sf-version").click();
+  await page.getByPlaceholder("Buscar o escribir una versión…").fill("1.21.4");
+  await shot(page, "01b-selector-version");
+  await page.getByRole("option", { name: /^(Usar «)?1\.21\.4»?$/ }).first().click();
+  await expect(page.locator("#sf-version")).toContainText("1.21.4");
   await page.locator("#sf-java").click();
   await page.getByRole("option", { name: "java21", exact: true }).click();
   await page.locator("#sf-memory").fill("1G");

@@ -113,7 +113,10 @@ Spigot: itzg ya no puede descargarlo de getbukkit; solo funciona con `BUILD_FROM
   - Botón con la versión actual; al abrir, buscador y grupos «Especiales» (`LATEST`; `SNAPSHOT`
     solo en VANILLA, FABRIC y QUILT), «Estables» y «Snapshots y pre-releases» (este solo con el
     interruptor «Mostrar versiones de prueba», apagado por defecto y encendido si la versión
-    actual es inestable).
+    actual es inestable)
+    Mientras se busca (texto escrito) las de prueba que coinciden se listan también con el
+    interruptor apagado: es el comportamiento real y mejora el uso (quien teclea «26.4-snap» las
+    quiere).
   - Lo escrito que no coincide con ninguna opción y cumple la regex de `:version` aparece como
     «Usar «x»».
   - Estados: «Cargando versiones…»; error → mensaje + texto libre; `stale` → «La fuente no

@@ -10,3 +10,4 @@ export * from "./backups.js";
 export * from "./data-path.js";
 export * from "./import.js";
 export * from "./migration.js";
+export * from "./versions.js";

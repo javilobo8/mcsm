@@ -7,7 +7,7 @@ const fixture = JSON.parse(readFileSync(new URL("../../../../proto/fixtures/spec
 describe("specSchema", () => {
   it("acepta la fixture compartida sin cambios", () => {
     const parsed = specSchema.parse(fixture);
-    expect(parsed).toEqual(fixture);
+    expect(parsed).toEqual({ ...fixture, build: "" });
   });
   it("rechaza env reservadas", () => {
     expect(() => specSchema.parse({ ...fixture, env: { RCON_PASSWORD: "x" } })).toThrow(/reservada/);

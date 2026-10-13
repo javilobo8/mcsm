@@ -23,6 +23,7 @@ const ADOPT_TIMEOUT_MS = 60_000;
 const EDITABLE_KEYS = [
   "imageTag", "type", "version", "memory", "properties", "env", "resources", "restartPolicy", "ports",
   "modpack", "mods", "plugins", "whitelist", "ops",
+  "build", // plan-10
 ] as const;
 
 function editableOnly(spec: SpecPatch): SpecPatch {
