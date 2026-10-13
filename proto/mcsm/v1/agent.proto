@@ -63,6 +63,10 @@ message Envelope {
     RouterRemove router_remove = 111;
     RouterObserved router_observed = 112;
     // ── plan-9 ──
+    // Campo 24: reservado desde el Plan 1 para Event (arreglos transversales).
+    Event event = 24;
+    StreamDropped stream_dropped = 120;
+    RotateToken rotate_token = 121;
   }
 }
 
@@ -648,3 +652,44 @@ message RouterObserved {
   RouterSpec spec = 9; // spec guardada en el agente (ausente sin spec): la web compara con la del panel
 }
 // ── plan-9 ──
+
+// Pruebas de interfaz y pulido (spec §5.2, §5.3, §9, §10).
+
+enum EventLevel {
+  EVENT_LEVEL_UNSPECIFIED = 0;
+  EVENT_LEVEL_INFO = 1;
+  EVENT_LEVEL_WARN = 2;
+  EVENT_LEVEL_ERROR = 3;
+}
+
+// Agente → panel, no solicitado (id = 0): incidencia de un servidor o del nodo. Sale por una cola propia del
+// agente que nunca bloquea a quien la emite; sin conexión se pierde (lo que importa, p. ej. un servidor parado
+// por bucle de crash, también se ve en Observed.error). kind:
+//   crash              el servidor se cerró con código ≠ 0 sin que nadie lo pidiera
+//   oom                Docker lo mató por falta de memoria
+//   crash_loop         más de 3 crashes en una hora: el agente lo ha parado y no lo arranca hasta un Power
+//                      start/restart o una versión nueva de la spec (el panel pone el deseado en parado)
+//   crash_loop_failed  bucle de crash, pero no se pudo parar (el mensaje dice por qué)
+//   drift              el contenedor no coincidía con la spec ya aplicada y se ha recreado
+//   save_on_pending    el guardado automático pudo quedar desactivado (save-on falló); el agente lo reintenta
+//   save_on_resumed    save-on volvió a funcionar
+message Event {
+  EventLevel level = 1;
+  string server_id = 2; // vacío = incidencia del nodo
+  string kind = 3;
+  string message = 4; // en castellano, para mostrarlo tal cual
+  int64 ts_unix_ms = 5;
+}
+
+// Agente → panel, en un stream de logs (stream_id del SubscribeLogs): el agente descartó `count` líneas nuevas
+// de ese stream porque no se leían a tiempo (spec §5.2). El panel avisa a los navegadores con log_dropped.
+message StreamDropped {
+  uint64 count = 1;
+}
+
+// Panel → agente: token permanente nuevo del nodo (spec §9). El agente lo guarda y responde Ack; después cierra
+// la sesión y vuelve a conectar con él. Error: invalid_request (formato) | io_error (no se pudo guardar). Un
+// agente anterior al Plan 9 responde unsupported y conserva el token que tenía.
+message RotateToken {
+  string token = 1; // 32 bytes aleatorios en base64url sin relleno (43 caracteres)
+}

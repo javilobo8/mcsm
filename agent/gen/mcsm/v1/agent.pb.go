@@ -232,6 +232,58 @@ func (JobStatus) EnumDescriptor() ([]byte, []int) {
 	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{3}
 }
 
+type EventLevel int32
+
+const (
+	EventLevel_EVENT_LEVEL_UNSPECIFIED EventLevel = 0
+	EventLevel_EVENT_LEVEL_INFO        EventLevel = 1
+	EventLevel_EVENT_LEVEL_WARN        EventLevel = 2
+	EventLevel_EVENT_LEVEL_ERROR       EventLevel = 3
+)
+
+// Enum value maps for EventLevel.
+var (
+	EventLevel_name = map[int32]string{
+		0: "EVENT_LEVEL_UNSPECIFIED",
+		1: "EVENT_LEVEL_INFO",
+		2: "EVENT_LEVEL_WARN",
+		3: "EVENT_LEVEL_ERROR",
+	}
+	EventLevel_value = map[string]int32{
+		"EVENT_LEVEL_UNSPECIFIED": 0,
+		"EVENT_LEVEL_INFO":        1,
+		"EVENT_LEVEL_WARN":        2,
+		"EVENT_LEVEL_ERROR":       3,
+	}
+)
+
+func (x EventLevel) Enum() *EventLevel {
+	p := new(EventLevel)
+	*p = x
+	return p
+}
+
+func (x EventLevel) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EventLevel) Descriptor() protoreflect.EnumDescriptor {
+	return file_mcsm_v1_agent_proto_enumTypes[4].Descriptor()
+}
+
+func (EventLevel) Type() protoreflect.EnumType {
+	return &file_mcsm_v1_agent_proto_enumTypes[4]
+}
+
+func (x EventLevel) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EventLevel.Descriptor instead.
+func (EventLevel) EnumDescriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{4}
+}
+
 // Envelope es el único tipo que viaja por el WebSocket. `id` identifica una
 // petición y su respuesta; `stream_id` agrupa los frames de un stream.
 type Envelope struct {
@@ -287,6 +339,9 @@ type Envelope struct {
 	//	*Envelope_RouterApply
 	//	*Envelope_RouterRemove
 	//	*Envelope_RouterObserved
+	//	*Envelope_Event
+	//	*Envelope_StreamDropped
+	//	*Envelope_RotateToken
 	Body          isEnvelope_Body `protobuf_oneof:"body"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -766,6 +821,33 @@ func (x *Envelope) GetRouterObserved() *RouterObserved {
 	return nil
 }
 
+func (x *Envelope) GetEvent() *Event {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_Event); ok {
+			return x.Event
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetStreamDropped() *StreamDropped {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_StreamDropped); ok {
+			return x.StreamDropped
+		}
+	}
+	return nil
+}
+
+func (x *Envelope) GetRotateToken() *RotateToken {
+	if x != nil {
+		if x, ok := x.Body.(*Envelope_RotateToken); ok {
+			return x.RotateToken
+		}
+	}
+	return nil
+}
+
 type isEnvelope_Body interface {
 	isEnvelope_Body()
 }
@@ -962,7 +1044,21 @@ type Envelope_RouterRemove struct {
 }
 
 type Envelope_RouterObserved struct {
-	RouterObserved *RouterObserved `protobuf:"bytes,112,opt,name=router_observed,json=routerObserved,proto3,oneof"` // ── plan-9 ──
+	RouterObserved *RouterObserved `protobuf:"bytes,112,opt,name=router_observed,json=routerObserved,proto3,oneof"`
+}
+
+type Envelope_Event struct {
+	// ── plan-9 ──
+	// Campo 24: reservado desde el Plan 1 para Event (arreglos transversales).
+	Event *Event `protobuf:"bytes,24,opt,name=event,proto3,oneof"`
+}
+
+type Envelope_StreamDropped struct {
+	StreamDropped *StreamDropped `protobuf:"bytes,120,opt,name=stream_dropped,json=streamDropped,proto3,oneof"`
+}
+
+type Envelope_RotateToken struct {
+	RotateToken *RotateToken `protobuf:"bytes,121,opt,name=rotate_token,json=rotateToken,proto3,oneof"`
 }
 
 func (*Envelope_Hello) isEnvelope_Body() {}
@@ -1058,6 +1154,12 @@ func (*Envelope_RouterApply) isEnvelope_Body() {}
 func (*Envelope_RouterRemove) isEnvelope_Body() {}
 
 func (*Envelope_RouterObserved) isEnvelope_Body() {}
+
+func (*Envelope_Event) isEnvelope_Body() {}
+
+func (*Envelope_StreamDropped) isEnvelope_Body() {}
+
+func (*Envelope_RotateToken) isEnvelope_Body() {}
 
 type HostInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -5062,11 +5164,192 @@ func (x *RouterObserved) GetSpec() *RouterSpec {
 	return nil
 }
 
+// Agente → panel, no solicitado (id = 0): incidencia de un servidor o del nodo. Sale por una cola propia del
+// agente que nunca bloquea a quien la emite; sin conexión se pierde (lo que importa, p. ej. un servidor parado
+// por bucle de crash, también se ve en Observed.error). kind:
+//
+//	crash              el servidor se cerró con código ≠ 0 sin que nadie lo pidiera
+//	oom                Docker lo mató por falta de memoria
+//	crash_loop         más de 3 crashes en una hora: el agente lo ha parado y no lo arranca hasta un Power
+//	                   start/restart o una versión nueva de la spec (el panel pone el deseado en parado)
+//	crash_loop_failed  bucle de crash, pero no se pudo parar (el mensaje dice por qué)
+//	drift              el contenedor no coincidía con la spec ya aplicada y se ha recreado
+//	save_on_pending    el guardado automático pudo quedar desactivado (save-on falló); el agente lo reintenta
+//	save_on_resumed    save-on volvió a funcionar
+type Event struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Level         EventLevel             `protobuf:"varint,1,opt,name=level,proto3,enum=mcsm.v1.EventLevel" json:"level,omitempty"`
+	ServerId      string                 `protobuf:"bytes,2,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"` // vacío = incidencia del nodo
+	Kind          string                 `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"` // en castellano, para mostrarlo tal cual
+	TsUnixMs      int64                  `protobuf:"varint,5,opt,name=ts_unix_ms,json=tsUnixMs,proto3" json:"ts_unix_ms,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Event) Reset() {
+	*x = Event{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[61]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Event) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Event) ProtoMessage() {}
+
+func (x *Event) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[61]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Event.ProtoReflect.Descriptor instead.
+func (*Event) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{61}
+}
+
+func (x *Event) GetLevel() EventLevel {
+	if x != nil {
+		return x.Level
+	}
+	return EventLevel_EVENT_LEVEL_UNSPECIFIED
+}
+
+func (x *Event) GetServerId() string {
+	if x != nil {
+		return x.ServerId
+	}
+	return ""
+}
+
+func (x *Event) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *Event) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *Event) GetTsUnixMs() int64 {
+	if x != nil {
+		return x.TsUnixMs
+	}
+	return 0
+}
+
+// Agente → panel, en un stream de logs (stream_id del SubscribeLogs): el agente descartó `count` líneas nuevas
+// de ese stream porque no se leían a tiempo (spec §5.2). El panel avisa a los navegadores con log_dropped.
+type StreamDropped struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Count         uint64                 `protobuf:"varint,1,opt,name=count,proto3" json:"count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StreamDropped) Reset() {
+	*x = StreamDropped{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[62]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StreamDropped) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StreamDropped) ProtoMessage() {}
+
+func (x *StreamDropped) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[62]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StreamDropped.ProtoReflect.Descriptor instead.
+func (*StreamDropped) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{62}
+}
+
+func (x *StreamDropped) GetCount() uint64 {
+	if x != nil {
+		return x.Count
+	}
+	return 0
+}
+
+// Panel → agente: token permanente nuevo del nodo (spec §9). El agente lo guarda y responde Ack; después cierra
+// la sesión y vuelve a conectar con él. Error: invalid_request (formato) | io_error (no se pudo guardar). Un
+// agente anterior al Plan 9 responde unsupported y conserva el token que tenía.
+type RotateToken struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"` // 32 bytes aleatorios en base64url sin relleno (43 caracteres)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RotateToken) Reset() {
+	*x = RotateToken{}
+	mi := &file_mcsm_v1_agent_proto_msgTypes[63]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RotateToken) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RotateToken) ProtoMessage() {}
+
+func (x *RotateToken) ProtoReflect() protoreflect.Message {
+	mi := &file_mcsm_v1_agent_proto_msgTypes[63]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RotateToken.ProtoReflect.Descriptor instead.
+func (*RotateToken) Descriptor() ([]byte, []int) {
+	return file_mcsm_v1_agent_proto_rawDescGZIP(), []int{63}
+}
+
+func (x *RotateToken) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
 var File_mcsm_v1_agent_proto protoreflect.FileDescriptor
 
 const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\n" +
-	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xba\x16\n" +
+	"\x13mcsm/v1/agent.proto\x12\amcsm.v1\"\xde\x17\n" +
 	"\bEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1b\n" +
 	"\tstream_id\x18\x02 \x01(\x04R\bstreamId\x12&\n" +
@@ -5128,7 +5411,10 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x0fmigrate_confirm\x18i \x01(\v2\x17.mcsm.v1.MigrateConfirmH\x00R\x0emigrateConfirm\x129\n" +
 	"\frouter_apply\x18n \x01(\v2\x14.mcsm.v1.RouterApplyH\x00R\vrouterApply\x12<\n" +
 	"\rrouter_remove\x18o \x01(\v2\x15.mcsm.v1.RouterRemoveH\x00R\frouterRemove\x12B\n" +
-	"\x0frouter_observed\x18p \x01(\v2\x17.mcsm.v1.RouterObservedH\x00R\x0erouterObservedB\x06\n" +
+	"\x0frouter_observed\x18p \x01(\v2\x17.mcsm.v1.RouterObservedH\x00R\x0erouterObserved\x12&\n" +
+	"\x05event\x18\x18 \x01(\v2\x0e.mcsm.v1.EventH\x00R\x05event\x12?\n" +
+	"\x0estream_dropped\x18x \x01(\v2\x16.mcsm.v1.StreamDroppedH\x00R\rstreamDropped\x129\n" +
+	"\frotate_token\x18y \x01(\v2\x14.mcsm.v1.RotateTokenH\x00R\vrotateTokenB\x06\n" +
 	"\x04body\"\x86\x01\n" +
 	"\bHostInfo\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x12\n" +
@@ -5454,7 +5740,18 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x05error\x18\a \x01(\tR\x05error\x12\x1c\n" +
 	"\n" +
 	"ts_unix_ms\x18\b \x01(\x03R\btsUnixMs\x12'\n" +
-	"\x04spec\x18\t \x01(\v2\x13.mcsm.v1.RouterSpecR\x04spec*c\n" +
+	"\x04spec\x18\t \x01(\v2\x13.mcsm.v1.RouterSpecR\x04spec\"\x9b\x01\n" +
+	"\x05Event\x12)\n" +
+	"\x05level\x18\x01 \x01(\x0e2\x13.mcsm.v1.EventLevelR\x05level\x12\x1b\n" +
+	"\tserver_id\x18\x02 \x01(\tR\bserverId\x12\x12\n" +
+	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12\x1c\n" +
+	"\n" +
+	"ts_unix_ms\x18\x05 \x01(\x03R\btsUnixMs\"%\n" +
+	"\rStreamDropped\x12\x14\n" +
+	"\x05count\x18\x01 \x01(\x04R\x05count\"#\n" +
+	"\vRotateToken\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token*c\n" +
 	"\fDesiredState\x12\x1d\n" +
 	"\x19DESIRED_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15DESIRED_STATE_RUNNING\x10\x01\x12\x19\n" +
@@ -5475,7 +5772,13 @@ const file_mcsm_v1_agent_proto_rawDesc = "" +
 	"\x16JOB_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12JOB_STATUS_RUNNING\x10\x01\x12\x11\n" +
 	"\rJOB_STATUS_OK\x10\x02\x12\x15\n" +
-	"\x11JOB_STATUS_FAILED\x10\x03Bu\n" +
+	"\x11JOB_STATUS_FAILED\x10\x03*l\n" +
+	"\n" +
+	"EventLevel\x12\x1b\n" +
+	"\x17EVENT_LEVEL_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10EVENT_LEVEL_INFO\x10\x01\x12\x14\n" +
+	"\x10EVENT_LEVEL_WARN\x10\x02\x12\x15\n" +
+	"\x11EVENT_LEVEL_ERROR\x10\x03Bu\n" +
 	"\vcom.mcsm.v1B\n" +
 	"AgentProtoP\x01Z\x1dmcsm/agent/gen/mcsm/v1;mcsmv1\xa2\x02\x03MXX\xaa\x02\aMcsm.V1\xca\x02\aMcsm\\V1\xe2\x02\x13Mcsm\\V1\\GPBMetadata\xea\x02\bMcsm::V1b\x06proto3"
 
@@ -5491,161 +5794,169 @@ func file_mcsm_v1_agent_proto_rawDescGZIP() []byte {
 	return file_mcsm_v1_agent_proto_rawDescData
 }
 
-var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 65)
+var file_mcsm_v1_agent_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
+var file_mcsm_v1_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 68)
 var file_mcsm_v1_agent_proto_goTypes = []any{
 	(DesiredState)(0),          // 0: mcsm.v1.DesiredState
 	(PowerActionType)(0),       // 1: mcsm.v1.PowerActionType
 	(BackupTrigger)(0),         // 2: mcsm.v1.BackupTrigger
 	(JobStatus)(0),             // 3: mcsm.v1.JobStatus
-	(*Envelope)(nil),           // 4: mcsm.v1.Envelope
-	(*HostInfo)(nil),           // 5: mcsm.v1.HostInfo
-	(*Hello)(nil),              // 6: mcsm.v1.Hello
-	(*HelloAck)(nil),           // 7: mcsm.v1.HelloAck
-	(*ServerSpec)(nil),         // 8: mcsm.v1.ServerSpec
-	(*SyncSpecs)(nil),          // 9: mcsm.v1.SyncSpecs
-	(*ApplySpec)(nil),          // 10: mcsm.v1.ApplySpec
-	(*RemoveServer)(nil),       // 11: mcsm.v1.RemoveServer
-	(*PowerAction)(nil),        // 12: mcsm.v1.PowerAction
-	(*SendCommand)(nil),        // 13: mcsm.v1.SendCommand
-	(*CommandResult)(nil),      // 14: mcsm.v1.CommandResult
-	(*SubscribeLogs)(nil),      // 15: mcsm.v1.SubscribeLogs
-	(*LogLine)(nil),            // 16: mcsm.v1.LogLine
-	(*StreamClose)(nil),        // 17: mcsm.v1.StreamClose
-	(*McStatus)(nil),           // 18: mcsm.v1.McStatus
-	(*Observed)(nil),           // 19: mcsm.v1.Observed
-	(*ServerObserved)(nil),     // 20: mcsm.v1.ServerObserved
-	(*Ack)(nil),                // 21: mcsm.v1.Ack
-	(*Error)(nil),              // 22: mcsm.v1.Error
-	(*MetricBatch)(nil),        // 23: mcsm.v1.MetricBatch
-	(*HostMetricSample)(nil),   // 24: mcsm.v1.HostMetricSample
-	(*ServerMetricSample)(nil), // 25: mcsm.v1.ServerMetricSample
-	(*BackupInfo)(nil),         // 26: mcsm.v1.BackupInfo
-	(*BackupNow)(nil),          // 27: mcsm.v1.BackupNow
-	(*BackupRestore)(nil),      // 28: mcsm.v1.BackupRestore
-	(*BackupDelete)(nil),       // 29: mcsm.v1.BackupDelete
-	(*BackupList)(nil),         // 30: mcsm.v1.BackupList
-	(*BackupInventory)(nil),    // 31: mcsm.v1.BackupInventory
-	(*BackupCreated)(nil),      // 32: mcsm.v1.BackupCreated
-	(*BackupDeleted)(nil),      // 33: mcsm.v1.BackupDeleted
-	(*JobProgress)(nil),        // 34: mcsm.v1.JobProgress
-	(*JobRecord)(nil),          // 35: mcsm.v1.JobRecord
-	(*FileEntry)(nil),          // 36: mcsm.v1.FileEntry
-	(*FilesList)(nil),          // 37: mcsm.v1.FilesList
-	(*FilesListResult)(nil),    // 38: mcsm.v1.FilesListResult
-	(*FilesStat)(nil),          // 39: mcsm.v1.FilesStat
-	(*FilesStatResult)(nil),    // 40: mcsm.v1.FilesStatResult
-	(*FilesRead)(nil),          // 41: mcsm.v1.FilesRead
-	(*FilesReadResult)(nil),    // 42: mcsm.v1.FilesReadResult
-	(*FilesWrite)(nil),         // 43: mcsm.v1.FilesWrite
-	(*FilesMkdir)(nil),         // 44: mcsm.v1.FilesMkdir
-	(*FilesRename)(nil),        // 45: mcsm.v1.FilesRename
-	(*FilesDelete)(nil),        // 46: mcsm.v1.FilesDelete
-	(*FilesDownload)(nil),      // 47: mcsm.v1.FilesDownload
-	(*FilesUpload)(nil),        // 48: mcsm.v1.FilesUpload
-	(*ImportScan)(nil),         // 49: mcsm.v1.ImportScan
-	(*ImportScanResult)(nil),   // 50: mcsm.v1.ImportScanResult
-	(*ImportCandidate)(nil),    // 51: mcsm.v1.ImportCandidate
-	(*ImportPort)(nil),         // 52: mcsm.v1.ImportPort
-	(*ImportMount)(nil),        // 53: mcsm.v1.ImportMount
-	(*ImportAdopt)(nil),        // 54: mcsm.v1.ImportAdopt
-	(*BackupPush)(nil),         // 55: mcsm.v1.BackupPush
-	(*BackupPushResult)(nil),   // 56: mcsm.v1.BackupPushResult
-	(*MigrateReceive)(nil),     // 57: mcsm.v1.MigrateReceive
-	(*MigrateAbort)(nil),       // 58: mcsm.v1.MigrateAbort
-	(*MigrateRetire)(nil),      // 59: mcsm.v1.MigrateRetire
-	(*MigrateConfirm)(nil),     // 60: mcsm.v1.MigrateConfirm
-	(*RouterSpec)(nil),         // 61: mcsm.v1.RouterSpec
-	(*RouterApply)(nil),        // 62: mcsm.v1.RouterApply
-	(*RouterRemove)(nil),       // 63: mcsm.v1.RouterRemove
-	(*RouterObserved)(nil),     // 64: mcsm.v1.RouterObserved
-	nil,                        // 65: mcsm.v1.Hello.SpecVersionsEntry
-	nil,                        // 66: mcsm.v1.Hello.DesiredStatesEntry
-	nil,                        // 67: mcsm.v1.ImportCandidate.EnvEntry
-	nil,                        // 68: mcsm.v1.ImportCandidate.LabelsEntry
+	(EventLevel)(0),            // 4: mcsm.v1.EventLevel
+	(*Envelope)(nil),           // 5: mcsm.v1.Envelope
+	(*HostInfo)(nil),           // 6: mcsm.v1.HostInfo
+	(*Hello)(nil),              // 7: mcsm.v1.Hello
+	(*HelloAck)(nil),           // 8: mcsm.v1.HelloAck
+	(*ServerSpec)(nil),         // 9: mcsm.v1.ServerSpec
+	(*SyncSpecs)(nil),          // 10: mcsm.v1.SyncSpecs
+	(*ApplySpec)(nil),          // 11: mcsm.v1.ApplySpec
+	(*RemoveServer)(nil),       // 12: mcsm.v1.RemoveServer
+	(*PowerAction)(nil),        // 13: mcsm.v1.PowerAction
+	(*SendCommand)(nil),        // 14: mcsm.v1.SendCommand
+	(*CommandResult)(nil),      // 15: mcsm.v1.CommandResult
+	(*SubscribeLogs)(nil),      // 16: mcsm.v1.SubscribeLogs
+	(*LogLine)(nil),            // 17: mcsm.v1.LogLine
+	(*StreamClose)(nil),        // 18: mcsm.v1.StreamClose
+	(*McStatus)(nil),           // 19: mcsm.v1.McStatus
+	(*Observed)(nil),           // 20: mcsm.v1.Observed
+	(*ServerObserved)(nil),     // 21: mcsm.v1.ServerObserved
+	(*Ack)(nil),                // 22: mcsm.v1.Ack
+	(*Error)(nil),              // 23: mcsm.v1.Error
+	(*MetricBatch)(nil),        // 24: mcsm.v1.MetricBatch
+	(*HostMetricSample)(nil),   // 25: mcsm.v1.HostMetricSample
+	(*ServerMetricSample)(nil), // 26: mcsm.v1.ServerMetricSample
+	(*BackupInfo)(nil),         // 27: mcsm.v1.BackupInfo
+	(*BackupNow)(nil),          // 28: mcsm.v1.BackupNow
+	(*BackupRestore)(nil),      // 29: mcsm.v1.BackupRestore
+	(*BackupDelete)(nil),       // 30: mcsm.v1.BackupDelete
+	(*BackupList)(nil),         // 31: mcsm.v1.BackupList
+	(*BackupInventory)(nil),    // 32: mcsm.v1.BackupInventory
+	(*BackupCreated)(nil),      // 33: mcsm.v1.BackupCreated
+	(*BackupDeleted)(nil),      // 34: mcsm.v1.BackupDeleted
+	(*JobProgress)(nil),        // 35: mcsm.v1.JobProgress
+	(*JobRecord)(nil),          // 36: mcsm.v1.JobRecord
+	(*FileEntry)(nil),          // 37: mcsm.v1.FileEntry
+	(*FilesList)(nil),          // 38: mcsm.v1.FilesList
+	(*FilesListResult)(nil),    // 39: mcsm.v1.FilesListResult
+	(*FilesStat)(nil),          // 40: mcsm.v1.FilesStat
+	(*FilesStatResult)(nil),    // 41: mcsm.v1.FilesStatResult
+	(*FilesRead)(nil),          // 42: mcsm.v1.FilesRead
+	(*FilesReadResult)(nil),    // 43: mcsm.v1.FilesReadResult
+	(*FilesWrite)(nil),         // 44: mcsm.v1.FilesWrite
+	(*FilesMkdir)(nil),         // 45: mcsm.v1.FilesMkdir
+	(*FilesRename)(nil),        // 46: mcsm.v1.FilesRename
+	(*FilesDelete)(nil),        // 47: mcsm.v1.FilesDelete
+	(*FilesDownload)(nil),      // 48: mcsm.v1.FilesDownload
+	(*FilesUpload)(nil),        // 49: mcsm.v1.FilesUpload
+	(*ImportScan)(nil),         // 50: mcsm.v1.ImportScan
+	(*ImportScanResult)(nil),   // 51: mcsm.v1.ImportScanResult
+	(*ImportCandidate)(nil),    // 52: mcsm.v1.ImportCandidate
+	(*ImportPort)(nil),         // 53: mcsm.v1.ImportPort
+	(*ImportMount)(nil),        // 54: mcsm.v1.ImportMount
+	(*ImportAdopt)(nil),        // 55: mcsm.v1.ImportAdopt
+	(*BackupPush)(nil),         // 56: mcsm.v1.BackupPush
+	(*BackupPushResult)(nil),   // 57: mcsm.v1.BackupPushResult
+	(*MigrateReceive)(nil),     // 58: mcsm.v1.MigrateReceive
+	(*MigrateAbort)(nil),       // 59: mcsm.v1.MigrateAbort
+	(*MigrateRetire)(nil),      // 60: mcsm.v1.MigrateRetire
+	(*MigrateConfirm)(nil),     // 61: mcsm.v1.MigrateConfirm
+	(*RouterSpec)(nil),         // 62: mcsm.v1.RouterSpec
+	(*RouterApply)(nil),        // 63: mcsm.v1.RouterApply
+	(*RouterRemove)(nil),       // 64: mcsm.v1.RouterRemove
+	(*RouterObserved)(nil),     // 65: mcsm.v1.RouterObserved
+	(*Event)(nil),              // 66: mcsm.v1.Event
+	(*StreamDropped)(nil),      // 67: mcsm.v1.StreamDropped
+	(*RotateToken)(nil),        // 68: mcsm.v1.RotateToken
+	nil,                        // 69: mcsm.v1.Hello.SpecVersionsEntry
+	nil,                        // 70: mcsm.v1.Hello.DesiredStatesEntry
+	nil,                        // 71: mcsm.v1.ImportCandidate.EnvEntry
+	nil,                        // 72: mcsm.v1.ImportCandidate.LabelsEntry
 }
 var file_mcsm_v1_agent_proto_depIdxs = []int32{
-	6,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
-	7,  // 1: mcsm.v1.Envelope.hello_ack:type_name -> mcsm.v1.HelloAck
-	9,  // 2: mcsm.v1.Envelope.sync_specs:type_name -> mcsm.v1.SyncSpecs
-	10, // 3: mcsm.v1.Envelope.apply_spec:type_name -> mcsm.v1.ApplySpec
-	11, // 4: mcsm.v1.Envelope.remove_server:type_name -> mcsm.v1.RemoveServer
-	12, // 5: mcsm.v1.Envelope.power_action:type_name -> mcsm.v1.PowerAction
-	13, // 6: mcsm.v1.Envelope.send_command:type_name -> mcsm.v1.SendCommand
-	14, // 7: mcsm.v1.Envelope.command_result:type_name -> mcsm.v1.CommandResult
-	15, // 8: mcsm.v1.Envelope.subscribe_logs:type_name -> mcsm.v1.SubscribeLogs
-	16, // 9: mcsm.v1.Envelope.log_line:type_name -> mcsm.v1.LogLine
-	17, // 10: mcsm.v1.Envelope.stream_close:type_name -> mcsm.v1.StreamClose
-	20, // 11: mcsm.v1.Envelope.server_observed:type_name -> mcsm.v1.ServerObserved
-	21, // 12: mcsm.v1.Envelope.ack:type_name -> mcsm.v1.Ack
-	22, // 13: mcsm.v1.Envelope.error:type_name -> mcsm.v1.Error
-	23, // 14: mcsm.v1.Envelope.metric_batch:type_name -> mcsm.v1.MetricBatch
-	27, // 15: mcsm.v1.Envelope.backup_now:type_name -> mcsm.v1.BackupNow
-	28, // 16: mcsm.v1.Envelope.backup_restore:type_name -> mcsm.v1.BackupRestore
-	29, // 17: mcsm.v1.Envelope.backup_delete:type_name -> mcsm.v1.BackupDelete
-	30, // 18: mcsm.v1.Envelope.backup_list:type_name -> mcsm.v1.BackupList
-	31, // 19: mcsm.v1.Envelope.backup_inventory:type_name -> mcsm.v1.BackupInventory
-	32, // 20: mcsm.v1.Envelope.backup_created:type_name -> mcsm.v1.BackupCreated
-	33, // 21: mcsm.v1.Envelope.backup_deleted:type_name -> mcsm.v1.BackupDeleted
-	34, // 22: mcsm.v1.Envelope.job_progress:type_name -> mcsm.v1.JobProgress
-	37, // 23: mcsm.v1.Envelope.files_list:type_name -> mcsm.v1.FilesList
-	38, // 24: mcsm.v1.Envelope.files_list_result:type_name -> mcsm.v1.FilesListResult
-	39, // 25: mcsm.v1.Envelope.files_stat:type_name -> mcsm.v1.FilesStat
-	40, // 26: mcsm.v1.Envelope.files_stat_result:type_name -> mcsm.v1.FilesStatResult
-	41, // 27: mcsm.v1.Envelope.files_read:type_name -> mcsm.v1.FilesRead
-	42, // 28: mcsm.v1.Envelope.files_read_result:type_name -> mcsm.v1.FilesReadResult
-	43, // 29: mcsm.v1.Envelope.files_write:type_name -> mcsm.v1.FilesWrite
-	44, // 30: mcsm.v1.Envelope.files_mkdir:type_name -> mcsm.v1.FilesMkdir
-	45, // 31: mcsm.v1.Envelope.files_rename:type_name -> mcsm.v1.FilesRename
-	46, // 32: mcsm.v1.Envelope.files_delete:type_name -> mcsm.v1.FilesDelete
-	47, // 33: mcsm.v1.Envelope.files_download:type_name -> mcsm.v1.FilesDownload
-	48, // 34: mcsm.v1.Envelope.files_upload:type_name -> mcsm.v1.FilesUpload
-	49, // 35: mcsm.v1.Envelope.import_scan:type_name -> mcsm.v1.ImportScan
-	50, // 36: mcsm.v1.Envelope.import_scan_result:type_name -> mcsm.v1.ImportScanResult
-	54, // 37: mcsm.v1.Envelope.import_adopt:type_name -> mcsm.v1.ImportAdopt
-	55, // 38: mcsm.v1.Envelope.backup_push:type_name -> mcsm.v1.BackupPush
-	56, // 39: mcsm.v1.Envelope.backup_push_result:type_name -> mcsm.v1.BackupPushResult
-	57, // 40: mcsm.v1.Envelope.migrate_receive:type_name -> mcsm.v1.MigrateReceive
-	58, // 41: mcsm.v1.Envelope.migrate_abort:type_name -> mcsm.v1.MigrateAbort
-	59, // 42: mcsm.v1.Envelope.migrate_retire:type_name -> mcsm.v1.MigrateRetire
-	60, // 43: mcsm.v1.Envelope.migrate_confirm:type_name -> mcsm.v1.MigrateConfirm
-	62, // 44: mcsm.v1.Envelope.router_apply:type_name -> mcsm.v1.RouterApply
-	63, // 45: mcsm.v1.Envelope.router_remove:type_name -> mcsm.v1.RouterRemove
-	64, // 46: mcsm.v1.Envelope.router_observed:type_name -> mcsm.v1.RouterObserved
-	5,  // 47: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
-	65, // 48: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
-	66, // 49: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
-	0,  // 50: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
-	8,  // 51: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
-	8,  // 52: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
-	1,  // 53: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
-	18, // 54: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
-	19, // 55: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
-	24, // 56: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
-	25, // 57: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
-	2,  // 58: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
-	2,  // 59: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
-	26, // 60: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
-	35, // 61: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
-	26, // 62: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
-	3,  // 63: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
-	3,  // 64: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
-	36, // 65: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
-	36, // 66: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
-	51, // 67: mcsm.v1.ImportScanResult.candidates:type_name -> mcsm.v1.ImportCandidate
-	67, // 68: mcsm.v1.ImportCandidate.env:type_name -> mcsm.v1.ImportCandidate.EnvEntry
-	52, // 69: mcsm.v1.ImportCandidate.ports:type_name -> mcsm.v1.ImportPort
-	53, // 70: mcsm.v1.ImportCandidate.mounts:type_name -> mcsm.v1.ImportMount
-	68, // 71: mcsm.v1.ImportCandidate.labels:type_name -> mcsm.v1.ImportCandidate.LabelsEntry
-	8,  // 72: mcsm.v1.ImportAdopt.server:type_name -> mcsm.v1.ServerSpec
-	61, // 73: mcsm.v1.RouterApply.spec:type_name -> mcsm.v1.RouterSpec
-	61, // 74: mcsm.v1.RouterObserved.spec:type_name -> mcsm.v1.RouterSpec
-	0,  // 75: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
-	76, // [76:76] is the sub-list for method output_type
-	76, // [76:76] is the sub-list for method input_type
-	76, // [76:76] is the sub-list for extension type_name
-	76, // [76:76] is the sub-list for extension extendee
-	0,  // [0:76] is the sub-list for field type_name
+	7,  // 0: mcsm.v1.Envelope.hello:type_name -> mcsm.v1.Hello
+	8,  // 1: mcsm.v1.Envelope.hello_ack:type_name -> mcsm.v1.HelloAck
+	10, // 2: mcsm.v1.Envelope.sync_specs:type_name -> mcsm.v1.SyncSpecs
+	11, // 3: mcsm.v1.Envelope.apply_spec:type_name -> mcsm.v1.ApplySpec
+	12, // 4: mcsm.v1.Envelope.remove_server:type_name -> mcsm.v1.RemoveServer
+	13, // 5: mcsm.v1.Envelope.power_action:type_name -> mcsm.v1.PowerAction
+	14, // 6: mcsm.v1.Envelope.send_command:type_name -> mcsm.v1.SendCommand
+	15, // 7: mcsm.v1.Envelope.command_result:type_name -> mcsm.v1.CommandResult
+	16, // 8: mcsm.v1.Envelope.subscribe_logs:type_name -> mcsm.v1.SubscribeLogs
+	17, // 9: mcsm.v1.Envelope.log_line:type_name -> mcsm.v1.LogLine
+	18, // 10: mcsm.v1.Envelope.stream_close:type_name -> mcsm.v1.StreamClose
+	21, // 11: mcsm.v1.Envelope.server_observed:type_name -> mcsm.v1.ServerObserved
+	22, // 12: mcsm.v1.Envelope.ack:type_name -> mcsm.v1.Ack
+	23, // 13: mcsm.v1.Envelope.error:type_name -> mcsm.v1.Error
+	24, // 14: mcsm.v1.Envelope.metric_batch:type_name -> mcsm.v1.MetricBatch
+	28, // 15: mcsm.v1.Envelope.backup_now:type_name -> mcsm.v1.BackupNow
+	29, // 16: mcsm.v1.Envelope.backup_restore:type_name -> mcsm.v1.BackupRestore
+	30, // 17: mcsm.v1.Envelope.backup_delete:type_name -> mcsm.v1.BackupDelete
+	31, // 18: mcsm.v1.Envelope.backup_list:type_name -> mcsm.v1.BackupList
+	32, // 19: mcsm.v1.Envelope.backup_inventory:type_name -> mcsm.v1.BackupInventory
+	33, // 20: mcsm.v1.Envelope.backup_created:type_name -> mcsm.v1.BackupCreated
+	34, // 21: mcsm.v1.Envelope.backup_deleted:type_name -> mcsm.v1.BackupDeleted
+	35, // 22: mcsm.v1.Envelope.job_progress:type_name -> mcsm.v1.JobProgress
+	38, // 23: mcsm.v1.Envelope.files_list:type_name -> mcsm.v1.FilesList
+	39, // 24: mcsm.v1.Envelope.files_list_result:type_name -> mcsm.v1.FilesListResult
+	40, // 25: mcsm.v1.Envelope.files_stat:type_name -> mcsm.v1.FilesStat
+	41, // 26: mcsm.v1.Envelope.files_stat_result:type_name -> mcsm.v1.FilesStatResult
+	42, // 27: mcsm.v1.Envelope.files_read:type_name -> mcsm.v1.FilesRead
+	43, // 28: mcsm.v1.Envelope.files_read_result:type_name -> mcsm.v1.FilesReadResult
+	44, // 29: mcsm.v1.Envelope.files_write:type_name -> mcsm.v1.FilesWrite
+	45, // 30: mcsm.v1.Envelope.files_mkdir:type_name -> mcsm.v1.FilesMkdir
+	46, // 31: mcsm.v1.Envelope.files_rename:type_name -> mcsm.v1.FilesRename
+	47, // 32: mcsm.v1.Envelope.files_delete:type_name -> mcsm.v1.FilesDelete
+	48, // 33: mcsm.v1.Envelope.files_download:type_name -> mcsm.v1.FilesDownload
+	49, // 34: mcsm.v1.Envelope.files_upload:type_name -> mcsm.v1.FilesUpload
+	50, // 35: mcsm.v1.Envelope.import_scan:type_name -> mcsm.v1.ImportScan
+	51, // 36: mcsm.v1.Envelope.import_scan_result:type_name -> mcsm.v1.ImportScanResult
+	55, // 37: mcsm.v1.Envelope.import_adopt:type_name -> mcsm.v1.ImportAdopt
+	56, // 38: mcsm.v1.Envelope.backup_push:type_name -> mcsm.v1.BackupPush
+	57, // 39: mcsm.v1.Envelope.backup_push_result:type_name -> mcsm.v1.BackupPushResult
+	58, // 40: mcsm.v1.Envelope.migrate_receive:type_name -> mcsm.v1.MigrateReceive
+	59, // 41: mcsm.v1.Envelope.migrate_abort:type_name -> mcsm.v1.MigrateAbort
+	60, // 42: mcsm.v1.Envelope.migrate_retire:type_name -> mcsm.v1.MigrateRetire
+	61, // 43: mcsm.v1.Envelope.migrate_confirm:type_name -> mcsm.v1.MigrateConfirm
+	63, // 44: mcsm.v1.Envelope.router_apply:type_name -> mcsm.v1.RouterApply
+	64, // 45: mcsm.v1.Envelope.router_remove:type_name -> mcsm.v1.RouterRemove
+	65, // 46: mcsm.v1.Envelope.router_observed:type_name -> mcsm.v1.RouterObserved
+	66, // 47: mcsm.v1.Envelope.event:type_name -> mcsm.v1.Event
+	67, // 48: mcsm.v1.Envelope.stream_dropped:type_name -> mcsm.v1.StreamDropped
+	68, // 49: mcsm.v1.Envelope.rotate_token:type_name -> mcsm.v1.RotateToken
+	6,  // 50: mcsm.v1.Hello.host:type_name -> mcsm.v1.HostInfo
+	69, // 51: mcsm.v1.Hello.spec_versions:type_name -> mcsm.v1.Hello.SpecVersionsEntry
+	70, // 52: mcsm.v1.Hello.desired_states:type_name -> mcsm.v1.Hello.DesiredStatesEntry
+	0,  // 53: mcsm.v1.ServerSpec.desired_state:type_name -> mcsm.v1.DesiredState
+	9,  // 54: mcsm.v1.SyncSpecs.servers:type_name -> mcsm.v1.ServerSpec
+	9,  // 55: mcsm.v1.ApplySpec.server:type_name -> mcsm.v1.ServerSpec
+	1,  // 56: mcsm.v1.PowerAction.action:type_name -> mcsm.v1.PowerActionType
+	19, // 57: mcsm.v1.Observed.mc:type_name -> mcsm.v1.McStatus
+	20, // 58: mcsm.v1.ServerObserved.observed:type_name -> mcsm.v1.Observed
+	25, // 59: mcsm.v1.MetricBatch.host:type_name -> mcsm.v1.HostMetricSample
+	26, // 60: mcsm.v1.MetricBatch.servers:type_name -> mcsm.v1.ServerMetricSample
+	2,  // 61: mcsm.v1.BackupInfo.trigger:type_name -> mcsm.v1.BackupTrigger
+	2,  // 62: mcsm.v1.BackupNow.trigger:type_name -> mcsm.v1.BackupTrigger
+	27, // 63: mcsm.v1.BackupInventory.backups:type_name -> mcsm.v1.BackupInfo
+	36, // 64: mcsm.v1.BackupInventory.jobs:type_name -> mcsm.v1.JobRecord
+	27, // 65: mcsm.v1.BackupCreated.backup:type_name -> mcsm.v1.BackupInfo
+	3,  // 66: mcsm.v1.JobProgress.status:type_name -> mcsm.v1.JobStatus
+	3,  // 67: mcsm.v1.JobRecord.status:type_name -> mcsm.v1.JobStatus
+	37, // 68: mcsm.v1.FilesListResult.entries:type_name -> mcsm.v1.FileEntry
+	37, // 69: mcsm.v1.FilesStatResult.entry:type_name -> mcsm.v1.FileEntry
+	52, // 70: mcsm.v1.ImportScanResult.candidates:type_name -> mcsm.v1.ImportCandidate
+	71, // 71: mcsm.v1.ImportCandidate.env:type_name -> mcsm.v1.ImportCandidate.EnvEntry
+	53, // 72: mcsm.v1.ImportCandidate.ports:type_name -> mcsm.v1.ImportPort
+	54, // 73: mcsm.v1.ImportCandidate.mounts:type_name -> mcsm.v1.ImportMount
+	72, // 74: mcsm.v1.ImportCandidate.labels:type_name -> mcsm.v1.ImportCandidate.LabelsEntry
+	9,  // 75: mcsm.v1.ImportAdopt.server:type_name -> mcsm.v1.ServerSpec
+	62, // 76: mcsm.v1.RouterApply.spec:type_name -> mcsm.v1.RouterSpec
+	62, // 77: mcsm.v1.RouterObserved.spec:type_name -> mcsm.v1.RouterSpec
+	4,  // 78: mcsm.v1.Event.level:type_name -> mcsm.v1.EventLevel
+	0,  // 79: mcsm.v1.Hello.DesiredStatesEntry.value:type_name -> mcsm.v1.DesiredState
+	80, // [80:80] is the sub-list for method output_type
+	80, // [80:80] is the sub-list for method input_type
+	80, // [80:80] is the sub-list for extension type_name
+	80, // [80:80] is the sub-list for extension extendee
+	0,  // [0:80] is the sub-list for field type_name
 }
 
 func init() { file_mcsm_v1_agent_proto_init() }
@@ -5701,6 +6012,9 @@ func file_mcsm_v1_agent_proto_init() {
 		(*Envelope_RouterApply)(nil),
 		(*Envelope_RouterRemove)(nil),
 		(*Envelope_RouterObserved)(nil),
+		(*Envelope_Event)(nil),
+		(*Envelope_StreamDropped)(nil),
+		(*Envelope_RotateToken)(nil),
 	}
 	file_mcsm_v1_agent_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
@@ -5708,8 +6022,8 @@ func file_mcsm_v1_agent_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mcsm_v1_agent_proto_rawDesc), len(file_mcsm_v1_agent_proto_rawDesc)),
-			NumEnums:      4,
-			NumMessages:   65,
+			NumEnums:      5,
+			NumMessages:   68,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
