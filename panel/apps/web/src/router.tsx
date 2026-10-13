@@ -11,6 +11,7 @@ import { TemplatesPage } from "./routes/templates";
 import { EditTemplatePage, NewTemplatePage } from "./routes/template-edit";
 import { JobsPage } from "./routes/jobs";
 import { ImportPage } from "./routes/import";
+import { EventsPage } from "./routes/events";
 
 const getStatus = () => api.get<AuthStatus>("/api/auth/status");
 
@@ -58,6 +59,7 @@ export const importRoute = createRoute({ getParentRoute: () => appRoute, path: "
 // ── plan-7 ──
 // ── plan-8 ──
 // ── plan-9 ──
+export const eventsRoute = createRoute({ getParentRoute: () => appRoute, path: "/events", component: EventsPage });
 
 
 const routeTree = rootRoute.addChildren([
@@ -80,6 +82,7 @@ const routeTree = rootRoute.addChildren([
     // ── plan-7 ──
     // ── plan-8 ──
     // ── plan-9 ──
+    eventsRoute,
   ]),
 ]);
 export const router = createRouter({ routeTree });

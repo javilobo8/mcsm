@@ -51,3 +51,11 @@ describe("eventos en la web", () => {
     expect(handler).toBeNull();
   });
 });
+
+import { EVENT_FILTERS } from "./events";
+
+describe("filtros de la página de eventos", () => {
+  it("todos, avisos y errores, y solo errores", () => {
+    expect(EVENT_FILTERS.map((f) => [f.label, f.minLevel])).toEqual([["Todos", undefined], ["Avisos y errores", "warn"], ["Errores", "error"]]);
+  });
+});

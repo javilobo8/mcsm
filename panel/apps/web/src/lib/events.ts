@@ -48,3 +48,9 @@ export function bindEvents(qc: QueryClient, live: LiveSource): () => void {
   ];
   return () => offs.forEach((off) => off());
 }
+
+export const EVENT_FILTERS: readonly { label: string; minLevel?: EventLevelName }[] = [
+  { label: "Todos" },
+  { label: "Avisos y errores", minLevel: "warn" },
+  { label: "Errores", minLevel: "error" },
+];

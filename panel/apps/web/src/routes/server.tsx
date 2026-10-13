@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StateBadge } from "@/components/state-badge";
 import { BackupsTab } from "@/components/backups-tab";
+import { EventList } from "@/components/event-list";
 import { JobList } from "@/components/job-list";
 import { PowerButtons } from "@/components/power-buttons";
 import { Console } from "@/components/console";
@@ -117,7 +118,16 @@ export function ServerPage() {
         {/* ── plan-3 ── */}
         {/* ── plan-4 ── */}
         <TabsContent value="backups">{iv.backups ? <ExternalDataNote text={iv.backups} /> : <BackupsTab key={s.id} server={s} nodeOnline={nodeOnline} />}</TabsContent>
-        <TabsContent value="history"><JobList key={s.id} filter={{ serverId: s.id }} showServer={false} /></TabsContent>
+        <TabsContent value="history" className="flex flex-col gap-6">
+          <section aria-label="Eventos del servidor" className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Eventos</h2>
+            <EventList key={s.id} filter={{ serverId: s.id }} showSubject={false} />
+          </section>
+          <section aria-label="Jobs del servidor" className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Jobs</h2>
+            <JobList key={s.id} filter={{ serverId: s.id }} showServer={false} />
+          </section>
+        </TabsContent>
         {/* ── plan-5 ── */}
         <TabsContent value="files">{iv.files ? <ExternalDataNote text={iv.files} /> : <FileBrowser key={s.id} serverId={s.id} nodeOnline={nodeOnline} />}</TabsContent>
         {/* ── plan-6 ── */}
