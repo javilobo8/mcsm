@@ -46,7 +46,7 @@ describe("spec size caps", () => {
   });
 });
 
-describe("spec serializada ≤ 64 KiB (panel)", () => {
+describe("serialized spec ≤ 64 KiB (panel)", () => {
   it("measures the JSON's UTF-8 bytes", () => {
     expect(utf8Bytes("ñ")).toBe(2);
     expect(specSizeError(base)).toBeNull();

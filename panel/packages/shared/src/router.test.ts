@@ -12,7 +12,7 @@ const fixture = JSON.parse(readFileSync(new URL("../../../../proto/fixtures/spec
 describe("validHostname (same criterion as the agent)", () => {
   it.each(cases.valid)("accepts %j", (h) => expect(validHostname(h)).toBe(true));
   it.each(cases.invalid)("rejects %j", (h) => expect(validHostname(h)).toBe(false));
-  it("longitudes: etiqueta ≤ 63 y total ≤ 253", () => {
+  it("lengths: label ≤ 63 and total ≤ 253", () => {
     const l63 = "a".repeat(63);
     expect(validHostname(`${l63}.lan`)).toBe(true);
     expect(validHostname(`${"a".repeat(64)}.lan`)).toBe(false);
@@ -33,7 +33,7 @@ describe("serverRouterSchema", () => {
   it("disabled and without a hostname by default", () => {
     expect(serverRouterSchema.parse({})).toEqual({ enabled: false, hostname: "" });
   });
-  it("activado exige hostname", () => {
+  it("enabled requires a hostname", () => {
     const r = serverRouterSchema.safeParse({ enabled: true });
     expect(r.success).toBe(false);
     expect(r.error?.issues[0]?.path).toEqual(["hostname"]);
@@ -63,7 +63,7 @@ describe("routerDeploymentSpecSchema", () => {
   it("default values: disabled, 25565, no autoscale, 10 min", () => {
     expect(defaultRouterDeploymentSpec()).toEqual({ enabled: false, port: 25565, autoscale: false, autoscaleDownAfterMinutes: 10, autoscaleAllowPlayers: [] });
   });
-  it("rangos", () => {
+  it("ranges", () => {
     for (const bad of [{ port: 0 }, { port: 65536 }, { port: 25565.5 }, { autoscaleDownAfterMinutes: 0 }, { autoscaleDownAfterMinutes: 1441 }]) {
       expect(routerDeploymentSpecSchema.safeParse(bad).success).toBe(false);
     }

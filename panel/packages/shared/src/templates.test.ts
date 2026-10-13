@@ -5,7 +5,7 @@ import { specInputSchema, templateSpecSchema } from "./spec.js";
 
 const modded = JSON.parse(readFileSync(new URL("../../../../proto/fixtures/spec-modded.json", import.meta.url), "utf8"));
 
-describe("plantillas", () => {
+describe("templates", () => {
   it("specToTemplate strips ports, rconPassword and the CurseForge key and keeps the rest", () => {
     const t = specToTemplate({ ...modded, curseforgeApiKey: "k" });
     expect(t).not.toHaveProperty("ports");

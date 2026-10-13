@@ -33,7 +33,7 @@ describe("specInputSchema", () => {
     expect(parsed.restartPolicy).toBe("unless-stopped");
     expect(parsed.resources).toEqual({ cpus: 0, memLimit: "" });
   });
-  it("defaultSpecInput valida", () => {
+  it("defaultSpecInput validates", () => {
     expect(() => specInputSchema.parse(defaultSpecInput())).not.toThrow();
   });
 });

@@ -15,7 +15,7 @@ describe("migration", () => {
     expect(migrationProposalQuerySchema.parse({ targetNodeId: "n" }).port).toBeUndefined();
   });
 
-  it("fases abiertas", () => {
+  it("open phases", () => {
     expect([...OPEN_PHASES].sort()).toEqual(["committed", "rolling_back", "running"]);
   });
 

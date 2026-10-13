@@ -10,7 +10,7 @@ describe("mergeSpecPatch", () => {
   it("does not merge nested objects: the section is replaced whole", () => {
     expect(mergeSpecPatch(prev, { mods: { urls: ["https://x/a.jar"] } }).mods).toEqual({ urls: ["https://x/a.jar"] });
   });
-  it("ignora __proto__ y constructor", () => {
+  it("ignores __proto__ and constructor", () => {
     const patch = JSON.parse('{"__proto__":{"type":"FORGE"},"constructor":1}') as Record<string, unknown>;
     const out = mergeSpecPatch(prev, patch);
     expect(out.type).toBe("PAPER");
@@ -37,7 +37,7 @@ describe("formatZodError", () => {
   });
 });
 
-describe("mergeSpecPatch: secciones opcionales", () => {
+describe("mergeSpecPatch: optional sections", () => {
   const prev = { type: "PAPER", ops: [], whitelist: { enabled: true, players: ["a"] } };
   it("absent does not touch, null removes and [] leaves the section present and empty", () => {
     expect(mergeSpecPatch(prev, {})).toEqual(prev);

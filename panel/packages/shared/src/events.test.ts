@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { eventKindLabel, eventsQuerySchema, EVENT_KIND_RE } from "./events.js";
 
-describe("eventos", () => {
+describe("events", () => {
   it("query: default values, coercion and limits", () => {
     expect(eventsQuerySchema.parse({})).toEqual({ limit: 50 });
     expect(eventsQuerySchema.parse({ limit: "10", minLevel: "warn" })).toEqual({ limit: 10, minLevel: "warn" });
