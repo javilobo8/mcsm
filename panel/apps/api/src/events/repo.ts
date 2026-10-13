@@ -33,7 +33,13 @@ export class EventsRepo {
       where.push(`level IN (${levels.map(() => "?").join(", ")})`);
       args.push(...levels);
     }
-    if (f.before) { where.push("created_at < ?"); args.push(f.before); }
+    if (f.before && f.beforeId) {
+      where.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      args.push(f.before, f.before, f.beforeId);
+    } else if (f.before) {
+      where.push("created_at < ?");
+      args.push(f.before);
+    }
     args.push(f.limit);
     const sql = `SELECT * FROM events ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY created_at DESC, id DESC LIMIT ?`;
     return this.db.prepare(sql).all(...args) as unknown as EventRow[];

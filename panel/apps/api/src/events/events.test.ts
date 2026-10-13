@@ -103,9 +103,23 @@ describe("GET /api/events", () => {
     expect((await getEvents(`?serverId=${s.id}`)).json().map((e: { id: string }) => e.id)).toEqual([c.id, a.id]);
     expect((await getEvents("?limit=1")).json()).toHaveLength(1);
     expect((await getEvents(`?before=${encodeURIComponent(c.createdAt)}`)).json().every((e: { createdAt: string }) => e.createdAt < c.createdAt)).toBe(true);
+    const first = (await getEvents("?limit=1")).json()[0];
+    expect((await getEvents(`?limit=5&before=${encodeURIComponent(first.createdAt)}&beforeId=${first.id}`)).json().map((e: { id: string }) => e.id)).toEqual([b.id, a.id]);
     expect((await getEvents("?minLevel=debug")).statusCode).toBe(400);
     expect((await getEvents("?limit=0")).statusCode).toBe(400);
     expect((await app.inject({ method: "GET", url: "/api/events" })).statusCode).toBe(401);
+  });
+
+  it("pagina con cursor (before, beforeId) sin perder eventos del mismo milisegundo", () => {
+    const repo = new EventsRepo(app.db);
+    const same = "2026-10-13T00:00:00.000Z";
+    for (const id of ["a", "b", "c", "d", "e"]) repo.insert({ id, node_id: null, server_id: null, server_name: null, level: "info", kind: "x", message: "m", agent_at: null, created_at: same });
+    const page1 = repo.list({ limit: 2 });
+    expect(page1.map((r) => r.id)).toEqual(["e", "d"]);
+    const page2 = repo.list({ limit: 2, before: same, beforeId: "d" });
+    expect(page2.map((r) => r.id)).toEqual(["c", "b"]);
+    expect(repo.list({ limit: 2, before: same, beforeId: "b" }).map((r) => r.id)).toEqual(["a"]);
+    expect(repo.list({ limit: 5, before: same }).map((r) => r.id)).toEqual([]); // sin beforeId: estrictamente anteriores
   });
 
   it("purga lo de más de 30 días y deja como mucho el máximo", () => {

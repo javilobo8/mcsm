@@ -48,6 +48,8 @@ export const eventsQuerySchema = z.object({
   nodeId: z.string().min(1).max(64).optional(),
   minLevel: z.enum(EVENT_LEVELS).optional(),
   before: z.string().regex(ISO_UTC, "Fecha inválida (ISO 8601 en UTC)").optional(),
+  /** Desempate del cursor: con `before`, también los eventos de ese instante con id menor. */
+  beforeId: z.string().min(1).max(64).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type EventsQuery = z.infer<typeof eventsQuerySchema>;
