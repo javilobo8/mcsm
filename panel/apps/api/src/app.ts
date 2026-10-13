@@ -28,12 +28,20 @@ import { jobRoutes } from "./jobs/routes.js";
 import { eventsRoutes } from "./events/routes.js";
 import { securityHeaders } from "./lib/security.js";
 import { settingsRoutes } from "./settings/routes.js";
+import { VersionCatalog } from "./versions/catalog.js";
+import { versionRoutes } from "./versions/routes.js";
 import { importRoutes } from "./import/routes.js";
 import { migrationGuard } from "./migration/guard.js";
 import { migrationRoutes } from "./migration/routes.js";
 
 /** `logger`: true en producción; los tests pueden pasar opciones de pino (p. ej. un `stream` para capturar los logs). */
-export interface AppOptions { db: Db; logger?: FastifyServerOptions["logger"]; config?: Partial<Config> }
+export interface AppOptions {
+  db: Db;
+  logger?: FastifyServerOptions["logger"];
+  config?: Partial<Config>;
+  /** plan-10: catálogo de versiones (los tests inyectan uno con fetch falso; nunca tocan la red). */
+  versions?: VersionCatalog;
+}
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const cfg: Config = { ...config, ...opts.config };
@@ -84,6 +92,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   // ── plan-9 ──
   await app.register(eventsRoutes);
   await app.register(settingsRoutes);
+  // ── plan-10 ──
+  app.decorate("versions", opts.versions ?? new VersionCatalog({
+    onError: (url, err) => app.log.warn({ url, err }, "no se pudo consultar una fuente de versiones"),
+  }));
+  await app.register(versionRoutes);
   if (cfg.webDist) {
     await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
     // El notFoundHandler no pasa por el guard de sesión (no hay ruta enrutada): solo debe servir
