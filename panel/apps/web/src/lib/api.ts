@@ -24,7 +24,7 @@ export function errorMessage(status: number, statusText: string, data: unknown):
   const msg = (data as { error?: unknown } | null)?.error;
   if (typeof msg === "string" && msg) return msg;
   if (status >= 500) return `The panel is not responding correctly (HTTP ${status})`;
-  return statusText || `Error HTTP ${status}`;
+  return statusText || `HTTP error ${status}`;
 }
 
 async function request<T>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {

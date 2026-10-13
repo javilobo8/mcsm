@@ -42,7 +42,7 @@ describe("error messages", () => {
   it("uses the body, and if there is none, messages in English", () => {
     expect(errorMessage(400, "Bad", { error: "Invalid data" })).toBe("Invalid data");
     expect(errorMessage(502, "", null)).toContain("The panel is not responding");
-    expect(errorMessage(404, "", null)).toBe("Error HTTP 404");
+    expect(errorMessage(404, "", null)).toBe("HTTP error 404");
   });
 });
 

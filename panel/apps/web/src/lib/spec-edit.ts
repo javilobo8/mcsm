@@ -37,7 +37,7 @@ export function validateListItems(kind: ListItemKind, items: readonly string[]):
     : kind === "digits" ? "must be a numeric id"
     : kind === "player" ? "must be a Java name (1-16 letters, numbers or _) or a UUID"
     : "cannot have spaces or commas";
-  return `«${bad.length > 40 ? `${bad.slice(0, 40)}…` : bad}» ${why}`;
+  return `“${bad.length > 40 ? `${bad.slice(0, 40)}…` : bad}” ${why}`;
 }
 
 export function listToText(list: readonly string[] | undefined): string {
