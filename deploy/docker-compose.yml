@@ -10,6 +10,8 @@ services:
     environment:
       # Vacío: el panel usa la dirección con la que lo abres en el navegador (Host con puerto).
       PANEL_PUBLIC_URL: ${PANEL_PUBLIC_URL:-}
+      # Opcional: token de configuración inicial (vacío = el panel genera uno y lo escribe en su log).
+      PANEL_SETUP_TOKEN: ${PANEL_SETUP_TOKEN:-}
     volumes:
       - panel-data:/data
   agent:
