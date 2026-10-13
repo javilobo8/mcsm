@@ -23,7 +23,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
   // El hook de auth (Task 11) ya responde 401 en /ws sin sesión, antes del upgrade; este va después.
   app.addHook("onRequest", async (req, reply) => {
     if (req.routeOptions.url !== "/ws") return;
-    if (!originAllowed(req.headers.origin, req.host, app.config.publicUrl)) {
+    if (!originAllowed(req.headers.origin, req.host, app.settings.publicUrl())) {
       return reply.code(403).send({ error: "Origen no permitido" });
     }
   });

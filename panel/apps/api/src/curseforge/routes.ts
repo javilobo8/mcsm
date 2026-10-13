@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { CURSEFORGE_API_KEY_RE, formatZodError } from "@mcsm/shared";
 import { HttpError } from "../lib/http.js";
+import { curseforgeStatus } from "../settings/service.js";
 
 /** "" (tras recortar) borra la key; si no, la valida como el agente: un NUL o un salto rompería el env de todos los servidores CurseForge. */
 const bodySchema = z.object({
@@ -11,7 +12,7 @@ const bodySchema = z.object({
 
 /** GET/PUT de la API key global de CurseForge. Nunca devuelve la key: solo si está configurada. */
 export async function curseforgeRoutes(app: FastifyInstance) {
-  app.get("/api/settings/curseforge", async () => ({ configured: app.curseforge.get() !== null }));
+  app.get("/api/settings/curseforge", async () => (curseforgeStatus(app.curseforge.get())));
 
   app.put("/api/settings/curseforge", async (req) => {
     const body = bodySchema.safeParse(req.body);
@@ -20,6 +21,6 @@ export async function curseforgeRoutes(app: FastifyInstance) {
       // Los servidores que usan CurseForge deben recrearse con la key nueva (o sin ella).
       app.serversService.reapplyCurseForge();
     }
-    return { configured: app.curseforge.get() !== null };
+    return curseforgeStatus(app.curseforge.get());
   });
 }

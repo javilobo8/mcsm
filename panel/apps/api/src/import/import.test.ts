@@ -102,7 +102,7 @@ describe("Nodos → Importar", () => {
       slug: "survival", specVersion: 1, desiredState: "running",
       importedFrom: { containerId: ID, containerName: "survival", specVersion: 1, composeProject: "casa", composeService: "survival" },
     });
-    expect((await get("/api/settings/curseforge")).json()).toEqual({ configured: false });
+    expect((await get("/api/settings/curseforge")).json()).toEqual({ configured: false, valid: true });
     // Ya importado: deja de ser candidato aunque el agente lo siga listando.
     expect((await listCandidates(agent)).json()).toEqual([]);
     agent.close();

@@ -46,7 +46,7 @@ export async function nodeRoutes(app: FastifyInstance) {
     const body = z.object({ nameHint: nameSchema.default("nodo"), dataRoot: dataRootSchema.default("/srv/minecraft") }).safeParse(req.body ?? {});
     if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message });
     // req.host conserva el puerto (req.hostname no): sin él el agente no conectaría.
-    const publicUrl = app.config.publicUrl || `http://${req.host}`;
+    const publicUrl = app.settings.publicUrl() || `http://${req.host}`;
     const { token, expiresAt } = repo.createEnrollmentToken(body.data.nameHint, app.config.enrollTtlSeconds, body.data.dataRoot);
     return { token, expiresAt, dockerRun: dockerRunSnippet(publicUrl, token, body.data.dataRoot) };
   });

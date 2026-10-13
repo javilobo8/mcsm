@@ -206,7 +206,7 @@ export class MigrationService {
       if (m.source_node_id === targetNodeId && m.phase === "committed") reservedSlugs.push(m.source_slug);
     }
     const p = proposeTarget({
-      slug: row.slug, spec, targetServers, reservedSlugs, range: this.app.config.gamePortRange, requestedPort: port,
+      slug: row.slug, spec, targetServers, reservedSlugs, range: this.app.settings.gamePortRange(), requestedPort: port,
       routerPort: this.app.routerService.reservedPort(targetNodeId), // plan-8
     });
     if (!p.ok) throw new HttpError(409, p.error);
