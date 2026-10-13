@@ -17,7 +17,7 @@ async function readAll(stream: Readable): Promise<string> {
 }
 
 describe("Staging", () => {
-  it("init borra los restos de una ejecución anterior y no crea el directorio si no existe", async () => {
+  it("init deletes the leftovers of a previous run and does not create the directory if it does not exist", async () => {
     const s = new Staging(dir);
     expect(await s.init()).toBe(0);
     await expect(stat(dir)).rejects.toThrow();
@@ -27,7 +27,7 @@ describe("Staging", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
-  it("save escribe .part y lo renombra; source lo sirve y lo borra al cerrarse", async () => {
+  it("save writes .part and renames it; source serves it and deletes it on close", async () => {
     const s = new Staging(dir);
     const f = await s.save("abc", Readable.from([Buffer.from("hola "), Buffer.from("mundo")]));
     expect(f.size).toBe(10);
@@ -44,21 +44,21 @@ describe("Staging", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
-  it("si el stream falla no deja el .part", async () => {
+  it("if the stream fails it leaves no .part", async () => {
     const s = new Staging(dir);
     const src = new PassThrough();
     const saving = s.save("roto", src);
     src.write("medio");
-    src.destroy(new Error("corte"));
-    await expect(saving).rejects.toThrow("corte");
+    src.destroy(new Error("cut"));
+    await expect(saving).rejects.toThrow("cut");
     expect(await readdir(dir)).toEqual([]);
   });
 
-  it("rechaza ids que podrían salir del directorio", async () => {
-    await expect(new Staging(dir).save("../x", Readable.from([]))).rejects.toThrow(/inválido/);
+  it("rejects ids that could escape the directory", async () => {
+    await expect(new Staging(dir).save("../x", Readable.from([]))).rejects.toThrow(/Invalid/);
   });
 
-  it("sweep borra solo lo viejo", async () => {
+  it("sweep deletes only the old", async () => {
     let now = Date.now();
     const s = new Staging(dir, () => now);
     const viejo = await s.save("viejo", Readable.from([Buffer.from("1")]));
@@ -71,23 +71,23 @@ describe("Staging", () => {
     expect(await s.sweep(3600_000)).toBe(1);
   });
 
-  // ── Endurecimiento (además del brief) ──
+  // ── Hardening (beyond the brief) ──
 
-  it("el directorio queda en 0700 y los ficheros en 0600", async () => {
+  it("the directory is left at 0700 and the files at 0600", async () => {
     const s = new Staging(dir);
     const f = await s.save("perm", Readable.from([Buffer.from("x")]));
     expect((await stat(dir)).mode & 0o777).toBe(0o700);
     expect((await stat(f.path)).mode & 0o777).toBe(0o600);
   });
 
-  it("init devuelve a 0700 un directorio de staging demasiado abierto", async () => {
+  it("init sets a too-open staging directory back to 0700", async () => {
     await mkdir(dir, { recursive: true });
     await chmod(dir, 0o755);
     expect(await new Staging(dir).init()).toBe(0);
     expect((await stat(dir)).mode & 0o777).toBe(0o700);
   });
 
-  it("maxBytes: lo que se pasa del límite falla con 413 sin dejar nada; el límite exacto entra", async () => {
+  it("maxBytes: going over the limit fails with 413 leaving nothing; the exact limit goes in", async () => {
     const s = new Staging(dir);
     const big = s.save("grande", Readable.from([Buffer.from("hola "), Buffer.from("mundo")]), { maxBytes: 9 });
     await expect(big).rejects.toBeInstanceOf(HttpError);
@@ -97,13 +97,13 @@ describe("Staging", () => {
     expect(ok.size).toBe(10);
   });
 
-  it("signal: abortar con datos ya escritos en el .part corta, destruye el origen y no deja nada", async () => {
+  it("signal: aborting with data already written in the .part cuts, destroys the origin and leaves nothing", async () => {
     const s = new Staging(dir);
     const src = new PassThrough();
     const ac = new AbortController();
     const saving = s.save("cancelado", src, { signal: ac.signal });
     src.write("medio");
-    // Espera con condición y plazo (no un sleep): el primer trozo ya está en disco.
+    // Waits with a condition and a deadline (not a sleep): the first chunk is already on disk.
     await vi.waitFor(async () => {
       expect((await stat(join(dir, "cancelado.part"))).size).toBe(5);
     }, { timeout: 5000, interval: 5 });
@@ -113,31 +113,31 @@ describe("Staging", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
-  it("un id inválido también destruye el origen (quien lo envía no se queda colgado)", async () => {
+  it("an invalid id also destroys the origin (whoever sends it is not left hanging)", async () => {
     const src = new PassThrough();
-    await expect(new Staging(dir).save("a/b", src)).rejects.toThrow(/inválido/);
+    await expect(new Staging(dir).save("a/b", src)).rejects.toThrow(/Invalid/);
     expect(src.destroyed).toBe(true);
     await expect(stat(dir)).rejects.toThrow();
   });
 
-  it("signal ya abortada: no crea nada", async () => {
+  it("signal already aborted: creates nothing", async () => {
     const s = new Staging(dir);
     const src = new PassThrough();
-    await expect(s.save("nunca", src, { signal: AbortSignal.abort() })).rejects.toMatchObject({ name: "AbortError" });
+    await expect(s.save("never", src, { signal: AbortSignal.abort() })).rejects.toMatchObject({ name: "AbortError" });
     expect(src.destroyed).toBe(true);
     await expect(stat(dir)).rejects.toThrow();
   });
 
-  it("un id ocupado por otra escritura falla sin borrar el .part ajeno", async () => {
+  it("an id taken by another write fails without deleting the foreign .part", async () => {
     const s = new Staging(dir);
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, "dup.part"), "de otra escritura");
+    await writeFile(join(dir, "dup.part"), "from another write");
     await expect(s.save("dup", Readable.from([Buffer.from("x")]))).rejects.toMatchObject({ code: "EEXIST" });
-    expect(await readFile(join(dir, "dup.part"), "utf8")).toBe("de otra escritura");
-    expect(await readdir(dir)).toEqual(["dup.part"]); // ni rastro de lo que reservó este save
+    expect(await readFile(join(dir, "dup.part"), "utf8")).toBe("from another write");
+    expect(await readdir(dir)).toEqual(["dup.part"]); // no trace of what this save reserved
   });
 
-  it("no pisa un .bin existente del mismo id: falla con EEXIST y destruye el origen", async () => {
+  it("does not overwrite an existing .bin of the same id: fails with EEXIST and destroys the origin", async () => {
     const s = new Staging(dir);
     const first = await s.save("uno", Readable.from([Buffer.from("primero")]));
     const src = new PassThrough();
@@ -147,7 +147,7 @@ describe("Staging", () => {
     expect(await readdir(dir)).toEqual(["uno.bin"]);
   });
 
-  it("dos save simultáneos con el mismo id: gana uno entero y el otro falla sin tocar nada", async () => {
+  it("two simultaneous saves with the same id: one wins whole and the other fails without touching anything", async () => {
     const s = new Staging(dir);
     const results = await Promise.allSettled([
       s.save("par", Readable.from([Buffer.from("aaaa")])),
@@ -162,14 +162,14 @@ describe("Staging", () => {
     expect(await readdir(dir)).toEqual(["par.bin"]);
   });
 
-  it("source falla al invocarse si el fichero ya no existe (la ruta puede responder el error)", async () => {
+  it("source fails when invoked if the file no longer exists (the route can respond with the error)", async () => {
     const s = new Staging(dir);
     const f = await s.save("ido", Readable.from([Buffer.from("x")]));
     await s.remove(f);
     await expect(s.source(f)()).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("source con removeAfter:false conserva el fichero; remove lo borra", async () => {
+  it("source with removeAfter:false keeps the file; remove deletes it", async () => {
     const s = new Staging(dir);
     const f = await s.save("keep", Readable.from([Buffer.from("abc")]));
     const { stream, size } = await s.source(f, { removeAfter: false })();
@@ -181,16 +181,16 @@ describe("Staging", () => {
     expect(await readdir(dir)).toEqual([]);
   });
 
-  it("source y remove solo tocan ficheros del staging aunque el StagedFile venga alterado", async () => {
+  it("source and remove only touch staging files even if the StagedFile comes tampered with", async () => {
     const s = new Staging(dir);
     const outside = join(dir, "..", "fuera.txt");
     await writeFile(outside, "intocable");
-    await expect(s.remove({ id: "../fuera", path: outside, size: 9 })).rejects.toThrow(/inválido/);
+    await expect(s.remove({ id: "../fuera", path: outside, size: 9 })).rejects.toThrow(/Invalid/);
     await expect(s.source({ id: "x", path: outside, size: 9 })()).rejects.toMatchObject({ code: "ENOENT" });
     expect(await readFile(outside, "utf8")).toBe("intocable");
   });
 
-  it("source destruido sin leer también borra el fichero", async () => {
+  it("source destroyed without being read also deletes the file", async () => {
     const s = new Staging(dir);
     const f = await s.save("tirado", Readable.from([Buffer.from("x")]));
     const { stream } = await s.source(f)();

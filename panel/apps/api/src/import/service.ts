@@ -16,9 +16,9 @@ const SCAN_TIMEOUT_MS = 30_000;
 const ADOPT_TIMEOUT_MS = 60_000;
 
 /**
- * Secciones de la spec que el navegador revisa al importar: las del formulario (FORM_KEYS de la web).
- * Lo demás del cuerpo se ignora: dataPath y la contraseña RCON salen del contenedor (nunca del
- * navegador) y el resto (copias…) no forma parte de la importación.
+ * Spec sections the browser reviews on import: those of the form (the web's FORM_KEYS).
+ * The rest of the body is ignored: dataPath and the RCON password come from the container (never from the
+ * browser) and the rest (backups…) is not part of the import.
  */
 const EDITABLE_KEYS = [
   "imageTag", "type", "version", "memory", "properties", "env", "resources", "restartPolicy", "ports",
@@ -34,18 +34,18 @@ function editableOnly(spec: SpecPatch): SpecPatch {
 
 interface Scanned { candidate: ImportCandidate; proposal: ImportProposal }
 
-/** Importación de servidores existentes (spec §6.7, §7 ImportService). */
+/** Import of existing servers (spec §6.7, §7 ImportService). */
 export class ImportService {
   constructor(private app: FastifyInstance) {}
 
   private conn(nodeId: string): AgentConn {
-    if (!this.app.nodes.get(nodeId)) throw new HttpError(404, "Nodo no encontrado");
+    if (!this.app.nodes.get(nodeId)) throw new HttpError(404, "Node not found");
     const conn = this.app.agents.get(nodeId);
-    if (!conn) throw new HttpError(409, "El nodo está desconectado");
+    if (!conn) throw new HttpError(409, "The node is offline");
     return conn;
   }
 
-  /** Contenedores que ya son un servidor importado del panel, en cualquier nodo: no se adoptan dos veces. */
+  /** Containers that are already a server imported by the panel, on any node: they are not adopted twice. */
   private importedContainers(): Set<string> {
     const ids = new Set<string>();
     for (const r of this.app.servers.list()) {
@@ -55,15 +55,15 @@ export class ImportService {
     return ids;
   }
 
-  /** ImportScan + propuesta de cada candidato aún no importado. */
+  /** ImportScan + proposal for each candidate not yet imported. */
   private async scan(nodeId: string, conn: AgentConn): Promise<Scanned[]> {
     let res;
     try {
       res = await conn.request({ case: "importScan", value: {} }, SCAN_TIMEOUT_MS);
     } catch (e) {
-      throw agentErrorToHttp(e, "El agente no pudo listar los contenedores");
+      throw agentErrorToHttp(e, "The agent could not list the containers");
     }
-    if (res.body.case !== "importScanResult") throw new HttpError(502, "Respuesta inesperada del agente");
+    if (res.body.case !== "importScanResult") throw new HttpError(502, "Unexpected response from the agent");
     const { candidates, dataRoot } = res.body.value;
     const imported = this.importedContainers();
     const ctx = {
@@ -80,17 +80,17 @@ export class ImportService {
   }
 
   /**
-   * Adopta un candidato. Vuelve a escanear (no se fía de lo que mandó el navegador): dataPath, la
-   * contraseña RCON y la key de CurseForge salen del contenedor. Sin applyNow exige la propuesta sin
-   * cambios (la spec v1 describe el contenedor que sigue en marcha); con applyNow sube a v2 tras el Ack.
+   * Adopts a candidate. Scans again (does not trust what the browser sent): dataPath, the RCON
+   * password and the CurseForge key come from the container. Without applyNow it requires the proposal unchanged
+   * (the v1 spec describes the container that keeps running); with applyNow it goes up to v2 after the Ack.
    */
   async adopt(nodeId: string, input: ImportAdoptInput): Promise<ServerDto> {
     const conn = this.conn(nodeId);
     const found = (await this.scan(nodeId, conn)).find((s) => s.candidate.containerId === input.containerId);
-    // Desde aquí hasta crear la fila no hay await: otra adopción del mismo contenedor no puede colarse
-    // entre la comprobación y el INSERT (el filtro de scan se calculó antes de ceder el turno).
+    // From here until the row is created there is no await: another adoption of the same container cannot sneak in
+    // between the check and the INSERT (the scan filter was computed before yielding the turn).
     if (!found || this.importedContainers().has(input.containerId)) {
-      throw new HttpError(404, "Ese contenedor ya no se puede importar: no existe, ya lo gestiona el panel o ya se importó");
+      throw new HttpError(404, "That container can no longer be imported: it does not exist, the panel already manages it or it was already imported");
     }
     const { candidate: c, proposal: p } = found;
     if (p.blockers.length > 0) throw new HttpError(409, p.blockers[0]!);
@@ -98,16 +98,16 @@ export class ImportService {
     const parsed = specInputSchema.safeParse(editableOnly(input.spec));
     if (!parsed.success) throw new HttpError(400, formatZodError(parsed.error));
     if (!input.applyNow && (p.specError !== null || !sameSpecInput(p.spec, parsed.data))) {
-      throw new HttpError(409, "La configuración no es la del contenedor: adoptarlo sin pararlo exige la propuesta sin cambios. Usa «Adoptar y aplicar» (recrea el contenedor) o deshaz los cambios");
+      throw new HttpError(409, "The configuration is not the container's: adopting it without stopping it requires the proposal unchanged. Use “Adopt and apply” (recreates the container) or undo the changes");
     }
 
     const slug = input.slug ?? p.slug;
-    if (p.slugLocked && slug !== p.slug) throw new HttpError(400, `El slug tiene que ser «${p.slug}»: los datos ya están en DATA_ROOT/${p.slug}/data`);
-    if (this.app.servers.getBySlug(nodeId, slug)) throw new HttpError(409, `Ya existe un servidor con slug "${slug}" en este nodo`);
+    if (p.slugLocked && slug !== p.slug) throw new HttpError(400, `The slug must be “${p.slug}”: the data is already in DATA_ROOT/${p.slug}/data`);
+    if (this.app.servers.getBySlug(nodeId, slug)) throw new HttpError(409, `A server with slug "${slug}" already exists on this node`);
     if (p.dataPath) {
       for (const r of this.app.servers.list(nodeId)) {
         const other = (JSON.parse(r.spec) as Spec).dataPath;
-        if (other && dataPathsOverlap(other, p.dataPath)) throw new HttpError(409, `El servidor «${r.name}» ya usa esa carpeta de datos (${other})`);
+        if (other && dataPathsOverlap(other, p.dataPath)) throw new HttpError(409, `Server “${r.name}” already uses that data folder (${other})`);
       }
     }
     const full = specSchema.safeParse({
@@ -121,10 +121,10 @@ export class ImportService {
     if (tooBig) throw new HttpError(400, tooBig);
     this.app.serversService.checkPorts(nodeId, full.data);
 
-    // La key de CurseForge del contenedor viaja con la adopción si no hay ninguna en Ajustes, y se guarda
-    // allí solo si el agente confirma la adopción (m10: con un 504 no se sabe si la aceptó; el usuario la
-    // pone en Ajustes). Sin reaplicar a los demás servidores (recrearlos por importar uno sorprendería):
-    // la recibirán en su próximo cambio.
+    // The container's CurseForge key travels with the adoption if there is none in Settings, and is saved
+    // there only if the agent confirms the adoption (m10: with a 504 it is not known whether it accepted; the user
+    // puts it in Settings). Without re-applying the other servers (recreating them because one was imported would be surprising):
+    // they will receive it on their next change.
     const storedKey = this.app.curseforge.get();
     const containerKey = storedKey === null && p.curseforgeApiKey && usesCurseForge(full.data) ? p.curseforgeApiKey : null;
     const keepContainerKey = () => { if (containerKey && this.app.curseforge.get() === null) this.app.curseforge.set(containerKey); };
@@ -139,23 +139,23 @@ export class ImportService {
       await conn.request({ case: "importAdopt", value: { server: toServerSpecMessage(row, storedKey ?? containerKey) } }, ADOPT_TIMEOUT_MS);
     } catch (e) {
       if (e instanceof AgentError && (e.code === AgentErrorCode.Timeout || e.code === AgentErrorCode.Disconnected)) {
-        // Puede que el agente lo adoptara: borrar la fila haría que el próximo SyncSpecs retirara el servidor
-        // y borrara el contenedor original. Se conserva: al reconectar, su spec (con adopt) completa la
-        // adopción con las mismas comprobaciones. Con applyNow sube ya a v2: el agente recrea al adoptar.
+        // The agent may have adopted it: deleting the row would make the next SyncSpecs remove the server
+        // and delete the original container. It is kept: on reconnect, its spec (with adopt) completes the
+        // adoption with the same checks. With applyNow it goes up to v2 right away: the agent recreates on adopting.
         if (input.applyNow) void this.app.serversService.push(this.app.servers.bumpVersion(row.id));
-        this.app.log.warn({ nodeId, serverId: row.id, code: e.code }, "ImportAdopt sin confirmar; el servidor importado se conserva");
-        const cfNote = containerKey ? " Usa CurseForge y no se ha guardado la API key del contenedor: configúrala en Ajustes antes de aplicar cambios" : "";
-        throw new HttpError(504, `El agente no confirmó la adopción a tiempo. El servidor queda importado y la adopción se completará cuando el nodo responda: revisa su estado en unos segundos.${cfNote}`);
+        this.app.log.warn({ nodeId, serverId: row.id, code: e.code }, "ImportAdopt unconfirmed; the imported server is kept");
+        const cfNote = containerKey ? " It uses CurseForge and the container's API key has not been saved: configure it in Settings before applying changes" : "";
+        throw new HttpError(504, `The agent did not confirm the adoption in time. The server stays imported and the adoption will complete when the node responds: check its status in a few seconds.${cfNote}`);
       }
       this.app.servers.delete(row.id);
-      throw agentErrorToHttp(e, "El agente no pudo adoptar el contenedor");
+      throw agentErrorToHttp(e, "The agent could not adopt the container");
     }
     keepContainerKey();
     if (input.applyNow) {
       row = this.app.servers.bumpVersion(row.id);
       void this.app.serversService.push(row);
     }
-    // Sin secretos: la contraseña RCON es la del contenedor (la página del servidor la enseña bajo demanda).
+    // No secrets: the RCON password is the container's (the server page shows it on demand).
     return toServerDto(row);
   }
 }

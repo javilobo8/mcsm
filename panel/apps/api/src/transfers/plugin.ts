@@ -10,8 +10,8 @@ const STAGING_SWEEP_EVERY_MS = 3600_000;
 const STAGING_MAX_AGE_MS = 24 * 3600_000;
 
 /**
- * Transferencias y staging (spec §5.1). Decora `app.transfers` y `app.staging` en la raíz
- * (fastify-plugin) y registra las rutas de los agentes en un contexto propio.
+ * Transfers and staging (spec §5.1). Decorates `app.transfers` and `app.staging` at the root
+ * (fastify-plugin) and registers the agents' routes in its own context.
  */
 export const transfersPlugin = fp(async function transfersPlugin(app: FastifyInstance) {
   app.decorate("transfers", new TransferService());
@@ -24,20 +24,20 @@ export const transfersPlugin = fp(async function transfersPlugin(app: FastifyIns
 
   app.addHook("onReady", async () => {
     const n = await app.staging.init();
-    if (n) app.log.info({ n }, "staging: borrados restos de una ejecución anterior");
+    if (n) app.log.info({ n }, "staging: deleted leftovers from a previous run");
     transferSweep = setInterval(() => app.transfers.sweep(), SWEEP_EVERY_MS);
     transferSweep.unref();
     stagingSweep = setInterval(() => {
-      stagingSweeping = app.staging.sweep(STAGING_MAX_AGE_MS).catch((e) => app.log.warn({ err: e }, "limpieza de staging fallida"));
+      stagingSweeping = app.staging.sweep(STAGING_MAX_AGE_MS).catch((e) => app.log.warn({ err: e }, "staging cleanup failed"));
     }, STAGING_SWEEP_EVERY_MS);
     stagingSweep.unref();
   });
-  // preClose corre antes de que el servidor espere a las peticiones en curso: una transferencia
-  // reclamada (horas, si es grande) bloquearía el cierre. closeAll corta su conexión.
+  // preClose runs before the server waits for in-flight requests: a claimed transfer
+  // (hours, if large) would block the shutdown. closeAll cuts its connection.
   app.addHook("preClose", async () => {
     app.transfers.closeAll();
   });
-  // onClose también, por si la app se cierra sin haber arrancado (sin preClose).
+  // onClose too, in case the app is closed without having started (no preClose).
   app.addHook("onClose", async () => {
     clearInterval(transferSweep);
     clearInterval(stagingSweep);

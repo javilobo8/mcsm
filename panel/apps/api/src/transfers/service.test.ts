@@ -11,7 +11,7 @@ function clock(start = 1_000_000) {
 }
 
 describe("TransferService", () => {
-  it("genera ids impredecibles de 32 bytes en base64url", () => {
+  it("generates unpredictable 32-byte ids in base64url", () => {
     const svc = new TransferService();
     const a = svc.outbound("n1", async () => payload());
     const b = svc.inbound("n1");
@@ -20,7 +20,7 @@ describe("TransferService", () => {
     expect(a.id).not.toBe(b.id);
   });
 
-  it("un transferId es de un solo uso", () => {
+  it("a transferId is single use", () => {
     const svc = new TransferService();
     const t = svc.outbound("n1", async () => payload());
     expect(svc.claim(t.id, "n1", "GET")?.kind).toBe("outbound");
@@ -28,18 +28,18 @@ describe("TransferService", () => {
     expect(svc.pendingCount).toBe(0);
   });
 
-  it("otro nodo o el otro sentido no lo consumen", () => {
+  it("another node or the other direction do not consume it", () => {
     const svc = new TransferService();
     const out = svc.outbound("n1", async () => payload());
     const inc = svc.inbound("n1");
     expect(svc.claim(out.id, "n2", "GET")).toBeNull();
     expect(svc.claim(out.id, "n1", "PUT")).toBeNull();
     expect(svc.claim(inc.id, "n1", "GET")).toBeNull();
-    expect(svc.claim(out.id, "n1", "GET")).not.toBeNull(); // sigue disponible para su dueño
+    expect(svc.claim(out.id, "n1", "GET")).not.toBeNull(); // still available for its owner
     expect(svc.claim(inc.id, "n1", "PUT")).not.toBeNull();
   });
 
-  it("outbound: complete y fail resuelven done", async () => {
+  it("outbound: complete and fail resolve done", async () => {
     const svc = new TransferService();
     const ok = svc.outbound("n1", async () => payload());
     const c = svc.claim(ok.id, "n1", "GET");
@@ -51,11 +51,11 @@ describe("TransferService", () => {
     const bad = svc.outbound("n1", async () => payload());
     const c2 = svc.claim(bad.id, "n1", "GET");
     if (c2?.kind !== "outbound") throw new Error();
-    c2.fail(new TransferError("aborted", "El agente cortó la transferencia"));
+    c2.fail(new TransferError("aborted", "The agent cut the transfer"));
     await expect(bad.done).rejects.toMatchObject({ code: "aborted" });
   });
 
-  it("inbound: deliver resuelve incoming con el stream", async () => {
+  it("inbound: deliver resolves incoming with the stream", async () => {
     const svc = new TransferService();
     const t = svc.inbound("n1");
     const c = svc.claim(t.id, "n1", "PUT");
@@ -65,7 +65,7 @@ describe("TransferService", () => {
     await expect(t.incoming).resolves.toBe(p);
   });
 
-  it("caduca lo no reclamado: sweep rechaza y el reclamo tardío da null", async () => {
+  it("expires what is unclaimed: sweep rejects and the late claim gives null", async () => {
     const c = clock();
     const svc = new TransferService({ now: c.now, claimTtlMs: 60_000 });
     const a = svc.inbound("n1");
@@ -73,23 +73,23 @@ describe("TransferService", () => {
     c.advance(59_000);
     expect(svc.sweep()).toBe(0);
     c.advance(2_000);
-    expect(svc.claim(b.id, "n1", "GET")).toBeNull(); // caducada al reclamar
+    expect(svc.claim(b.id, "n1", "GET")).toBeNull(); // expired on claiming
     await expect(b.done).rejects.toMatchObject({ code: "expired" });
     expect(svc.sweep()).toBe(1);
     await expect(a.incoming).rejects.toBeInstanceOf(TransferError);
     expect(svc.pendingCount).toBe(0);
   });
 
-  it("plazo de reclamo propio por transferencia (migración): no caduca con el del servicio", async () => {
+  it("own claim deadline per transfer (migration): it does not expire with the service's", async () => {
     const c = clock();
     const svc = new TransferService({ now: c.now, claimTtlMs: 60_000 });
     const long = svc.outbound("n1", async () => payload(), { claimTtlMs: 30 * 60_000 });
     const longIn = svc.inbound("n1", { claimTtlMs: 30 * 60_000 });
     const short = svc.outbound("n1", async () => payload());
     c.advance(61_000);
-    expect(svc.sweep()).toBe(1); // solo la del plazo por defecto (Archivos)
+    expect(svc.sweep()).toBe(1); // only the one with the default deadline (Files)
     await expect(short.done).rejects.toMatchObject({ code: "expired" });
-    c.advance(28 * 60_000); // 29 min 1 s desde la creación
+    c.advance(28 * 60_000); // 29 min 1 s since creation
     expect(svc.claim(long.id, "n1", "GET")?.kind).toBe("outbound");
     expect(svc.sweep()).toBe(0);
     c.advance(60_000);
@@ -97,10 +97,10 @@ describe("TransferService", () => {
     await expect(longIn.incoming).rejects.toMatchObject({ code: "expired" });
   });
 
-  it("cancel antes de reclamar rechaza y deja el id inservible; closeAll cancela todo", async () => {
+  it("cancel before claiming rejects and leaves the id unusable; closeAll cancels everything", async () => {
     const svc = new TransferService();
     const t = svc.inbound("n1");
-    t.cancel("el navegador se fue");
+    t.cancel("the browser left");
     await expect(t.incoming).rejects.toMatchObject({ code: "cancelled" });
     expect(svc.claim(t.id, "n1", "PUT")).toBeNull();
     const u = svc.outbound("n1", async () => payload());
@@ -108,26 +108,26 @@ describe("TransferService", () => {
     await expect(u.done).rejects.toMatchObject({ code: "cancelled" });
   });
 
-  // Fix round 1: sustituye a "cancel tras reclamar no hace nada" del brief (decisión del
-  // controlador): una transferencia en curso también se puede cortar.
-  it("cancel tras reclamar aborta la signal, rechaza y destruye lo que se entregue tarde", async () => {
+  // Fix round 1: replaces the brief's "cancel after claiming does nothing" (controller
+  // decision): an in-progress transfer can also be cut.
+  it("cancel after claiming aborts the signal, rejects and destroys whatever is delivered late", async () => {
     const svc = new TransferService();
     const t = svc.inbound("n1");
     const c = svc.claim(t.id, "n1", "PUT");
     if (c?.kind !== "inbound") throw new Error();
-    t.cancel("el navegador se fue");
+    t.cancel("the browser left");
     expect(c.signal.aborted).toBe(true);
     expect(c.signal.reason).toMatchObject({ code: "cancelled" });
     await expect(t.incoming).rejects.toMatchObject({ code: "cancelled" });
     const late = new PassThrough();
     c.deliver({ stream: late, size: null });
-    expect(late.destroyed).toBe(true); // el PUT del agente no se queda esperando a un lector
+    expect(late.destroyed).toBe(true); // the agent's PUT is not left waiting for a reader
     expect(svc.activeCount).toBe(0);
   });
 
-  // ── Endurecimiento (además del brief) ──
+  // ── Hardening (beyond the brief) ──
 
-  it("un reclamo de otro nodo no consume ni siquiera una caducada: la barre sweep", async () => {
+  it("a claim from another node does not consume even an expired one: sweep sweeps it", async () => {
     const c = clock();
     const svc = new TransferService({ now: c.now, claimTtlMs: 60_000 });
     const t = svc.outbound("n1", async () => payload());
@@ -138,7 +138,7 @@ describe("TransferService", () => {
     await expect(t.done).rejects.toMatchObject({ code: "expired" });
   });
 
-  it("el plazo es justo claimTtlMs: en el límite aún se puede reclamar", () => {
+  it("the deadline is exactly claimTtlMs: at the limit it can still be claimed", () => {
     const c = clock();
     const svc = new TransferService({ now: c.now, claimTtlMs: 1_000 });
     const t = svc.inbound("n1");
@@ -147,7 +147,7 @@ describe("TransferService", () => {
     expect(svc.claim(t.id, "n1", "PUT")?.kind).toBe("inbound");
   });
 
-  it("tras closeAll las transferencias nuevas nacen canceladas y no quedan pendientes", async () => {
+  it("after closeAll new transfers are born cancelled and none stay pending", async () => {
     const svc = new TransferService();
     svc.closeAll();
     const a = svc.inbound("n1");
@@ -158,7 +158,7 @@ describe("TransferService", () => {
     await expect(b.done).rejects.toMatchObject({ code: "cancelled" });
   });
 
-  it("la fuente es perezosa: no se invoca si la transferencia se cancela o caduca", async () => {
+  it("the source is lazy: it is not invoked if the transfer is cancelled or expires", async () => {
     const c = clock();
     const svc = new TransferService({ now: c.now });
     let calls = 0;
@@ -170,13 +170,13 @@ describe("TransferService", () => {
     expect(calls).toBe(0);
   });
 
-  it("complete/fail/deliver repetidos no cambian el primer resultado", async () => {
+  it("repeated complete/fail/deliver do not change the first result", async () => {
     const svc = new TransferService();
     const out = svc.outbound("n1", async () => payload());
     const c = svc.claim(out.id, "n1", "GET");
     if (c?.kind !== "outbound") throw new Error();
     c.complete();
-    c.fail(new TransferError("aborted", "tarde"));
+    c.fail(new TransferError("aborted", "late"));
     await expect(out.done).resolves.toBeUndefined();
 
     const inc = svc.inbound("n1");
@@ -188,9 +188,9 @@ describe("TransferService", () => {
     await expect(inc.incoming).resolves.toBe(p);
   });
 
-  // ── Fix round 1: registro de transferencias en curso ──
+  // ── Fix round 1: registry of transfers in progress ──
 
-  it("closeAll con una de salida reclamada a mitad: rechaza done, aborta la signal, destruye la fuente y vacía el registro", async () => {
+  it("closeAll with an outbound one claimed midway: rejects done, aborts the signal, destroys the source and empties the registry", async () => {
     const svc = new TransferService();
     const src = new PassThrough();
     const t = svc.outbound("n1", async () => ({ stream: src, size: 1 << 20 }));
@@ -199,19 +199,19 @@ describe("TransferService", () => {
     expect(svc.activeCount).toBe(1);
     const { stream } = await c.source();
     src.write(Buffer.alloc(1024));
-    // La ruta reacciona a la signal llamando a fail(aborted): no debe pisar el "cancelled".
-    c.signal.addEventListener("abort", () => c.fail(new TransferError("aborted", "corte")));
+    // The route reacts to the signal by calling fail(aborted): it must not overwrite the "cancelled".
+    c.signal.addEventListener("abort", () => c.fail(new TransferError("aborted", "cut")));
     svc.closeAll();
     await expect(t.done).rejects.toMatchObject({ code: "cancelled" });
     expect(c.signal.aborted).toBe(true);
     expect(stream.destroyed).toBe(true);
     expect(svc.activeCount).toBe(0);
     expect(svc.pendingCount).toBe(0);
-    c.complete(); // tarde: no cambia nada
+    c.complete(); // late: changes nothing
     await expect(t.done).rejects.toMatchObject({ code: "cancelled" });
   });
 
-  it("closeAll con una de entrada entregada a mitad: quien la lee ve el corte y el registro queda vacío", async () => {
+  it("closeAll with an inbound one delivered midway: the reader sees the cut and the registry is left empty", async () => {
     const svc = new TransferService();
     const t = svc.inbound("n1");
     const c = svc.claim(t.id, "n1", "PUT");
@@ -219,7 +219,7 @@ describe("TransferService", () => {
     const body = new PassThrough();
     c.deliver({ stream: body, size: 1 << 20 });
     const { stream } = await t.incoming;
-    const reading = (async () => { for await (const _ of stream) { /* consumidor */ } })();
+    const reading = (async () => { for await (const _ of stream) { /* consumer */ } })();
     body.write(Buffer.alloc(1024));
     svc.closeAll();
     expect(c.signal.aborted).toBe(true);
@@ -228,7 +228,7 @@ describe("TransferService", () => {
     expect(svc.activeCount).toBe(0);
   });
 
-  it("closeAll con una de entrada reclamada sin entregar: rechaza incoming", async () => {
+  it("closeAll with an inbound one claimed but not delivered: rejects incoming", async () => {
     const svc = new TransferService();
     const t = svc.inbound("n1");
     const c = svc.claim(t.id, "n1", "PUT");
@@ -239,7 +239,7 @@ describe("TransferService", () => {
     expect(svc.activeCount).toBe(0);
   });
 
-  it("al completar o fallar salen del registro; la de entrada sale al terminar su cuerpo", async () => {
+  it("on completing or failing they leave the registry; the inbound one leaves when its body ends", async () => {
     const svc = new TransferService();
     const ok = svc.outbound("n1", async () => payload());
     const bad = svc.outbound("n1", async () => payload());
@@ -248,7 +248,7 @@ describe("TransferService", () => {
     if (co?.kind !== "outbound" || cb?.kind !== "outbound") throw new Error();
     expect(svc.activeCount).toBe(2);
     co.complete();
-    cb.fail(new TransferError("aborted", "corte"));
+    cb.fail(new TransferError("aborted", "cut"));
     expect(svc.activeCount).toBe(0);
     await expect(bad.done).rejects.toMatchObject({ code: "aborted" });
 
@@ -261,23 +261,23 @@ describe("TransferService", () => {
     const { stream } = await inc.incoming;
     body.end("hola");
     stream.resume();
-    await finished(stream); // el oyente del registro se puso antes (en deliver): ya ha saltado
+    await finished(stream); // the registry's listener was attached earlier (in deliver): it has already fired
     expect(svc.activeCount).toBe(0);
-    inc.cancel(); // ya terminada: no hace nada
+    inc.cancel(); // already finished: does nothing
     await expect(inc.incoming).resolves.toMatchObject({ size: 4 });
   });
 
-  it("inbound fail: rechaza incoming y sale del registro (p. ej. cuerpo con tipo equivocado)", async () => {
+  it("inbound fail: rejects incoming and leaves the registry (e.g. body with the wrong type)", async () => {
     const svc = new TransferService();
     const t = svc.inbound("n1");
     const c = svc.claim(t.id, "n1", "PUT");
     if (c?.kind !== "inbound") throw new Error();
-    c.fail(new TransferError("aborted", "sin cuerpo"));
+    c.fail(new TransferError("aborted", "no body"));
     await expect(t.incoming).rejects.toMatchObject({ code: "aborted" });
     expect(svc.activeCount).toBe(0);
   });
 
-  it("outbound cancelada antes de invocar la fuente: source rechaza sin abrirla", async () => {
+  it("outbound cancelled before invoking the source: source rejects without opening it", async () => {
     const svc = new TransferService();
     let calls = 0;
     const t = svc.outbound("n1", async () => { calls++; return payload(); });
@@ -288,7 +288,7 @@ describe("TransferService", () => {
     expect(calls).toBe(0);
   });
 
-  it("outbound cancelada mientras la fuente se abre: destruye el stream recién abierto", async () => {
+  it("outbound cancelled while the source is opening: destroys the freshly opened stream", async () => {
     const svc = new TransferService();
     const src = new PassThrough();
     let open!: (p: { stream: PassThrough; size: number }) => void;
@@ -302,7 +302,7 @@ describe("TransferService", () => {
     expect(src.destroyed).toBe(true);
   });
 
-  it("nadie que no espere done/incoming provoca un unhandledRejection", async () => {
+  it("nobody that does not await done/incoming causes an unhandledRejection", async () => {
     const seen: unknown[] = [];
     const onUnhandled = (e: unknown) => { seen.push(e); };
     process.on("unhandledRejection", onUnhandled);
@@ -319,9 +319,9 @@ describe("TransferService", () => {
       svc.claim(enCurso.id, "n1", "GET");
       const entrada = svc.inbound("n1");
       svc.claim(entrada.id, "n1", "PUT");
-      svc.closeAll(); // aborta las dos reclamadas sin que nadie espere sus promesas
-      svc.inbound("n1"); // nace cancelada
-      // Node emite unhandledRejection al vaciar la cola de microtareas; setImmediate corre después.
+      svc.closeAll(); // aborts the two claimed ones without anyone awaiting their promises
+      svc.inbound("n1"); // born cancelled
+      // Node emits unhandledRejection when draining the microtask queue; setImmediate runs after.
       await new Promise<void>((r) => setImmediate(r));
     } finally {
       process.off("unhandledRejection", onUnhandled);

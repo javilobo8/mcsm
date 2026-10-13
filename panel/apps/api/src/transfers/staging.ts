@@ -6,54 +6,54 @@ import { pipeline } from "node:stream/promises";
 import { HttpError } from "../lib/http.js";
 import type { TransferSource } from "./service.js";
 
-/** Fichero en staging. `path` es informativo: `source` y `remove` lo derivan siempre de `id`. */
+/** File in staging. `path` is informational: `source` and `remove` always derive it from `id`. */
 export interface StagedFile { id: string; path: string; size: number }
 
 export interface SaveOptions {
-  /** Corta la escritura: destruye el origen, borra el `.part` y rechaza con AbortError. */
+  /** Cuts the write: destroys the origin, deletes the `.part` and rejects with AbortError. */
   signal?: AbortSignal;
-  /** Tamaño máximo en bytes; si el stream lo supera se corta con HttpError 413. */
+  /** Maximum size in bytes; if the stream exceeds it, it is cut with HttpError 413. */
   maxBytes?: number;
 }
 
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
- * Directorio de staging del panel (spec §5.1) para transferencias que no pueden ir en
- * streaming directo (p. ej. migración con el destino aún no listo, oleada B). Los flujos del
- * navegador del Plan 5 no lo usan: van en streaming sin tocar disco. Se vacía al arrancar,
- * cada fichero se borra al consumirse y `sweep` elimina lo abandonado.
+ * The panel's staging directory (spec §5.1) for transfers that cannot go as
+ * direct streaming (e.g. migration with the target not yet ready, wave B). The Plan 5
+ * browser flows do not use it: they stream without touching disk. It is emptied on startup,
+ * each file is deleted when consumed and `sweep` removes whatever is abandoned.
  *
- * Directorio 0700 y ficheros 0600 (L9: está dentro del directorio de datos del panel). Los
- * datos nunca se cargan en memoria: `pipeline` con backpressure hacia y desde disco.
+ * Directory 0700 and files 0600 (L9: it is inside the panel's data directory). Data
+ * is never loaded into memory: `pipeline` with backpressure to and from disk.
  */
 export class Staging {
   private removing = new Set<Promise<void>>();
 
   constructor(readonly dir: string, private now: () => number = () => Date.now()) {}
 
-  /** Borra los restos de una ejecución anterior y restringe el directorio a 0700. No lo crea. */
+  /** Deletes the leftovers of a previous run and restricts the directory to 0700. Does not create it. */
   async init(): Promise<number> {
     const names = await this.list();
     if (names === null) return 0;
-    // Mejor esfuerzo, como data-dir.ts: un directorio ajeno (bind mount) no impide arrancar.
+    // Best effort, like data-dir.ts: a foreign directory (bind mount) does not prevent starting.
     await chmod(this.dir, 0o700).catch(() => {});
     await Promise.all(names.map((n) => rm(join(this.dir, n), { recursive: true, force: true })));
     return names.length;
   }
 
   /**
-   * Guarda un stream: reserva `<id>.bin` (exclusivo), escribe `<id>.part` (exclusivo, 0600) y lo
-   * renombra sobre su reserva al terminar. Nunca pisa un `.bin` existente: un id repetido (otro
-   * `save` en curso o ya terminado) falla con EEXIST sin tocar lo ajeno. Si falla, se corta o
-   * supera `maxBytes`, borra lo suyo y rechaza. El stream pasa a ser de Staging: si falla, queda
-   * destruido (quien lo envía ve el corte).
+   * Saves a stream: reserves `<id>.bin` (exclusive), writes `<id>.part` (exclusive, 0600) and
+   * renames it over its reservation when done. Never overwrites an existing `.bin`: a repeated id (another
+   * `save` in progress or already finished) fails with EEXIST without touching what is foreign. If it fails, is cut or
+   * exceeds `maxBytes`, it deletes its own and rejects. The stream becomes Staging's: if it fails, it is left
+   * destroyed (whoever sends it sees the cut).
    */
   async save(id: string, stream: Readable, opts: SaveOptions = {}): Promise<StagedFile> {
     let part = "";
     let path = "";
     let size = 0;
-    // Solo se borra lo que creó este save: con EEXIST, el .part/.bin es de otra escritura.
+    // Only what this save created is deleted: with EEXIST, the .part/.bin belongs to another write.
     let reserved = false;
     let created = false;
     try {
@@ -69,16 +69,16 @@ export class Staging {
       const counter = new Transform({
         transform(chunk: Buffer, _enc, cb) {
           size += chunk.length;
-          if (max !== undefined && size > max) cb(new HttpError(413, `El fichero supera el tamaño máximo admitido (${max} bytes)`));
+          if (max !== undefined && size > max) cb(new HttpError(413, `The file exceeds the maximum allowed size (${max} bytes)`));
           else cb(null, chunk);
         },
       });
       const out = createWriteStream(part, { flags: "wx", mode: 0o600 });
       out.once("open", () => { created = true; });
       await pipeline(stream, counter, out, opts.signal ? { signal: opts.signal } : {});
-      await rename(part, path); // sobre la reserva propia: atómico
+      await rename(part, path); // over its own reservation: atomic
     } catch (e) {
-      stream.destroy(); // sin error: si falló antes del pipeline nadie escucha 'error' en el origen
+      stream.destroy(); // without an error: if it failed before the pipeline, nobody listens for 'error' on the origin
       if (created) await rm(part, { force: true }).catch(() => {});
       if (reserved) await rm(path, { force: true }).catch(() => {});
       throw e;
@@ -87,15 +87,15 @@ export class Staging {
   }
 
   /**
-   * Fuente para TransferService.outbound. Abre el fichero al invocarse (si ya no existe, la
-   * fuente rechaza y la ruta puede responder el error) y anuncia su tamaño real.
+   * Source for TransferService.outbound. Opens the file when invoked (if it no longer exists, the
+   * source rejects and the route can respond with the error) and announces its real size.
    *
-   * `removeAfter` (por defecto true) borra el fichero al cerrarse el stream, **termine bien o
-   * no**: sirve para entregas de un solo intento. Si el fichero es el único origen de algo que
-   * hay que poder reintentar —la migración entre nodos (oleada B)—, usa `removeAfter: false` y
-   * llama a `remove(file)` tras resolverse `done` de la transferencia (y en su fallo definitivo).
-   * Lo que nunca llega a invocarse (transferencia caducada o cancelada) queda hasta `sweep` o el
-   * siguiente arranque.
+   * `removeAfter` (true by default) deletes the file when the stream closes, **whether it ends well
+   * or not**: for single-attempt deliveries. If the file is the only origin of something that
+   * must be retryable —migration between nodes (wave B)—, use `removeAfter: false` and
+   * call `remove(file)` after the transfer's `done` resolves (and on its definitive failure).
+   * Whatever is never invoked (expired or cancelled transfer) stays until `sweep` or the
+   * next startup.
    */
   source(file: StagedFile, opts: { removeAfter?: boolean } = {}): TransferSource {
     const removeAfter = opts.removeAfter ?? true;
@@ -109,7 +109,7 @@ export class Staging {
         await fh.close();
         throw e;
       }
-      const stream = fh.createReadStream(); // cierra el descriptor al terminar o destruirse
+      const stream = fh.createReadStream(); // closes the descriptor on finishing or being destroyed
       if (removeAfter) stream.once("close", () => { this.track(rm(path, { force: true })); });
       return { stream, size };
     };
@@ -119,12 +119,12 @@ export class Staging {
     await rm(this.file(file.id, "bin"), { force: true });
   }
 
-  /** Espera a que terminen los borrados lanzados al cerrarse las fuentes (cierre del panel, tests). */
+  /** Waits for the deletions launched when sources close to finish (panel shutdown, tests). */
   async settled(): Promise<void> {
     await Promise.all([...this.removing]);
   }
 
-  /** Borra lo que lleve más de maxAgeMs sin modificarse. Devuelve cuántas entradas. */
+  /** Deletes whatever has gone more than maxAgeMs without being modified. Returns how many entries. */
   async sweep(maxAgeMs: number): Promise<number> {
     const names = await this.list();
     if (names === null) return 0;
@@ -141,11 +141,11 @@ export class Staging {
   }
 
   private file(id: string, ext: "part" | "bin"): string {
-    if (!ID_RE.test(id)) throw new Error("Identificador de staging inválido");
+    if (!ID_RE.test(id)) throw new Error("Invalid staging identifier");
     return join(this.dir, `${id}.${ext}`);
   }
 
-  /** Entradas del directorio, o null si aún no existe. */
+  /** Directory entries, or null if it does not exist yet. */
   private async list(): Promise<string[] | null> {
     try {
       return await readdir(this.dir);

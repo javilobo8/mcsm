@@ -1,9 +1,9 @@
 import { finished, type Readable } from "node:stream";
 import { randomToken } from "../lib/tokens.js";
 
-/** Cuerpo de una transferencia: stream y tamaño (null si se desconoce). */
+/** Body of a transfer: stream and size (null if unknown). */
 export interface TransferPayload { stream: Readable; size: number | null }
-/** Fuente perezosa de una transferencia panel → agente: se invoca cuando el agente hace GET. */
+/** Lazy source of a panel → agent transfer: invoked when the agent does the GET. */
 export type TransferSource = () => Promise<TransferPayload>;
 
 export type TransferErrorCode = "expired" | "cancelled" | "aborted";
@@ -12,37 +12,37 @@ export class TransferError extends Error {
   constructor(public code: TransferErrorCode, message: string) { super(message); this.name = "TransferError"; }
 }
 
-/** Panel → agente: el agente hace GET /agent/transfer/:id. */
+/** Panel → agent: the agent does GET /agent/transfer/:id. */
 export interface OutboundTransfer {
   id: string;
-  /** Se resuelve cuando el agente ha recibido todo el cuerpo; se rechaza si caduca, se cancela o se corta. */
+  /** Resolves when the agent has received the whole body; rejects if it expires, is cancelled or is cut. */
   done: Promise<void>;
   /**
-   * Sin reclamar: la invalida y rechaza `done`. En curso: además aborta la `signal` de la ruta y
-   * destruye el stream de la fuente. Ya terminada: no hace nada.
+   * Unclaimed: invalidates it and rejects `done`. In progress: also aborts the route's `signal` and
+   * destroys the source's stream. Already finished: does nothing.
    */
   cancel(reason?: string): void;
 }
 
-/** Agente → panel: el agente hace PUT /agent/transfer/:id. */
+/** Agent → panel: the agent does PUT /agent/transfer/:id. */
 export interface InboundTransfer {
   id: string;
-  /** Se resuelve cuando llega el PUT del agente, con su cuerpo en streaming. */
+  /** Resolves when the agent's PUT arrives, with its body streaming. */
   incoming: Promise<TransferPayload>;
   /**
-   * Sin reclamar: la invalida y rechaza `incoming`. En curso: además aborta la `signal` de la ruta
-   * y destruye el cuerpo entregado (quien lo lee ve el corte). Ya terminada: no hace nada.
+   * Unclaimed: invalidates it and rejects `incoming`. In progress: also aborts the route's `signal`
+   * and destroys the delivered body (whoever reads it sees the cut). Already finished: does nothing.
    */
   cancel(reason?: string): void;
 }
 
 /**
- * Lo que obtiene la ruta HTTP al reclamar un transferId. `signal` se aborta (con un
- * TransferError "cancelled") si la transferencia se cancela o el panel se cierra con ella en
- * curso: la ruta debe enlazarla con su petición/respuesta HTTP y cortarla.
- * - outbound: `complete()` al entregarse entero; `fail(err)` en cualquier otra salida.
- * - inbound: `deliver(payload)` con el cuerpo; sale del registro al terminar ese stream.
- *   `fail(err)` si la ruta no puede entregarlo.
+ * What the HTTP route gets on claiming a transferId. `signal` is aborted (with a
+ * TransferError "cancelled") if the transfer is cancelled or the panel shuts down with it in
+ * progress: the route must link it to its HTTP request/response and cut it.
+ * - outbound: `complete()` when delivered in full; `fail(err)` on any other exit.
+ * - inbound: `deliver(payload)` with the body; leaves the registry when that stream ends.
+ *   `fail(err)` if the route cannot deliver it.
  */
 export type ClaimedTransfer =
   | { kind: "outbound"; signal: AbortSignal; source: TransferSource; complete(): void; fail(err: Error): void }
@@ -54,7 +54,7 @@ function deferred<T>(): Deferred<T> {
   let res!: (v: T) => void;
   let rej!: (e: Error) => void;
   const promise = new Promise<T>((a, b) => { res = a; rej = b; });
-  promise.catch(() => {}); // quien no la espere no provoca un unhandledRejection
+  promise.catch(() => {}); // whoever does not await it does not cause an unhandledRejection
   const d: Deferred<T> = {
     promise,
     settled: false,
@@ -68,37 +68,37 @@ type Entry =
   | { kind: "outbound"; nodeId: string; createdAt: number; ttl: number; source: TransferSource; done: Deferred<void> }
   | { kind: "inbound"; nodeId: string; createdAt: number; ttl: number; incoming: Deferred<TransferPayload> };
 
-/** Opciones de una transferencia concreta. */
+/** Options of a specific transfer. */
 export interface TransferOptions {
   /**
-   * Plazo para reclamarla (por defecto, el del servicio: 60 s). La migración entre nodos lo alarga: el destino
-   * reclama la copia cuando le toca uno de sus huecos de copia/restauración, y puede esperar en cola.
+   * Deadline to claim it (by default, the service's: 60 s). Migration between nodes lengthens it: the target
+   * claims the backup when one of its backup/restore slots comes up, and may wait in a queue.
    */
   claimTtlMs?: number;
 }
 
-/** Transferencia reclamada y aún en curso. */
+/** Transfer claimed and still in progress. */
 interface Active { entry: Entry; controller: AbortController; stream?: Readable }
 
 export interface TransferServiceOptions {
-  /** Reloj inyectable (ms). */
+  /** Injectable clock (ms). */
   now?: () => number;
-  /** Tiempo que tiene el agente para reclamar la transferencia. */
+  /** Time the agent has to claim the transfer. */
   claimTtlMs?: number;
 }
 
-const EXPIRED = "El agente no inició la transferencia a tiempo";
-const CLOSING = "el panel se está cerrando";
+const EXPIRED = "The agent did not start the transfer in time";
+const CLOSING = "the panel is shutting down";
 
 /**
- * Transferencias HTTP entre panel y agentes (spec §5.1). Cada transferId es aleatorio
- * (32 bytes), de un solo uso, ligado al nodo que debe reclamarlo y caduca si nadie lo
- * reclama a tiempo. El cuerpo nunca se carga en memoria: se pasan streams.
+ * HTTP transfers between panel and agents (spec §5.1). Each transferId is random
+ * (32 bytes), single use, bound to the node that must claim it and expires if nobody
+ * claims it in time. The body is never loaded into memory: streams are passed.
  *
- * El plazo solo cubre el reclamo (lo que tarda el agente en hacer el GET/PUT); la duración
- * de la transferencia en sí la vigilan la ruta HTTP y quien la pidió. Las reclamadas quedan en
- * un registro de transferencias en curso hasta que terminan, para que `cancel` y `closeAll`
- * puedan cortarlas.
+ * The deadline only covers the claim (how long the agent takes to do the GET/PUT); the duration
+ * of the transfer itself is watched by the HTTP route and whoever requested it. Claimed ones stay in
+ * a registry of transfers in progress until they finish, so that `cancel` and `closeAll`
+ * can cut them.
  */
 export class TransferService {
   private pending = new Map<string, Entry>();
@@ -108,33 +108,33 @@ export class TransferService {
   private closed = false;
 
   constructor(opts: TransferServiceOptions = {}) {
-    this.now = opts.now ?? (() => Date.now()); // se lee al llamar: los tests pueden falsear Date
+    this.now = opts.now ?? (() => Date.now()); // read at call time: tests can fake Date
     this.ttl = opts.claimTtlMs ?? 60_000;
   }
 
-  /** Transferencias aún sin reclamar. */
+  /** Transfers not yet claimed. */
   get pendingCount(): number { return this.pending.size; }
 
-  /** Transferencias reclamadas que aún no han terminado. */
+  /** Transfers claimed that have not finished yet. */
   get activeCount(): number { return this.active.size; }
 
   outbound(nodeId: string, source: TransferSource, opts: TransferOptions = {}): OutboundTransfer {
     const id = randomToken();
     const done = deferred<void>();
     this.add(id, { kind: "outbound", nodeId, createdAt: this.now(), ttl: opts.claimTtlMs ?? this.ttl, source, done });
-    return { id, done: done.promise, cancel: (reason = "cancelada") => this.cancel(id, reason) };
+    return { id, done: done.promise, cancel: (reason = "cancelled") => this.cancel(id, reason) };
   }
 
   inbound(nodeId: string, opts: TransferOptions = {}): InboundTransfer {
     const id = randomToken();
     const incoming = deferred<TransferPayload>();
     this.add(id, { kind: "inbound", nodeId, createdAt: this.now(), ttl: opts.claimTtlMs ?? this.ttl, incoming });
-    return { id, incoming: incoming.promise, cancel: (reason = "cancelada") => this.cancel(id, reason) };
+    return { id, incoming: incoming.promise, cancel: (reason = "cancelled") => this.cancel(id, reason) };
   }
 
   /**
-   * Reclama un transferId (un solo uso). Devuelve null sin consumirlo si es de otro nodo o del
-   * otro sentido (un nodo no puede quemar transferencias ajenas), y null consumiéndolo si caducó.
+   * Claims a transferId (single use). Returns null without consuming it if it belongs to another node or the
+   * other direction (a node cannot burn foreign transfers), and null consuming it if it expired.
    */
   claim(id: string, nodeId: string, method: "GET" | "PUT"): ClaimedTransfer | null {
     const e = this.pending.get(id);
@@ -154,10 +154,10 @@ export class TransferService {
         kind: "outbound",
         signal,
         source: async () => {
-          signal.throwIfAborted(); // cancelada antes del GET efectivo: no se abre la fuente
+          signal.throwIfAborted(); // cancelled before the effective GET: the source is not opened
           const p = await e.source();
           if (signal.aborted) {
-            p.stream.destroy(); // cancelada mientras se abría
+            p.stream.destroy(); // cancelled while it was opening
             signal.throwIfAborted();
           }
           a.stream = p.stream;
@@ -172,7 +172,7 @@ export class TransferService {
       signal,
       deliver: (p) => {
         if (signal.aborted || e.incoming.settled) {
-          p.stream.destroy(); // nadie lo va a leer: que el PUT del agente no se quede esperando
+          p.stream.destroy(); // nobody will read it: so the agent's PUT is not left waiting
           return;
         }
         a.stream = p.stream;
@@ -183,7 +183,7 @@ export class TransferService {
     };
   }
 
-  /** Caduca las transferencias no reclamadas a tiempo. Devuelve cuántas. */
+  /** Expires the transfers not claimed in time. Returns how many. */
   sweep(): number {
     let n = 0;
     for (const [id, e] of this.pending) {
@@ -196,9 +196,9 @@ export class TransferService {
   }
 
   /**
-   * Cierre del panel: cancela lo pendiente y aborta lo que está en curso (rechaza sus promesas,
-   * aborta la signal de su ruta y destruye sus streams). Lo que se pida después nace cancelado:
-   * tras el cierre ya no hay barrido ni rutas que lo atiendan, y quedaría esperando para siempre.
+   * Panel shutdown: cancels what is pending and aborts what is in progress (rejects their promises,
+   * aborts their route's signal and destroys their streams). Whatever is requested afterwards is born cancelled:
+   * after the shutdown there is no sweep or routes to serve it, and it would wait forever.
    */
   closeAll(): void {
     this.closed = true;
@@ -206,7 +206,7 @@ export class TransferService {
   }
 
   private add(id: string, e: Entry) {
-    if (this.closed) this.reject(e, new TransferError("cancelled", `Transferencia cancelada: ${CLOSING}`));
+    if (this.closed) this.reject(e, new TransferError("cancelled", `Transfer cancelled: ${CLOSING}`));
     else this.pending.set(id, e);
   }
 
@@ -215,7 +215,7 @@ export class TransferService {
   }
 
   private cancel(id: string, reason: string) {
-    const err = new TransferError("cancelled", `Transferencia cancelada: ${reason}`);
+    const err = new TransferError("cancelled", `Transfer cancelled: ${reason}`);
     const e = this.pending.get(id);
     if (e) {
       this.pending.delete(id);
@@ -223,13 +223,13 @@ export class TransferService {
       return;
     }
     const a = this.active.get(id);
-    if (!a) return; // ya terminada
+    if (!a) return; // already finished
     this.active.delete(id);
-    // Primero la promesa: si la ruta reacciona a la signal llamando a fail(aborted), no la pisa.
+    // The promise first: if the route reacts to the signal by calling fail(aborted), it does not overwrite it.
     this.reject(a.entry, err);
     a.controller.abort(err);
-    // Sin error: destroy(err) en un stream sin oyente de 'error' tumbaría el proceso; quien lo
-    // lee recibe igualmente un cierre prematuro.
+    // Without an error: destroy(err) on a stream with no 'error' listener would bring down the process; whoever
+    // reads it receives a premature close anyway.
     a.stream?.destroy();
   }
 

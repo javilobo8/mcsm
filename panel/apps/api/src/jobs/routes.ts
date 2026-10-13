@@ -11,13 +11,13 @@ const JOB_STATE = z.enum(["queued", "running", "ok", "failed", "cancelled"]);
 
 const listQuery = z.object({
   serverId: z.string().min(1).optional(),
-  // Un estado o una lista separada por comas (`queued,running`).
+  // One status or a comma-separated list (`queued,running`).
   status: z.string().transform((s) => s.split(",")).pipe(z.array(JOB_STATE).min(1).max(5)).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   before: z.string().min(1).optional(),
 });
 
-/** Decora `app.jobs` en la raíz y registra las rutas encapsuladas de /api/jobs. */
+/** Decorates `app.jobs` at the root and registers the encapsulated /api/jobs routes. */
 export const jobRoutes = fp(async function jobRoutes(root: FastifyInstance) {
   const svc = new JobService(new JobsRepo(root.db), root.events);
   root.decorate("jobs", svc);
@@ -25,7 +25,7 @@ export const jobRoutes = fp(async function jobRoutes(root: FastifyInstance) {
   let timer: NodeJS.Timeout | undefined;
   root.addHook("onReady", async () => {
     const n = svc.interruptStale();
-    if (n > 0) root.log.warn({ count: n }, "jobs interrumpidos por el reinicio del panel");
+    if (n > 0) root.log.warn({ count: n }, "jobs interrupted by the panel restart");
     purge();
     timer = setInterval(purge, PURGE_EVERY_MS);
     timer.unref();
@@ -39,7 +39,7 @@ async function jobRoutesInner(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>("/api/jobs/:id", async (req, reply) => {
     const job = app.jobs.get(req.params.id);
-    if (!job) return reply.code(404).send({ error: "Job no encontrado" });
+    if (!job) return reply.code(404).send({ error: "Job not found" });
     return job;
   });
 }

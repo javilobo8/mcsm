@@ -6,10 +6,10 @@ import { hashToken } from "../lib/tokens.js";
 import type { NodeRow } from "../nodes/repo.js";
 import { TransferError, type TransferPayload } from "./service.js";
 
-const NOT_FOUND = "Transferencia desconocida, caducada o ya usada";
-const CUT = "La transferencia se cortó antes de terminar";
+const NOT_FOUND = "Unknown, expired or already used transfer";
+const CUT = "The transfer was cut off before finishing";
 
-/** Content-Length de la petición, o null si no viene (cuerpo chunked) o no es un entero válido. */
+/** Request Content-Length, or null if absent (chunked body) or not a valid integer. */
 export function contentLength(req: FastifyRequest): number | null {
   const v = req.headers["content-length"];
   if (v === undefined || !/^\d+$/.test(v)) return null;
@@ -17,7 +17,7 @@ export function contentLength(req: FastifyRequest): number | null {
   return Number.isSafeInteger(n) ? n : null;
 }
 
-/** Nodo dueño del token Bearer, o null. Mismo criterio que /agent/ws. */
+/** Node that owns the Bearer token, or null. Same criterion as /agent/ws. */
 function nodeFromAuth(app: FastifyInstance, req: FastifyRequest): NodeRow | null {
   const header = req.headers.authorization ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -29,11 +29,11 @@ const isReadable = (v: unknown): v is Readable => typeof (v as Readable | undefi
 const asError = (e: unknown): Error => (e instanceof Error ? e : new Error(String(e)));
 
 /**
- * Deja pasar exactamente `size` bytes de `src` (el Content-Length anunciado al agente). Menos o
- * más es un error y la respuesta se corta: el agente nunca recibe un cuerpo "completo" que no es
- * el anunciado. El trozo que completa el tamaño se retiene hasta que el origen termina, para que
- * lo que llegue después no lo deje pasar ya entregado. Si la copia se destruye (el agente se
- * fue), `pipeline` destruye también el origen; si el origen falla, la copia falla con él.
+ * Lets exactly `size` bytes of `src` through (the Content-Length announced to the agent). Fewer or
+ * more is an error and the response is cut: the agent never receives a "complete" body that is not
+ * the announced one. The chunk that completes the size is held back until the origin ends, so that
+ * whatever arrives afterwards cannot pass as already delivered. If the copy is destroyed (the agent
+ * left), `pipeline` also destroys the origin; if the origin fails, the copy fails with it.
  */
 function exactly(src: Readable, size: number): Readable {
   let n = 0;
@@ -42,7 +42,7 @@ function exactly(src: Readable, size: number): Readable {
     transform(chunk: Buffer, _enc, cb) {
       if (chunk.length === 0) return cb();
       n += chunk.length;
-      if (n > size) return cb(new Error(`el origen envía más de los ${size} bytes anunciados`));
+      if (n > size) return cb(new Error(`the source sends more than the announced ${size} bytes`));
       if (n === size) {
         last = chunk;
         return cb();
@@ -50,56 +50,56 @@ function exactly(src: Readable, size: number): Readable {
       cb(null, chunk);
     },
     flush(cb) {
-      if (n !== size) return cb(new Error(`el origen envía ${n} de los ${size} bytes anunciados`));
+      if (n !== size) return cb(new Error(`the source sends ${n} of the announced ${size} bytes`));
       cb(null, last);
     },
   });
-  pipeline(src, check, () => { /* el resultado lo ve la ruta en la respuesta */ });
+  pipeline(src, check, () => { /* the route sees the result in the response */ });
   return check;
 }
 
 /**
- * Transferencias HTTP de los agentes (spec §5.1), fuera del guard de sesión y con el token
- * del nodo. El cuerpo nunca se carga en memoria: se pasa el stream tal cual.
+ * HTTP transfers of the agents (spec §5.1), outside the session guard and with the node's
+ * token. The body is never loaded into memory: the stream is passed as is.
  *
- * Toda transferencia reclamada termina en `complete`/`fail` (o en `deliver`, que la libera al
- * acabar su cuerpo) por cualquier salida, y su `signal` corta la conexión HTTP si se cancela.
+ * Every claimed transfer ends in `complete`/`fail` (or in `deliver`, which releases it when
+ * its body ends) through any exit, and its `signal` cuts the HTTP connection if it is cancelled.
  */
 export async function transferRoutes(app: FastifyInstance) {
-  // Nodo autenticado de cada petición de este contexto.
+  // Authenticated node of each request in this context.
   const nodes = new WeakMap<FastifyRequest, NodeRow>();
 
-  // Token del nodo en TODA petición de este contexto, antes de leer el cuerpo. El hook es de
-  // este plugin encapsulado: corre en cada ruta registrada aquí y solo en ellas, y Fastify llega
-  // a ellas con el path ya decodificado (`/%61gent/transfer/x` es `/agent/transfer/:id`), así
-  // que ninguna codificación de la URL lo salta. Lo que no enruta aquí es un 404 sin datos.
+  // Node token on EVERY request in this context, before reading the body. The hook belongs to
+  // this encapsulated plugin: it runs on every route registered here and only on them, and Fastify gets
+  // to them with the path already decoded (`/%61gent/transfer/x` is `/agent/transfer/:id`), so
+  // no URL encoding skips it. Whatever does not route here is a 404 with no data.
   app.addHook("onRequest", async (req) => {
     const node = nodeFromAuth(app, req);
-    if (!node) throw new HttpError(401, "token inválido");
+    if (!node) throw new HttpError(401, "invalid token");
     nodes.set(req, node);
   });
 
-  // Ningún cuerpo se interpreta (ni JSON ni texto): solo application/octet-stream, y como
-  // stream (req.body) sin límite de tamaño. Otro tipo → 415 antes de llegar a la ruta.
+  // No body is interpreted (neither JSON nor text): only application/octet-stream, and as a
+  // stream (req.body) with no size limit. Another type → 415 before reaching the route.
   app.removeAllContentTypeParsers();
   app.addContentTypeParser("application/octet-stream", (_req, payload, done) => done(null, payload));
 
-  // Panel → agente. Sin ruta HEAD automática: un HEAD consumiría la transferencia.
+  // Panel → agent. No automatic HEAD route: a HEAD would consume the transfer.
   app.get<{ Params: { id: string } }>("/agent/transfer/:id", { exposeHeadRoute: false }, async (req, reply) => {
     const claimed = app.transfers.claim(req.params.id, nodes.get(req)!.id, "GET");
     if (claimed?.kind !== "outbound") throw new HttpError(404, NOT_FOUND);
     const res = reply.raw;
     let source: Readable | undefined;
-    // Lo que se envía: el origen, o su copia con el tamaño comprobado si se anuncia.
+    // What is sent: the origin, or its copy with the size checked if announced.
     let sent: Readable | undefined;
 
-    // Cancelada (cancel/closeAll): se corta la conexión y el agente ve el corte.
+    // Cancelled (cancel/closeAll): the connection is cut and the agent sees the cut.
     const onAbort = () => res.destroy();
     claimed.signal.addEventListener("abort", onAbort, { once: true });
-    // Toda salida pasa por aquí, también si el agente se va antes de abrir el origen o si
-    // la respuesta ya estaba cerrada. Solo cuenta como entregada si lo enviado llegó a su fin
-    // y la respuesta terminó: un 500 por un origen que falla antes del primer byte no lo es, ni
-    // un origen que entrega otro número de bytes del anunciado.
+    // Every exit goes through here, also if the agent leaves before the origin is opened or if
+    // the response was already closed. It only counts as delivered if what was sent reached its end
+    // and the response finished: a 500 from an origin that fails before the first byte is not, nor is
+    // an origin that delivers a different number of bytes than announced.
     finished(res, (err) => {
       claimed.signal.removeEventListener("abort", onAbort);
       if (!err && sent?.readableEnded) {
@@ -117,13 +117,13 @@ export async function transferRoutes(app: FastifyInstance) {
     } catch (e) {
       const err = asError(e);
       claimed.fail(err);
-      // El origen caducó o se canceló (p. ej. el PUT de otro agente que alimenta este GET): el
-      // agente recibe el motivo. Si es esta la cancelada, la conexión ya está cortada.
+      // The origin expired or was cancelled (e.g. another agent's PUT that feeds this GET): the
+      // agent receives the reason. If it is this one that was cancelled, the connection is already cut.
       if (err instanceof TransferError) throw new HttpError(410, err.message);
-      throw err; // el manejador global lo registra y responde 500 "Error interno"
+      throw err; // the global handler logs it and responds 500 "Internal error"
     }
-    // Si el agente se fue mientras se abría el origen, Fastify destruye el stream al ver la
-    // respuesta ya cerrada (y `fail` ya se llamó arriba, en finished).
+    // If the agent left while the origin was being opened, Fastify destroys the stream on seeing the
+    // response already closed (and `fail` was already called above, in finished).
     source = payload.stream;
     sent = payload.size === null ? source : exactly(source, payload.size);
     reply.header("content-type", "application/octet-stream");
@@ -131,27 +131,27 @@ export async function transferRoutes(app: FastifyInstance) {
     return reply.send(sent);
   });
 
-  // Agente → panel: se entrega el cuerpo a quien espera y se responde cuando lo ha leído entero.
+  // Agent → panel: the body is delivered to whoever waits and it responds once it has been read in full.
   app.put<{ Params: { id: string } }>("/agent/transfer/:id", async (req, reply) => {
     const claimed = app.transfers.claim(req.params.id, nodes.get(req)!.id, "PUT");
     if (claimed?.kind !== "inbound") throw new HttpError(404, NOT_FOUND);
     const body = req.body;
     if (!isReadable(body)) {
-      // Solo llega aquí un PUT sin cuerpo ni Content-Type.
-      claimed.fail(new TransferError("aborted", "El agente no envió el cuerpo de la transferencia"));
-      throw new HttpError(415, "Envía el cuerpo como application/octet-stream");
+      // Only a PUT with no body and no Content-Type gets here.
+      claimed.fail(new TransferError("aborted", "The agent did not send the transfer body"));
+      throw new HttpError(415, "Send the body as application/octet-stream");
     }
-    // Cancelada: se corta la petición del agente (además, el servicio destruye el cuerpo).
+    // Cancelled: the agent's request is cut (the service also destroys the body).
     const onAbort = () => req.raw.destroy();
     claimed.signal.addEventListener("abort", onAbort, { once: true });
-    // En el mismo tick que el claim: nadie puede cancelar entre medias sin que deliver lo vea.
+    // In the same tick as the claim: nobody can cancel in between without deliver seeing it.
     claimed.deliver({ stream: body, size: contentLength(req) });
     try {
       await finishedAsync(body);
     } catch {
       claimed.fail(new TransferError("aborted", CUT));
-      // El cuerpo se cortó sin leerse entero (p. ej. el panel lo rechazó a mitad): la conexión no se puede reutilizar,
-      // y sin cerrarla quedaría abierta esperando el resto (y retendría el cierre del panel).
+      // The body was cut without being read in full (e.g. the panel rejected it midway): the connection cannot be reused,
+      // and if not closed it would stay open waiting for the rest (and would hold back the panel's shutdown).
       reply.header("connection", "close");
       throw new HttpError(400, CUT);
     } finally {

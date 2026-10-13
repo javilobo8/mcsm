@@ -14,7 +14,7 @@ import { DRAIN_MAX_BYTES, IDLE_TIMEOUT_MS } from "./stream.js";
 let app: FastifyInstance; let url: string; let cookie: string;
 let nodeId: string; let nodeToken: string; let serverId: string; let agent: FakeAgent;
 let closed = false;
-/** Reloj virtual de los plazos de inactividad y del Ack: nada vence si el test no avanza. */
+/** Virtual clock for the inactivity and Ack deadlines: nothing expires unless the test advances. */
 let clock: ManualTimers;
 
 const spec = specSchema.parse({ type: "FABRIC", version: "1.21.4", memory: "2G", ports: { game: 25565 }, rconPassword: "abcdefgh" });
@@ -45,13 +45,13 @@ const files = () => `${url}/api/servers/${serverId}/files`;
 const agentAuth = () => ({ authorization: `Bearer ${nodeToken}` });
 const octet = { "content-type": "application/octet-stream" };
 
-type Outcome = { status: number; headers: http.IncomingHttpHeaders; body: Buffer; complete: boolean } | "cortada";
-/** La respuesta no llegó entera: la conexión se cayó antes de las cabeceras o a mitad del cuerpo. */
-const isCut = (o: Outcome) => o === "cortada" || !o.complete;
+type Outcome = { status: number; headers: http.IncomingHttpHeaders; body: Buffer; complete: boolean } | "cut";
+/** The response did not arrive in full: the connection dropped before the headers or midway through the body. */
+const isCut = (o: Outcome) => o === "cut" || !o.complete;
 
 /**
- * Petición HTTP cruda sin keep-alive (como el cliente Go del agente o un navegador que corta):
- * permite escribir el cuerpo a trozos, esperar al primer trozo de la respuesta y destruirla.
+ * Raw HTTP request without keep-alive (like the agent's Go client or a browser that cuts off):
+ * lets the body be written in chunks, wait for the first chunk of the response and destroy it.
  */
 function raw(method: string, target: string, headers: Record<string, string>) {
   const req = http.request(target, { method, headers: { connection: "close", ...headers }, agent: false });
@@ -65,23 +65,23 @@ function raw(method: string, target: string, headers: Record<string, string>) {
       res.on("error", () => {});
       res.once("close", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks), complete: res.complete }));
     });
-    req.on("error", () => resolve("cortada"));
+    req.on("error", () => resolve("cut"));
   });
   return { req, first, outcome, received: () => received };
 }
 
-/** Lee del lector hasta haber recibido `n` bytes en total (cuenta acumulada en `acc`). */
+/** Reads from the reader until `n` bytes have been received in total (running count in `acc`). */
 async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, acc: { n: number }, n: number) {
   while (acc.n < n) {
     const r = await reader.read();
-    if (r.done) throw new Error(`fin con ${acc.n} de ${n} bytes`);
+    if (r.done) throw new Error(`end with ${acc.n} of ${n} bytes`);
     acc.n += r.value.length;
   }
 }
 
 const readToEnd = async (reader: ReadableStreamDefaultReader<Uint8Array>) => { while (!(await reader.read()).done); };
 
-/** Escribe y espera a que el socket lo acepte (no a que el otro extremo lo lea). */
+/** Writes and waits for the socket to accept it (not for the other end to read it). */
 const write = (req: http.ClientRequest, data: Buffer) => new Promise<void>((resolve, reject) => req.write(data, (e) => (e ? reject(e) : resolve())));
 
 async function downloadRequest(path: string) {
@@ -99,12 +99,12 @@ async function uploadRequest() {
 
 const agentError = (id: bigint, code: string, message: string) => agent.send({ id, body: { case: "error", value: { code, message } } });
 
-describe("descarga navegador ← panel ← agente", () => {
-  it("reenvía el PUT del agente con nombre, tamaño y tipo seguros", async () => {
+describe("download browser ← panel ← agent", () => {
+  it("forwards the agent's PUT with a safe name, size and type", async () => {
     const browser = fetch(`${files()}/download?path=${encodeURIComponent("/world/mundo ñ.dat")}`, { headers: { cookie } });
     const req = await downloadRequest("/world/mundo ñ.dat");
     const data = Buffer.alloc(3 * 1024 * 1024, 9);
-    // el PUT del agente no termina hasta que el navegador lo ha leído entero: no se espera aquí
+    // the agent's PUT does not end until the browser has read it all: it is not awaited here
     const put = fetch(`${url}/agent/transfer/${req.transferId}`, { method: "PUT", body: data, headers: { ...agentAuth(), ...octet } });
     const res = await browser;
     expect(res.status).toBe(200);
@@ -119,7 +119,7 @@ describe("descarga navegador ← panel ← agente", () => {
     await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
   });
 
-  it("un fichero vacío se descarga con Content-Length 0", async () => {
+  it("an empty file is downloaded with Content-Length 0", async () => {
     const browser = fetch(`${files()}/download?path=/vacio.txt`, { headers: { cookie } });
     const req = await downloadRequest("/vacio.txt");
     const put = fetch(`${url}/agent/transfer/${req.transferId}`, { method: "PUT", headers: { ...agentAuth(), ...octet, "content-length": "0" } });
@@ -131,39 +131,39 @@ describe("descarga navegador ← panel ← agente", () => {
     agent.ack(req.id);
   });
 
-  it("si el agente responde Error antes de subir, el navegador recibe ese error en JSON", async () => {
+  it("if the agent responds Error before uploading, the browser receives that error as JSON", async () => {
     const browser = fetch(`${files()}/download?path=/mods`, { headers: { cookie } });
     const req = await downloadRequest("/mods");
-    agentError(req.id, "is_dir", "es una carpeta: /mods");
+    agentError(req.id, "is_dir", "it is a directory: /mods");
     const res = await browser;
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("es una carpeta: /mods");
-    expect(app.transfers.pendingCount).toBe(0); // la transferencia se canceló
+    expect((await res.json()).error).toBe("it is a directory: /mods");
+    expect(app.transfers.pendingCount).toBe(0); // the transfer was cancelled
   });
 
-  it("nodo ocupado (busy) → 409 con el mensaje del agente", async () => {
+  it("node busy (busy) → 409 with the agent's message", async () => {
     const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie } });
     const req = await downloadRequest("/world.zip");
-    agentError(req.id, "busy", "el nodo ya tiene 4 transferencias de archivos en curso: espera a que termine alguna");
+    agentError(req.id, "busy", "the node already has 4 file transfers in progress: wait for one to finish");
     const res = await browser;
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/4 transferencias/);
+    expect((await res.json()).error).toMatch(/4 file transfers/);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("si el agente confirma sin haber subido nada → 502", async () => {
+  it("if the agent confirms without having uploaded anything → 502", async () => {
     const browser = fetch(`${files()}/download?path=/a.bin`, { headers: { cookie } });
     const req = await downloadRequest("/a.bin");
     agent.ack(req.id);
     const res = await browser;
     expect(res.status).toBe(502);
-    expect((await res.json()).error).toMatch(/sin enviar/);
+    expect((await res.json()).error).toMatch(/without sending/);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("si el agente no sube a tiempo, el navegador recibe 504", async () => {
+  it("if the agent does not upload in time, the browser receives 504", async () => {
     const browser = fetch(`${files()}/download?path=/a.bin`, { headers: { cookie } });
-    await downloadRequest("/a.bin"); // el agente nunca hace el PUT
+    await downloadRequest("/a.bin"); // the agent never does the PUT
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(Date.now() + 61_000);
@@ -173,34 +173,34 @@ describe("descarga navegador ← panel ← agente", () => {
     }
     const res = await browser;
     expect(res.status).toBe(504);
-    expect((await res.json()).error).toMatch(/a tiempo/);
+    expect((await res.json()).error).toMatch(/in time/);
   });
 
-  it("ruta insegura → 400 sin hablar con el agente", async () => {
+  it("unsafe path → 400 without talking to the agent", async () => {
     const res = await fetch(`${files()}/download?path=../../etc/passwd`, { headers: { cookie } });
     expect(res.status).toBe(400);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("sin sesión → 401 y HEAD → 404, sin pedir nada al agente", async () => {
+  it("no session → 401 and HEAD → 404, without asking the agent for anything", async () => {
     expect((await fetch(`${files()}/download?path=/a.bin`)).status).toBe(401);
     expect((await fetch(`${files()}/download?path=/a.bin`, { method: "HEAD", headers: { cookie } })).status).toBe(404);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("el navegador cancela antes de que el agente suba: la transferencia se anula y el PUT tardío es 404", async () => {
+  it("the browser cancels before the agent uploads: the transfer is voided and the late PUT is 404", async () => {
     const ctrl = new AbortController();
-    const browser = fetch(`${files()}/download?path=/a.bin`, { headers: { cookie }, signal: ctrl.signal }).catch(() => "cancelada");
+    const browser = fetch(`${files()}/download?path=/a.bin`, { headers: { cookie }, signal: ctrl.signal }).catch(() => "cancelled");
     const req = await downloadRequest("/a.bin");
     expect(app.transfers.pendingCount).toBe(1);
     ctrl.abort();
-    expect(await browser).toBe("cancelada");
+    expect(await browser).toBe("cancelled");
     await vi.waitFor(() => expect(app.transfers.pendingCount).toBe(0));
     const put = await fetch(`${url}/agent/transfer/${req.transferId}`, { method: "PUT", body: "x", headers: { ...agentAuth(), ...octet } });
     expect(put.status).toBe(404);
   });
 
-  it("el navegador cancela a mitad: el PUT del agente se corta y la transferencia sale del registro", async () => {
+  it("the browser cancels midway: the agent's PUT is cut and the transfer leaves the registry", async () => {
     const ctrl = new AbortController();
     const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie }, signal: ctrl.signal });
     const req = await downloadRequest("/world.zip");
@@ -210,11 +210,11 @@ describe("descarga navegador ← panel ← agente", () => {
     const reader = res.body!.getReader();
     expect((await reader.read()).done).toBe(false);
     ctrl.abort();
-    expect(isCut(await put.outcome)).toBe(true); // el agente ve el corte y descarta lo enviado
+    expect(isCut(await put.outcome)).toBe(true); // the agent sees the cut and discards what was sent
     await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
   });
 
-  it("si cae el WebSocket del agente a mitad, la descarga HTTP sigue y el navegador recibe el fichero entero", async () => {
+  it("if the agent's WebSocket drops midway, the HTTP download continues and the browser receives the whole file", async () => {
     const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie } });
     const req = await downloadRequest("/world.zip");
     const total = 2 * 1024 * 1024;
@@ -230,7 +230,7 @@ describe("descarga navegador ← panel ← agente", () => {
     expect(await put.outcome).toMatchObject({ status: 204 });
   });
 
-  it("si se corta el PUT del agente a mitad, el navegador ve la descarga truncada (no un fichero corto dado por bueno)", async () => {
+  it("if the agent's PUT is cut midway, the browser sees the download truncated (not a short file taken as good)", async () => {
     const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie } });
     const req = await downloadRequest("/world.zip");
     const put = raw("PUT", `${url}/agent/transfer/${req.transferId}`, { ...agentAuth(), ...octet, "content-length": String(1 << 20) });
@@ -244,14 +244,14 @@ describe("descarga navegador ← panel ← agente", () => {
     await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
   });
 
-  it("si el nodo se calla a mitad, a los 120 s sin bytes se cancela: PUT del agente cortado y descarga truncada", async () => {
+  it("if the node goes silent midway, after 120 s without bytes it is cancelled: agent's PUT cut and download truncated", async () => {
     const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie } });
     const req = await downloadRequest("/world.zip");
     const put = raw("PUT", `${url}/agent/transfer/${req.transferId}`, { ...agentAuth(), ...octet, "content-length": String(1 << 20) });
     await write(put.req, Buffer.alloc(1024, 1));
     const res = await browser;
     const reader = res.body!.getReader();
-    await readUntil(reader, { n: 0 }, 1024); // todo lo enviado ya cruzó la guarda
+    await readUntil(reader, { n: 0 }, 1024); // everything sent already crossed the guard
     clock.advance(IDLE_TIMEOUT_MS - 1);
     expect(app.transfers.activeCount).toBe(1);
     clock.advance(1);
@@ -260,22 +260,22 @@ describe("descarga navegador ← panel ← agente", () => {
     await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
   });
 
-  it("si el nodo envía las cabeceras del PUT pero ningún byte, a los 120 s el navegador recibe 504 en JSON (no un fichero)", async () => {
+  it("if the node sends the PUT headers but no byte, after 120 s the browser receives 504 as JSON (not a file)", async () => {
     const browser = fetch(`${files()}/download?path=/world.zip`, { headers: { cookie } });
     const req = await downloadRequest("/world.zip");
     const put = raw("PUT", `${url}/agent/transfer/${req.transferId}`, { ...agentAuth(), ...octet, "content-length": "1000" });
     put.req.flushHeaders();
-    await vi.waitFor(() => expect(clock.pending).toBe(1)); // el panel ya tiene el PUT y vigila
+    await vi.waitFor(() => expect(clock.pending).toBe(1)); // the panel already has the PUT and is watching
     clock.advance(IDLE_TIMEOUT_MS);
     const res = await browser;
     expect(res.status).toBe(504);
     expect(res.headers.get("content-disposition")).toBeNull();
-    expect((await res.json()).error).toMatch(/dejó de enviar/);
+    expect((await res.json()).error).toMatch(/stopped sending/);
     expect(isCut(await put.outcome)).toBe(true);
     await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
   });
 
-  it("un WebSocket que parpadea no mata una descarga que sigue fluyendo; el aviso del Ack perdido va a info", async () => {
+  it("a flickering WebSocket does not kill a download that keeps flowing; the lost-Ack notice goes to info", async () => {
     const info = vi.spyOn(app.log, "info");
     const warn = vi.spyOn(app.log, "warn");
     const CH = 64 * 1024, N = 4;
@@ -287,13 +287,13 @@ describe("descarga navegador ← panel ← agente", () => {
     const reader = res.body!.getReader();
     const got = { n: 0 };
     await readUntil(reader, got, CH);
-    // El WS cae y vuelve; el PUT sigue.
+    // The WS drops and comes back; the PUT continues.
     agent.close();
     await vi.waitFor(() => expect(app.agents.get(nodeId)).toBeUndefined());
     agent = new FakeAgent(url, nodeToken);
     await agent.connect();
     await agent.handshake();
-    // Más de 120 s en total, pero nunca 120 s seguidos sin bytes.
+    // More than 120 s in total, but never 120 s in a row without bytes.
     for (let i = 1; i < N; i++) {
       clock.advance(IDLE_TIMEOUT_MS - 1000);
       if (i === N - 1) put.req.end(Buffer.alloc(CH, i));
@@ -303,13 +303,13 @@ describe("descarga navegador ← panel ← agente", () => {
     expect((await reader.read()).done).toBe(true);
     expect(got.n).toBe(CH * N);
     expect(await put.outcome).toMatchObject({ status: 204 });
-    await vi.waitFor(() => expect(info).toHaveBeenCalledWith(expect.objectContaining({ path: "/world.zip" }), expect.stringMatching(/entera/)));
+    await vi.waitFor(() => expect(info).toHaveBeenCalledWith(expect.objectContaining({ path: "/world.zip" }), expect.stringMatching(/in full/)));
     expect(warn).not.toHaveBeenCalled();
   });
 });
 
-describe("subida navegador → panel → agente", () => {
-  it("50 MiB en streaming: el agente recibe datos antes de que el navegador termine de enviar", async () => {
+describe("upload browser → panel → agent", () => {
+  it("50 MiB streaming: the agent receives data before the browser finishes sending", async () => {
     const CHUNK = 1024 * 1024, CHUNKS = 50;
     let openGate!: () => void;
     const agentStarted = new Promise<void>((r) => (openGate = r));
@@ -317,7 +317,7 @@ describe("subida navegador → panel → agente", () => {
     const local = createHash("sha256");
     const body = new ReadableStream<Uint8Array>({
       async pull(c) {
-        if (sent === 1) await agentStarted; // sin streaming real esto no avanzaría nunca
+        if (sent === 1) await agentStarted; // without real streaming this would never advance
         if (sent === CHUNKS) return c.close();
         const chunk = new Uint8Array(CHUNK).fill(sent++ % 251);
         local.update(chunk);
@@ -329,7 +329,7 @@ describe("subida navegador → panel → agente", () => {
 
     const req = await agent.waitFor("filesUpload");
     if (req.body.case !== "filesUpload") throw new Error();
-    expect(req.body.value).toMatchObject({ serverId, path: "/mods/grande.jar", size: -1n }); // chunked: tamaño desconocido
+    expect(req.body.value).toMatchObject({ serverId, path: "/mods/grande.jar", size: -1n }); // chunked: unknown size
     const res = await fetch(`${url}/agent/transfer/${req.body.value.transferId}`, { headers: agentAuth() });
     const remote = createHash("sha256");
     let n = 0;
@@ -344,7 +344,7 @@ describe("subida navegador → panel → agente", () => {
     expect(remote.digest("hex")).toBe(local.digest("hex"));
   });
 
-  it("con Content-Length el agente recibe el tamaño y la cabecera", async () => {
+  it("with Content-Length the agent receives the size and the header", async () => {
     const data = Buffer.alloc(1000, 1);
     const browser = fetch(`${files()}/upload?path=/eula.txt`, { method: "PUT", body: data, headers: { cookie, ...octet } });
     const req = await uploadRequest();
@@ -356,7 +356,7 @@ describe("subida navegador → panel → agente", () => {
     expect((await browser).status).toBe(204);
   });
 
-  it("el tope de 16 MiB del cuerpo inline no se aplica a la subida (20 MiB con Content-Length)", async () => {
+  it("the 16 MiB cap on the inline body does not apply to the upload (20 MiB with Content-Length)", async () => {
     const data = Buffer.alloc(20 * 1024 * 1024, 7);
     const browser = fetch(`${files()}/upload?path=/world.zip`, { method: "PUT", body: data, headers: { cookie, ...octet } });
     const req = await uploadRequest();
@@ -367,7 +367,7 @@ describe("subida navegador → panel → agente", () => {
     expect((await browser).status).toBe(204);
   });
 
-  it("un fichero vacío se sube con tamaño 0", async () => {
+  it("an empty file is uploaded with size 0", async () => {
     const browser = fetch(`${files()}/upload?path=/vacio.txt`, { method: "PUT", body: Buffer.alloc(0), headers: { cookie, ...octet } });
     const req = await uploadRequest();
     expect(req.size).toBe(0n);
@@ -378,24 +378,24 @@ describe("subida navegador → panel → agente", () => {
     expect((await browser).status).toBe(204);
   });
 
-  it("si el agente corta y responde Error, el navegador recibe ese error y no un corte de red", async () => {
+  it("if the agent cuts off and responds Error, the browser receives that error and not a network cut", async () => {
     const browser = fetch(`${files()}/upload?path=/mods/x.jar`, { method: "PUT", body: Buffer.alloc(8 * 1024 * 1024, 2), headers: { cookie, ...octet } });
     const req = await uploadRequest();
     const ctrl = new AbortController();
     const res = await fetch(`${url}/agent/transfer/${req.transferId}`, { headers: agentAuth(), signal: ctrl.signal });
     const reader = res.body!.getReader();
-    await reader.read(); // algo de datos y luego "disco lleno"
+    await reader.read(); // some data and then "disk full"
     ctrl.abort();
-    agentError(req.id, "io_error", "error de E/S en /mods/x.jar: no space left on device");
+    agentError(req.id, "io_error", "I/O error on /mods/x.jar: no space left on device");
     const out = await browser;
     expect(out.status).toBe(502);
     expect((await out.json()).error).toMatch(/no space left/);
     expect(app.transfers.activeCount).toBe(0);
   });
 
-  it("si el agente no reclama la transferencia a tiempo, el navegador recibe 504", async () => {
+  it("if the agent does not claim the transfer in time, the browser receives 504", async () => {
     const browser = fetch(`${files()}/upload?path=/mods/x.jar`, { method: "PUT", body: Buffer.alloc(1024, 3), headers: { cookie, ...octet } });
-    await agent.waitFor("filesUpload"); // el agente nunca hace el GET
+    await agent.waitFor("filesUpload"); // the agent never does the GET
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(Date.now() + 61_000);
@@ -405,19 +405,19 @@ describe("subida navegador → panel → agente", () => {
     }
     const res = await browser;
     expect(res.status).toBe(504);
-    expect((await res.json()).error).toMatch(/a tiempo/);
+    expect((await res.json()).error).toMatch(/in time/);
   });
 
-  it("tipo de contenido distinto de octet-stream → 415 en castellano", async () => {
+  it("content type other than octet-stream → 415 in English", async () => {
     const res = await fetch(`${files()}/upload?path=/mods/x.jar`, { method: "PUT", body: "x", headers: { cookie, "content-type": "application/java-archive" } });
     expect(res.status).toBe(415);
-    expect((await res.json()).error).toMatch(/Tipo de contenido/);
+    expect((await res.json()).error).toMatch(/Unsupported content type/);
     const none = await fetch(`${files()}/upload?path=/mods/x.jar`, { method: "PUT", headers: { cookie } });
     expect(none.status).toBe(415);
     expect((await none.json()).error).toMatch(/octet-stream/);
   });
 
-  it("subir a la raíz o a una ruta insegura → 400", async () => {
+  it("uploading to the root or to an unsafe path → 400", async () => {
     for (const p of ["/", "../x.jar"]) {
       const res = await fetch(`${files()}/upload?path=${encodeURIComponent(p)}`, { method: "PUT", body: "x", headers: { cookie, ...octet } });
       expect(res.status).toBe(400);
@@ -425,35 +425,35 @@ describe("subida navegador → panel → agente", () => {
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("sin sesión → 401 sin crear la transferencia", async () => {
+  it("no session → 401 without creating the transfer", async () => {
     const res = await fetch(`${files()}/upload?path=/x.jar`, { method: "PUT", body: "x", headers: octet });
     expect(res.status).toBe(401);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("nodo ocupado (busy) → 409 con el mensaje del agente, tras drenar el cuerpo", async () => {
+  it("node busy (busy) → 409 with the agent's message, after draining the body", async () => {
     const browser = fetch(`${files()}/upload?path=/world.zip`, { method: "PUT", body: Buffer.alloc(4 * 1024 * 1024, 1), headers: { cookie, ...octet } });
     const req = await uploadRequest();
-    agentError(req.id, "busy", "el nodo ya tiene 4 transferencias de archivos en curso: espera a que termine alguna");
+    agentError(req.id, "busy", "the node already has 4 file transfers in progress: wait for one to finish");
     const res = await browser;
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/4 transferencias/);
+    expect((await res.json()).error).toMatch(/4 file transfers/);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("tamaño excedido antes de empezar (Content-Length) → 413 con el mensaje del agente", async () => {
+  it("size exceeded before starting (Content-Length) → 413 with the agent's message", async () => {
     const data = Buffer.alloc(2 * 1024 * 1024, 1);
     const browser = fetch(`${files()}/upload?path=/world.zip`, { method: "PUT", body: data, headers: { cookie, ...octet } });
     const req = await uploadRequest();
     expect(req.size).toBe(BigInt(data.length));
-    agentError(req.id, "too_large", "la subida supera el máximo de 1 MiB del nodo (UPLOAD_MAX_BYTES)");
+    agentError(req.id, "too_large", "the upload exceeds the node's 1 MiB maximum (UPLOAD_MAX_BYTES)");
     const res = await browser;
     expect(res.status).toBe(413);
     expect((await res.json()).error).toMatch(/UPLOAD_MAX_BYTES/);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("tamaño excedido a mitad (chunked): el agente corta, el cuerpo se drena y el navegador recibe 413", async () => {
+  it("size exceeded midway (chunked): the agent cuts off, the body is drained and the browser receives 413", async () => {
     const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet });
     await write(up.req, Buffer.alloc(256 * 1024, 1));
     const req = await uploadRequest();
@@ -461,30 +461,30 @@ describe("subida navegador → panel → agente", () => {
     const get = raw("GET", `${url}/agent/transfer/${req.transferId}`, agentAuth());
     get.req.end();
     await get.first;
-    get.req.destroy(); // el agente llega a su tope y deja de leer
-    agentError(req.id, "too_large", "la subida supera el máximo de 1 MiB del nodo (UPLOAD_MAX_BYTES)");
-    // El navegador sigue enviando: el panel lo descarta y al final responde con el error.
+    get.req.destroy(); // the agent reaches its cap and stops reading
+    agentError(req.id, "too_large", "the upload exceeds the node's 1 MiB maximum (UPLOAD_MAX_BYTES)");
+    // The browser keeps sending: the panel discards it and at the end responds with the error.
     await write(up.req, Buffer.alloc(1024 * 1024, 2));
     up.req.end(Buffer.alloc(1024 * 1024, 3));
     const out = await up.outcome;
     expect(out).toMatchObject({ status: 413, complete: true });
-    if (out !== "cortada") expect(JSON.parse(out.body.toString()).error).toMatch(/UPLOAD_MAX_BYTES/);
+    if (out !== "cut") expect(JSON.parse(out.body.toString()).error).toMatch(/UPLOAD_MAX_BYTES/);
     expect(app.transfers.activeCount).toBe(0);
   });
 
-  it("el navegador cancela antes de que el agente reclame: la transferencia se anula y el GET tardío es 404", async () => {
+  it("the browser cancels before the agent claims: the transfer is voided and the late GET is 404", async () => {
     const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet, "content-length": String(1 << 20) });
     await write(up.req, Buffer.alloc(1024, 1));
     const req = await uploadRequest();
     expect(app.transfers.pendingCount).toBe(1);
     up.req.destroy();
-    expect(await up.outcome).toBe("cortada");
+    expect(await up.outcome).toBe("cut");
     await vi.waitFor(() => expect(app.transfers.pendingCount).toBe(0));
     const get = await fetch(`${url}/agent/transfer/${req.transferId}`, { headers: agentAuth() });
     expect(get.status).toBe(404);
   });
 
-  it("el navegador cancela a mitad: el GET del agente se corta (no recibe un fichero corto como bueno)", async () => {
+  it("the browser cancels midway: the agent's GET is cut (it does not receive a short file as good)", async () => {
     const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet, "content-length": String(8 << 20) });
     await write(up.req, Buffer.alloc(256 * 1024, 1));
     const req = await uploadRequest();
@@ -496,7 +496,7 @@ describe("subida navegador → panel → agente", () => {
     await vi.waitFor(() => expect(app.transfers.activeCount).toBe(0));
   });
 
-  it("el agente se desconecta a mitad: su GET se corta y el navegador recibe 409 en JSON", async () => {
+  it("the agent disconnects midway: its GET is cut and the browser receives 409 as JSON", async () => {
     const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet, "content-length": String(4 << 20) });
     await write(up.req, Buffer.alloc(256 * 1024, 1));
     const req = await uploadRequest();
@@ -504,53 +504,53 @@ describe("subida navegador → panel → agente", () => {
     get.req.end();
     await get.first;
     agent.close();
-    // El panel abandona la transferencia: el agente (que sigue vivo) ve su GET cortado y limpia.
+    // The panel abandons the transfer: the agent (which is still alive) sees its GET cut and cleans up.
     expect(isCut(await get.outcome)).toBe(true);
     up.req.end(Buffer.alloc((4 << 20) - 256 * 1024, 2));
     const out = await up.outcome;
     expect(out).toMatchObject({ status: 409, complete: true });
-    if (out !== "cortada") expect(JSON.parse(out.body.toString()).error).toMatch(/desconect/);
+    if (out !== "cut") expect(JSON.parse(out.body.toString()).error).toMatch(/disconnect/);
     expect(app.transfers.activeCount).toBe(0);
   });
 
-  it("con el nodo desconectado desde el principio → 409 en JSON (el cuerpo se drena, sin corte de red)", async () => {
+  it("with the node offline from the start → 409 as JSON (the body is drained, without a network cut)", async () => {
     agent.close();
     await vi.waitFor(() => expect(app.agents.get(nodeId)).toBeUndefined());
     const res = await fetch(`${files()}/upload?path=/world.zip`, { method: "PUT", body: Buffer.alloc(2 * 1024 * 1024, 1), headers: { cookie, ...octet } });
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/desconectado/);
+    expect((await res.json()).error).toMatch(/offline/);
     expect(app.transfers.pendingCount).toBe(0);
   });
 });
 
-describe("subida: plazos y límites", () => {
-  it("si el navegador se calla a mitad, a los 120 s se cancela; tras otros 120 s de silencio se cierra su conexión", async () => {
+describe("upload: deadlines and limits", () => {
+  it("if the browser goes silent midway, it is cancelled after 120 s; after another 120 s of silence its connection is closed", async () => {
     const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet, "content-length": String(4 << 20) });
     await write(up.req, Buffer.alloc(256 * 1024, 1));
     const req = await uploadRequest();
     const get = raw("GET", `${url}/agent/transfer/${req.transferId}`, agentAuth());
     get.req.end();
-    await vi.waitFor(() => expect(get.received()).toBe(256 * 1024)); // todo lo enviado ya cruzó la guarda
+    await vi.waitFor(() => expect(get.received()).toBe(256 * 1024)); // everything sent already crossed the guard
     clock.advance(IDLE_TIMEOUT_MS - 1);
     expect(app.transfers.activeCount).toBe(1);
     clock.advance(1);
-    expect(isCut(await get.outcome)).toBe(true); // el agente ve el corte y descarta su temporal
-    agentError(req.id, "transfer_failed", "fallo en la transferencia: unexpected EOF");
-    await vi.waitFor(() => expect(clock.pending).toBe(1)); // drenando, con su propio plazo
+    expect(isCut(await get.outcome)).toBe(true); // the agent sees the cut and discards its temp file
+    agentError(req.id, "transfer_failed", "transfer failure: unexpected EOF");
+    await vi.waitFor(() => expect(clock.pending).toBe(1)); // draining, with its own deadline
     clock.advance(IDLE_TIMEOUT_MS);
-    expect(await up.outcome).toBe("cortada");
+    expect(await up.outcome).toBe("cut");
     expect(app.transfers.activeCount).toBe(0);
   });
 
-  it("una subida lenta pero continua no tiene plazo absoluto", async () => {
-    const CH = 1024, N = 40; // 40 × 119 s ≈ 79 min de reloj virtual
+  it("a slow but continuous upload has no absolute deadline", async () => {
+    const CH = 1024, N = 40; // 40 × 119 s ≈ 79 min of virtual clock
     const up = raw("PUT", `${files()}/upload?path=/lento.bin`, { cookie, ...octet, "content-length": String(CH * N) });
     await write(up.req, Buffer.alloc(CH, 0));
     const req = await uploadRequest();
     const get = raw("GET", `${url}/agent/transfer/${req.transferId}`, agentAuth());
     get.req.end();
     for (let i = 1; i < N; i++) {
-      // El último trozo de una subida con tamaño se retiene hasta el final (exactly): se espera al anterior.
+      // The last chunk of an upload with a size is held back until the end (exactly): the previous one is awaited.
       await vi.waitFor(() => expect(get.received()).toBe(CH * i));
       clock.advance(IDLE_TIMEOUT_MS - 1000);
       if (i === N - 1) up.req.end(Buffer.alloc(CH, i));
@@ -561,30 +561,30 @@ describe("subida: plazos y límites", () => {
     expect(await up.outcome).toMatchObject({ status: 204 });
   });
 
-  it("si el agente recibe el fichero entero pero no confirma, el navegador recibe 504 al vencer el plazo del Ack", async () => {
+  it("if the agent receives the whole file but does not confirm, the browser receives 504 when the Ack deadline expires", async () => {
     const browser = fetch(`${files()}/upload?path=/eula.txt`, { method: "PUT", body: Buffer.alloc(1000, 1), headers: { cookie, ...octet } });
     const req = await uploadRequest();
     const res = await fetch(`${url}/agent/transfer/${req.transferId}`, { headers: agentAuth() });
     expect((await res.arrayBuffer()).byteLength).toBe(1000);
-    await vi.waitFor(() => expect(clock.pending).toBe(1)); // solo queda el plazo del Ack
+    await vi.waitFor(() => expect(clock.pending).toBe(1)); // only the Ack deadline remains
     clock.advance(ACK_TIMEOUT_MS - 1);
     clock.advance(1);
     const out = await browser;
     expect(out.status).toBe(504);
-    expect((await out.json()).error).toMatch(/no confirmó/);
+    expect((await out.json()).error).toMatch(/did not confirm/);
   });
 
-  it("si el agente confirma sin haber hecho el GET, el navegador recibe 502 (no un 204 sin fichero)", async () => {
+  it("if the agent confirms without having done the GET, the browser receives 502 (not a 204 without a file)", async () => {
     const browser = fetch(`${files()}/upload?path=/mods/x.jar`, { method: "PUT", body: Buffer.alloc(1000, 1), headers: { cookie, ...octet } });
     const req = await uploadRequest();
     agent.ack(req.id);
     const res = await browser;
     expect(res.status).toBe(502);
-    expect((await res.json()).error).toMatch(/sin haber recibido el fichero/);
+    expect((await res.json()).error).toMatch(/without having received the file/);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("si el agente confirma con el GET cortado a medias, el navegador recibe 502", async () => {
+  it("if the agent confirms with the GET cut off halfway, the browser receives 502", async () => {
     const browser = fetch(`${files()}/upload?path=/mods/x.jar`, { method: "PUT", body: Buffer.alloc(4 * 1024 * 1024, 1), headers: { cookie, ...octet } });
     const req = await uploadRequest();
     const get = raw("GET", `${url}/agent/transfer/${req.transferId}`, agentAuth());
@@ -594,31 +594,31 @@ describe("subida: plazos y límites", () => {
     agent.ack(req.id);
     const res = await browser;
     expect(res.status).toBe(502);
-    expect((await res.json()).error).toMatch(/entero/);
+    expect((await res.json()).error).toMatch(/whole file/);
     expect(app.transfers.activeCount).toBe(0);
   });
 
-  it("si falla con más de 8 MiB aún por llegar, se drenan 8 MiB y se responde con Connection: close sin esperar al resto", async () => {
-    // keep-alive: el Connection: close de la respuesta tiene que ponerlo el panel, no ser eco del cliente.
+  it("if it fails with more than 8 MiB still to arrive, 8 MiB are drained and it responds with Connection: close without waiting for the rest", async () => {
+    // keep-alive: the response's Connection: close must be set by the panel, not echoed from the client.
     const up = raw("PUT", `${files()}/upload?path=/world.zip`, { cookie, ...octet, connection: "keep-alive", "content-length": String(64 << 20) });
     up.req.write(Buffer.alloc(1024));
     const req = await uploadRequest();
-    agentError(req.id, "busy", "el nodo ya tiene 4 transferencias de archivos en curso: espera a que termine alguna");
-    up.req.write(Buffer.alloc(DRAIN_MAX_BYTES + 64 * 1024)); // y nunca envía el resto de los 64 MiB
+    agentError(req.id, "busy", "the node already has 4 file transfers in progress: wait for one to finish");
+    up.req.write(Buffer.alloc(DRAIN_MAX_BYTES + 64 * 1024)); // and it never sends the rest of the 64 MiB
     const out = await up.outcome;
     expect(out).toMatchObject({ status: 409, complete: true });
-    if (out === "cortada") throw new Error();
+    if (out === "cut") throw new Error();
     expect(out.headers.connection).toBe("close");
-    expect(JSON.parse(out.body.toString()).error).toMatch(/4 transferencias/);
+    expect(JSON.parse(out.body.toString()).error).toMatch(/4 file transfers/);
     expect(app.transfers.pendingCount).toBe(0);
   });
 
-  it("si el navegador envía más bytes que su Content-Length, al agente solo llegan los anunciados", async () => {
+  it("if the browser sends more bytes than its Content-Length, only the announced ones reach the agent", async () => {
     const sock = net.connect(Number(new URL(url).port), "127.0.0.1");
     let text = "";
     sock.on("data", (c) => (text += c.toString("latin1")));
     const closedSock = new Promise((r) => sock.once("close", r));
-    // Lo que sobra tras los 10 bytes es, para el servidor, la siguiente petición de la conexión.
+    // What remains after the 10 bytes is, for the server, the connection's next request.
     sock.write(
       `PUT /api/servers/${serverId}/files/upload?path=/x.txt HTTP/1.1\r\nHost: 127.0.0.1\r\nCookie: ${cookie}\r\n` +
       `Content-Type: application/octet-stream\r\nContent-Length: 10\r\n\r\n0123456789` +
@@ -635,16 +635,16 @@ describe("subida: plazos y límites", () => {
   });
 });
 
-describe("cierre del panel con transferencias en curso", () => {
-  it("app.close() no espera a que terminen: corta navegador y agente en subida y descarga", async () => {
-    // Subida en curso: el navegador envía y el agente lee.
+describe("panel shutdown with transfers in progress", () => {
+  it("app.close() does not wait for them to finish: it cuts browser and agent on upload and download", async () => {
+    // Upload in progress: the browser sends and the agent reads.
     const up = raw("PUT", `${files()}/upload?path=/up.zip`, { cookie, ...octet, "content-length": String(64 << 20) });
     await write(up.req, Buffer.alloc(256 * 1024, 1));
     const upReq = await uploadRequest();
     const get = raw("GET", `${url}/agent/transfer/${upReq.transferId}`, agentAuth());
     get.req.end();
     await get.first;
-    // Descarga en curso: el agente sube y el navegador lee.
+    // Download in progress: the agent uploads and the browser reads.
     const ctrl = new AbortController();
     const browser = fetch(`${files()}/download?path=/down.zip`, { headers: { cookie }, signal: ctrl.signal });
     const dlReq = await downloadRequest("/down.zip");
@@ -656,7 +656,7 @@ describe("cierre del panel con transferencias en curso", () => {
     expect(app.transfers.activeCount).toBe(2);
 
     closed = true;
-    await app.close(); // sin el corte esperaría a que los 64 MiB terminasen de pasar
+    await app.close(); // without the cut it would wait for the 64 MiB to finish passing
 
     expect(isCut(await up.outcome)).toBe(true);
     expect(isCut(await get.outcome)).toBe(true);
