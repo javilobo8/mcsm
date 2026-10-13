@@ -58,6 +58,8 @@ type Hub struct {
 
 	// graceHook (solo tests) se invoca al inicio del callback del temporizador de gracia.
 	graceHook func()
+	// graceDone (solo tests) se invoca al final del callback del temporizador de gracia, tras dropIfIdle.
+	graceDone func()
 }
 
 type subscriber struct {
@@ -254,6 +256,9 @@ func (f *follower) subscribe(tail int) *Subscription {
 						hook()
 					}
 					f.hub.dropIfIdle(f)
+					if done := f.hub.graceDone; done != nil {
+						done()
+					}
 				})
 			}
 		})
