@@ -99,6 +99,17 @@ func TestRequestedStopAbsorbsOnlyOneDie(t *testing.T) {
 	}
 }
 
+// m10(c): la hora de los Event sale del reloj inyectable del agente (el de las copias), no de time.Now.
+func TestEventsUseTheAgentClock(t *testing.T) {
+	a, _, s, cid := crashApp(t)
+	at := time.Date(2026, 10, 12, 4, 0, 0, 0, time.UTC)
+	a.bk.clock = &manualClock{now: at}
+	a.onDie("a", die(cid, "1"))
+	if evs := eventsOf(t, a, s); len(evs) != 1 || evs[0].TsUnixMs != at.UnixMilli() {
+		t.Fatalf("eventos = %+v", evs)
+	}
+}
+
 func TestFourCrashesInAnHourStopAndRetainTheServer(t *testing.T) {
 	a, fake, s, cid := crashApp(t)
 	for i := 0; i < crashloop.MaxCrashes+1; i++ {

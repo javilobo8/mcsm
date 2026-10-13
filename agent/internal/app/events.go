@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"time"
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/crashloop"
@@ -21,10 +20,11 @@ const (
 )
 
 // emitEvent encola un Event para el panel sin bloquear nunca (cola FIFO propia, como los avisos de copias). Sin
-// conexión se pierde: lo que importa también queda en Observed.error.
+// conexión se pierde: lo que importa también queda en Observed.error. La hora sale del reloj del agente (el de las
+// copias, inyectable en tests).
 func (a *App) emitEvent(serverID string, level mcsmv1.EventLevel, kind, msg string) {
 	_ = a.events.post(&mcsmv1.Envelope{Body: &mcsmv1.Envelope_Event{Event: &mcsmv1.Event{
-		Level: level, ServerId: serverID, Kind: kind, Message: validUTF8(msg), TsUnixMs: time.Now().UnixMilli(),
+		Level: level, ServerId: serverID, Kind: kind, Message: validUTF8(msg), TsUnixMs: a.bk.clock.Now().UnixMilli(),
 	}}})
 }
 
