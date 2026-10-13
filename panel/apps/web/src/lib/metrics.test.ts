@@ -53,10 +53,21 @@ describe("series", () => {
   });
   it("isFresh: navegador con el reloj 20 s atrasado respecto a la muestra REST sigue fresca", () => {
     // La muestra REST se fecha con su ts (1000 s); el navegador cree estar en 980 s (20 s atrasado).
-    const e = entryFromSeries(series({ t: [980, 990, 1000], cpuPct: [1, 2, 3], memBytes: [1, 1, 1], memLimitBytes: [2, 2, 2], diskBytes: [1, 1, 1], diskTotalBytes: [2, 2, 2] }));
+    const e = entryFromSeries(series({ t: [980, 990, 1000], cpuPct: [1, 2, 3], memBytes: [1, 1, 1], memLimitBytes: [2, 2, 2], diskBytes: [1, 1, 1], diskTotalBytes: [2, 2, 2] }), 1_000_000);
     expect(isFresh(e, 980_000)).toBe(true);
     expect(isFresh(e, (1000 - MAX_CLOCK_SKEW_SECONDS - 1) * 1000)).toBe(false); // más allá de la tolerancia compartida
-    expect(entryFromSeries(series())).toBeNull();
+    expect(entryFromSeries(series(), 0)).toBeNull();
+  });
+
+  it("la muestra REST se mide con la hora del panel: los relojes del agente y del navegador no importan", () => {
+    const s = series({ cpuPct: [null, 10, null], memBytes: [null, 1, null], now: 125 }); // muestra en t=110, el panel a 125
+    const fetchedAt = 9_000_000; // reloj del navegador, sin relación con el del agente
+    const e = entryFromSeries(s, fetchedAt);
+    expect(e?.receivedAt).toBe(fetchedAt - 15_000);
+    expect(isFresh(e, fetchedAt)).toBe(true);
+    expect(isFresh(e, fetchedAt + 50_000)).toBe(false); // 65 s de antigüedad
+    const old = entryFromSeries(series({ cpuPct: [null, 10, null] }), fetchedAt); // panel sin `now`
+    expect(old?.receivedAt).toBe(110_000);
   });
 });
 
