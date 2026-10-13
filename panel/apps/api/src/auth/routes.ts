@@ -46,7 +46,8 @@ export async function authRoutes(app: FastifyInstance) {
     }
     const parsed = passwordBody.safeParse(req.body);
     const stored = app.auth.getSetting("admin_password_hash");
-    if (!parsed.success || !stored || !(await verifyPassword(parsed.data.password, stored))) {
+    // Tras el await, el hash puede haber cambiado (cambio de contraseña en medio): la credencial ya no vale.
+    if (!parsed.success || !stored || !(await verifyPassword(parsed.data.password, stored)) || app.auth.getSetting("admin_password_hash") !== stored) {
       failures.fail();
       return reply.code(401).send({ error: "Contraseña incorrecta" });
     }
