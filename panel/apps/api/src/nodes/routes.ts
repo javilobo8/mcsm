@@ -1,5 +1,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { AgentError } from "../agents/hub.js";
+import { AgentErrorCode } from "../agents/error-codes.js";
+import { HttpError, agentErrorToHttp } from "../lib/http.js";
+import { hashToken, randomToken } from "../lib/tokens.js";
 import { isForeignKeyError, toNodeDto } from "./repo.js";
 
 const nameSchema = z.string().trim().min(1).max(40).regex(/^[\p{L}\p{N} _.-]+$/u, "Nombre inválido");
@@ -29,6 +33,9 @@ export function dockerRunSnippet(publicUrl: string, token: string, dataRoot = "/
     "  mcsm-agent:latest",
   ].join("\n");
 }
+
+/** Una rotación sin confirmar más reciente que esto bloquea otra: el agente aún puede conectar con su token. */
+const ROTATION_WINDOW_MS = 2 * 60_000;
 
 export async function nodeRoutes(app: FastifyInstance) {
   const repo = app.nodes;
@@ -71,6 +78,36 @@ export async function nodeRoutes(app: FastifyInstance) {
     }
     app.agents.get(node.id)?.terminate(); // un nodo borrado no puede seguir conectado
     return reply.code(204).send();
+  });
+
+  // Rotación del token del nodo (spec §9, L5 del Plan 1). POST bajo /api/nodes/:id/: la guarda de migraciones la
+  // bloquea mientras el nodo migra (la rotación reconecta el agente).
+  app.post<{ Params: { id: string } }>("/api/nodes/:id/rotate-token", async (req) => {
+    const node = repo.get(req.params.id);
+    if (!node) throw new HttpError(404, "Nodo no encontrado");
+    const conn = app.agents.get(node.id);
+    if (!conn) throw new HttpError(409, "El nodo está desconectado: la rotación necesita el agente conectado");
+    if (node.pending_token_hash && node.pending_token_at && Date.parse(node.pending_token_at) > Date.now() - ROTATION_WINDOW_MS) {
+      throw new HttpError(409, "Ya hay una rotación en curso: espera a que el agente se reconecte con el token nuevo");
+    }
+    const token = randomToken();
+    // Antes de enviarlo: si el Ack se pierde, el agente puede volver ya con el token nuevo.
+    repo.setPendingToken(node.id, hashToken(token));
+    try {
+      await conn.request({ case: "rotateToken", value: { token } }, 30_000);
+    } catch (e) {
+      if (e instanceof AgentError && (e.code === AgentErrorCode.Timeout || e.code === AgentErrorCode.Disconnected)) {
+        req.log.warn({ nodeId: node.id, code: e.code }, "rotación de token sin confirmar; el token nuevo queda pendiente");
+        throw new HttpError(504, "El agente no confirmó la rotación. Si guardó el token nuevo se reconectará con él en unos segundos; si no, vuelve a intentarlo pasados 2 minutos");
+      }
+      repo.setPendingToken(node.id, null);
+      if (e instanceof AgentError && e.code === AgentErrorCode.Unsupported) {
+        throw new HttpError(409, "El agente de este nodo no admite la rotación de token: actualízalo primero");
+      }
+      throw agentErrorToHttp(e, "El agente no pudo guardar el token nuevo");
+    }
+    req.log.info({ nodeId: node.id }, "token de nodo rotado; esperando a que el agente se reconecte");
+    return toNodeDto(repo.get(node.id)!);
   });
 
   // Sin sesión: lo llama el agente con el token de alta.
