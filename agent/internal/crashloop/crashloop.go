@@ -1,6 +1,6 @@
 // Package crashloop detecta bucles de crash de los servidores (spec §10): un servidor que se cierra con error
-// más de MaxCrashes veces en Window se para. Intents distingue las paradas que pidió alguien (cada una explica un die) (el agente al
-// parar, recrear o borrar; mc-router a través del proxy del socket) de los crashes.
+// más de MaxCrashes veces en Window se para. Intents distingue las paradas que pidió alguien (el agente al
+// parar, recrear o borrar; mc-router a través del proxy del socket) de los crashes: cada una explica un die.
 package crashloop
 
 import (

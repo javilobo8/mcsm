@@ -432,10 +432,10 @@ func (p *Proxy) Serve(ctx context.Context) {
 	_ = os.Remove(p.opts.Listen)
 }
 
-// Run escucha (si no escucha ya) y atiende el socket hasta que ctx termina. Si Listen falla, o Serve deja de atender, vuelve a escuchar
-// tras una espera que empieza en RetryMin y se duplica en cada fallo seguido hasta RetryMax; mientras tanto, Ready da
-// el error (el router lo muestra en su estado). Tras cada Listen correcto llama a onListen (puede ser nil): el agente
-// despliega el router sin esperar a su siguiente pasada.
+// Run escucha (si no escucha ya) y atiende el socket hasta que ctx termina. Si Listen falla, o Serve deja de
+// atender, vuelve a escuchar tras una espera que empieza en RetryMin y se duplica en cada fallo seguido hasta
+// RetryMax; mientras tanto, Ready da el error (el router lo muestra en su estado). Tras cada Listen correcto llama
+// a onListen (puede ser nil): el agente despliega el router sin esperar a su siguiente pasada.
 func (p *Proxy) Run(ctx context.Context, onListen func()) {
 	sleep := p.opts.Sleep
 	if sleep == nil {
