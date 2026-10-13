@@ -1,4 +1,4 @@
-// Package conn gestiona la comunicación saliente del agente con el panel.
+// Package conn manages the agent's outbound communication with the panel.
 package conn
 
 import (
@@ -17,7 +17,7 @@ type EnrollResult struct {
 	NodeToken string `json:"nodeToken"`
 }
 
-// Enroll canjea un token de alta de un solo uso por credenciales permanentes.
+// Enroll exchanges a single-use enrollment token for permanent credentials.
 func Enroll(ctx context.Context, panelURL, enrollToken, nameHint, agentVersion string) (*EnrollResult, error) {
 	body, _ := json.Marshal(map[string]string{"enrollToken": enrollToken, "nameHint": nameHint, "agentVersion": agentVersion})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(panelURL, "/")+"/agent/enroll", bytes.NewReader(body))
@@ -32,14 +32,14 @@ func Enroll(ctx context.Context, panelURL, enrollToken, nameHint, agentVersion s
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("enroll: el panel respondió %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+		return nil, fmt.Errorf("enroll: the panel responded %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
 	var out EnrollResult
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out); err != nil {
-		return nil, fmt.Errorf("enroll: respuesta inválida: %w", err)
+		return nil, fmt.Errorf("enroll: invalid response: %w", err)
 	}
 	if out.NodeID == "" || out.NodeToken == "" {
-		return nil, fmt.Errorf("enroll: respuesta incompleta")
+		return nil, fmt.Errorf("enroll: incomplete response")
 	}
 	return &out, nil
 }

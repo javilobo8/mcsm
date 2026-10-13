@@ -18,7 +18,7 @@ import (
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 )
 
-var ErrNotConnected = errors.New("conn: sin conexión con el panel")
+var ErrNotConnected = errors.New("conn: not connected to the panel")
 
 const (
 	readLimit   = 4 << 20
@@ -28,8 +28,8 @@ const (
 	dialTimeout = 15 * time.Second
 )
 
-// Handler procesa los mensajes del panel. Se invoca en una goroutine por
-// mensaje, por lo que no hay garantía de orden entre mensajes.
+// Handler processes the panel's messages. It is invoked in one goroutine per
+// message, so there is no ordering guarantee between messages.
 type Handler interface {
 	Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv1.Envelope) error)
 }
@@ -42,7 +42,7 @@ type Options struct {
 	Hello        HelloFunc
 	Handler      Handler
 	OnDisconnect func()
-	// OnAuthRejected se invoca cuando el panel rechaza el token (401/403) en el handshake.
+	// OnAuthRejected is invoked when the panel rejects the token (401/403) in the handshake.
 	OnAuthRejected func()
 	Log            *slog.Logger
 }
@@ -57,7 +57,7 @@ type Client struct {
 	after       func(time.Duration) <-chan time.Time
 	ping        func(context.Context, *websocket.Conn) error
 
-	mu        sync.Mutex // protege solo el puntero ws; coder/websocket serializa las escrituras
+	mu        sync.Mutex // protects only the ws pointer; coder/websocket serializes writes
 	ws        *websocket.Conn
 	connected atomic.Bool
 	tokMu     sync.Mutex // protege tok (plan-9: RotateToken lo cambia)
@@ -75,7 +75,7 @@ func NewClient(o Options) *Client {
 
 func (c *Client) Connected() bool { return c.connected.Load() }
 
-// SetToken cambia el token del nodo para las sesiones siguientes (plan-9: RotateToken). No toca la actual.
+// SetToken changes the node token for subsequent sessions (plan-9: RotateToken). It does not touch the current one.
 func (c *Client) SetToken(tok string) {
 	c.tokMu.Lock()
 	c.tok = tok
@@ -88,18 +88,18 @@ func (c *Client) token() string {
 	return c.tok
 }
 
-// Reconnect cierra la sesión actual, si hay: Run vuelve a conectar (con el token vigente) tras la espera mínima.
+// Reconnect closes the current session, if any: Run reconnects (with the current token) after the minimum wait.
 func (c *Client) Reconnect() {
 	c.mu.Lock()
 	ws := c.ws
 	c.mu.Unlock()
 	if ws != nil {
-		_ = ws.Close(websocket.StatusNormalClosure, "token rotado")
+		_ = ws.Close(websocket.StatusNormalClosure, "token rotated")
 	}
 }
 
-// Send escribe un mensaje binario por la sesión actual. Es seguro para uso
-// concurrente (coder/websocket permite múltiples escritores).
+// Send writes a binary message over the current session. It is safe for
+// concurrent use (coder/websocket allows multiple writers).
 func (c *Client) Send(ctx context.Context, env *mcsmv1.Envelope) error {
 	c.mu.Lock()
 	ws := c.ws
@@ -120,7 +120,7 @@ func writeEnv(ctx context.Context, ws *websocket.Conn, env *mcsmv1.Envelope) err
 	return ws.Write(wctx, websocket.MessageBinary, raw)
 }
 
-// nextBackoff duplica la espera hasta el máximo.
+// nextBackoff doubles the wait up to the maximum.
 func nextBackoff(wait, max time.Duration) time.Duration {
 	wait *= 2
 	if wait > max {
@@ -129,12 +129,12 @@ func nextBackoff(wait, max time.Duration) time.Duration {
 	return wait
 }
 
-// jittered aplica ±20 % de variación a la espera.
+// jittered applies ±20 % variation to the wait.
 func jittered(wait time.Duration) time.Duration {
 	return time.Duration(float64(wait) * (0.8 + 0.4*rand.Float64()))
 }
 
-// Run mantiene la sesión viva hasta que ctx termina.
+// Run keeps the session alive until ctx ends.
 func (c *Client) Run(ctx context.Context) {
 	wait := c.backoffMin
 	for {
@@ -142,20 +142,20 @@ func (c *Client) Run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		// solo se considera sana una sesión que recibió algo del panel o que
-		// duró lo suficiente; si no, un panel que acepta y corta provocaría
-		// reintentos cada ~1 s para siempre
+		// a session only counts as healthy if it received something from the panel or
+		// lasted long enough; otherwise a panel that accepts and hangs up would cause
+		// retries every ~1 s forever
 		if res.gotFrame || res.lasted >= c.stableAfter {
 			wait = c.backoffMin
 		}
 		d := jittered(wait)
 		switch {
 		case res.authRejected:
-			c.log.Info("reintentando alta de sesión tras rechazo de token", "reintento_en", d)
+			c.log.Info("retrying session enrollment after token rejection", "retry_in", d)
 		case !res.established:
-			c.log.Warn("no se pudo conectar con el panel", "err", err, "reintento_en", d)
+			c.log.Warn("could not connect to the panel", "err", err, "retry_in", d)
 		default:
-			c.log.Warn("sesión con el panel terminada", "err", err, "reintento_en", d)
+			c.log.Warn("session with the panel ended", "err", err, "retry_in", d)
 		}
 		select {
 		case <-ctx.Done():
@@ -174,10 +174,10 @@ func wsURL(panelURL string) string {
 }
 
 type sessionResult struct {
-	established  bool          // Hello enviado
-	gotFrame     bool          // el panel envió al menos un frame
-	authRejected bool          // 401/403 en el handshake
-	lasted       time.Duration // duración desde que se estableció
+	established  bool          // Hello sent
+	gotFrame     bool          // the panel sent at least one frame
+	authRejected bool          // 401/403 in the handshake
+	lasted       time.Duration // duration since it was established
 }
 
 func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
@@ -189,7 +189,7 @@ func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 	if err != nil {
 		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
 			res.authRejected = true
-			c.log.Warn("el panel rechazó el token del nodo", "status", resp.StatusCode) // el Error con instrucciones lo emite OnAuthRejected
+			c.log.Warn("the panel rejected the node token", "status", resp.StatusCode) // the Error with instructions is emitted by OnAuthRejected
 			if c.opts.OnAuthRejected != nil {
 				c.opts.OnAuthRejected()
 			}
@@ -200,8 +200,8 @@ func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 	sctx, stop := context.WithCancel(ctx)
 	defer stop()
 
-	// el Hello va directo sobre el ws nuevo, antes de publicarlo: ningún Send
-	// concurrente puede adelantarlo
+	// the Hello goes straight over the new ws, before publishing it: no concurrent
+	// Send can get ahead of it
 	if err := writeEnv(sctx, ws, &mcsmv1.Envelope{Id: 1, Body: &mcsmv1.Envelope_Hello{Hello: c.opts.Hello(sctx)}}); err != nil {
 		_ = ws.Close(websocket.StatusInternalError, "hello")
 		return res, err
@@ -227,7 +227,7 @@ func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 			c.opts.OnDisconnect()
 		}
 	}()
-	c.log.Info("conectado al panel", "url", c.opts.PanelURL)
+	c.log.Info("connected to the panel", "url", c.opts.PanelURL)
 
 	go func() {
 		t := time.NewTicker(c.pingEvery)
@@ -242,8 +242,8 @@ func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 				pc()
 				if err != nil {
 					if sctx.Err() == nil {
-						c.log.Warn("ping fallido", "err", err)
-						_ = ws.CloseNow() // par muerto: no tiene sentido esperar el handshake de cierre
+						c.log.Warn("ping failed", "err", err)
+						_ = ws.CloseNow() // dead peer: no point waiting for the close handshake
 					}
 					return
 				}
@@ -251,8 +251,8 @@ func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 		}
 	}()
 
-	// send queda ligado a ESTA sesión: tras reconectar, una respuesta tardía
-	// no puede salir por la sesión nueva
+	// send stays bound to THIS session: after reconnecting, a late reply
+	// cannot go out over the new session
 	send := func(e *mcsmv1.Envelope) error {
 		if sctx.Err() != nil {
 			return ErrNotConnected
@@ -267,7 +267,7 @@ func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 		res.gotFrame = true
 		env := &mcsmv1.Envelope{}
 		if err := proto.Unmarshal(data, env); err != nil {
-			c.log.Warn("mensaje inválido", "err", err)
+			c.log.Warn("invalid message", "err", err)
 			continue
 		}
 		go c.dispatch(sctx, env, send)
@@ -277,7 +277,7 @@ func (c *Client) session(ctx context.Context) (res sessionResult, err error) {
 func (c *Client) dispatch(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv1.Envelope) error) {
 	defer func() {
 		if r := recover(); r != nil {
-			c.log.Error("panic en el handler", "panic", r, "stack", string(debug.Stack()))
+			c.log.Error("panic in the handler", "panic", r, "stack", string(debug.Stack()))
 		}
 	}()
 	c.opts.Handler.Handle(ctx, env, send)

@@ -60,7 +60,7 @@ func TestClassifyAllowList(t *testing.T) {
 		{"GET", "//containers/json", ""},
 		{"GET", "/containers/json", "/containers%2Fjson"},
 		{"GET", "/v1.47/containers/a%2Fb/json", "/v1.47/containers/a%2Fb/json"},
-		// Más intentos de colarse (plan-9, revisión de seguridad).
+		// More attempts to sneak through (plan-9, security review).
 		{"GET", "/v1.47/containers/../json", "/v1.47/containers/%2e%2e/json"},
 		{"POST", "/v1.47/containers/abc/json/../../create", ""},
 		{"POST", "/v1.47/containers/abc/start/", ""},
@@ -87,37 +87,37 @@ func TestClassifyAllowList(t *testing.T) {
 	}
 	for _, c := range denied {
 		if op, id, ok := Classify(c.method, c.path, c.raw); ok {
-			t.Errorf("%s %s (raw %q) debe denegarse; dio %v %q", c.method, c.path, c.raw, op, id)
+			t.Errorf("%s %s (raw %q) must be denied; got %v %q", c.method, c.path, c.raw, op, id)
 		}
 	}
 }
 
 func TestStripEnv(t *testing.T) {
-	out, err := StripEnv([]byte(`{"Id":"x","Name":"/mcsm-a","Config":{"Env":["RCON_PASSWORD=secreto"],"Labels":{"mc-router.host":"a.lan"}}}`))
+	out, err := StripEnv([]byte(`{"Id":"x","Name":"/mcsm-a","Config":{"Env":["RCON_PASSWORD=secret"],"Labels":{"mc-router.host":"a.lan"}}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(out), "secreto") || strings.Contains(string(out), "Env") {
-		t.Fatalf("queda el entorno: %s", out)
+	if strings.Contains(string(out), "secret") || strings.Contains(string(out), "Env") {
+		t.Fatalf("the env remains: %s", out)
 	}
 	var m map[string]any
 	_ = json.Unmarshal(out, &m)
 	if m["Id"] != "x" || m["Config"].(map[string]any)["Labels"].(map[string]any)["mc-router.host"] != "a.lan" {
-		t.Fatalf("se pierde lo demás: %s", out)
+		t.Fatalf("the rest is lost: %s", out)
 	}
 	if out, err := StripEnv([]byte(`{"Id":"x"}`)); err != nil || string(out) != `{"Id":"x"}` {
-		t.Fatalf("sin Config: %s %v", out, err)
+		t.Fatalf("without Config: %s %v", out, err)
 	}
 	if _, err := StripEnv([]byte(`no json`)); err == nil {
-		t.Fatal("un inspect ilegible es un error")
+		t.Fatal("an unreadable inspect is an error")
 	}
 }
 
-// upstream es un Docker falso escuchando en un socket unix.
+// upstream is a fake Docker listening on a unix socket.
 type upstream struct {
 	mu      sync.Mutex
 	got     []string
-	queries map[string]string // última query cruda recibida por ruta
+	queries map[string]string // last raw query received per path
 	events  chan string
 }
 
@@ -148,11 +148,11 @@ func startUpstream(t *testing.T, dir string) (*upstream, string) {
 				}
 			}
 		case strings.HasSuffix(r.URL.Path, "/json") && strings.Contains(r.URL.Path, "/containers/") && !strings.HasSuffix(r.URL.Path, "/containers/json"):
-			// «abc» es un servidor con hostname de router; cualquier otro, un contenedor ajeno del host.
+			// "abc" is a server with a router hostname; any other is a foreign container on the host.
 			if strings.Contains(r.URL.Path, "/containers/abc/") {
-				_, _ = io.WriteString(w, `{"Id":"abc","Config":{"Env":["RCON_PASSWORD=SECRETO"],"Labels":{"mc-router.host":"a.lan"}}}`)
+				_, _ = io.WriteString(w, `{"Id":"abc","Config":{"Env":["RCON_PASSWORD=SECRET"],"Labels":{"mc-router.host":"a.lan"}}}`)
 			} else {
-				_, _ = io.WriteString(w, `{"Id":"ajeno","Config":{"Cmd":["--password","AJENO"],"Labels":{"otra":"x"}}}`)
+				_, _ = io.WriteString(w, `{"Id":"foreign","Config":{"Cmd":["--password","FOREIGN"],"Labels":{"other":"x"}}}`)
 			}
 		default:
 			w.WriteHeader(204)
@@ -188,13 +188,13 @@ func TestProxyEndToEnd(t *testing.T) {
 	listen := filepath.Join(dir, "proxy", "docker.sock")
 	p := New(Options{Listen: listen, Upstream: upPath, UID: -1, GID: -1, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Policy: func(_ context.Context, op Op, c string) error {
-			if c == "retenido" {
-				return errors.New("parado por bucle de crash")
+			if c == "held" {
+				return errors.New("stopped by crash loop")
 			}
 			return nil
 		}})
 	if err := p.Ready(); err == nil {
-		t.Fatal("sin Listen no está listo")
+		t.Fatal("without Listen it is not ready")
 	}
 	if err := p.Listen(); err != nil {
 		t.Fatal(err)
@@ -203,7 +203,7 @@ func TestProxyEndToEnd(t *testing.T) {
 		t.Fatalf("ready = %v", err)
 	}
 	if fi, err := os.Stat(listen); err != nil || fi.Mode().Perm() != 0o600 {
-		t.Fatalf("permisos del socket = %v %v", fi.Mode(), err)
+		t.Fatalf("socket permissions = %v %v", fi.Mode(), err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -222,47 +222,47 @@ func TestProxyEndToEnd(t *testing.T) {
 	res := do("GET", "/v1.47/containers/abc/json")
 	body, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 200 || strings.Contains(string(body), "SECRETO") || !strings.Contains(string(body), `"Id":"abc"`) {
+	if res.StatusCode != 200 || strings.Contains(string(body), "SECRET") || !strings.Contains(string(body), `"Id":"abc"`) {
 		t.Fatalf("inspect = %d %s", res.StatusCode, body)
 	}
 	if res := do("POST", "/v1.47/containers/create"); res.StatusCode != 403 {
 		t.Fatalf("create = %d", res.StatusCode)
 	}
-	res = do("POST", "/v1.47/containers/retenido/start")
+	res = do("POST", "/v1.47/containers/held/start")
 	body, _ = io.ReadAll(res.Body)
 	res.Body.Close()
-	if res.StatusCode != 409 || !strings.Contains(string(body), "bucle de crash") {
-		t.Fatalf("start retenido = %d %s", res.StatusCode, body)
+	if res.StatusCode != 409 || !strings.Contains(string(body), "crash loop") {
+		t.Fatalf("held start = %d %s", res.StatusCode, body)
 	}
 	if res := do("POST", "/v1.47/containers/ok/start"); res.StatusCode != 204 {
 		t.Fatalf("start = %d", res.StatusCode)
 	}
 	got := strings.Join(up.requests(), "|")
-	if strings.Contains(got, "create") || strings.Contains(got, "retenido") || !strings.Contains(got, "POST /v1.47/containers/ok/start") {
-		t.Fatalf("al Docker real llegó: %s", got)
+	if strings.Contains(got, "create") || strings.Contains(got, "held") || !strings.Contains(got, "POST /v1.47/containers/ok/start") {
+		t.Fatalf("the real Docker received: %s", got)
 	}
 
-	// Los eventos llegan en cuanto se emiten (sin esperar al final de la respuesta).
+	// Events arrive as soon as they are emitted (without waiting for the end of the response).
 	res = do("GET", "/v1.47/events")
 	defer res.Body.Close()
 	up.events <- `{"Action":"start"}`
 	line, err := bufio.NewReader(res.Body).ReadString('\n')
 	if err != nil || !strings.Contains(line, `"start"`) {
-		t.Fatalf("evento = %q %v", line, err)
+		t.Fatalf("event = %q %v", line, err)
 	}
 }
 
 func TestListenRejectsLongPaths(t *testing.T) {
-	p := New(Options{Listen: "/" + strings.Repeat("x", MaxSocketPath), Upstream: "/nada", UID: -1})
-	if err := p.Listen(); err == nil || !strings.Contains(err.Error(), "demasiado larga") {
+	p := New(Options{Listen: "/" + strings.Repeat("x", MaxSocketPath), Upstream: "/none", UID: -1})
+	if err := p.Listen(); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("err = %v", err)
 	}
-	if err := p.Ready(); err == nil || !strings.Contains(err.Error(), "demasiado larga") {
+	if err := p.Ready(); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Fatalf("ready = %v", err)
 	}
 }
 
-// En el cable, sin que un cliente HTTP normalice nada: lo que la lista blanca deniega nunca llega a Docker.
+// On the wire, without an HTTP client normalizing anything: what the allowlist denies never reaches Docker.
 func TestProxyDeniesTrickyRequestsOnTheWire(t *testing.T) {
 	dir := t.TempDir()
 	up, upPath := startUpstream(t, dir)
@@ -301,11 +301,11 @@ func TestProxyDeniesTrickyRequestsOnTheWire(t *testing.T) {
 		}
 	}
 	if got := up.requests(); len(got) != 0 {
-		t.Fatalf("al Docker real llegó: %v", got)
+		t.Fatalf("the real Docker received: %v", got)
 	}
 }
 
-// filtersOf decodifica el parámetro filters de una query en forma canónica (clave → valores ordenados).
+// filtersOf decodes the filters parameter of a query into canonical form (key → sorted values).
 func filtersOf(t *testing.T, rawQuery string) map[string][]string {
 	t.Helper()
 	q, err := url.ParseQuery(rawQuery)
@@ -313,7 +313,7 @@ func filtersOf(t *testing.T, rawQuery string) map[string][]string {
 		t.Fatal(err)
 	}
 	if n := len(q["filters"]); n != 1 {
-		t.Fatalf("filters aparece %d veces en %q", n, rawQuery)
+		t.Fatalf("filters appears %d times in %q", n, rawQuery)
 	}
 	var m map[string]map[string]bool
 	if err := json.Unmarshal([]byte(q.Get("filters")), &m); err != nil {
@@ -335,28 +335,28 @@ func TestRestrictFilters(t *testing.T) {
 		want        map[string][]string
 		bad         bool
 	}{
-		{"sin filtros", "", map[string][]string{"label": {"mc-router.host"}}, false},
-		{"otros parámetros", "all=1", map[string][]string{"label": {"mc-router.host"}}, false},
-		{"otros filtros", "filters=" + url.QueryEscape(`{"status":["running"],"type":["container"]}`),
+		{"no filters", "", map[string][]string{"label": {"mc-router.host"}}, false},
+		{"other parameters", "all=1", map[string][]string{"label": {"mc-router.host"}}, false},
+		{"other filters", "filters=" + url.QueryEscape(`{"status":["running"],"type":["container"]}`),
 			map[string][]string{"label": {"mc-router.host"}, "status": {"running"}, "type": {"container"}}, false},
-		{"label previo (lista)", "filters=" + url.QueryEscape(`{"label":["mcsm.managed=true"]}`),
+		{"previous label (list)", "filters=" + url.QueryEscape(`{"label":["mcsm.managed=true"]}`),
 			map[string][]string{"label": {"mc-router.host", "mcsm.managed=true"}}, false},
-		// Docker ignora el valor del mapa (cuenta la clave): se conserva igual.
-		{"label previo (mapa)", "filters=" + url.QueryEscape(`{"label":{"a=b":true,"c":false}}`),
+		// Docker ignores the map value (the key counts): it is kept as is.
+		{"previous label (map)", "filters=" + url.QueryEscape(`{"label":{"a=b":true,"c":false}}`),
 			map[string][]string{"label": {"a=b", "c", "mc-router.host"}}, false},
-		{"ya trae el nuestro", "filters=" + url.QueryEscape(`{"label":["mc-router.host"]}`),
+		{"already carries ours", "filters=" + url.QueryEscape(`{"label":["mc-router.host"]}`),
 			map[string][]string{"label": {"mc-router.host"}}, false},
-		{"filters vacío", "filters=", map[string][]string{"label": {"mc-router.host"}}, false},
-		{"JSON inválido", "filters=" + url.QueryEscape(`{"label":`), nil, true},
-		{"label con tipo raro", "filters=" + url.QueryEscape(`{"label":"mc-router.host"}`), nil, true},
-		{"no es un objeto", "filters=" + url.QueryEscape(`["label"]`), nil, true},
-		{"filters repetido", "filters=" + url.QueryEscape(`{}`) + "&filters=" + url.QueryEscape(`{}`), nil, true},
-		{"query ilegible", "filters=%zz", nil, true},
+		{"empty filters", "filters=", map[string][]string{"label": {"mc-router.host"}}, false},
+		{"invalid JSON", "filters=" + url.QueryEscape(`{"label":`), nil, true},
+		{"label with odd type", "filters=" + url.QueryEscape(`{"label":"mc-router.host"}`), nil, true},
+		{"not an object", "filters=" + url.QueryEscape(`["label"]`), nil, true},
+		{"repeated filters", "filters=" + url.QueryEscape(`{}`) + "&filters=" + url.QueryEscape(`{}`), nil, true},
+		{"unreadable query", "filters=%zz", nil, true},
 	} {
 		got, err := restrictFilters(c.query)
 		if c.bad {
 			if err == nil {
-				t.Errorf("%s: debe rechazarse; dio %q", c.name, got)
+				t.Errorf("%s: must be rejected; got %q", c.name, got)
 			}
 			continue
 		}
@@ -365,16 +365,16 @@ func TestRestrictFilters(t *testing.T) {
 			continue
 		}
 		if f := filtersOf(t, got); !maps.EqualFunc(f, c.want, slices.Equal) {
-			t.Errorf("%s: filtros = %v, se esperaba %v", c.name, f, c.want)
+			t.Errorf("%s: filters = %v, expected %v", c.name, f, c.want)
 		}
 		if c.query == "all=1" && !strings.Contains(got, "all=1") {
-			t.Errorf("%s: se pierden los demás parámetros: %q", c.name, got)
+			t.Errorf("%s: the other parameters are lost: %q", c.name, got)
 		}
 	}
 }
 
-// El router solo ve los contenedores con hostname de router: list y events llevan el filtro, el inspect de otro
-// contenedor es un 404 (sin cuerpo del Docker real) y un filters inválido es un 400 que no llega a Docker.
+// The router only sees containers with a router hostname: list and events carry the filter, the inspect of another
+// container is a 404 (without the real Docker body) and an invalid filters is a 400 that does not reach Docker.
 func TestProxyOnlyShowsRouterContainers(t *testing.T) {
 	dir := t.TempDir()
 	up, upPath := startUpstream(t, dir)
@@ -405,32 +405,32 @@ func TestProxyOnlyShowsRouterContainers(t *testing.T) {
 		t.Fatalf("list = %d", code)
 	}
 	if f := filtersOf(t, up.query("/v1.47/containers/json")); !slices.Equal(f["label"], []string{"mc-router.host", "x=y"}) {
-		t.Fatalf("list a Docker con filtros %v", f)
+		t.Fatalf("list to Docker with filters %v", f)
 	}
 	if code, _ := get("/v1.47/events?filters=" + url.QueryEscape(`{"type":["container"]}`)); code != 200 {
 		t.Fatalf("events = %d", code)
 	}
 	if f := filtersOf(t, up.query("/v1.47/events")); !slices.Equal(f["label"], []string{"mc-router.host"}) || !slices.Equal(f["type"], []string{"container"}) {
-		t.Fatalf("events a Docker con filtros %v", f)
+		t.Fatalf("events to Docker with filters %v", f)
 	}
 	before := len(up.requests())
 	if code, _ := get("/v1.47/containers/json?filters=" + url.QueryEscape(`{"label":`)); code != 400 {
-		t.Fatalf("filters inválido = %d", code)
+		t.Fatalf("invalid filters = %d", code)
 	}
 	if len(up.requests()) != before {
-		t.Fatal("un filters inválido no llega a Docker")
+		t.Fatal("an invalid filters does not reach Docker")
 	}
 
-	code, body := get("/v1.47/containers/ajeno/json")
-	if code != 404 || strings.Contains(body, "AJENO") || strings.Contains(body, "otra") {
-		t.Fatalf("inspect ajeno = %d %s", code, body)
+	code, body := get("/v1.47/containers/foreign/json")
+	if code != 404 || strings.Contains(body, "FOREIGN") || strings.Contains(body, "other") {
+		t.Fatalf("foreign inspect = %d %s", code, body)
 	}
-	if code, body := get("/v1.47/containers/abc/json"); code != 200 || !strings.Contains(body, "a.lan") || strings.Contains(body, "SECRETO") {
-		t.Fatalf("inspect del router = %d %s", code, body)
+	if code, body := get("/v1.47/containers/abc/json"); code != 200 || !strings.Contains(body, "a.lan") || strings.Contains(body, "SECRET") {
+		t.Fatalf("router inspect = %d %s", code, body)
 	}
 }
 
-// S1: con API < 1.24 Docker aplica el HostConfig del cuerpo de start (privilegiado, binds…): esos prefijos no pasan.
+// S1: with API < 1.24 Docker applies the HostConfig from the start body (privileged, binds…): those prefixes do not pass.
 func TestClassifyRejectsOldAPIVersions(t *testing.T) {
 	for _, c := range []struct {
 		path string
@@ -439,11 +439,11 @@ func TestClassifyRejectsOldAPIVersions(t *testing.T) {
 		{"/v1.24/containers/abc/start", true},
 		{"/v1.47/containers/abc/start", true},
 		{"/v1.100/containers/json", true},
-		{"/containers/abc/start", true}, // sin prefijo: la versión del daemon
+		{"/containers/abc/start", true}, // no prefix: the daemon's version
 		{"/v1.23/containers/abc/start", false},
 		{"/v1.12/containers/json", false},
 		{"/v1.9/_ping", false},
-		{"/v1.024/_ping", false}, // ceros a la izquierda: ambiguo, fuera
+		{"/v1.024/_ping", false}, // leading zeros: ambiguous, rejected
 		{"/v0.99/_ping", false},
 		{"/v2.0/_ping", false},
 	} {
@@ -452,12 +452,12 @@ func TestClassifyRejectsOldAPIVersions(t *testing.T) {
 			method = http.MethodPost
 		}
 		if _, _, ok := Classify(method, c.path, ""); ok != c.ok {
-			t.Errorf("%s → ok=%v, se esperaba %v", c.path, ok, c.ok)
+			t.Errorf("%s → ok=%v, expected %v", c.path, ok, c.ok)
 		}
 	}
 }
 
-// S1: ninguna operación de la lista blanca lleva cuerpo; start va sin query y stop solo con t y signal.
+// S1: no operation on the allowlist carries a body; start goes without a query and stop only with t and signal.
 func TestProxyRejectsBodiesAndTrimsStartStopQuery(t *testing.T) {
 	dir := t.TempDir()
 	up, upPath := startUpstream(t, dir)
@@ -485,40 +485,40 @@ func TestProxyRejectsBodiesAndTrimsStartStopQuery(t *testing.T) {
 		return res.StatusCode
 	}
 	for _, c := range []struct{ name, req string }{
-		{"start con cuerpo", "POST /v1.47/containers/abc/start HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"Privileged\":1}\n"},
+		{"start with body", "POST /v1.47/containers/abc/start HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"Privileged\":1}\n"},
 		{"start chunked", "POST /v1.47/containers/abc/start HTTP/1.1\r\nHost: docker\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n"},
-		{"stop con cuerpo", "POST /v1.47/containers/abc/stop HTTP/1.1\r\nHost: docker\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"},
-		{"inspect con cuerpo", "GET /v1.47/containers/abc/json HTTP/1.1\r\nHost: docker\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"},
-		{"start de API vieja", "POST /v1.23/containers/abc/start HTTP/1.1\r\nHost: docker\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"},
+		{"stop with body", "POST /v1.47/containers/abc/stop HTTP/1.1\r\nHost: docker\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"},
+		{"inspect with body", "GET /v1.47/containers/abc/json HTTP/1.1\r\nHost: docker\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"},
+		{"start with old API", "POST /v1.23/containers/abc/start HTTP/1.1\r\nHost: docker\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"},
 	} {
 		if code := raw(c.req); code != http.StatusBadRequest && code != http.StatusForbidden {
 			t.Errorf("%s → %d", c.name, code)
 		}
 	}
 	if got := up.requests(); len(got) != 0 {
-		t.Fatalf("al Docker real llegó: %v", got)
+		t.Fatalf("the real Docker received: %v", got)
 	}
 
 	if code := raw("POST /v1.47/containers/abc/start?checkpoint=x&checkpoint-dir=/tmp&detachKeys=a HTTP/1.1\r\nHost: docker\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); code != 204 {
-		t.Fatalf("start sin cuerpo = %d", code)
+		t.Fatalf("start without body = %d", code)
 	}
 	if q := up.query("/v1.47/containers/abc/start"); q != "" {
-		t.Fatalf("start llegó con query %q", q)
+		t.Fatalf("start arrived with query %q", q)
 	}
-	if code := raw("POST /v1.47/containers/abc/stop?t=10&signal=SIGTERM&otro=1 HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n"); code != 204 {
+	if code := raw("POST /v1.47/containers/abc/stop?t=10&signal=SIGTERM&other=1 HTTP/1.1\r\nHost: docker\r\nConnection: close\r\n\r\n"); code != 204 {
 		t.Fatalf("stop = %d", code)
 	}
 	if q := up.query("/v1.47/containers/abc/stop"); q != "signal=SIGTERM&t=10" {
-		t.Fatalf("stop llegó con query %q", q)
+		t.Fatalf("stop arrived with query %q", q)
 	}
 }
 
-// Si Serve termina (el socket deja de atender por un error, o el agente se cierra), Ready deja de decir que está
-// listo: el router lo muestra en su estado en vez de montar un socket muerto.
+// If Serve ends (the socket stops serving because of an error, or the agent shuts down), Ready stops saying it is
+// ready: the router shows it in its status instead of mounting a dead socket.
 func TestReadyFalseAfterServeEnds(t *testing.T) {
 	for _, viaCtx := range []bool{false, true} {
 		dir := t.TempDir()
-		p := New(Options{Listen: filepath.Join(dir, "p.sock"), Upstream: filepath.Join(dir, "nada.sock"), UID: -1, GID: -1,
+		p := New(Options{Listen: filepath.Join(dir, "p.sock"), Upstream: filepath.Join(dir, "none.sock"), UID: -1, GID: -1,
 			Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 		if err := p.Listen(); err != nil {
 			t.Fatal(err)
@@ -533,29 +533,29 @@ func TestReadyFalseAfterServeEnds(t *testing.T) {
 			cancel()
 		} else {
 			p.mu.Lock()
-			_ = p.ln.Close() // el socket deja de aceptar: Serve sale con error
+			_ = p.ln.Close() // the socket stops accepting: Serve exits with an error
 			p.mu.Unlock()
 		}
 		<-done
 		cancel()
 		if err := p.Ready(); err == nil {
-			t.Fatalf("viaCtx=%v: tras terminar Serve no está listo", viaCtx)
+			t.Fatalf("viaCtx=%v: after Serve ends it is not ready", viaCtx)
 		}
 	}
 }
 
-// m5: si Listen falla (p. ej. el directorio aún no se puede crear), Run lo reintenta con backoff y, mientras, Ready
-// da el error; tras escuchar avisa (el agente despliega el router). Si Serve deja de atender, vuelve a escuchar.
+// m5: if Listen fails (e.g. the directory cannot be created yet), Run retries with backoff and, meanwhile, Ready
+// returns the error; after listening it notifies (the agent deploys the router). If Serve stops serving, it listens again.
 func TestRunRetriesListenWithBackoff(t *testing.T) {
 	dir := t.TempDir()
-	blocker := filepath.Join(dir, "bloqueo")
+	blocker := filepath.Join(dir, "blocker")
 	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var mu sync.Mutex
 	var sleeps []time.Duration
 	var readyDuringSleep []error
-	p := New(Options{Listen: filepath.Join(blocker, "p.sock"), Upstream: filepath.Join(dir, "nada.sock"), UID: -1, GID: -1,
+	p := New(Options{Listen: filepath.Join(blocker, "p.sock"), Upstream: filepath.Join(dir, "none.sock"), UID: -1, GID: -1,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	p.opts.Sleep = func(ctx context.Context, d time.Duration) error {
 		mu.Lock()
@@ -563,7 +563,7 @@ func TestRunRetriesListenWithBackoff(t *testing.T) {
 		sleeps = append(sleeps, d)
 		readyDuringSleep = append(readyDuringSleep, p.Ready())
 		if len(sleeps) == 2 {
-			_ = os.Remove(blocker) // el directorio ya se puede crear
+			_ = os.Remove(blocker) // the directory can now be created
 		}
 		return ctx.Err()
 	}
@@ -579,26 +579,26 @@ func TestRunRetriesListenWithBackoff(t *testing.T) {
 		select {
 		case <-listened:
 		case <-time.After(5 * time.Second):
-			t.Fatalf("sin aviso: %s", what)
+			t.Fatalf("no notification: %s", what)
 		}
 	}
-	waitSignal("primer Listen correcto")
+	waitSignal("first successful Listen")
 	if err := p.Ready(); err != nil {
 		t.Fatalf("ready = %v", err)
 	}
 	mu.Lock()
 	if !slices.Equal(sleeps, []time.Duration{RetryMin, 2 * RetryMin}) || readyDuringSleep[0] == nil || readyDuringSleep[1] == nil {
-		t.Fatalf("esperas = %v, ready mientras = %v", sleeps, readyDuringSleep)
+		t.Fatalf("waits = %v, ready meanwhile = %v", sleeps, readyDuringSleep)
 	}
 	mu.Unlock()
 
 	p.mu.Lock()
-	_ = p.ln.Close() // el socket deja de atender: Run vuelve a escuchar (backoff desde el mínimo)
+	_ = p.ln.Close() // the socket stops serving: Run listens again (backoff from the minimum)
 	p.mu.Unlock()
-	waitSignal("Listen tras el fallo de Serve")
+	waitSignal("Listen after the Serve failure")
 	mu.Lock()
 	if got := sleeps[len(sleeps)-1]; len(sleeps) != 3 || got != RetryMin {
-		t.Fatalf("esperas = %v", sleeps)
+		t.Fatalf("waits = %v", sleeps)
 	}
 	mu.Unlock()
 
@@ -606,7 +606,7 @@ func TestRunRetriesListenWithBackoff(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("Run no termina al cancelar")
+		t.Fatal("Run does not finish on cancel")
 	}
 }
 
@@ -625,7 +625,7 @@ func TestRunServesAnAlreadyListeningSocket(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		p.Run(ctx, func() { t.Error("no vuelve a escuchar un socket que ya escucha") })
+		p.Run(ctx, func() { t.Error("it does not listen again on a socket that is already listening") })
 		close(done)
 	}()
 	res, err := unixClient(listen).Get("http://docker/_ping")
@@ -634,7 +634,7 @@ func TestRunServesAnAlreadyListeningSocket(t *testing.T) {
 	}
 	res.Body.Close()
 	if after, err := os.Stat(listen); err != nil || !os.SameFile(before, after) {
-		t.Fatal("el mismo socket")
+		t.Fatal("the same socket")
 	}
 	cancel()
 	<-done
@@ -646,6 +646,6 @@ func TestRetryBackoffCaps(t *testing.T) {
 		d = nextRetry(d)
 	}
 	if d != RetryMax {
-		t.Fatalf("tope = %v", d)
+		t.Fatalf("cap = %v", d)
 	}
 }
