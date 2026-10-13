@@ -52,7 +52,7 @@ func (s Spec) validateSectionEnv() error {
 	check := func(keys []string, what string) error {
 		for _, k := range keys {
 			if _, ok := s.Env[k]; ok {
-				return fmt.Errorf("spec: Remove the variable %s from the environment variables (Advanced): %s in the Players section", k, what)
+				return fmt.Errorf("spec: Remove the %s variable from the environment variables (Advanced): %s in the Players section", k, what)
 			}
 		}
 		return nil

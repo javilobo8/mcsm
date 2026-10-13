@@ -74,8 +74,8 @@ const (
 	// several players refreshing the server list at the same time wait.
 	connectionRateLimit = 10
 
-	asleepMOTD  = "Servidor dormido: conéctate para arrancarlo"
-	loadingMOTD = "Arrancando el servidor…"
+	asleepMOTD  = "Server asleep: connect to start it"
+	loadingMOTD = "Starting the server…"
 )
 
 // ImageRef is the router's image with its tag and digest pinned.

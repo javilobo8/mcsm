@@ -37,7 +37,7 @@ func TestBuildCasesSharedWithZod(t *testing.T) {
 	}
 }
 
-func TestBuildEnvPorTipo(t *testing.T) {
+func TestBuildEnvByType(t *testing.T) {
 	want := map[string]string{
 		"PAPER": "PAPER_BUILD", "FOLIA": "FOLIABUILD", "PURPUR": "PURPUR_BUILD",
 		"FABRIC": "FABRIC_LOADER_VERSION", "QUILT": "QUILT_LOADER_VERSION",
@@ -62,7 +62,7 @@ func TestBuildEnvPorTipo(t *testing.T) {
 }
 
 // Without build nothing is emitted: no container is recreated when updating the agent.
-func TestBuildVacioNoCambiaElHash(t *testing.T) {
+func TestBuildEmptyKeepsHash(t *testing.T) {
 	s := loadFixture(t)
 	if s.Build != "" {
 		t.Fatal("the fixture must not carry build")
@@ -83,7 +83,7 @@ func TestBuildVacioNoCambiaElHash(t *testing.T) {
 }
 
 // A panel without the field (or an old agent) does not break the JSON.
-func TestBuildAusenteEnElJSON(t *testing.T) {
+func TestBuildAbsentFromJSON(t *testing.T) {
 	s, err := Parse([]byte(`{"imageTag":"java21","type":"PAPER","version":"1.21.4","memory":"4G","ports":{"game":25565,"extra":[]},"restartPolicy":"unless-stopped","rconPassword":"s3cretpassw0rd"}`))
 	if err != nil || s.Build != "" {
 		t.Fatalf("Parse without build: %v, %q", err, s.Build)

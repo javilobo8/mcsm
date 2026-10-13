@@ -49,8 +49,8 @@ const (
 	maxInventoryBytes = 3 << 20
 	// pruneReason is the reason of the pruning's BackupDeleted; deleteReason, that of the
 	// deletions the panel requests.
-	pruneReason  = "poda"
-	deleteReason = "borrada"
+	pruneReason  = "pruned"
+	deleteReason = "deleted"
 	// inventoryEvery: how often the agent sends the inventory unprompted (besides
 	// after each Hello, when the panel asks for it). It restores notices dropped by the queue (a job
 	// that would stay "running" in the panel) and a BackupList that failed and nobody retries.

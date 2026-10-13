@@ -346,8 +346,8 @@ message BackupCreated {
   string job_id = 2; // empty for pre-restore ones
 }
 
-// Agent → panel (id 0): backup deleted on the node, by pruning (reason "poda") or because the
-// panel asked for it with BackupDelete (reason "borrada").
+// Agent → panel (id 0): backup deleted on the node, by pruning (reason "pruned") or because the
+// panel asked for it with BackupDelete (reason "deleted").
 message BackupDeleted {
   string server_id = 1;
   string filename = 2;

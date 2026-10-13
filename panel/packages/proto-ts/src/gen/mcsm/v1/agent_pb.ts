@@ -1253,8 +1253,8 @@ export const BackupCreatedSchema: GenMessage<BackupCreated> = /*@__PURE__*/
   messageDesc(file_mcsm_v1_agent, 28);
 
 /**
- * Agent → panel (id 0): backup deleted on the node, by pruning (reason "poda") or because the
- * panel asked for it with BackupDelete (reason "borrada").
+ * Agent → panel (id 0): backup deleted on the node, by pruning (reason "pruned") or because the
+ * panel asked for it with BackupDelete (reason "deleted").
  *
  * @generated from message mcsm.v1.BackupDeleted
  */

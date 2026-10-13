@@ -165,7 +165,7 @@ func TestContentEnvModsPluginsAndWhitelistOff(t *testing.T) {
 	}
 }
 
-func TestEnvLibreGanaSobreLoGenerado(t *testing.T) {
+func TestFreeEnvWinsOverGenerated(t *testing.T) {
 	s := loadModded(t)
 	s.Env = map[string]string{"EXISTING_WHITELIST_FILE": "MERGE"}
 	if env := buildEnv(t, s); env["EXISTING_WHITELIST_FILE"] != "MERGE" {
@@ -365,7 +365,7 @@ func TestPlayersSectionsRejectOverridingEnv(t *testing.T) {
 	s.Ops = []string{"Lobo"}
 	s.Env = map[string]string{"OPS": "Lobo,Pepe"}
 	err := s.Validate()
-	want := "spec: Remove the variable OPS from the environment variables (Advanced): operators are managed in the Players section"
+	want := "spec: Remove the OPS variable from the environment variables (Advanced): operators are managed in the Players section"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %q", err, want)
 	}
@@ -373,7 +373,7 @@ func TestPlayersSectionsRejectOverridingEnv(t *testing.T) {
 	s.Whitelist = &Whitelist{Enabled: true}
 	s.Env = map[string]string{"ENABLE_WHITELIST": "false"}
 	err = s.Validate()
-	want = "spec: Remove the variable ENABLE_WHITELIST from the environment variables (Advanced): the whitelist is managed in the Players section"
+	want = "spec: Remove the ENABLE_WHITELIST variable from the environment variables (Advanced): the whitelist is managed in the Players section"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %q", err, want)
 	}

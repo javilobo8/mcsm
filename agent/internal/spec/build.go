@@ -41,7 +41,7 @@ func (s Spec) validateBuild() error {
 	}
 	// Free-form env wins over what is generated: it would silently override the build.
 	if _, ok := s.Env[key]; ok {
-		return fmt.Errorf("spec: Remove the variable %s from the environment variables (Advanced): the Build field sets it", key)
+		return fmt.Errorf("spec: Remove the %s variable from the environment variables (Advanced): it is set by the Build field", key)
 	}
 	return nil
 }

@@ -2973,8 +2973,8 @@ func (x *BackupCreated) GetJobId() string {
 	return ""
 }
 
-// Agent → panel (id 0): backup deleted on the node, by pruning (reason "poda") or because the
-// panel asked for it with BackupDelete (reason "borrada").
+// Agent → panel (id 0): backup deleted on the node, by pruning (reason "pruned") or because the
+// panel asked for it with BackupDelete (reason "deleted").
 type BackupDeleted struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerId      string                 `protobuf:"bytes,1,opt,name=server_id,json=serverId,proto3" json:"server_id,omitempty"`

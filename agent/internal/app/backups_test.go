@@ -906,7 +906,7 @@ func TestBackupDelete(t *testing.T) {
 	// The deletion also goes out through the notice queue, behind an inventory that still listed it:
 	// the panel does not resurrect it.
 	e.settle(t)
-	if d := e.col.deleted(); len(d) != 1 || d[0].Filename != name || d[0].Reason != "borrada" {
+	if d := e.col.deleted(); len(d) != 1 || d[0].Filename != name || d[0].Reason != "deleted" {
 		t.Fatalf("BackupDeleted = %+v", d)
 	}
 	if r := e.handle(51, &mcsmv1.BackupDelete{ServerId: "other", Filename: name}); r.GetError().GetCode() != errcode.UnknownServer {
@@ -934,7 +934,7 @@ func TestScheduledBackupsArePrunedByKeepCount(t *testing.T) {
 			t.Fatalf("trigger = %s", m.Trigger)
 		}
 	}
-	if d := e.col.deleted(); len(d) != 1 || d[0].Reason != "poda" || d[0].ServerId != "a" {
+	if d := e.col.deleted(); len(d) != 1 || d[0].Reason != "pruned" || d[0].ServerId != "a" {
 		t.Fatalf("BackupDeleted = %+v", d)
 	}
 	// a manual backup does not count toward keepCount nor is it pruned
