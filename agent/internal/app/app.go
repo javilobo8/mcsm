@@ -87,6 +87,9 @@ type App struct {
 	events  *outbox
 	crashes *crashloop.Tracker
 	intents *crashloop.Intents
+	// plan-9: RotateToken. Run los conecta al cliente WS; en tests son no-ops o fakes.
+	setToken  func(string)
+	reconnect func()
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
@@ -97,7 +100,7 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	eng = crashloop.Engine{Engine: eng, Intents: intents}
 	a := &App{cfg: cfg, st: st, eng: eng, log: log, status: mc.Status, rcon: mc.Rcon, streams: map[uint64]*logStream{},
 		flights: map[string]*flight{}, forced: map[string]bool{}, sem: make(chan struct{}, maxConcurrent), life: context.Background(),
-		intents: intents, crashes: crashloop.NewTracker(time.Now)}
+		intents: intents, crashes: crashloop.NewTracker(time.Now), setToken: func(string) {}, reconnect: func() {}}
 	a.send = func(*mcsmv1.Envelope) error { return conn.ErrNotConnected }
 	a.rec = reconcile.New(st, eng, cfg.DataRoot, cfg.Network, func(ctx context.Context, host string, port uint16) *mcsmv1.McStatus {
 		return a.status(ctx, host, port)
@@ -169,6 +172,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		},
 	})
 	a.send = func(e *mcsmv1.Envelope) error { return client.Send(ctx, e) }
+	a.setToken, a.reconnect = client.SetToken, client.Reconnect // plan-9 (fuera de ancla): RotateToken
 	a.life = ctx
 	// plan-4 (fuera de ancla: tiene que ir antes de la primera reconciliación y de aceptar
 	// jobs): save-on y jobs que un cierre o crash dejó a medias, y el disco de cada servidor.
@@ -461,6 +465,8 @@ func (a *App) Handle(ctx context.Context, env *mcsmv1.Envelope, send func(*mcsmv
 	case *mcsmv1.Envelope_RouterRemove:
 		a.handleRouterRemove(env.Id, send)
 	// ── plan-9 ──
+	case *mcsmv1.Envelope_RotateToken:
+		a.handleRotateToken(env.Id, b.RotateToken, send)
 
 	default:
 		// Body nil: un panel más nuevo envió un cuerpo que este agente no conoce (protobuf lo
