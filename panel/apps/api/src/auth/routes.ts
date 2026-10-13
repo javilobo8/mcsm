@@ -5,12 +5,14 @@ import { formatZodError, passwordChangeSchema } from "@mcsm/shared";
 import { hashToken, safeEqualHex } from "../lib/tokens.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { SESSION_COOKIE } from "./plugin.js";
+import { FailureLimiter, ipKey } from "../lib/security.js";
 
 const passwordBody = z.object({ password: z.string().min(8, "Mínimo 8 caracteres").max(200) });
 const setupBody = passwordBody.extend({ setupToken: z.string().max(200).optional() });
 
 export async function authRoutes(app: FastifyInstance) {
-  await app.register(rateLimit, { global: false });
+  await app.register(rateLimit, { global: false, keyGenerator: (req) => ipKey(req.ip) });
+  const failures = new FailureLimiter(); // plan-9 (L6): uno por instancia del panel
 
   const setCookie = (reply: FastifyReply, sessionId: string) =>
     reply.setCookie(SESSION_COOKIE, sessionId, {
@@ -39,9 +41,13 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post("/api/auth/login", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
+    if (failures.blocked()) {
+      return reply.code(429).send({ error: "Demasiados intentos fallidos en el último minuto: espera un poco y vuelve a probar" });
+    }
     const parsed = passwordBody.safeParse(req.body);
     const stored = app.auth.getSetting("admin_password_hash");
     if (!parsed.success || !stored || !(await verifyPassword(parsed.data.password, stored))) {
+      failures.fail();
       return reply.code(401).send({ error: "Contraseña incorrecta" });
     }
     app.auth.purgeExpired();

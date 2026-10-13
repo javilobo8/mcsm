@@ -3,6 +3,7 @@ import { buildApp } from "./app.js";
 import { config } from "./config.js";
 import { openDb } from "./db/db.js";
 import { prepareDataDir, restrictDbFiles } from "./lib/data-dir.js";
+import { loggerOptions } from "./lib/log.js";
 import { randomToken } from "./lib/tokens.js";
 
 const warnings = prepareDataDir(config.dataDir);
@@ -11,7 +12,7 @@ const db = openDb(dbPath);
 warnings.push(...restrictDbFiles(dbPath));
 // L3: sin contraseña, solo quien lee el log del panel (o fijó PANEL_SETUP_TOKEN) puede crearla.
 const setupToken = process.env.PANEL_SETUP_TOKEN || randomToken();
-const app = await buildApp({ db, logger: true, config: { setupToken } });
+const app = await buildApp({ db, logger: loggerOptions, config: { setupToken } });
 for (const w of warnings) app.log.warn(w);
 if (app.auth.getSetting("admin_password_hash") === null) {
   app.log.warn(process.env.PANEL_SETUP_TOKEN
