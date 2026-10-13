@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ageText, buildLabel, buildOptions, freeTextOption, hasUnstableBuilds, hasVersionList, startsUnstable, versionOptions } from "./versions";
+import { specChanged, blurVersionAction, ageText, buildLabel, buildOptions, freeTextOption, hasUnstableBuilds, hasVersionList, startsUnstable, versionOptions } from "./versions";
 
 const LIST = [
   { id: "26.4-snapshot-3", stable: false }, { id: "26.3", stable: true }, { id: "26.3-rc-3", stable: false },
@@ -71,5 +71,22 @@ describe("otros", () => {
     expect(ageText("2026-10-13T11:45:00Z", now)).toBe("hace 15 min");
     expect(ageText("2026-10-13T10:00:00Z", now)).toBe("hace 2 h");
     expect(ageText("2026-10-10T12:00:00Z", now)).toBe("hace 3 días");
+  });
+});
+
+describe("blurVersionAction / specChanged", () => {
+  it("sin cambios: nada; solo espacios: recortar; cambio real: aplicar", () => {
+    expect(blurVersionAction("1.20.1", "1.20.1")).toBe("none");
+    expect(blurVersionAction("1.20.1", " 1.20.1 ")).toBe("trim");
+    expect(blurVersionAction("1.20.1", "1.21.4")).toBe("apply");
+    expect(blurVersionAction("1.20.1", "1.21.4 ")).toBe("apply");
+  });
+  it("specChanged compara versión, Java y build (build ausente = vacío)", () => {
+    const a = { version: "1", imageTag: "java21" };
+    expect(specChanged(a, { ...a })).toBe(false);
+    expect(specChanged(a, { ...a, build: "" })).toBe(false);
+    expect(specChanged(a, { ...a, build: "7" })).toBe(true);
+    expect(specChanged(a, { ...a, version: "2" })).toBe(true);
+    expect(specChanged(a, { ...a, imageTag: "java17" })).toBe(true);
   });
 });

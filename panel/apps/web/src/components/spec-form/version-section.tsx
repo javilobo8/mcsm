@@ -1,9 +1,9 @@
 import { MODRINTH_LOADERS, usesCurseForge } from "@mcsm/shared";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { JAVA_TAGS, SERVER_TYPES, typeKind } from "@/lib/spec-catalog";
 import { typeChangeNotice, withType, withVersion, type EditableSpec } from "@/lib/spec-edit";
-import { hasVersionList } from "@/lib/versions";
+import { blurVersionAction, hasVersionList, specChanged } from "@/lib/versions";
 import { Field, ListField, OptionalSelect, RequiredSelect, type ReportError } from "./fields";
 import { CurseForgeKeyNotice } from "./curseforge-key";
 import { BuildPicker } from "./build-picker";
@@ -39,8 +39,9 @@ export function VersionSection({ spec, onChange, onError }: { spec: EditableSpec
   const setVersion = (v: string) => {
     const r = withVersion(spec, v);
     setJavaNotice(r.notice);
-    if (r.spec.version !== spec.version || r.spec.imageTag !== spec.imageTag || r.spec.build !== spec.build) onChange(r.spec);
+    if (specChanged(spec, r.spec)) onChange(r.spec);
   };
+  const versionAtFocus = useRef(spec.version);
   const kind = typeKind(spec.type);
   const mods = spec.mods ?? EMPTY_MODS;
   const plugins = spec.plugins ?? EMPTY_PLUGINS;
@@ -71,7 +72,12 @@ export function VersionSection({ spec, onChange, onError }: { spec: EditableSpec
         ) : (
           <Field id="sf-version" label="Versión de Minecraft" hint="LATEST, SNAPSHOT o una versión como 1.21.4.">
             <Input id="sf-version" value={spec.version} onChange={(e) => onChange({ ...spec, version: e.target.value })}
-              onBlur={(e) => setVersion(e.target.value.trim())} />
+              onFocus={() => { versionAtFocus.current = spec.version; }}
+              onBlur={(e) => {
+                const action = blurVersionAction(versionAtFocus.current, e.target.value);
+                if (action === "apply") setVersion(e.target.value.trim());
+                else if (action === "trim") onChange({ ...spec, version: e.target.value.trim() });
+              }} />
           </Field>
         )}
         <div className="flex flex-col gap-1.5">
@@ -82,7 +88,7 @@ export function VersionSection({ spec, onChange, onError }: { spec: EditableSpec
           {javaNotice && <p role="status" className="text-xs text-amber-400">{javaNotice}</p>}
         </div>
         {/* `build` falta en specs antiguas: se lee como vacío. */}
-        <BuildPicker type={spec.type} version={spec.version} value={spec.build ?? ""} onChange={(build) => onChange({ ...spec, build })} />
+        <BuildPicker type={spec.type} version={spec.version} value={spec.build ?? ""} onChange={(build) => { if ((spec.build ?? "") !== build) onChange({ ...spec, build }); }} />
       </div>
       {spec.type === "SPIGOT" && (
         <p className="text-xs text-amber-400">itzg ya no descarga Spigot automáticamente: añade BUILD_FROM_SOURCE=true en las variables de entorno (Avanzado) o usa Paper.</p>

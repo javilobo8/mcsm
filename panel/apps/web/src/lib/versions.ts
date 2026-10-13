@@ -79,3 +79,17 @@ export function ageText(fetchedAt: string, now: number): string {
   const h = Math.round(min / 60);
   return h < 48 ? `hace ${h} h` : `hace ${Math.round(h / 24)} días`;
 }
+
+/** Al salir del campo de versión escrita a mano: nada si no se editó, recortar si solo cambiaron espacios, aplicar si cambió de verdad. */
+export function blurVersionAction(atFocus: string, raw: string): "none" | "trim" | "apply" {
+  if (raw === atFocus) return "none";
+  return raw.trim() === atFocus.trim() ? "trim" : "apply";
+}
+
+/** ¿Difieren versión, Java o build? (`build` ausente en specs antiguas = vacío). */
+export function specChanged(
+  a: { version: string; imageTag: string; build?: string | undefined },
+  b: { version: string; imageTag: string; build?: string | undefined },
+): boolean {
+  return a.version !== b.version || a.imageTag !== b.imageTag || (a.build ?? "") !== (b.build ?? "");
+}
