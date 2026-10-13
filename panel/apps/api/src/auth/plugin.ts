@@ -3,7 +3,7 @@ import cookie from "@fastify/cookie";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AuthRepo } from "./repo.js";
 import { randomToken } from "../lib/tokens.js";
-import { originAllowed } from "../realtime/routes.js";
+import { originAllowed } from "../lib/origin.js";
 
 export const SESSION_COOKIE = "mcsm_session";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
