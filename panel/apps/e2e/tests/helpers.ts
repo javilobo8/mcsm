@@ -42,3 +42,13 @@ export function watchCsp(page: Page): string[] {
   page.on("console", (m) => { if (m.type() === "error" && /Content Security Policy/i.test(m.text())) errors.push(m.text()); });
   return errors;
 }
+
+/** Escrituras de la web rechazadas con 403 (p. ej. por Origin): no debe haber ninguna. */
+export function watchForbidden(page: Page): string[] {
+  const hits: string[] = [];
+  page.on("response", (r) => {
+    const m = r.request().method();
+    if (r.status() === 403 && m !== "GET" && r.url().includes("/api/")) hits.push(`${m} ${r.url()}`);
+  });
+  return hits;
+}
