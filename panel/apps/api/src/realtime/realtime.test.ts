@@ -31,7 +31,7 @@ function browser(withCookie = true, origin?: string): Promise<{ ws: WebSocket; n
     const ws = new WebSocket(url.replace("http", "ws") + "/ws", { headers });
     const queue: any[] = []; const waiters: ((m: any) => void)[] = [];
     ws.on("message", (d) => { const m = JSON.parse(d.toString()); const w = waiters.shift(); w ? w(m) : queue.push(m); });
-    ws.on("open", () => resolve({ ws, next: () => queue.length ? Promise.resolve(queue.shift()) : new Promise((r, rj) => { const t = setTimeout(() => rj(new Error("sin mensaje")), 3000); waiters.push((m) => { clearTimeout(t); r(m); }); }) }));
+    ws.on("open", () => resolve({ ws, next: () => queue.length ? Promise.resolve(queue.shift()) : new Promise((r, rj) => { const t = setTimeout(() => rj(new Error("no message")), 3000); waiters.push((m) => { clearTimeout(t); r(m); }); }) }));
     ws.on("unexpected-response", (_r, res) => reject(new Error(`HTTP ${res.statusCode}`)));
     ws.on("error", reject);
   });
@@ -45,7 +45,7 @@ describe("realtime", () => {
   });
   const closedWith = (ws: WebSocket) => new Promise<number>((resolve) => ws.on("close", (code) => resolve(code)));
 
-  it("cambiar la contraseña cierra con 4401 los WS de todas las sesiones", async () => {
+  it("changing the password closes the WS of all sessions with 4401", async () => {
     const other = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
     const oc = other.cookies.find((c) => c.name === "mcsm_session")!;
     const ws = await openWs(`${oc.name}=${oc.value}`);
@@ -56,7 +56,7 @@ describe("realtime", () => {
     expect(await closes).toEqual([4401, 4401]);
   });
 
-  it("el logout cierra con 4401 solo los WS de esa sesión", async () => {
+  it("logout closes only that session's WS with 4401", async () => {
     const other = await app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
     const oc = other.cookies.find((c) => c.name === "mcsm_session")!;
     const otherCookie = `${oc.name}=${oc.value}`;
@@ -69,17 +69,17 @@ describe("realtime", () => {
     kept.close();
   });
 
-  it("topic events: reenvía los eventos que se guardan", async () => {
+  it("topic events: forwards the events that are stored", async () => {
     const b = await browser();
     b.ws.send(JSON.stringify({ type: "subscribe", topic: "events" }));
-    b.ws.send("{"); // los mensajes se procesan en orden: cuando llega este error, la suscripción ya está
-    expect(await b.next()).toEqual({ type: "error", message: "JSON inválido" });
+    b.ws.send("{"); // messages are processed in order: when this error arrives, the subscription is already in place
+    expect(await b.next()).toEqual({ type: "error", message: "Invalid JSON" });
     app.eventsService.record({ nodeId, serverId: null, level: "warn", kind: "drift", message: "recreado" });
     expect(await b.next()).toMatchObject({ type: "event", event: { nodeId, kind: "drift", level: "warn", message: "recreado" } });
     b.ws.close();
   });
 
-  it("StreamDropped del agente llega a los navegadores como log_dropped", async () => {
+  it("the agent's StreamDropped reaches browsers as log_dropped", async () => {
     const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
@@ -94,35 +94,35 @@ describe("realtime", () => {
     b.ws.close();
     agent.close();
   });
-  it("exige sesión", async () => {
+  it("requires a session", async () => {
     await expect(browser(false)).rejects.toThrow(/401/);
   });
 
-  // L2: SameSite=Strict no frena a una página same-site (mismo host, otro puerto): el
-  // navegador adjunta la cookie al WS y los WS no pasan por CORS. Se exige Origin == Host.
-  it("originAllowed: Origin igual al Host o al origen de PANEL_PUBLIC_URL", () => {
+  // L2: SameSite=Strict does not stop a same-site page (same host, another port): the
+  // browser attaches the cookie to the WS and WS do not go through CORS. Origin == Host is required.
+  it("originAllowed: Origin equal to the Host or to the origin of PANEL_PUBLIC_URL", () => {
     expect(originAllowed(undefined, "panel:8080", "")).toBe(true);
     expect(originAllowed("http://panel:8080", "panel:8080", "")).toBe(true);
     expect(originAllowed("http://PANEL:8080", "panel:8080", "")).toBe(true);
     expect(originAllowed("http://panel:9090", "panel:8080", "")).toBe(false);
-    expect(originAllowed("https://panel:8080", "panel:8080", "")).toBe(true); // tras un proxy TLS
+    expect(originAllowed("https://panel:8080", "panel:8080", "")).toBe(true); // behind a TLS proxy
     expect(originAllowed("http://lan.casa:8080", "127.0.0.1:8080", "http://lan.casa:8080")).toBe(true);
-    expect(originAllowed("http://otro:8080", "127.0.0.1:8080", "http://lan.casa:8080")).toBe(false);
+    expect(originAllowed("http://other:8080", "127.0.0.1:8080", "http://lan.casa:8080")).toBe(false);
     expect(originAllowed("no es url", "panel:8080", "")).toBe(false);
   });
 
-  it("rechaza el upgrade con un Origin de otro host o puerto", async () => {
+  it("rejects the upgrade with an Origin from another host or port", async () => {
     const port = new URL(url).port;
     await expect(browser(true, `http://127.0.0.1:${Number(port) + 1}`)).rejects.toThrow(/403/);
     await expect(browser(true, "http://evil.example")).rejects.toThrow(/403/);
     await expect(browser(true, "null")).rejects.toThrow(/403/);
     const ok = await browser(true, url);
     ok.ws.close();
-    const sinOrigin = await browser(true); // clientes que no son navegador no envían Origin
+    const sinOrigin = await browser(true); // non-browser clients do not send Origin
     sinOrigin.ws.close();
   });
 
-  it("reenvía estado observado y cambios de nodo", async () => {
+  it("forwards observed state and node changes", async () => {
     const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
     const b = await browser();
     b.ws.send(JSON.stringify({ type: "subscribe", topic: "servers" }));
@@ -133,12 +133,12 @@ describe("realtime", () => {
     expect(nodeMsg).toMatchObject({ type: "node", node: { id: nodeId, status: "online" } });
     agent.send({ body: { case: "serverObserved", value: create(ServerObservedSchema, { serverId: s.id, observed: create(ObservedSchema, { state: "running", appliedVersion: 1n }) }) } });
     let obs: any;
-    do { obs = await b.next(); } while (obs.type !== "observed"); // puede llegar un segundo evento "node" tras el Hello
+    do { obs = await b.next(); } while (obs.type !== "observed"); // a second "node" event may arrive after the Hello
     expect(obs).toMatchObject({ type: "observed", serverId: s.id, observed: { state: "running", appliedVersion: 1 } });
     b.ws.close();
   });
 
-  it("abre un stream de logs por servidor mientras haya suscriptores y avisa al cerrarse", async () => {
+  it("opens one log stream per server while there are subscribers and notifies when it closes", async () => {
     const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
@@ -152,7 +152,7 @@ describe("realtime", () => {
     if (sub.body.case !== "subscribeLogs") throw new Error();
     expect(sub.body.value.serverId).toBe(s.id);
     expect(sub.body.value.tail).toBe(200);
-    agent.ack(sub.id, sub.id); // Ack con stream_id = id
+    agent.ack(sub.id, sub.id); // Ack with stream_id = id
     b2.ws.send(JSON.stringify({ type: "subscribe", topic: `server:${s.id}:logs` }));
     expect(await b1.next()).toEqual({ type: "log_reset", serverId: s.id });
     expect(await b2.next()).toEqual({ type: "log_reset", serverId: s.id });
@@ -162,15 +162,15 @@ describe("realtime", () => {
 
     b1.ws.send(JSON.stringify({ type: "unsubscribe", topic: `server:${s.id}:logs` }));
     await new Promise((r) => setTimeout(r, 50));
-    await expect(agent.next(300)).rejects.toThrow(); // con b2 aún suscrito, no se cierra el stream
+    await expect(agent.next(300)).rejects.toThrow(); // with b2 still subscribed, the stream is not closed
 
-    agent.close(); // el nodo cae
+    agent.close(); // the node drops
     const closed = await b2.next();
     expect(closed).toMatchObject({ type: "stream_closed", serverId: s.id });
     b2.ws.close();
   });
 
-  it("cierra el stream del agente cuando se va el último suscriptor", async () => {
+  it("closes the agent's stream when the last subscriber leaves", async () => {
     const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
@@ -185,11 +185,11 @@ describe("realtime", () => {
     expect(close.streamId).toBe(sub.id);
   });
 
-  it("registra @fastify/websocket una sola vez (un upgrade se procesa una vez)", () => {
+  it("registers @fastify/websocket only once (an upgrade is processed once)", () => {
     expect(app.server.listenerCount("upgrade")).toBe(1);
   });
 
-  it("reabre el stream de logs al volver el nodo, sin duplicados", async () => {
+  it("reopens the log stream when the node comes back, without duplicates", async () => {
     const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s.id]: 1n } });
@@ -205,20 +205,20 @@ describe("realtime", () => {
 
     const agent2 = new FakeAgent(url, nodeToken);
     await agent2.connect({ specVersions: { [s.id]: 1n } });
-    await agent2.handshake(); // el stream se reabre tras el Ack de SyncSpecs (AgentConn.ready)
+    await agent2.handshake(); // the stream is reopened after the SyncSpecs Ack (AgentConn.ready)
     const sub2 = await agent2.waitFor("subscribeLogs");
     agent2.ack(sub2.id, sub2.id);
     expect(await b.next()).toEqual({ type: "log_reset", serverId: s.id });
-    agent2.send({ streamId: sub2.id, body: { case: "logLine", value: create(LogLineSchema, { serverId: s.id, tsUnixMs: 1760000000001n, line: "de nuevo" }) } });
-    expect(await b.next()).toEqual({ type: "log", serverId: s.id, ts: 1760000000001, line: "de nuevo" });
-    await expect(b.next()).rejects.toThrow(); // sin duplicados
-    // un solo subscribeLogs
+    agent2.send({ streamId: sub2.id, body: { case: "logLine", value: create(LogLineSchema, { serverId: s.id, tsUnixMs: 1760000000001n, line: "again" }) } });
+    expect(await b.next()).toEqual({ type: "log", serverId: s.id, ts: 1760000000001, line: "again" });
+    await expect(b.next()).rejects.toThrow(); // no duplicates
+    // a single subscribeLogs
     await expect(agent2.waitFor("subscribeLogs", 300)).rejects.toThrow();
     b.ws.close();
     agent2.close();
   });
 
-  describe("ronda de arreglos 1", () => {
+  describe("fix round 1", () => {
     async function setup() {
       const s = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
       const agent = new FakeAgent(url, nodeToken);
@@ -230,7 +230,7 @@ describe("realtime", () => {
     const logLine = (serverId: string, ts: number, line: string) =>
       ({ case: "logLine" as const, value: create(LogLineSchema, { serverId, tsUnixMs: BigInt(ts), line }) });
 
-    it("ignora mensajes malformados sin tumbar el panel y responde error", async () => {
+    it("ignores malformed messages without taking down the panel and responds with an error", async () => {
       const b = await browser();
       for (const raw of ["null", "[]", '"x"', "{", JSON.stringify({ type: "subscribe", topic: "raro" }), JSON.stringify({ type: "subscribe", topic: "server:a:b:logs" })]) {
         b.ws.send(raw);
@@ -245,19 +245,19 @@ describe("realtime", () => {
       b.ws.close(); agent.close();
     });
 
-    it("limita las suscripciones por socket", async () => {
+    it("limits subscriptions per socket", async () => {
       const hub = new BrowserHub(app, { maxSubscriptions: 2 });
       const sock = new FakeSocket();
       hub.add(sock as never);
       for (const t of ["servers", "nodes", "servers"]) sock.emit("message", Buffer.from(JSON.stringify({ type: "subscribe", topic: t })));
-      expect(sock.sent).toEqual([]); // la repetida no cuenta
+      expect(sock.sent).toEqual([]); // the repeated one does not count
       const { s } = await setup();
       sock.emit("message", Buffer.from(JSON.stringify({ type: "subscribe", topic: `server:${s.id}:logs` })));
-      expect(sock.sent.find((m) => m.type === "error")).toMatchObject({ type: "error", message: expect.stringMatching(/suscripciones/) });
+      expect(sock.sent.find((m) => m.type === "error")).toMatchObject({ type: "error", message: expect.stringMatching(/subscriptions/) });
       hub.dispose();
     });
 
-    it("envía log_reset antes de la cola tras reabrir por reconexión del nodo", async () => {
+    it("sends log_reset before the tail after reopening on node reconnection", async () => {
       const { s, agent } = await setup();
       const b = await browser();
       b.ws.send(JSON.stringify({ type: "subscribe", topic: `server:${s.id}:logs` }));
@@ -279,7 +279,7 @@ describe("realtime", () => {
       b.ws.close(); agent2.close();
     });
 
-    it("una segunda pestaña recibe log_reset y la cola acumulada", async () => {
+    it("a second tab receives log_reset and the accumulated tail", async () => {
       const { s, agent } = await setup();
       const b1 = await browser();
       b1.ws.send(JSON.stringify({ type: "subscribe", topic: `server:${s.id}:logs` }));
@@ -296,7 +296,7 @@ describe("realtime", () => {
       b1.ws.close(); b2.ws.close(); agent.close();
     });
 
-    it("descarta líneas de un socket lento, cuenta y avisa con log_dropped; el estado no se descarta", async () => {
+    it("drops lines for a slow socket, counts and notifies with log_dropped; status is not dropped", async () => {
       const { s, agent } = await setup();
       const hub = new BrowserHub(app);
       const sock = new FakeSocket();
@@ -320,7 +320,7 @@ describe("realtime", () => {
       hub.dispose(); agent.close();
     });
 
-    it("reabre con backoff si el agente cierra el stream con el nodo online", async () => {
+    it("reopens with backoff if the agent closes the stream while the node is online", async () => {
       const { s, agent } = await setup();
       const sched = new ManualScheduler();
       const hub = new BrowserHub(app, { schedule: sched.schedule });
@@ -332,7 +332,7 @@ describe("realtime", () => {
       for (const delay of [1000, 2000, 4000]) {
         await until(() => sock.sent.some((m) => m.type === "log_reset"));
         sock.sent.length = 0;
-        agent.send({ streamId: sub.id, body: { case: "streamClose", value: { reason: "cerrado" } } });
+        agent.send({ streamId: sub.id, body: { case: "streamClose", value: { reason: "closed" } } });
         await until(() => sock.sent.some((m) => m.type === "stream_closed"));
         expect(sched.delays.at(-1)).toBe(delay);
         sched.fire();
@@ -360,7 +360,7 @@ class ManualScheduler {
 async function until(cond: () => boolean, ms = 3000) {
   const end = Date.now() + ms;
   while (!cond()) {
-    if (Date.now() > end) throw new Error("until: condición no cumplida");
+    if (Date.now() > end) throw new Error("until: condition not met");
     await new Promise((r) => setImmediate(r));
   }
 }

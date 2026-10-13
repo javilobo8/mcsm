@@ -37,22 +37,22 @@ const waitEvents = async (n: number, query = "") => {
 const sendEvent = (agent: FakeAgent, value: { level: EventLevel; serverId?: string; kind: string; message: string; tsUnixMs?: bigint }) =>
   agent.send({ body: { case: "event", value: { serverId: "", tsUnixMs: BigInt(Date.now()), ...value } } });
 
-describe("eventos del agente", () => {
-  it("guarda nivel, tipo, servidor (con su nombre) y hora del agente, y lo publica", async () => {
+describe("agent events", () => {
+  it("stores level, kind, server (with its name) and agent time, and publishes it", async () => {
     const s = await createServer("Uno");
     const agent = await connect();
     const published = new Promise((resolve) => app.events.once("server_event", resolve));
-    sendEvent(agent, { level: EventLevel.WARN, serverId: s.id, kind: "crash", message: "El servidor se ha cerrado con el código 1 (1 en la última hora)" });
+    sendEvent(agent, { level: EventLevel.WARN, serverId: s.id, kind: "crash", message: "The server exited with code 1 (1 in the last hour)" });
     const [ev] = await waitEvents(1);
-    expect(ev).toMatchObject({ nodeId, serverId: s.id, serverName: "Uno", level: "warn", kind: "crash", message: expect.stringContaining("código 1") });
+    expect(ev).toMatchObject({ nodeId, serverId: s.id, serverName: "Uno", level: "warn", kind: "crash", message: expect.stringContaining("code 1") });
     expect(ev.agentAt).toMatch(/Z$/);
     expect(await published).toMatchObject({ id: ev.id, kind: "crash" });
     agent.close();
   });
 
-  it("descarta servidores ajenos y niveles sin especificar; recorta, normaliza y acepta eventos del nodo", async () => {
+  it("discards foreign servers and unspecified levels; trims, normalizes and accepts node events", async () => {
     const agent = await connect();
-    sendEvent(agent, { level: EventLevel.WARN, serverId: "de-otro-nodo", kind: "crash", message: "x" });
+    sendEvent(agent, { level: EventLevel.WARN, serverId: "from-another-node", kind: "crash", message: "x" });
     sendEvent(agent, { level: EventLevel.UNSPECIFIED, kind: "crash", message: "x" });
     sendEvent(agent, { level: EventLevel.INFO, kind: "Raro!", message: "m".repeat(2000), tsUnixMs: 1n });
     const [ev] = await waitEvents(1);
@@ -61,13 +61,13 @@ describe("eventos del agente", () => {
     agent.close();
   });
 
-  it("descarta un servidor real de OTRO nodo (y no le cambia el estado deseado)", async () => {
-    const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "otro" } })).json().token;
-    const other = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "otro", agentVersion: "fake" } })).json();
+  it("discards a real server from ANOTHER node (and does not change its desired state)", async () => {
+    const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "other" } })).json().token;
+    const other = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "other", agentVersion: "fake" } })).json();
     const foreign = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId: other.nodeId, name: "Ajeno", desiredState: "running" } })).json();
     const agent = await connect();
-    sendEvent(agent, { level: EventLevel.ERROR, serverId: foreign.id, kind: "crash_loop", message: "no es mío" });
-    sendEvent(agent, { level: EventLevel.INFO, kind: "drift", message: "marca" }); // se procesan en orden
+    sendEvent(agent, { level: EventLevel.ERROR, serverId: foreign.id, kind: "crash_loop", message: "not mine" });
+    sendEvent(agent, { level: EventLevel.INFO, kind: "drift", message: "marker" }); // they are processed in order
     const evs = await waitEvents(1);
     expect(evs[0]).toMatchObject({ kind: "drift", serverId: null });
     const row = (await app.inject({ method: "GET", url: `/api/servers/${foreign.id}`, headers: { cookie } })).json();
@@ -75,27 +75,27 @@ describe("eventos del agente", () => {
     agent.close();
   });
 
-  it("crash_loop deja el servidor deseado en parado", async () => {
+  it("crash_loop leaves the server's desired state stopped", async () => {
     const s = await createServer("Uno");
     const agent = await connect();
-    sendEvent(agent, { level: EventLevel.ERROR, serverId: s.id, kind: "crash_loop", message: "Bucle de crash" });
+    sendEvent(agent, { level: EventLevel.ERROR, serverId: s.id, kind: "crash_loop", message: "Crash loop" });
     await waitEvents(1);
     const row = (await app.inject({ method: "GET", url: `/api/servers/${s.id}`, headers: { cookie } })).json();
     expect(row.desiredState).toBe("stopped");
-    expect(row.specVersion).toBe(s.specVersion); // sin versión nueva
+    expect(row.specVersion).toBe(s.specVersion); // no new version
     agent.close();
   });
 });
 
-describe("crash_loop atrasado", () => {
-  it("no deshace un Arrancar posterior a la hora del evento, pero sí uno anterior", async () => {
+describe("late crash_loop", () => {
+  it("does not undo a Start later than the event's time, but does undo an earlier one", async () => {
     const s = await createServer("Uno");
     const agent = await connect();
     app.servers.setDesiredState(s.id, "stopped");
-    app.servers.setDesiredState(s.id, "running"); // «Arrancar» del usuario, ahora
+    app.servers.setDesiredState(s.id, "running"); // the user's “Start”, now
     const desired = async () => (await app.inject({ method: "GET", url: `/api/servers/${s.id}`, headers: { cookie } })).json().desiredState;
     sendEvent(agent, { level: EventLevel.ERROR, serverId: s.id, kind: "crash_loop", message: "viejo", tsUnixMs: BigInt(Date.now() - 60_000) });
-    await waitEvents(1); // guardado, pero sin efecto en el estado deseado
+    await waitEvents(1); // stored, but with no effect on the desired state
     expect(await desired()).toBe("running");
     sendEvent(agent, { level: EventLevel.ERROR, serverId: s.id, kind: "crash_loop", message: "nuevo", tsUnixMs: BigInt(Date.now() + 5_000) });
     await waitEvents(2);
@@ -105,7 +105,7 @@ describe("crash_loop atrasado", () => {
 });
 
 describe("GET /api/events", () => {
-  it("filtra por servidor y nivel mínimo, pagina y exige sesión", async () => {
+  it("filters by server and minimum level, paginates and requires a session", async () => {
     const s = await createServer("Uno");
     const rec = (level: "info" | "warn" | "error", serverId: string | null) =>
       app.eventsService.record({ nodeId, serverId, level, kind: "drift", message: level });
@@ -124,7 +124,7 @@ describe("GET /api/events", () => {
     expect((await app.inject({ method: "GET", url: "/api/events" })).statusCode).toBe(401);
   });
 
-  it("pagina con cursor (before, beforeId) sin perder eventos del mismo milisegundo", () => {
+  it("paginates with a cursor (before, beforeId) without losing events from the same millisecond", () => {
     const repo = new EventsRepo(app.db);
     const same = "2026-10-13T00:00:00.000Z";
     for (const id of ["a", "b", "c", "d", "e"]) repo.insert({ id, node_id: null, server_id: null, server_name: null, level: "info", kind: "x", message: "m", agent_at: null, created_at: same });
@@ -133,15 +133,15 @@ describe("GET /api/events", () => {
     const page2 = repo.list({ limit: 2, before: same, beforeId: "d" });
     expect(page2.map((r) => r.id)).toEqual(["c", "b"]);
     expect(repo.list({ limit: 2, before: same, beforeId: "b" }).map((r) => r.id)).toEqual(["a"]);
-    expect(repo.list({ limit: 5, before: same }).map((r) => r.id)).toEqual([]); // sin beforeId: estrictamente anteriores
+    expect(repo.list({ limit: 5, before: same }).map((r) => r.id)).toEqual([]); // without beforeId: strictly earlier
   });
 
-  it("purga lo de más de 30 días y deja como mucho el máximo", () => {
+  it("purges anything older than 30 days and leaves at most the maximum", () => {
     const repo = new EventsRepo(app.db);
     const row = (id: string, created: string) => ({ id, node_id: null, server_id: null, server_name: null, level: "info" as const, kind: "x", message: "m", agent_at: null, created_at: created });
     repo.insert(row("viejo", "2026-01-01T00:00:00.000Z"));
     for (const id of ["a", "b", "c"]) repo.insert(row(id, `2026-10-13T00:00:0${"abc".indexOf(id)}.000Z`));
-    expect(repo.purge("2026-09-13T00:00:00.000Z", 2)).toBe(2); // el viejo y el más antiguo de los que sobran
+    expect(repo.purge("2026-09-13T00:00:00.000Z", 2)).toBe(2); // the old one and the oldest of the surplus
     expect(repo.list({ limit: 10 }).map((r) => r.id)).toEqual(["c", "b"]);
   });
 });

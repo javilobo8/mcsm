@@ -7,8 +7,8 @@ import { MetricsRepo } from "./repo.js";
 import { MetricsService } from "./service.js";
 
 /**
- * Decora `app.metrics` en la raíz (lo usa el despacho de mensajes del agente), arranca la purga
- * horaria y registra las rutas. Necesita `app.db`, `app.servers` y `app.events` ya decorados.
+ * Decorates `app.metrics` at the root (used by the agent message dispatch), starts the hourly
+ * purge and registers the routes. Needs `app.db`, `app.servers` and `app.events` already decorated.
  */
 export const metricsPlugin = fp(async function metricsPlugin(app: FastifyInstance) {
   const svc = new MetricsService({
@@ -27,16 +27,16 @@ const query = z.object({ range: metricRangeSchema.default("1h") });
 
 async function metricsRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/api/servers/:id/metrics", async (req) => {
-    if (!app.servers.get(req.params.id)) throw new HttpError(404, "Servidor no encontrado");
+    if (!app.servers.get(req.params.id)) throw new HttpError(404, "Server not found");
     const q = query.safeParse(req.query ?? {});
-    if (!q.success) throw new HttpError(400, q.error.issues[0]?.message ?? "Rango inválido");
+    if (!q.success) throw new HttpError(400, q.error.issues[0]?.message ?? "Invalid range");
     return app.metrics.series("server", req.params.id, q.data.range);
   });
 
   app.get<{ Params: { id: string } }>("/api/nodes/:id/metrics", async (req) => {
-    if (!app.nodes.get(req.params.id)) throw new HttpError(404, "Nodo no encontrado");
+    if (!app.nodes.get(req.params.id)) throw new HttpError(404, "Node not found");
     const q = query.safeParse(req.query ?? {});
-    if (!q.success) throw new HttpError(400, q.error.issues[0]?.message ?? "Rango inválido");
+    if (!q.success) throw new HttpError(400, q.error.issues[0]?.message ?? "Invalid range");
     return app.metrics.series("node", req.params.id, q.data.range);
   });
 }

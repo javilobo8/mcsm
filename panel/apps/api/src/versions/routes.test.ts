@@ -17,7 +17,7 @@ beforeEach(async () => {
   const fetch: FetchFn = async (url) => {
     calls.push(url);
     const r = responses.get(url);
-    if (!r) throw new TypeError("sin red");
+    if (!r) throw new TypeError("no network");
     return r();
   };
   app = await buildApp({
@@ -33,12 +33,12 @@ afterEach(async () => { await app.close(); });
 const get = (url: string, withCookie = true) => app.inject({ method: "GET", url, headers: withCookie ? { cookie } : {} });
 
 describe("/api/versions", () => {
-  it("exige sesión", async () => {
+  it("requires a session", async () => {
     expect((await get("/api/versions/PAPER", false)).statusCode).toBe(401);
     expect(calls).toEqual([]);
   });
 
-  it("lista de versiones de Paper", async () => {
+  it("Paper version list", async () => {
     responses.set(FILL, () => new Response(JSON.stringify({ project: { id: "paper" }, versions: { "1.21": ["1.21.11", "1.21.11-rc3"] } })));
     const res = await get("/api/versions/PAPER");
     expect(res.statusCode).toBe(200);
@@ -48,7 +48,7 @@ describe("/api/versions", () => {
     });
   });
 
-  it("builds de Paper: solo estables", async () => {
+  it("Paper builds: only stable ones", async () => {
     responses.set(`${FILL}/versions/1.20.1/builds`, () => new Response(JSON.stringify([
       { id: 178, channel: "STABLE" }, { id: 177, channel: "BETA" },
     ])));
@@ -57,8 +57,8 @@ describe("/api/versions", () => {
     expect(res.json()).toMatchObject({ type: "PAPER", version: "1.20.1", builds: [{ id: "178", stable: true, recommended: false }] });
   });
 
-  it("400 para tipos sin lista, tipos sin build y versiones inválidas, sin tocar la red", async () => {
-    expect((await get("/api/versions/MODRINTH")).json()).toEqual({ error: "Tipo sin lista de versiones" });
+  it("400 for types without a list, types without builds and invalid versions, without touching the network", async () => {
+    expect((await get("/api/versions/MODRINTH")).json()).toEqual({ error: "Type without a version list" });
     expect((await get("/api/versions/VANILLA/1.21.4/builds")).statusCode).toBe(400);
     for (const v of ["..%2F..%2Fetc", "1.21%20", "%00", "a".repeat(65)]) {
       expect((await get(`/api/versions/PAPER/${v}/builds`)).statusCode, v).toBe(400);
@@ -66,9 +66,9 @@ describe("/api/versions", () => {
     expect(calls).toEqual([]);
   });
 
-  it("fuente caída sin nada guardado: 502 con mensaje", async () => {
+  it("source down with nothing stored: 502 with a message", async () => {
     const res = await get("/api/versions/PAPER");
     expect(res.statusCode).toBe(502);
-    expect(res.json()).toEqual({ error: "No se pudo consultar la lista de versiones de Paper" });
+    expect(res.json()).toEqual({ error: "Could not query the version list of Paper" });
   });
 });

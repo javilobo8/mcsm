@@ -8,7 +8,7 @@ export const sha256 = (b: Uint8Array): string => createHash("sha256").update(b).
 
 type Case = NonNullable<Envelope["body"]["case"]>;
 
-/** Nodo de pruebas: alta real en el panel y un agente falso que responde a mano. No descarta mensajes. */
+/** Test node: real enrollment in the panel and a fake agent that answers by hand. It does not discard messages. */
 export class FakeNode {
   agent!: FakeAgent;
   private buffer: Envelope[] = [];
@@ -21,7 +21,7 @@ export class FakeNode {
     return new FakeNode(url, r.nodeId, r.nodeToken, name);
   }
 
-  /** Conecta, confirma SyncSpecs y contesta al BackupList del Hello. Devuelve el SyncSpecs. */
+  /** Connects, confirms SyncSpecs and answers the Hello's BackupList. Returns the SyncSpecs. */
   async connect(specVersions: Record<string, bigint> = {}): Promise<Envelope> {
     this.buffer = [];
     this.agent = new FakeAgent(this.url, this.token);
@@ -31,25 +31,25 @@ export class FakeNode {
     return sync;
   }
 
-  /** Siguiente mensaje del panel de ese tipo; los demás quedan guardados para su `next`. */
+  /** Next message of that type from the panel; the others are kept for their `next`. */
   async next(c: Case, timeoutMs = 5000): Promise<Envelope> {
     const i = this.buffer.findIndex((e) => e.body.case === c);
     if (i >= 0) return this.buffer.splice(i, 1)[0]!;
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const left = deadline - Date.now();
-      if (left <= 0) throw new Error(`nodo ${this.name}: no llegó ${c}`);
+      if (left <= 0) throw new Error(`node ${this.name}: ${c} did not arrive`);
       const e = await this.agent.next(left);
       if (e.body.case === c) return e;
       this.buffer.push(e);
     }
   }
 
-  /** Falla si hay mensajes guardados o llega alguno en `ms`. */
+  /** Fails if there are stored messages or one arrives within `ms`. */
   async nothingFor(ms: number): Promise<void> {
-    if (this.buffer.length > 0) throw new Error(`nodo ${this.name}: pendientes ${this.buffer.map((e) => e.body.case).join(", ")}`);
+    if (this.buffer.length > 0) throw new Error(`node ${this.name}: pending ${this.buffer.map((e) => e.body.case).join(", ")}`);
     const e = await this.agent.next(ms).catch(() => null);
-    if (e) throw new Error(`nodo ${this.name}: llegó ${e.body.case}`);
+    if (e) throw new Error(`node ${this.name}: ${e.body.case} arrived`);
   }
 
   send(env: MessageInitShape<typeof EnvelopeSchema>): void { this.agent.send(env); }
@@ -69,7 +69,7 @@ export class FakeNode {
     } } });
   }
 
-  /** PUT /agent/transfer/:id con el token del nodo. Devuelve el estado HTTP. */
+  /** PUT /agent/transfer/:id with the node's token. Returns the HTTP status. */
   async put(transferId: string, body: Uint8Array): Promise<number> {
     const r = await fetch(`${this.url}/agent/transfer/${transferId}`, {
       method: "PUT", headers: { authorization: `Bearer ${this.token}`, "content-type": "application/octet-stream" }, body: new Uint8Array(body),
@@ -78,7 +78,7 @@ export class FakeNode {
     return r.status;
   }
 
-  /** GET /agent/transfer/:id con el token del nodo. */
+  /** GET /agent/transfer/:id with the node's token. */
   async get(transferId: string): Promise<Buffer> {
     const r = await fetch(`${this.url}/agent/transfer/${transferId}`, { headers: { authorization: `Bearer ${this.token}` } });
     if (!r.ok) throw new Error(`GET ${r.status}`);

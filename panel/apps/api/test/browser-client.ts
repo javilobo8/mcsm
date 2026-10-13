@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 
-/** Cliente WS del navegador para tests: cola de mensajes JSON y espera con timeout. */
+/** Browser WS client for tests: queue of JSON messages and wait with a timeout. */
 export function browserClient(url: string, cookie: string): Promise<{ ws: WebSocket; next: (timeoutMs?: number) => Promise<any> }> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(url.replace(/^http/, "ws") + "/ws", { headers: { cookie } });
@@ -14,7 +14,7 @@ export function browserClient(url: string, cookie: string): Promise<{ ws: WebSoc
     const next = (timeoutMs = 3000) => queue.length
       ? Promise.resolve(queue.shift())
       : new Promise<any>((res, rej) => {
-        const t = setTimeout(() => rej(new Error("sin mensaje")), timeoutMs);
+        const t = setTimeout(() => rej(new Error("no message")), timeoutMs);
         waiters.push((m) => { clearTimeout(t); res(m); });
       });
     ws.on("open", () => resolve({ ws, next }));

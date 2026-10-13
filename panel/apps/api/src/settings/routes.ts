@@ -4,7 +4,7 @@ import { formatZodError, settingsPutSchema } from "@mcsm/shared";
 import { HttpError } from "../lib/http.js";
 import { SettingsService } from "./service.js";
 
-/** Decora `app.settings` en la raíz (comando de alta, Origin del WS, reparto de puertos, migración) y registra las rutas. */
+/** Decorates `app.settings` at the root (enrollment command, WS Origin, port allocation, migration) and registers the routes. */
 export const settingsRoutes = fp(async function settingsRoutes(root: FastifyInstance) {
   root.decorate("settings", new SettingsService(root.db, root.config));
   await root.register(async (app) => {

@@ -2,7 +2,7 @@ import WebSocket from "ws";
 import { create, fromBinary, toBinary, type MessageInitShape } from "@bufbuild/protobuf";
 import { EnvelopeSchema, HelloSchema, type Envelope } from "@mcsm/proto";
 
-/** Agente mínimo en TS: se conecta, saluda y deja que el test lea/escriba envelopes. */
+/** Minimal agent in TS: connects, greets and lets the test read/write envelopes. */
 export class FakeAgent {
   private ws!: WebSocket;
   private queue: Envelope[] = [];
@@ -38,26 +38,26 @@ export class FakeAgent {
     if (q) return Promise.resolve(q);
     return new Promise((resolve, reject) => {
       const waiter = (e: Envelope) => { clearTimeout(t); resolve(e); };
-      // Al vencer se retira de la cola: si no, se tragaría el siguiente mensaje.
+      // On expiry it is removed from the queue: otherwise it would swallow the next message.
       const t = setTimeout(() => {
         this.waiters = this.waiters.filter((w) => w !== waiter);
-        reject(new Error("fake agent: sin mensaje"));
+        reject(new Error("fake agent: no message"));
       }, timeoutMs);
       this.waiters.push(waiter);
     });
   }
 
-  /** Espera hasta recibir un envelope cuyo body.case coincida. */
+  /** Waits until an envelope with a matching body.case arrives. */
   async waitFor(c: NonNullable<Envelope["body"]["case"]>, timeoutMs = 3000): Promise<Envelope> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const e = await this.next(deadline - Date.now());
       if (e.body.case === c) return e;
     }
-    throw new Error(`fake agent: no llegó ${c}`);
+    throw new Error(`fake agent: ${c} did not arrive`);
   }
 
-  /** Espera HelloAck y SyncSpecs y confirma este último: a partir de ahí el panel envía peticiones. */
+  /** Waits for HelloAck and SyncSpecs and confirms the latter: from then on the panel sends requests. */
   async handshake(): Promise<Envelope> {
     await this.waitFor("helloAck");
     const sync = await this.waitFor("syncSpecs");

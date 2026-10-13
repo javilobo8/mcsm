@@ -5,7 +5,7 @@ import { HttpError } from "../lib/http.js";
 import { EventsRepo } from "./repo.js";
 import { EventsService } from "./service.js";
 
-/** Decora `app.eventsService` en la raíz (lo usan el despacho del agente y la rotación de tokens) y registra las rutas. */
+/** Decorates `app.eventsService` at the root (used by agent dispatch and token rotation) and registers the routes. */
 export const eventsRoutes = fp(async function eventsRoutes(root: FastifyInstance) {
   const svc = new EventsService(root, new EventsRepo(root.db));
   root.decorate("eventsService", svc);

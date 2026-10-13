@@ -3,22 +3,22 @@ import type { MetricBatch } from "@mcsm/proto";
 import { MAX_CLOCK_SKEW_SECONDS, type MetricRange, type MetricSeries, type NodeLiveSample } from "@mcsm/shared";
 import type { MetricRow, MetricScope, MetricsRepo } from "./repo.js";
 
-/** Retención del histórico: 7 días (spec §4). */
+/** History retention: 7 days (spec §4). */
 export const RETENTION_SECONDS = 7 * 86_400;
-/** Cada cuánto se purga lo que excede la retención. */
+/** How often whatever exceeds the retention is purged. */
 export const PURGE_EVERY_MS = 3_600_000;
 
 type Cancel = () => void;
 
 export interface MetricsDeps {
   repo: MetricsRepo;
-  /** Ids de los servidores del nodo: las muestras de servidores ajenos o borrados se descartan. */
+  /** Ids of the node's servers: samples from foreign or deleted servers are discarded. */
   serverIdsOf: (nodeId: string) => Set<string>;
-  /** Recibe `node_metrics` (nodeId, NodeLiveSample) en cada lote con datos del host. */
+  /** Receives `node_metrics` (nodeId, NodeLiveSample) on every batch with host data. */
   events: EventEmitter;
-  /** Reloj en ms (inyectable en tests). */
+  /** Clock in ms (injectable in tests). */
   now?: () => number;
-  /** Repite `fn` cada `ms` y devuelve la función que lo cancela (inyectable en tests). */
+  /** Repeats `fn` every `ms` and returns the function that cancels it (injectable in tests). */
   every?: (fn: () => void, ms: number) => Cancel;
   log?: { warn(obj: object, msg: string): void };
 }
@@ -31,7 +31,7 @@ const defaultEvery = (fn: () => void, ms: number): Cancel => {
 
 const finite = (v: number): number => (Number.isFinite(v) ? v : 0);
 
-/** Ingesta por lotes, purga horaria y agregación en consulta (spec §7 `MetricsService`). */
+/** Batch ingestion, hourly purge and aggregation at query time (spec §7 `MetricsService`). */
 export class MetricsService {
   private stopPurge: Cancel | null = null;
   private now: () => number;
@@ -40,17 +40,17 @@ export class MetricsService {
     this.now = deps.now ?? Date.now;
   }
 
-  private offsets = new Map<string, number>(); // desfase fijo (s) de cada nodo con el reloj fuera de tolerancia
+  private offsets = new Map<string, number>(); // fixed skew (s) of each node whose clock is out of tolerance
 
   private nowSec(): number {
     return Math.floor(this.now() / 1000);
   }
 
   /**
-   * Ventana de 10 s del lote. Con el reloj del agente razonable (±MAX_CLOCK_SKEW_SECONDS), la suya. Si no, la del
-   * agente más un desfase FIJO por nodo, calculado con el primer lote desfasado para que caiga en la ventana actual
-   * del panel: así el retraso variable de llegada no junta dos lotes en la misma ventana ni deja huecos (m-3 del
-   * Plan 2). Si el nodo corrige su reloj o el desfase deja de cuadrar (±45 s), se recalcula.
+   * 10 s window of the batch. With a reasonable agent clock (±MAX_CLOCK_SKEW_SECONDS), its own. Otherwise, the
+   * agent's plus a FIXED per-node skew, computed with the first skewed batch so that it falls in the panel's current
+   * window: this way the variable arrival delay neither puts two batches in the same window nor leaves gaps (m-3 of
+   * Plan 2). If the node corrects its clock or the skew stops fitting (±45 s), it is recomputed.
    */
   slotOf(nodeId: string, agentTs: number): number {
     const now = this.nowSec();
@@ -68,12 +68,12 @@ export class MetricsService {
     return ts - (ts % 10);
   }
 
-  /** Olvida lo que se guarda en memoria de un nodo borrado (su desfase de reloj). */
+  /** Forgets what is kept in memory for a deleted node (its clock skew). */
   forgetNode(nodeId: string): void {
     this.offsets.delete(nodeId);
   }
 
-  /** Guarda un MetricBatch del agente. Devuelve cuántas filas escribió. */
+  /** Stores an agent MetricBatch. Returns how many rows it wrote. */
   ingest(nodeId: string, batch: MetricBatch): number {
     const ts = this.slotOf(nodeId, Number(batch.tsUnix));
     const rows: MetricRow[] = [];
@@ -110,19 +110,19 @@ export class MetricsService {
       try {
         this.deps.events.emit("node_metrics", nodeId, sample);
       } catch (e) {
-        // Un listener que lanza no debe romper la ingesta: las filas ya están guardadas.
-        this.deps.log?.warn({ err: e }, "fallo en un listener de node_metrics");
+        // A listener that throws must not break ingestion: the rows are already stored.
+        this.deps.log?.warn({ err: e }, "failure in a node_metrics listener");
       }
     }
     return rows.length;
   }
 
-  /** Borra lo que excede la retención. Devuelve cuántas filas borró. */
+  /** Deletes whatever exceeds the retention. Returns how many rows it deleted. */
   purge(): number {
     return this.deps.repo.deleteOlderThan(this.nowSec() - RETENTION_SECONDS);
   }
 
-  /** Purga ahora y después cada hora. */
+  /** Purges now and then every hour. */
   start(): void {
     if (this.stopPurge) return;
     this.safePurge();
@@ -142,7 +142,7 @@ export class MetricsService {
     try {
       this.purge();
     } catch (e) {
-      this.deps.log?.warn({ err: e }, "fallo purgando métricas antiguas");
+      this.deps.log?.warn({ err: e }, "failed purging old metrics");
     }
   }
 }

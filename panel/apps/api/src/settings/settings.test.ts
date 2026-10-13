@@ -18,8 +18,8 @@ afterEach(async () => { await app.close(); });
 const get = () => app.inject({ method: "GET", url: "/api/settings", headers: { cookie } });
 const put = (payload: object) => app.inject({ method: "PUT", url: "/api/settings", headers: { cookie }, payload });
 
-describe("ajustes", () => {
-  it("valores por defecto: los del entorno; sesión obligatoria", async () => {
+describe("settings", () => {
+  it("default values: the environment's; session required", async () => {
     await start();
     expect((await get()).json()).toEqual({
       publicUrl: "", publicUrlSource: "request", envPublicUrl: "",
@@ -32,7 +32,7 @@ describe("ajustes", () => {
     expect((await get()).json()).toMatchObject({ publicUrl: "http://env:8080", publicUrlSource: "env", envPublicUrl: "http://env:8080" });
   });
 
-  it("URL pública: se guarda normalizada, la usa el comando de alta y vacía vuelve al entorno", async () => {
+  it("public URL: stored normalized, used by the enrollment command, and empty goes back to the environment", async () => {
     await start({ publicUrl: "http://env:8080" });
     const res = await put({ publicUrl: "http://192.168.1.10:8080/" });
     expect(res.statusCode).toBe(200);
@@ -40,11 +40,11 @@ describe("ajustes", () => {
     const enroll = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "n" } })).json();
     expect(enroll.dockerRun).toContain("PANEL_URL=http://192.168.1.10:8080");
     expect((await put({ publicUrl: "" })).json()).toMatchObject({ publicUrl: "http://env:8080", publicUrlSource: "env" });
-    for (const bad of ["http://x/ruta", "ftp://x"]) expect((await put({ publicUrl: bad })).statusCode).toBe(400);
+    for (const bad of ["http://x/path", "ftp://x"]) expect((await put({ publicUrl: bad })).statusCode).toBe(400);
     expect((await put({ desconocida: true })).statusCode).toBe(400);
   });
 
-  it("el WS acepta el origen de la URL pública guardada", async () => {
+  it("the WS accepts the origin of the stored public URL", async () => {
     await start();
     await app.listen({ port: 0, host: "127.0.0.1" });
     const url = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`;
@@ -59,7 +59,7 @@ describe("ajustes", () => {
     expect(await open("http://lan.casa:8080")).toBe(101);
   });
 
-  it("rango de puertos: se reparten los del rango guardado y se valida", async () => {
+  it("port range: ports are allocated from the stored range and it is validated", async () => {
     await start();
     const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "nas" } })).json().token;
     const { nodeId } = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "nas" } })).json();
@@ -69,15 +69,15 @@ describe("ajustes", () => {
     expect((await mk("Dos")).json().spec.ports.game).toBe(26001);
     const third = await mk("Tres");
     expect(third.statusCode).toBe(409);
-    expect(third.json().error).toMatch(/26000 y 26001/);
+    expect(third.json().error).toMatch(/26000 and 26001/);
     for (const bad of [{ from: 30000, to: 29000 }, { from: 80, to: 90 }, { from: 20000, to: 40000 }]) {
       expect((await put({ gamePortRange: bad })).statusCode).toBe(400);
     }
   });
 
-  it("CurseForge: avisa si la key guardada no es válida (la migración 020 no la validaba)", async () => {
+  it("CurseForge: warns if the stored key is not valid (migration 020 did not validate it)", async () => {
     await start();
-    app.db.prepare("INSERT INTO settings (key, value) VALUES ('curseforge_api_key', 'con espacios dentro')").run();
+    app.db.prepare("INSERT INTO settings (key, value) VALUES ('curseforge_api_key', 'with spaces inside')").run();
     expect((await app.inject({ method: "GET", url: "/api/settings/curseforge", headers: { cookie } })).json()).toEqual({ configured: true, valid: false });
     expect((await get()).json().curseforge).toEqual({ configured: true, valid: false });
   });

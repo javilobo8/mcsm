@@ -15,7 +15,7 @@ const BACKOFF_MAX_MS = 30_000;
 export interface HubOptions {
   maxSubscriptions?: number;
   maxBufferedBytes?: number;
-  /** Programa `fn` tras `ms` milisegundos y devuelve la función que lo cancela (inyectable en tests). */
+  /** Schedules `fn` after `ms` milliseconds and returns the function that cancels it (injectable in tests). */
   schedule?: (fn: () => void, ms: number) => Cancel;
 }
 
@@ -49,26 +49,26 @@ export class BrowserHub {
     app.events.on("observed", onObserved);
     app.events.on("node", onNode);
     this.offs.push(() => app.events.off("observed", onObserved), () => app.events.off("node", onNode));
-    // plan-2: muestra del host de un nodo cada 10 s, a quien siga el topic "nodes".
+    // plan-2: a node's host sample every 10 s, to whoever follows the "nodes" topic.
     const onNodeMetrics = (nodeId: string, sample: unknown) => this.publish("nodes", { type: "node_metrics", nodeId, sample });
     app.events.on("node_metrics", onNodeMetrics);
     this.offs.push(() => app.events.off("node_metrics", onNodeMetrics));
-    // plan-4: jobs y copias en el topic "jobs"
+    // plan-4: jobs and backups on the "jobs" topic
     const onJob = (job: unknown, logChunk: unknown) =>
       this.publish("jobs", { type: "job", job, logChunk: typeof logChunk === "string" ? logChunk : "" });
     const onBackups = (serverId: unknown) => this.publish("jobs", { type: "backups", serverId });
     app.events.on("job", onJob);
     app.events.on("backups", onBackups);
     this.offs.push(() => app.events.off("job", onJob), () => app.events.off("backups", onBackups));
-    // plan-8: estado del mc-router de un nodo, en el topic "nodes".
+    // plan-8: a node's mc-router state, on the "nodes" topic.
     const onRouter = (nodeId: unknown, router: unknown) => this.publish("nodes", { type: "router", nodeId, router });
     app.events.on("router", onRouter);
     this.offs.push(() => app.events.off("router", onRouter));
-    // plan-9: incidencias de los agentes y del panel, en el topic "events".
+    // plan-9: agent and panel events, on the "events" topic.
     const onServerEvent = (event: unknown) => this.publish("events", { type: "event", event });
     app.events.on("server_event", onServerEvent);
     this.offs.push(() => app.events.off("server_event", onServerEvent));
-    // plan-9: una sesión revocada (logout) o todas (cambio de contraseña) pierden sus sockets.
+    // plan-9: a revoked session (logout) or all of them (password change) lose their sockets.
     const onSessionsRevoked = (sessionId?: string) => this.closeSessions(sessionId);
     app.events.on("sessions_revoked", onSessionsRevoked);
     this.offs.push(() => app.events.off("sessions_revoked", onSessionsRevoked));
@@ -79,10 +79,10 @@ export class BrowserHub {
     this.logs.dispose();
   }
 
-  /** Cierra con 4401 los sockets de esa sesión (o de todas, sin argumento). */
+  /** Closes with 4401 the sockets of that session (or of all, with no argument). */
   private closeSessions(sessionId?: string) {
     for (const [ws, sid] of this.sessions) {
-      if (sessionId === undefined || sid === sessionId) ws.close(4401, "sesión cerrada");
+      if (sessionId === undefined || sid === sessionId) ws.close(4401, "session closed");
     }
   }
 
@@ -93,8 +93,8 @@ export class BrowserHub {
       try {
         this.onMessage(socket, raw.toString());
       } catch (e) {
-        this.app.log.warn({ err: e }, "fallo procesando mensaje del navegador");
-        this.send(socket, { type: "error", message: "Error interno" });
+        this.app.log.warn({ err: e }, "failure processing browser message");
+        this.send(socket, { type: "error", message: "Internal error" });
       }
     });
     socket.on("close", () => {
@@ -107,9 +107,9 @@ export class BrowserHub {
 
   private onMessage(socket: WebSocket, raw: string) {
     let json: unknown;
-    try { json = JSON.parse(raw); } catch { return this.send(socket, { type: "error", message: "JSON inválido" }); }
+    try { json = JSON.parse(raw); } catch { return this.send(socket, { type: "error", message: "Invalid JSON" }); }
     const msg = clientMessage.safeParse(json);
-    if (!msg.success) return this.send(socket, { type: "error", message: "Mensaje inválido" });
+    if (!msg.success) return this.send(socket, { type: "error", message: "Invalid message" });
     if (msg.data.type === "subscribe") this.subscribe(socket, msg.data.topic);
     else this.unsubscribe(socket, msg.data.topic);
   }
@@ -118,8 +118,8 @@ export class BrowserHub {
     const mine = this.clients.get(socket);
     if (!mine || mine.has(topic)) return;
     const m = topic.match(LOG_TOPIC);
-    if (m && !this.app.servers.get(m[1]!)) return this.send(socket, { type: "error", message: "Servidor desconocido" });
-    if (mine.size >= this.maxSubscriptions) return this.send(socket, { type: "error", message: "Demasiadas suscripciones" });
+    if (m && !this.app.servers.get(m[1]!)) return this.send(socket, { type: "error", message: "Unknown server" });
+    if (mine.size >= this.maxSubscriptions) return this.send(socket, { type: "error", message: "Too many subscriptions" });
     mine.add(topic);
     if (!this.topics.has(topic)) this.topics.set(topic, new Set());
     this.topics.get(topic)!.add(socket);
@@ -139,25 +139,25 @@ export class BrowserHub {
     }
   }
 
-  /** Mensajes de estado: nunca se descartan. */
+  /** Status messages: never dropped. */
   publish(topic: string, msg: Msg) {
     const data = JSON.stringify(msg);
     for (const ws of this.topics.get(topic) ?? []) if (ws.readyState === ws.OPEN) ws.send(data);
   }
 
-  /** Líneas de log: se descartan (y se cuentan) para un socket con más de `maxBuffered` pendiente. */
+  /** Log lines: dropped (and counted) for a socket with more than `maxBuffered` pending. */
   publishLog(serverId: string, msg: Msg) {
     for (const ws of this.topics.get(`server:${serverId}:logs`) ?? []) this.sendLog(ws, serverId, msg);
   }
 
-  /** Envía a un solo socket el reset y las líneas ya acumuladas. */
+  /** Sends the reset and the already accumulated lines to a single socket. */
   sendReplay(ws: WebSocket, serverId: string, lines: Msg[]) {
     this.dropped.get(ws)?.delete(serverId);
     this.send(ws, { type: "log_reset", serverId });
     for (const l of lines) this.sendLog(ws, serverId, l);
   }
 
-  /** Reset a todos los suscriptores del servidor (también limpia sus contadores de descartes). */
+  /** Reset to all of the server's subscribers (also clears their drop counters). */
   resetLogs(serverId: string) {
     for (const ws of this.topics.get(`server:${serverId}:logs`) ?? []) {
       this.dropped.get(ws)?.delete(serverId);
@@ -200,14 +200,14 @@ interface RelayEntry {
   cancelRetry?: Cancel;
 }
 
-/** Mantiene un único stream de logs por servidor hacia el agente mientras haya navegadores suscritos. */
+/** Keeps a single log stream per server towards the agent while there are subscribed browsers. */
 class LogRelay {
   private active = new Map<string, RelayEntry>();
   private onMessage: (nodeId: string, env: Envelope) => void;
 
   constructor(private app: FastifyInstance, private hub: BrowserHub, private schedule: (fn: () => void, ms: number) => Cancel) {
-    // Si el nodo vuelve, los suscriptores que siguen ahí recuperan la consola. Se espera al Hello
-    // (no a "attached"): hasta entonces el agente aún no está listo para peticiones.
+    // If the node comes back, the subscribers still there recover the console. It waits for the Hello
+    // (not for "attached"): until then the agent is not ready for requests.
     this.onMessage = (nodeId, env) => {
       if (env.body.case !== "hello") return;
       for (const [serverId, entry] of this.active) {
@@ -255,7 +255,7 @@ class LogRelay {
       entry.cancelRetry = undefined;
       if (this.active.get(serverId) !== entry || entry.close || entry.opening || entry.count <= 0) return;
       const row = this.app.servers.get(serverId);
-      if (!row || !this.app.agents.get(row.node_id)) return; // nodo caído: lo reabrirá su próximo Hello
+      if (!row || !this.app.agents.get(row.node_id)) return; // node down: its next Hello will reopen it
       void this.open(serverId, entry);
     }, delay);
   }
@@ -264,7 +264,7 @@ class LogRelay {
     const row = this.app.servers.get(serverId);
     const conn = row && this.app.agents.get(row.node_id);
     if (!conn) {
-      this.hub.publish(`server:${serverId}:logs`, { type: "stream_closed", serverId, reason: "nodo desconectado" });
+      this.hub.publish(`server:${serverId}:logs`, { type: "stream_closed", serverId, reason: "node offline" });
       return;
     }
     if (entry.needsReset) {
@@ -278,12 +278,12 @@ class LogRelay {
       const stream = await conn.openStream(
         { case: "subscribeLogs", value: { serverId, tail: LOG_TAIL } },
         (env: Envelope) => {
-          if (env.body.case === "streamDropped") { // plan-9: el agente descartó líneas de este stream (spec §5.2)
+          if (env.body.case === "streamDropped") { // plan-9: the agent dropped lines from this stream (spec §5.2)
             this.hub.publish(`server:${serverId}:logs`, { type: "log_dropped", serverId, count: Number(env.body.value.count) });
             return;
           }
           if (env.body.case !== "logLine") return;
-          entry.attempt = 0; // el stream funciona: el backoff vuelve a empezar
+          entry.attempt = 0; // the stream works: the backoff starts over
           const msg = { type: "log", serverId, ts: Number(env.body.value.tsUnixMs), line: env.body.value.line };
           entry.buffer.push(msg);
           if (entry.buffer.length > LOG_TAIL) entry.buffer.shift();
@@ -299,7 +299,7 @@ class LogRelay {
         },
       );
       if (!closed) entry.close = stream.close;
-      if (entry.count <= 0) stream.close(); // todos se fueron mientras abríamos
+      if (entry.count <= 0) stream.close(); // everyone left while we were opening
     } catch (e) {
       this.hub.publish(`server:${serverId}:logs`, { type: "stream_closed", serverId, reason: e instanceof Error ? e.message : "error" });
       if (this.active.get(serverId) === entry) {
