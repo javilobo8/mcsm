@@ -1,16 +1,16 @@
-// Package router mantiene el mc-router de un nodo (plan-8): un contenedor itzg/mc-router con
-// descubrimiento por Docker (-in-docker) en la red de los servidores, que publica un puerto del host
-// y enruta cada conexión por el hostname del handshake al contenedor con esa etiqueta mc-router.host.
+// Package router maintains a node's mc-router (plan-8): an itzg/mc-router container with
+// Docker discovery (-in-docker) on the servers' network, which publishes a host port
+// and routes each connection by the handshake hostname to the container with that mc-router.host label.
 //
-// Riesgo del socket de Docker: mc-router lo necesita para descubrir los servidores (y, con autoscale,
-// para arrancarlos y pararlos). Quien controla ese socket controla el host, igual que el agente. Se
-// reduce lo que el contenedor puede hacer por sí mismo: imagen fijada (Tag), usuario no root
-// (65532), CapDrop ALL, no-new-privileges, raíz de solo lectura, límites de memoria y procesos, sin
-// API HTTP de mc-router y sin más montajes. Desde el Plan 9 el router no recibe el socket de Docker:
-// monta (solo lectura) el directorio del socket del proxy del agente (paquete dockerproxy), que solo
-// deja listar, inspeccionar sin entorno, seguir eventos y arrancar o parar servidores con hostname no
-// reservados. El «:ro» del montaje no impide connect() sobre el socket; impide crear o cambiar
-// ficheros en ese directorio.
+// Docker socket risk: mc-router needs it to discover the servers (and, with autoscale,
+// to start and stop them). Whoever controls that socket controls the host, just like the agent. What
+// the container can do by itself is reduced: pinned image (Tag), non-root user
+// (65532), CapDrop ALL, no-new-privileges, read-only root, memory and process limits, no
+// mc-router HTTP API and no other mounts. Since Plan 9 the router does not receive the Docker socket:
+// it mounts (read-only) the directory of the agent proxy's socket (dockerproxy package), which only
+// allows listing, inspecting without env, following events and starting or stopping servers with unreserved
+// hostnames. The mount's ":ro" does not prevent connect() on the socket; it prevents creating or changing
+// files in that directory.
 package router
 
 import (
@@ -33,103 +33,103 @@ import (
 )
 
 const (
-	// ContainerName es el nombre del contenedor del router en un nodo (los tests usan mcsm-test-…).
+	// ContainerName is the name of the router's container on a node (tests use mcsm-test-…).
 	ContainerName = "mcsm-router"
 	Image         = "itzg/mc-router"
-	// Tag fija la versión de mc-router y Digest el índice multiarquitectura publicado con ella
-	// (docker buildx imagetools inspect itzg/mc-router:1.47.1). El contenedor recibe el socket de
-	// Docker: un tag vuelto a publicar no debe llegar a ningún nodo. Cambiarlos cambia el hash: al
-	// actualizar el agente, el router se recrea con la imagen nueva.
+	// Tag pins the mc-router version and Digest the multi-architecture index published with it
+	// (docker buildx imagetools inspect itzg/mc-router:1.47.1). The container receives the Docker
+	// socket: a re-published tag must not reach any node. Changing them changes the hash: when
+	// the agent is updated, the router is recreated with the new image.
 	Tag    = "1.47.1"
 	Digest = "sha256:177433dd91507339924d60205a19ae9a289afd0e69dbad54e1a55d497f7523f8"
-	// LabelRouter marca el contenedor del router (además de mcsm.managed, para recibir sus eventos).
+	// LabelRouter marks the router's container (besides mcsm.managed, to receive its events).
 	LabelRouter = "mcsm.router"
-	// LabelHash guarda el hash de la configuración para detectar cambios sin comparar campo a campo.
+	// LabelHash stores the configuration hash to detect changes without comparing field by field.
 	LabelHash = "mcsm.router_hash"
-	// ListenPort es el puerto de mc-router dentro del contenedor.
+	// ListenPort is mc-router's port inside the container.
 	ListenPort = 25565
-	// HostSocket es el socket real de Docker del host: el upstream del proxy del agente.
+	// HostSocket is the host's real Docker socket: the upstream of the agent's proxy.
 	HostSocket = "/var/run/docker.sock"
-	// RouterSocketDir es donde ve el router el DIRECTORIO del socket del proxy (m5): montar el fichero dejaría al
-	// router en el socket anterior cada vez que el agente se reinicia (otro inodo), y si faltara al arrancar el
-	// host, Docker crearía un directorio en su ruta. mc-router vuelve a conectarse solo (con backoff de hasta 30 s)
-	// cuando el socket desaparece y aparece de nuevo. Su cliente de Docker va ahí con -docker-socket.
+	// RouterSocketDir is where the router sees the proxy socket's DIRECTORY (m5): mounting the file would leave the
+	// router on the previous socket every time the agent restarts (another inode), and if it were missing when the
+	// host boots, Docker would create a directory at its path. mc-router reconnects by itself (with backoff of up to 30 s)
+	// when the socket disappears and appears again. Its Docker client goes there with -docker-socket.
 	RouterSocketDir = "/run/mcsm"
-	// User es el usuario no root de la imagen (chainguard static).
+	// User is the image's non-root user (chainguard static).
 	User = "65532:65532"
 
 	DefaultDownAfterMinutes = 10
 	MaxDownAfterMinutes     = 1440
-	// MaxAllowPlayers es el tope de la lista de jugadores que despiertan servidores (como las listas de la spec).
+	// MaxAllowPlayers is the cap on the list of players that wake up servers (like the spec's lists).
 	MaxAllowPlayers = 1000
-	// AllowDenyFile es el nombre del fichero de -auto-scale-allow-deny en el directorio del host
-	// (Options.FilesDir) y allowDenyMount donde lo ve mc-router.
+	// AllowDenyFile is the name of the -auto-scale-allow-deny file in the host directory
+	// (Options.FilesDir) and allowDenyMount where mc-router sees it.
 	AllowDenyFile  = "allow-deny.json"
 	allowDenyMount = "/etc/mc-router/allow-deny.json"
 
 	memoryLimit = 256 << 20
 	pidsLimit   = 256
-	hashSchema  = 2 // plan-9: el socket del proxy (su directorio) en vez del de Docker (el router se recrea una vez al actualizar)
-	// connectionRateLimit: conexiones nuevas por segundo (global). El 1 por defecto de mc-router hace
-	// esperar a varios jugadores que refrescan la lista de servidores a la vez.
+	hashSchema  = 2 // plan-9: the proxy's socket (its directory) instead of Docker's (the router is recreated once on update)
+	// connectionRateLimit: new connections per second (global). mc-router's default of 1 makes
+	// several players refreshing the server list at the same time wait.
 	connectionRateLimit = 10
 
 	asleepMOTD  = "Servidor dormido: conéctate para arrancarlo"
 	loadingMOTD = "Arrancando el servidor…"
 )
 
-// ImageRef es la imagen del router con su etiqueta y su digest fijados.
+// ImageRef is the router's image with its tag and digest pinned.
 func ImageRef() string { return Image + ":" + Tag + "@" + Digest }
 
-// logConfig rota los logs del router: está expuesto a la red y registra cada conexión.
+// logConfig rotates the router's logs: it is exposed to the network and logs every connection.
 func logConfig() container.LogConfig {
 	return container.LogConfig{Type: "json-file", Config: map[string]string{"max-size": "10m", "max-file": "3"}}
 }
 
-// Build es la configuración del contenedor del router.
+// Build is the router container's configuration.
 type Build struct {
 	Name       string
 	Config     *container.Config
 	HostConfig *container.HostConfig
 	Networking *network.NetworkingConfig
 	Hash       string
-	// AllowDeny es el contenido de -auto-scale-allow-deny (nil sin lista) y AllowDenyPath dónde debe
-	// estar en el host antes de crear o arrancar el contenedor (el Manager lo escribe).
+	// AllowDeny is the content of -auto-scale-allow-deny (nil without a list) and AllowDenyPath where it must
+	// be on the host before creating or starting the container (the Manager writes it).
 	AllowDeny     []byte
 	AllowDenyPath string
 }
 
-// Validate comprueba una spec de router del panel.
+// Validate checks a router spec from the panel.
 func Validate(sp *mcsmv1.RouterSpec) error {
 	if sp == nil {
-		return errors.New("router: falta la spec")
+		return errors.New("router: missing spec")
 	}
 	if sp.HostPort < 1 || sp.HostPort > 65535 {
-		return fmt.Errorf("router: puerto del host fuera de rango: %d", sp.HostPort)
+		return fmt.Errorf("router: host port out of range: %d", sp.HostPort)
 	}
 	if sp.AutoscaleDownAfterMinutes > MaxDownAfterMinutes {
-		return fmt.Errorf("router: minutos sin jugadores fuera de rango: %d (máx. %d)", sp.AutoscaleDownAfterMinutes, MaxDownAfterMinutes)
+		return fmt.Errorf("router: minutes without players out of range: %d (max. %d)", sp.AutoscaleDownAfterMinutes, MaxDownAfterMinutes)
 	}
 	if len(sp.AutoscaleAllowPlayers) > MaxAllowPlayers {
-		return fmt.Errorf("router: demasiados jugadores en la lista del autoscale: %d (máx. %d)", len(sp.AutoscaleAllowPlayers), MaxAllowPlayers)
+		return fmt.Errorf("router: too many players in the autoscale list: %d (max. %d)", len(sp.AutoscaleAllowPlayers), MaxAllowPlayers)
 	}
 	for _, p := range sp.AutoscaleAllowPlayers {
 		if !spec.ValidPlayer(p) {
-			return fmt.Errorf("router: jugador inválido en la lista del autoscale: %q (nombre de 1-16 letras, números o _, o UUID)", p)
+			return fmt.Errorf("router: invalid player in the autoscale list: %q (1-16 letters, digits or _ name, or UUID)", p)
 		}
 	}
 	return nil
 }
 
-// allowEntry es un jugador del fichero de -auto-scale-allow-deny de mc-router.
+// allowEntry is a player in mc-router's -auto-scale-allow-deny file.
 type allowEntry struct {
 	Name string `json:"name,omitempty"`
 	UUID string `json:"uuid,omitempty"`
 }
 
-// allowDeny devuelve el fichero de -auto-scale-allow-deny: una lista global de permitidos (solo ellos
-// despiertan servidores o cancelan su parada), o nil sin autoscale o sin lista. Los UUID van en su
-// forma canónica (8-4-4-4-12 en minúsculas), que es la que entiende mc-router.
+// allowDeny returns the -auto-scale-allow-deny file: a global allow list (only they
+// wake up servers or cancel their stop), or nil without autoscale or without a list. UUIDs go in their
+// canonical form (8-4-4-4-12 lowercase), which is the one mc-router understands.
 func allowDeny(sp *mcsmv1.RouterSpec) []byte {
 	if !sp.Autoscale || len(sp.AutoscaleAllowPlayers) == 0 {
 		return nil
@@ -151,9 +151,9 @@ func allowDeny(sp *mcsmv1.RouterSpec) []byte {
 	return b
 }
 
-// args son los argumentos de mc-router. Sin autoscale, mc-router solo enruta a contenedores en
-// marcha; con autoscale arranca el servidor al entrar un jugador y lo para tras N minutos sin nadie.
-// dockerSocket es la ruta del socket del proxy dentro del contenedor.
+// args are mc-router's arguments. Without autoscale, mc-router only routes to running
+// containers; with autoscale it starts the server when a player joins and stops it after N minutes with nobody.
+// dockerSocket is the path of the proxy's socket inside the container.
 func args(sp *mcsmv1.RouterSpec, dockerSocket string) []string {
 	a := []string{"-in-docker", "-docker-socket", "unix://" + dockerSocket, "-port", strconv.Itoa(ListenPort),
 		"-connection-rate-limit", strconv.Itoa(connectionRateLimit)}
@@ -168,20 +168,20 @@ func args(sp *mcsmv1.RouterSpec, dockerSocket string) []string {
 	return a
 }
 
-// BuildContainer traduce la spec a la configuración del contenedor. Pura: misma entrada, mismo Hash.
-// proxySocket es la ruta del host del socket del proxy de Docker del agente (dockerproxy), cuyo directorio se monta
-// (solo lectura) en RouterSocketDir, y filesDir el directorio del host donde el agente deja los ficheros del router
-// (la lista del autoscale).
+// BuildContainer translates the spec into the container configuration. Pure: same input, same Hash.
+// proxySocket is the host path of the agent's Docker proxy socket (dockerproxy), whose directory is mounted
+// (read-only) at RouterSocketDir, and filesDir the host directory where the agent leaves the router's files
+// (the autoscale list).
 func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName, proxySocket, filesDir string) (*Build, error) {
 	if err := Validate(sp); err != nil {
 		return nil, err
 	}
 	if proxySocket == "" {
-		return nil, errors.New("router: falta el socket del proxy de Docker del agente")
+		return nil, errors.New("router: missing the agent's Docker proxy socket")
 	}
 	allow := allowDeny(sp)
 	if allow != nil && filesDir == "" {
-		return nil, errors.New("router: falta el directorio del host para la lista de jugadores del autoscale")
+		return nil, errors.New("router: missing the host directory for the autoscale player list")
 	}
 	port := network.MustParsePort(fmt.Sprintf("%d/tcp", ListenPort))
 	cfg := &container.Config{
@@ -218,8 +218,8 @@ func BuildContainer(sp *mcsmv1.RouterSpec, name, networkName, proxySocket, files
 	return &Build{Name: name, Config: cfg, HostConfig: host, Networking: net, Hash: hash, AllowDeny: allow, AllowDenyPath: allowPath}, nil
 }
 
-// hashInput es la forma canónica de lo que define el contenedor del router (no el JSON de moby, que
-// cambia entre versiones de la librería). Todo lo que BuildContainer ponga debe estar aquí.
+// hashInput is the canonical form of what defines the router's container (not moby's JSON, which
+// changes between library versions). Everything BuildContainer sets must be here.
 type hashInput struct {
 	Schema         int               `json:"schema"`
 	Name           string            `json:"name"`
@@ -239,7 +239,7 @@ type hashInput struct {
 	ReadonlyRootfs bool              `json:"readonlyRootfs"`
 	LogType        string            `json:"logType"`
 	LogOpts        map[string]string `json:"logOpts"`
-	AllowDeny      string            `json:"allowDeny,omitempty"` // contenido del fichero: mc-router no lo relee
+	AllowDeny      string            `json:"allowDeny,omitempty"` // file content: mc-router does not re-read it
 }
 
 func hashOf(name, networkName string, cfg *container.Config, host *container.HostConfig, allow []byte) (string, error) {
@@ -266,7 +266,7 @@ func hashOf(name, networkName string, cfg *container.Config, host *container.Hos
 	}
 	b, err := json.Marshal(in)
 	if err != nil {
-		return "", fmt.Errorf("router: calcular el hash: %w", err)
+		return "", fmt.Errorf("router: compute the hash: %w", err)
 	}
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])[:16], nil

@@ -32,7 +32,7 @@ func newManager(t *testing.T) (*Manager, *docker.Fake, *store.Store) {
 	return m, fake, st
 }
 
-// routerContainer devuelve el contenedor del router del fake (nil si no hay).
+// routerContainer returns the fake's router container (nil if there is none).
 func routerContainer(t *testing.T, fake *docker.Fake) *docker.Container {
 	t.Helper()
 	list, _ := fake.ListManaged(context.Background())
@@ -40,7 +40,7 @@ func routerContainer(t *testing.T, fake *docker.Fake) *docker.Container {
 	for i := range list {
 		if list[i].Labels[LabelRouter] == "true" {
 			if found != nil {
-				t.Fatal("hay dos contenedores del router")
+				t.Fatal("there are two router containers")
 			}
 			found = &list[i]
 		}
@@ -70,7 +70,7 @@ func TestReconcileCreatesAndIsIdempotent(t *testing.T) {
 	}
 	c := routerContainer(t, fake)
 	if c == nil || c.Name != "mcsm-router" {
-		t.Fatalf("contenedor = %+v", c)
+		t.Fatalf("container = %+v", c)
 	}
 	if len(fake.Pulled) != 1 || fake.Pulled[0] != ImageRef() {
 		t.Fatalf("imagen = %v", fake.Pulled)
@@ -82,7 +82,7 @@ func TestReconcileCreatesAndIsIdempotent(t *testing.T) {
 	}
 	for _, call := range fake.Calls[before:] {
 		if strings.HasPrefix(call, "Create") || strings.HasPrefix(call, "Remove") || strings.HasPrefix(call, "Start") || strings.HasPrefix(call, "Stop") {
-			t.Fatalf("una segunda pasada no toca Docker: %v", fake.Calls[before:])
+			t.Fatalf("a second pass does not touch Docker: %v", fake.Calls[before:])
 		}
 	}
 }
@@ -93,23 +93,23 @@ func TestReconcileRecoversManualChanges(t *testing.T) {
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
 	m.Reconcile(ctx)
 
-	// Parado a mano: se arranca.
+	// Stopped by hand: it is started.
 	c := routerContainer(t, fake)
 	_ = fake.Stop(ctx, c.ID, time.Second)
 	if obs := m.Reconcile(ctx); obs.State != "running" {
-		t.Fatalf("tras parar a mano: %+v", obs)
+		t.Fatalf("after stopping by hand: %+v", obs)
 	}
-	// Borrado a mano: se recrea.
+	// Deleted by hand: it is recreated.
 	_ = fake.Remove(ctx, c.ID)
 	obs := m.Reconcile(ctx)
 	if obs.State != "running" || obs.ContainerId == c.ID {
-		t.Fatalf("tras borrar a mano: %+v", obs)
+		t.Fatalf("after deleting by hand: %+v", obs)
 	}
 }
 
-// TestReconcileDuringManualRemoval: un `docker rm -f` a mano emite kill y die antes que destroy, y la
-// pasada que disparan encuentra el router a medio borrar (la lista lo da como exited). No es un fallo:
-// no se intenta arrancar (Docker lo rechaza) y la pasada del destroy lo recrea sin esperar RetryAfter.
+// TestReconcileDuringManualRemoval: a manual `docker rm -f` emits kill and die before destroy, and the
+// pass they trigger finds the router half-deleted (the list gives it as exited). It is not a failure:
+// no attempt is made to start it (Docker rejects it) and the destroy's pass recreates it without waiting for RetryAfter.
 func TestReconcileDuringManualRemoval(t *testing.T) {
 	m, fake, _ := newManager(t)
 	ctx := context.Background()
@@ -118,18 +118,18 @@ func TestReconcileDuringManualRemoval(t *testing.T) {
 
 	fake.BeginRemoval(first)
 	before := len(fake.Calls)
-	if obs := m.Reconcile(ctx); obs.Error != "" { // evento die
-		t.Fatalf("un router a medio borrar no es un fallo: %+v", obs)
+	if obs := m.Reconcile(ctx); obs.Error != "" { // die event
+		t.Fatalf("a half-deleted router is not a failure: %+v", obs)
 	}
 	for _, call := range fake.Calls[before:] {
 		if strings.HasPrefix(call, "Start") || strings.HasPrefix(call, "Remove") || strings.HasPrefix(call, "Create") {
-			t.Fatalf("con el borrado en curso no se toca el contenedor: %v", fake.Calls[before:])
+			t.Fatalf("with the deletion in progress the container is not touched: %v", fake.Calls[before:])
 		}
 	}
 	fake.FinishRemoval(first)
-	obs := m.Reconcile(ctx) // evento destroy, en el mismo instante (Now fijo)
+	obs := m.Reconcile(ctx) // destroy event, at the same instant (fixed Now)
 	if obs.Error != "" || obs.State != "running" || obs.ContainerId == "" || obs.ContainerId == first {
-		t.Fatalf("tras el destroy se recrea al momento: %+v", obs)
+		t.Fatalf("after the destroy it is recreated immediately: %+v", obs)
 	}
 }
 
@@ -138,9 +138,9 @@ func TestReconcilePortBusy(t *testing.T) {
 	now := time.UnixMilli(1000)
 	m.opts.Now = func() time.Time { return now }
 	ctx := context.Background()
-	// Un contenedor ajeno ya publica el 25565 del host.
+	// A foreign container already publishes the host's 25565.
 	port := network.MustParsePort("25565/tcp")
-	other, err := fake.Create(ctx, "ajeno", &container.Config{Image: "x"},
+	other, err := fake.Create(ctx, "foreign", &container.Config{Image: "x"},
 		&container.HostConfig{PortBindings: network.PortMap{port: {{HostPort: "25565"}}}}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -152,32 +152,32 @@ func TestReconcilePortBusy(t *testing.T) {
 	if obs.State != "missing" || !strings.Contains(obs.Error, "port is already allocated") || !strings.Contains(obs.Error, "25565") {
 		t.Fatalf("observed = %+v", obs)
 	}
-	// El contenedor que no pudo arrancar se borra: Docker lo arrancaría después sin publicar el puerto.
+	// The container that could not start is deleted: Docker would start it later without publishing the port.
 	if routerContainer(t, fake) != nil {
-		t.Fatal("el contenedor fallido no se conserva")
+		t.Fatal("the failed container is not kept")
 	}
-	// Con la misma spec no se reintenta antes de RetryAfter (los eventos del fallo no hacen bucle).
+	// With the same spec it is not retried before RetryAfter (the failure's events do not loop).
 	if obs := m.Reconcile(ctx); obs.Error == "" || calls(fake, "Create mcsm-router") != 1 {
-		t.Fatalf("reintento inmediato: %+v, creados %d", obs, calls(fake, "Create mcsm-router"))
+		t.Fatalf("immediate retry: %+v, created %d", obs, calls(fake, "Create mcsm-router"))
 	}
-	// Pasado RetryAfter con el puerto libre, arranca.
+	// Once RetryAfter has passed with the port free, it starts.
 	_ = fake.Stop(ctx, other, time.Second)
 	now = now.Add(RetryAfter)
 	if obs := m.Reconcile(ctx); obs.State != "running" || obs.Error != "" {
-		t.Fatalf("tras liberar el puerto: %+v", obs)
+		t.Fatalf("after freeing the port: %+v", obs)
 	}
-	// Una spec nueva se intenta al momento, aunque el último intento fallara.
+	// A new spec is tried immediately, even if the last attempt failed.
 	port2 := network.MustParsePort("25570/tcp")
-	other2, _ := fake.Create(ctx, "ajeno2", &container.Config{Image: "x"},
+	other2, _ := fake.Create(ctx, "foreign2", &container.Config{Image: "x"},
 		&container.HostConfig{PortBindings: network.PortMap{port2: {{HostPort: "25570"}}}}, nil)
 	_ = fake.Start(ctx, other2)
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25570})
 	if obs := m.Reconcile(ctx); !strings.Contains(obs.Error, "25570") {
-		t.Fatalf("el 25570 está ocupado: %+v", obs)
+		t.Fatalf("25570 is taken: %+v", obs)
 	}
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25590})
 	if obs := m.Reconcile(ctx); obs.State != "running" || obs.HostPort != 25590 || obs.Error != "" {
-		t.Fatalf("en otro puerto: %+v", obs)
+		t.Fatalf("on another port: %+v", obs)
 	}
 }
 
@@ -193,19 +193,19 @@ func TestReconcileRecreatesOnSpecOrImageChange(t *testing.T) {
 		t.Fatalf("autoscale: %+v", obs)
 	}
 	if _, ok := fake.Containers[first]; ok {
-		t.Fatal("el contenedor anterior se borra")
+		t.Fatal("the previous container is deleted")
 	}
 	if !strings.Contains(strings.Join(fake.Containers[obs.ContainerId].Config.Cmd, " "), "-auto-scale-up") {
-		t.Fatal("el nuevo lleva el autoscale")
+		t.Fatal("the new one carries the autoscale")
 	}
 
-	// Un router de una versión anterior del agente (otra imagen, otro hash) se sustituye.
+	// A router from an earlier agent version (another image, another hash) is replaced.
 	c := fake.Containers[obs.ContainerId]
 	c.Config.Image = "itzg/mc-router:1.0.0"
-	c.Config.Labels[LabelHash] = "obsoleto"
+	c.Config.Labels[LabelHash] = "obsolete"
 	obs = m.Reconcile(ctx)
 	if obs.ContainerId == c.ID || fake.Containers[obs.ContainerId].Config.Image != ImageRef() {
-		t.Fatalf("actualización de imagen: %+v", obs)
+		t.Fatalf("image update: %+v", obs)
 	}
 }
 
@@ -213,7 +213,7 @@ func TestReconcileWithoutSpecRemoves(t *testing.T) {
 	m, fake, _ := newManager(t)
 	ctx := context.Background()
 	if obs := m.Reconcile(ctx); obs.Configured || obs.State != "missing" || len(fake.Calls) != 0 {
-		t.Fatalf("sin spec ni contenedor no se toca Docker: %+v %v", obs, fake.Calls)
+		t.Fatalf("without a spec or container Docker is not touched: %+v %v", obs, fake.Calls)
 	}
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
 	m.Reconcile(ctx)
@@ -222,7 +222,7 @@ func TestReconcileWithoutSpecRemoves(t *testing.T) {
 	}
 	obs := m.Reconcile(ctx)
 	if obs.Configured || obs.State != "missing" || obs.Error != "" || routerContainer(t, fake) != nil {
-		t.Fatalf("tras Clear: %+v", obs)
+		t.Fatalf("after Clear: %+v", obs)
 	}
 }
 
@@ -235,32 +235,32 @@ func TestReconcileNeverTouchesServers(t *testing.T) {
 	_ = m.Clear()
 	m.Reconcile(ctx)
 	if _, ok := fake.Containers[id]; !ok {
-		t.Fatal("el router nunca borra un servidor")
+		t.Fatal("the router never deletes a server")
 	}
 }
 
 func TestReconcileNameConflict(t *testing.T) {
 	m, fake, _ := newManager(t)
 	ctx := context.Background()
-	// Un contenedor del usuario llamado mcsm-router, sin nuestras etiquetas: no se toca.
-	foreign, _ := fake.Create(ctx, "mcsm-router", &container.Config{Image: "otro"}, &container.HostConfig{}, nil)
+	// A user's container named mcsm-router, without our labels: it is not touched.
+	foreign, _ := fake.Create(ctx, "mcsm-router", &container.Config{Image: "other"}, &container.HostConfig{}, nil)
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
 	obs := m.Reconcile(ctx)
 	if !strings.Contains(obs.Error, "mcsm-router") || obs.State != "missing" {
 		t.Fatalf("observed = %+v", obs)
 	}
 	if _, ok := fake.Containers[foreign]; !ok {
-		t.Fatal("el contenedor ajeno sigue")
+		t.Fatal("the foreign container remains")
 	}
 }
 
 func TestApplyValidatesAndRestartKeepsState(t *testing.T) {
 	m, fake, st := newManager(t)
 	if err := m.Apply(&mcsmv1.RouterSpec{HostPort: 0}); err == nil {
-		t.Fatal("puerto 0 inválido")
+		t.Fatal("port 0 invalid")
 	}
 	if sp, _ := st.RouterSpec(); sp != nil {
-		t.Fatal("una spec inválida no se guarda")
+		t.Fatal("an invalid spec is not stored")
 	}
 	if err := m.Apply(&mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true}); err != nil {
 		t.Fatal(err)
@@ -268,17 +268,17 @@ func TestApplyValidatesAndRestartKeepsState(t *testing.T) {
 	if !m.Autoscale() {
 		t.Fatal("autoscale")
 	}
-	// Reinicio del agente: otro Manager sobre el mismo store recuerda la spec y recrea lo que falte.
+	// Agent restart: another Manager over the same store remembers the spec and recreates what is missing.
 	m2 := New(fake, st, Options{Network: "mcsm", ProxySocket: "/srv/minecraft/.mcsm-router/docker.sock"})
 	if !m2.Autoscale() {
-		t.Fatal("el autoscale se carga del store")
+		t.Fatal("the autoscale is loaded from the store")
 	}
 	if obs := m2.Reconcile(context.Background()); obs.State != "running" {
 		t.Fatalf("observed = %+v", obs)
 	}
 	_ = m2.Clear()
 	if m2.Autoscale() {
-		t.Fatal("Clear quita el autoscale")
+		t.Fatal("Clear removes the autoscale")
 	}
 }
 
@@ -291,40 +291,40 @@ func TestReconcileConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 	if n := calls(fake, "Create"); n != 1 {
-		t.Fatalf("creados = %d", n)
+		t.Fatalf("created = %d", n)
 	}
 }
 
-// Docker 29.7.2: si la política de reinicio (o alguien) intentó arrancar el router con el puerto
-// ocupado, los arranques siguientes no publican el puerto. El router se recrea, tanto si lo
-// encuentra parado (lo arrancaría sin puerto) como si ya está en marcha sin él.
+// Docker 29.7.2: if the restart policy (or someone) tried to start the router with the port
+// taken, the following starts do not publish the port. The router is recreated, whether it
+// finds it stopped (it would start it without the port) or already running without it.
 func TestReconcileRecreatesRouterLeftWithoutPorts(t *testing.T) {
 	for _, alreadyRunning := range []bool{false, true} {
 		m, fake, _ := newManager(t)
 		ctx := context.Background()
 		_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
 		first := m.Reconcile(ctx).ContainerId
-		_ = fake.Stop(ctx, first, time.Second) // el host se reinicia
+		_ = fake.Stop(ctx, first, time.Second) // the host restarts
 		port := network.MustParsePort("25565/tcp")
-		other, _ := fake.Create(ctx, "ajeno", &container.Config{Image: "x"},
+		other, _ := fake.Create(ctx, "foreign", &container.Config{Image: "x"},
 			&container.HostConfig{PortBindings: network.PortMap{port: {{HostPort: "25565"}}}}, nil)
 		_ = fake.Start(ctx, other)
-		if err := fake.Start(ctx, first); err == nil { // unless-stopped con el puerto ocupado
-			t.Fatal("el puerto está ocupado")
+		if err := fake.Start(ctx, first); err == nil { // unless-stopped with the port taken
+			t.Fatal("the port is taken")
 		}
 		_ = fake.Stop(ctx, other, time.Second)
 		if alreadyRunning {
-			_ = fake.Start(ctx, first) // la política lo vuelve a intentar: en marcha, sin puerto
+			_ = fake.Start(ctx, first) // the policy tries again: running, without the port
 		}
 		obs := m.Reconcile(ctx)
 		if obs.State != "running" || obs.Error != "" || obs.ContainerId == first {
-			t.Fatalf("en marcha=%v: %+v", alreadyRunning, obs)
+			t.Fatalf("running=%v: %+v", alreadyRunning, obs)
 		}
 		if ins, _ := fake.Inspect(ctx, obs.ContainerId); ins.PortsMissing {
-			t.Fatalf("en marcha=%v: el router nuevo publica el puerto", alreadyRunning)
+			t.Fatalf("running=%v: the new router publishes the port", alreadyRunning)
 		}
 		if _, ok := fake.Containers[first]; ok {
-			t.Fatalf("en marcha=%v: el contaminado se borra", alreadyRunning)
+			t.Fatalf("running=%v: the tainted one is deleted", alreadyRunning)
 		}
 	}
 }
@@ -339,33 +339,33 @@ func TestReconcileWritesAllowDenyFile(t *testing.T) {
 		t.Fatalf("observed = %+v", obs)
 	}
 	if got, _ := os.ReadFile(path); string(got) != `{"global":{"allowlist":[{"name":"amigo"}]}}` {
-		t.Fatalf("fichero = %q", got)
+		t.Fatalf("file = %q", got)
 	}
 	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o644 {
-		t.Fatalf("mc-router (usuario 65532) debe poder leerlo: %v %v", fi, err)
+		t.Fatalf("mc-router (user 65532) must be able to read it: %v %v", fi, err)
 	}
 	if !slices.Equal(obs.Spec.GetAutoscaleAllowPlayers(), []string{"amigo"}) || !obs.Spec.GetAutoscale() {
-		t.Fatalf("la spec aplicada viaja en RouterObserved: %+v", obs.Spec)
+		t.Fatalf("the applied spec travels in RouterObserved: %+v", obs.Spec)
 	}
 	first := obs.ContainerId
 
-	// Otra lista: fichero nuevo y router recreado (mc-router no lo relee).
-	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"amigo", "otro"}})
+	// Another list: new file and recreated router (mc-router does not re-read it).
+	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"friend", "other"}})
 	obs = m.Reconcile(ctx)
-	if got, _ := os.ReadFile(path); !strings.Contains(string(got), "otro") || obs.ContainerId == first {
-		t.Fatalf("fichero = %q, contenedor %s", got, obs.ContainerId)
+	if got, _ := os.ReadFile(path); !strings.Contains(string(got), "other") || obs.ContainerId == first {
+		t.Fatalf("file = %q, container %s", got, obs.ContainerId)
 	}
-	// Si alguien lo borra, la siguiente pasada lo repone (Docker crearía un directorio en su lugar).
+	// If someone deletes it, the next pass restores it (Docker would create a directory in its place).
 	_ = os.Remove(path)
 	m.Reconcile(ctx)
 	if _, err := os.Stat(path); err != nil {
-		t.Fatal("el fichero se repone")
+		t.Fatal("the file is restored")
 	}
-	// Sin lista, el fichero sobra.
+	// Without a list, the file is left over.
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true})
 	m.Reconcile(ctx)
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("sin lista no queda fichero: %v", err)
+		t.Fatalf("without a list no file remains: %v", err)
 	}
 	if c := fake.Containers[m.Reconcile(ctx).ContainerId]; len(c.HostConfig.Binds) != 1 {
 		t.Fatalf("binds = %v", c.HostConfig.Binds)
@@ -379,7 +379,7 @@ func TestReconcileWaitsForTheProxy(t *testing.T) {
 	}
 	defer st.Close()
 	fake := docker.NewFake()
-	m := New(fake, st, Options{Network: "mcsm", ProxySocket: "/x/docker.sock", ProxyReady: func() error { return errors.New("no escucha") }})
+	m := New(fake, st, Options{Network: "mcsm", ProxySocket: "/x/docker.sock", ProxyReady: func() error { return errors.New("not listening") }})
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
 	obs := m.Reconcile(context.Background())
 	if !strings.Contains(obs.Error, "proxy") || routerContainer(t, fake) != nil {
@@ -387,8 +387,8 @@ func TestReconcileWaitsForTheProxy(t *testing.T) {
 	}
 }
 
-// m5: el proxy que empieza a escuchar (Run lo reintenta) despliega el router al momento: la espera de RetryAfter
-// es para no repetir un fallo de Docker con lo mismo, no para un proxy que ya está listo.
+// m5: the proxy that starts listening (Run retries) deploys the router immediately: the RetryAfter wait
+// is to not repeat a Docker failure with the same thing, not for a proxy that is already ready.
 func TestReconcileDeploysAsSoonAsTheProxyListens(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "a.db"))
 	if err != nil {
@@ -396,22 +396,22 @@ func TestReconcileDeploysAsSoonAsTheProxyListens(t *testing.T) {
 	}
 	defer st.Close()
 	fake := docker.NewFake()
-	ready := errors.New("no escucha")
+	ready := errors.New("not listening")
 	m := New(fake, st, Options{Network: "mcsm", ProxySocket: "/x/docker.sock", ProxyReady: func() error { return ready },
 		Now: func() time.Time { return time.UnixMilli(1000) }})
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
 	if obs := m.Reconcile(context.Background()); !strings.Contains(obs.Error, "proxy") {
 		t.Fatalf("observed = %+v", obs)
 	}
-	ready = nil // sin que pase el tiempo
+	ready = nil // without time passing
 	if obs := m.Reconcile(context.Background()); obs.State != "running" || obs.Error != "" {
 		t.Fatalf("observed = %+v", obs)
 	}
 }
 
-// S2: si el proxy no escucha, un router de una versión anterior (el del Plan 8 monta el socket real de Docker) no
-// sigue en marcha: se borra y el error queda en el estado del router. Uno de esta versión (monta el socket del
-// proxy) se deja.
+// S2: if the proxy is not listening, a router of an earlier version (Plan 8's mounts the real Docker socket) does not
+// stay running: it is deleted and the error remains in the router's state. One of this version (it mounts the
+// proxy socket) is left alone.
 func TestProxyNotReadyRemovesAnOldRouter(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "a.db"))
 	if err != nil {
@@ -421,7 +421,7 @@ func TestProxyNotReadyRemovesAnOldRouter(t *testing.T) {
 	fake := docker.NewFake()
 	ctx := context.Background()
 	old, err := fake.Create(ctx, ContainerName, &container.Config{Labels: map[string]string{
-		"mcsm.managed": "true", LabelRouter: "true", LabelHash: "hash-del-plan-8"}},
+		"mcsm.managed": "true", LabelRouter: "true", LabelHash: "plan-8-hash"}},
 		&container.HostConfig{Binds: []string{HostSocket + ":" + HostSocket + ":ro"}}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -429,7 +429,7 @@ func TestProxyNotReadyRemovesAnOldRouter(t *testing.T) {
 	if err := fake.Start(ctx, old); err != nil {
 		t.Fatal(err)
 	}
-	ready := errors.New("no escucha")
+	ready := errors.New("not listening")
 	m := New(fake, st, Options{Network: "mcsm", ProxySocket: "/x/docker.sock", ProxyReady: func() error { return ready }})
 	_ = m.Apply(&mcsmv1.RouterSpec{HostPort: 25565})
 	obs := m.Reconcile(ctx)
@@ -437,16 +437,16 @@ func TestProxyNotReadyRemovesAnOldRouter(t *testing.T) {
 		t.Fatalf("observed = %+v", obs)
 	}
 	if _, ok := fake.Containers[old]; ok {
-		t.Fatal("el router con el socket real de Docker se borra")
+		t.Fatal("the router with Docker's real socket is deleted")
 	}
 
-	// Uno de esta versión (creado con el proxy listo) se queda aunque el proxy deje de escuchar.
+	// One of this version (created with the proxy ready) stays even if the proxy stops listening.
 	ready = nil
-	m.failedAt = time.Time{} // sin esperar a RetryAfter
+	m.failedAt = time.Time{} // without waiting for RetryAfter
 	if obs := m.Reconcile(ctx); obs.State != "running" {
 		t.Fatalf("observed = %+v", obs)
 	}
-	ready = errors.New("no escucha")
+	ready = errors.New("not listening")
 	m.failedAt = time.Time{}
 	if obs := m.Reconcile(ctx); !strings.Contains(obs.Error, "proxy") || obs.State != "running" {
 		t.Fatalf("observed = %+v", obs)

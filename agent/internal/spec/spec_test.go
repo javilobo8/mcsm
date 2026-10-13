@@ -145,7 +145,7 @@ func TestValidation(t *testing.T) {
 		{"port out of range", func(s *Spec, _ *Meta) { s.Ports.Game = 70000 }, "port"},
 		{"invalid proto", func(s *Spec, _ *Meta) { s.Ports.Extra[0].Proto = "icmp" }, "proto"},
 		{"empty rcon", func(s *Spec, _ *Meta) { s.RconPassword = "" }, "rconPassword"},
-		{"invalid restart", func(s *Spec, _ *Meta) { s.RestartPolicy = "always" }, "restartPolicy"},
+		{"invalid restart", func(s *Spec, _ *Meta) { s.RestartPolicy = "sometimes" }, "restartPolicy"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

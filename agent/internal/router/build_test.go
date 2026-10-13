@@ -23,59 +23,59 @@ func build(t *testing.T, sp *mcsmv1.RouterSpec) *Build {
 
 func TestBuildContainer(t *testing.T) {
 	b := build(t, &mcsmv1.RouterSpec{HostPort: 25565})
-	// S1: el contenedor recibe el socket de Docker: la imagen va fijada por digest, no solo por tag.
+	// S1: the container receives the Docker socket: the image is pinned by digest, not just by tag.
 	if b.Name != "mcsm-router" || b.Config.Image != "itzg/mc-router:1.47.1@sha256:177433dd91507339924d60205a19ae9a289afd0e69dbad54e1a55d497f7523f8" || ImageRef() != b.Config.Image {
-		t.Fatalf("nombre/imagen = %s %s", b.Name, b.Config.Image)
+		t.Fatalf("name/image = %s %s", b.Name, b.Config.Image)
 	}
-	// S4: el límite por defecto de mc-router (1 conexión/s, global) hace esperar a varios jugadores.
-	// m5: el cliente de Docker de mc-router va al socket del proxy dentro del directorio montado.
+	// S4: mc-router's default limit (1 connection/s, global) makes several players wait.
+	// m5: mc-router's Docker client goes to the proxy socket inside the mounted directory.
 	if !slices.Equal(b.Config.Cmd, []string{"-in-docker", "-docker-socket", "unix:///run/mcsm/docker.sock", "-port", "25565", "-connection-rate-limit", "10"}) {
 		t.Fatalf("cmd = %v", b.Config.Cmd)
 	}
 	if b.Config.Labels[spec.LabelManaged] != "true" || b.Config.Labels[LabelRouter] != "true" || b.Config.Labels[LabelHash] != b.Hash {
-		t.Fatalf("etiquetas = %v", b.Config.Labels)
+		t.Fatalf("labels = %v", b.Config.Labels)
 	}
 	if _, ok := b.Config.Labels[spec.LabelServerID]; ok {
-		t.Fatal("el router no es un servidor: sin mcsm.server_id")
+		t.Fatal("the router is not a server: no mcsm.server_id")
 	}
 	binds := b.HostConfig.PortBindings
 	if len(binds) != 1 || binds[network.MustParsePort("25565/tcp")][0].HostPort != "25565" {
-		t.Fatalf("puertos = %v", binds)
+		t.Fatalf("ports = %v", binds)
 	}
 	if _, ok := b.Networking.EndpointsConfig["mcsm"]; !ok {
-		t.Fatal("el router va en la red de los servidores")
+		t.Fatal("the router goes on the servers' network")
 	}
 }
 
 func TestBuildContainerHardening(t *testing.T) {
 	h := build(t, &mcsmv1.RouterSpec{HostPort: 25565}).HostConfig
-	// m5: el DIRECTORIO del socket, no el fichero: un socket nuevo (el agente se reinicia) es otro inodo, y con el
-	// fichero montado el router seguiría en el anterior; si faltara al arrancar, Docker crearía un directorio en su
-	// ruta.
+	// m5: the socket's DIRECTORY, not the file: a new socket (the agent restarts) is another inode, and with the
+	// file mounted the router would stay on the old one; if it were missing at boot, Docker would create a directory at its
+	// path.
 	if !slices.Equal(h.Binds, []string{"/srv/minecraft/.mcsm-router:/run/mcsm:ro"}) {
-		t.Fatalf("binds = %v: solo el directorio del socket del proxy del agente, nunca el socket de Docker", h.Binds)
+		t.Fatalf("binds = %v: only the agent proxy's socket directory, never Docker's socket", h.Binds)
 	}
 	if !slices.Equal(h.CapDrop, []string{"ALL"}) || len(h.CapAdd) != 0 {
 		t.Fatalf("caps = %v %v", h.CapDrop, h.CapAdd)
 	}
 	if !slices.Equal(h.SecurityOpt, []string{"no-new-privileges:true"}) || !h.ReadonlyRootfs || h.Privileged {
-		t.Fatalf("seguridad = %v ro=%v priv=%v", h.SecurityOpt, h.ReadonlyRootfs, h.Privileged)
+		t.Fatalf("security = %v ro=%v priv=%v", h.SecurityOpt, h.ReadonlyRootfs, h.Privileged)
 	}
 	if len(h.GroupAdd) != 0 {
-		t.Fatalf("groupAdd = %v: el socket del proxy es del usuario del router", h.GroupAdd)
+		t.Fatalf("groupAdd = %v: the proxy's socket belongs to the router's user", h.GroupAdd)
 	}
 	if h.Resources.Memory != 256<<20 || h.Resources.PidsLimit == nil || *h.Resources.PidsLimit != 256 {
-		t.Fatal("límites de memoria y procesos")
+		t.Fatal("memory and process limits")
 	}
 	if h.RestartPolicy.Name != "unless-stopped" {
 		t.Fatalf("restart = %v", h.RestartPolicy)
 	}
-	// S5: expuesto a la red y registra cada conexión: logs con rotación.
+	// S5: exposed to the network and logs every connection: logs with rotation.
 	if h.LogConfig.Type != "json-file" || h.LogConfig.Config["max-size"] != "10m" || h.LogConfig.Config["max-file"] != "3" {
 		t.Fatalf("logs = %+v", h.LogConfig)
 	}
 	if u := build(t, &mcsmv1.RouterSpec{HostPort: 25565}).Config.User; u != "65532:65532" {
-		t.Fatalf("usuario = %q: no root", u)
+		t.Fatalf("user = %q: not root", u)
 	}
 }
 
@@ -84,41 +84,41 @@ func TestBuildContainerAutoscale(t *testing.T) {
 	joined := strings.Join(cmd, " ")
 	for _, want := range []string{"-auto-scale-up", "-auto-scale-down", "-auto-scale-down-after 10m", "-auto-scale-asleep-motd"} {
 		if !strings.Contains(joined, want) {
-			t.Fatalf("cmd = %v: falta %s", cmd, want)
+			t.Fatalf("cmd = %v: missing %s", cmd, want)
 		}
 	}
 	cmd = build(t, &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleDownAfterMinutes: 30}).Config.Cmd
 	if !strings.Contains(strings.Join(cmd, " "), "-auto-scale-down-after 30m") {
 		t.Fatalf("cmd = %v", cmd)
 	}
-	// Los minutos sin autoscale no cambian nada (ni el hash).
+	// Minutes without autoscale change nothing (nor the hash).
 	a := build(t, &mcsmv1.RouterSpec{HostPort: 25565})
 	b := build(t, &mcsmv1.RouterSpec{HostPort: 25565, AutoscaleDownAfterMinutes: 30})
 	if a.Hash != b.Hash {
-		t.Fatal("sin autoscale, los minutos no cuentan")
+		t.Fatal("without autoscale, the minutes do not count")
 	}
 }
 
 func TestBuildContainerHash(t *testing.T) {
 	base := build(t, &mcsmv1.RouterSpec{HostPort: 25565})
 	if again := build(t, &mcsmv1.RouterSpec{HostPort: 25565}); again.Hash != base.Hash {
-		t.Fatal("el hash debe ser estable")
+		t.Fatal("the hash must be stable")
 	}
 	for name, other := range map[string]*Build{
 		"puerto":    build(t, &mcsmv1.RouterSpec{HostPort: 25570}),
 		"autoscale": build(t, &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true}),
 	} {
 		if other.Hash == base.Hash {
-			t.Errorf("%s debe cambiar el hash", name)
+			t.Errorf("%s must change the hash", name)
 		}
 	}
-	sock, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "mcsm", "/otro/docker.sock", "/srv/minecraft/.mcsm-router")
+	sock, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "mcsm", "/other/docker.sock", "/srv/minecraft/.mcsm-router")
 	if err != nil || sock.Hash == base.Hash {
-		t.Error("la ruta del socket debe cambiar el hash")
+		t.Error("the socket path must change the hash")
 	}
-	net, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "otra", "/srv/minecraft/.mcsm-router/docker.sock", "/srv/minecraft/.mcsm-router")
+	net, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "other", "/srv/minecraft/.mcsm-router/docker.sock", "/srv/minecraft/.mcsm-router")
 	if err != nil || net.Hash == base.Hash {
-		t.Error("la red debe cambiar el hash")
+		t.Error("the network must change the hash")
 	}
 }
 
@@ -129,13 +129,13 @@ func TestValidate(t *testing.T) {
 	}
 	for _, bad := range []*mcsmv1.RouterSpec{nil, {}, {HostPort: 70000}, {HostPort: 25565, AutoscaleDownAfterMinutes: 1441},
 		{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"a b"}},
-		{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"demasiado_largo_17"}},
+		{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"too_long_player_17"}},
 		{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: many}} {
 		if err := Validate(bad); err == nil {
-			t.Errorf("%v debería ser inválida", bad)
+			t.Errorf("%v should be invalid", bad)
 		}
 		if _, err := BuildContainer(bad, ContainerName, "mcsm", "/x/docker.sock", ""); err == nil {
-			t.Errorf("BuildContainer(%v) debería fallar", bad)
+			t.Errorf("BuildContainer(%v) should fail", bad)
 		}
 	}
 	if err := Validate(&mcsmv1.RouterSpec{HostPort: 1, AutoscaleDownAfterMinutes: 1440}); err != nil {
@@ -143,9 +143,9 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-// S3: con autoscale, cualquiera que llegue al puerto despierta servidores. Una lista de jugadores
-// (nombre o UUID) limita quién despierta: mc-router la lee de un fichero (-auto-scale-allow-deny)
-// que el agente escribe en el host y monta de solo lectura.
+// S3: with autoscale, anyone who reaches the port wakes up servers. A list of players
+// (name or UUID) limits who wakes them: mc-router reads it from a file (-auto-scale-allow-deny)
+// that the agent writes on the host and mounts read-only.
 func TestBuildContainerAllowDeny(t *testing.T) {
 	sp := &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"amigo", "0123456789ABCDEF0123456789abcdef"}}
 	b := build(t, sp)
@@ -161,24 +161,24 @@ func TestBuildContainerAllowDeny(t *testing.T) {
 	}
 	other := build(t, &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true, AutoscaleAllowPlayers: []string{"amigo"}})
 	if other.Hash == b.Hash {
-		t.Fatal("cambiar la lista recrea el router (mc-router no relee el fichero)")
+		t.Fatal("changing the list recreates the router (mc-router does not re-read the file)")
 	}
-	// Sin autoscale la lista no cuenta (ni el hash); con autoscale y sin lista, sin fichero.
+	// Without autoscale the list does not count (nor the hash); with autoscale and without a list, no file.
 	plain := build(t, &mcsmv1.RouterSpec{HostPort: 25565})
 	ignored := build(t, &mcsmv1.RouterSpec{HostPort: 25565, AutoscaleAllowPlayers: []string{"amigo"}})
 	if ignored.Hash != plain.Hash || ignored.AllowDeny != nil {
-		t.Fatal("sin autoscale la lista se ignora")
+		t.Fatal("without autoscale the list is ignored")
 	}
 	if open := build(t, &mcsmv1.RouterSpec{HostPort: 25565, Autoscale: true}); open.AllowDeny != nil || len(open.HostConfig.Binds) != 1 {
-		t.Fatalf("sin lista: %+v", open.HostConfig.Binds)
+		t.Fatalf("without a list: %+v", open.HostConfig.Binds)
 	}
 	if _, err := BuildContainer(sp, ContainerName, "mcsm", "/x/docker.sock", ""); err == nil {
-		t.Fatal("con lista hace falta el directorio del host")
+		t.Fatal("with a list the host directory is needed")
 	}
 }
 
 func TestBuildContainerNeedsProxySocket(t *testing.T) {
 	if _, err := BuildContainer(&mcsmv1.RouterSpec{HostPort: 25565}, ContainerName, "mcsm", "", "/x"); err == nil {
-		t.Fatal("sin socket del proxy no hay router")
+		t.Fatal("without the proxy socket there is no router")
 	}
 }
