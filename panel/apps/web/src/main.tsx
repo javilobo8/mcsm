@@ -18,7 +18,7 @@ const onUnauthorized = createUnauthorizedHandler({
 });
 setUnauthorizedHandler(onUnauthorized);
 realtime.onAuthLost(onUnauthorized);
-// Al salir de /login (sesión nueva) se rearma el manejo de 401 y el WebSocket.
+// On leaving /login (new session) the 401 handling and the WebSocket are re-armed.
 router.subscribe("onResolved", () => {
   if (!router.state.location.pathname.startsWith("/login")) { onUnauthorized.reset(); realtime.resume(); }
 });

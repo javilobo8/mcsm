@@ -20,9 +20,9 @@ const getStatus = () => api.get<AuthStatus>("/api/auth/status");
 function RouteError({ error, reset }: ErrorComponentProps) {
   return (
     <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <p className="text-lg font-semibold">Algo ha fallado</p>
-      <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Error inesperado"}</p>
-      <button type="button" className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent" onClick={reset}>Reintentar</button>
+      <p className="text-lg font-semibold">Something went wrong</p>
+      <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Unexpected error"}</p>
+      <button type="button" className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent" onClick={reset}>Retry</button>
     </div>
   );
 }
@@ -44,7 +44,7 @@ export const dashboardRoute = createRoute({ getParentRoute: () => appRoute, path
 export const nodesRoute = createRoute({ getParentRoute: () => appRoute, path: "/nodes", component: NodesPage });
 export const newServerRoute = createRoute({
   getParentRoute: () => appRoute, path: "/servers/new", component: NewServerPage,
-  // plan-3: ?template=<id> abre el asistente con esa plantilla elegida.
+  // plan-3: ?template=<id> opens the wizard with that template chosen.
   validateSearch: parseNewServerSearch,
 });
 export const serverRoute = createRoute({ getParentRoute: () => appRoute, path: "/servers/$serverId", component: ServerPage });

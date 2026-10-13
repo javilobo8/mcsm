@@ -18,34 +18,34 @@ export function LoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!configured && password !== confirm) { setError("Las contraseñas no coinciden"); return; }
+    if (!configured && password !== confirm) { setError("The passwords do not match"); return; }
     setBusy(true); setError(null);
     try {
       await api.post(configured ? "/api/auth/login" : "/api/auth/setup", configured ? { password } : { password, ...(setupTokenRequired ? { setupToken: setupToken.trim() } : {}) });
       await navigate({ href: safeRedirect(redirect) });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Error inesperado");
+      setError(err instanceof ApiError ? err.message : "Unexpected error");
     } finally { setBusy(false); }
   };
 
   return (
     <div className="flex h-full items-center justify-center bg-background text-foreground">
       <Card className="w-full max-w-sm">
-        <CardHeader><CardTitle>{configured ? "Entrar" : "Crea tu contraseña de administrador"}</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{configured ? "Sign in" : "Create your administrator password"}</CardTitle></CardHeader>
         <CardContent>
           <form onSubmit={submit} className="flex flex-col gap-3">
-            <Input type="password" autoFocus autoComplete={configured ? "current-password" : "new-password"} aria-label="Contraseña" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
+            <Input type="password" autoFocus autoComplete={configured ? "current-password" : "new-password"} aria-label="Password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required />
             {!configured && (
-              <Input type="password" autoComplete="new-password" aria-label="Repite la contraseña" placeholder="Repite la contraseña" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
+              <Input type="password" autoComplete="new-password" aria-label="Repeat the password" placeholder="Repeat the password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={8} required />
             )}
             {!configured && setupTokenRequired && (
               <>
-                <Input aria-label="Token de configuración" placeholder="Token de configuración" autoComplete="off" value={setupToken} onChange={(e) => setSetupToken(e.target.value)} required />
-                <p className="text-xs text-muted-foreground">Está en el log del panel: <code>docker compose logs panel</code>.</p>
+                <Input aria-label="Setup token" placeholder="Setup token" autoComplete="off" value={setupToken} onChange={(e) => setSetupToken(e.target.value)} required />
+                <p className="text-xs text-muted-foreground">It is in the panel log: <code>docker compose logs panel</code>.</p>
               </>
             )}
             {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" disabled={busy}>{configured ? "Entrar" : "Guardar y entrar"}</Button>
+            <Button type="submit" disabled={busy}>{configured ? "Sign in" : "Save and sign in"}</Button>
           </form>
         </CardContent>
       </Card>

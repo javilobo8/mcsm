@@ -47,13 +47,13 @@ export function ServerPage() {
     },
   });
 
-  if (q.isPending) return <div className="flex items-center gap-2 p-6 text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Cargando…</div>;
+  if (q.isPending) return <div className="flex items-center gap-2 p-6 text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading…</div>;
   if (q.isError || !q.data) {
     const notFound = q.error instanceof ApiError && q.error.status === 404;
     return (
       <div role="alert" className="flex flex-col items-start gap-2 p-6 text-red-400">
-        <p>{notFound ? "Servidor no encontrado" : `No se pudo cargar el servidor: ${q.error?.message ?? "error desconocido"}`}</p>
-        {!notFound && <Button variant="secondary" size="sm" onClick={() => void q.refetch()}>Reintentar</Button>}
+        <p>{notFound ? "Server not found" : `Could not load the server: ${q.error?.message ?? "unknown error"}`}</p>
+        {!notFound && <Button variant="secondary" size="sm" onClick={() => void q.refetch()}>Retry</Button>}
       </div>
     );
   }
@@ -62,7 +62,7 @@ export function ServerPage() {
   const node = nodes.data?.find((n) => n.id === s.nodeId);
   const nodeOnline = nodes.data ? node?.status === "online" : undefined;
   const applying = s.specVersion !== s.observedSpecVersion;
-  const iv = serverImportView(s); // plan-6: datos fuera de DATA_ROOT; importado aún en su contenedor original
+  const iv = serverImportView(s); // plan-6: data outside DATA_ROOT; imported and still in its original container
 
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -71,45 +71,45 @@ export function ServerPage() {
           <h1 className="text-2xl font-semibold">{s.name}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <StateBadge observed={o} desired={s.desiredState} nodeOnline={nodeOnline} />
-            <span>{node?.name ?? "—"} · puerto {s.spec.ports.game} · {s.spec.type} {s.spec.version} · {s.spec.memory}</span>
-            {applying && nodeOnline !== false && <span role="status" className="flex items-center gap-1 text-amber-400"><Loader2 className="size-3 animate-spin" /> Aplicando v{s.specVersion}… (actual v{s.observedSpecVersion})</span>}
-            {applying && nodeOnline === false && <span className="text-amber-400">v{s.specVersion} pendiente: se aplicará al volver el nodo</span>}
+            <span>{node?.name ?? "—"} · port {s.spec.ports.game} · {s.spec.type} {s.spec.version} · {s.spec.memory}</span>
+            {applying && nodeOnline !== false && <span role="status" className="flex items-center gap-1 text-amber-400"><Loader2 className="size-3 animate-spin" /> Applying v{s.specVersion}… (current v{s.observedSpecVersion})</span>}
+            {applying && nodeOnline === false && <span className="text-amber-400">v{s.specVersion} pending: it will be applied when the node is back online</span>}
           </div>
-          {nodeOnline === false && <p className="mt-2 text-sm text-amber-400">El nodo «{node?.name}» está desconectado: el estado mostrado puede estar desfasado y las acciones no están disponibles.</p>}
+          {nodeOnline === false && <p className="mt-2 text-sm text-amber-400">The node “{node?.name}” is offline: the state shown may be outdated and actions are not available.</p>}
           {o?.error && <p className="mt-2 max-w-3xl rounded-md border border-red-900 bg-red-950/40 p-2 text-sm text-red-300">{o.error}</p>}
           <ImportNotices server={s} />
         </div>
         <div className="flex items-center gap-2">
           <PowerButtons server={s} size="default" nodeOnline={nodeOnline} />
-          <Button variant="ghost" aria-label={`Eliminar ${s.name}`} title="Eliminar servidor" onClick={() => { del.reset(); setDeleteData(false); setConfirmDel(true); }}><Trash2 className="size-4" /></Button>
+          <Button variant="ghost" aria-label={`Delete ${s.name}`} title="Delete server" onClick={() => { del.reset(); setDeleteData(false); setConfirmDel(true); }}><Trash2 className="size-4" /></Button>
         </div>
       </header>
       <MigrationBanner key={s.id} serverId={s.id} />
 
       <GuardedTabs defaultValue="overview">
-        <TabsList><TabsTrigger value="overview">Resumen</TabsTrigger><TabsTrigger value="console">Consola</TabsTrigger><TabsTrigger value="config">Configuración</TabsTrigger>
+        <TabsList><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="console">Console</TabsTrigger><TabsTrigger value="config">Configuration</TabsTrigger>
           {/* ── plan-2 ── */}
           {/* ── plan-3 ── */}
           {/* ── plan-4 ── */}
           <TabsTrigger value="backups">Backups</TabsTrigger>
-          <TabsTrigger value="history">Historial</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
           {/* ── plan-5 ── */}
-          <TabsTrigger value="files">Archivos</TabsTrigger>
+          <TabsTrigger value="files">Files</TabsTrigger>
           {/* ── plan-6 ── */}
           {/* ── plan-7 ── */}
-          <TabsTrigger value="migrate">Migrar</TabsTrigger>
+          <TabsTrigger value="migrate">Migrate</TabsTrigger>
           {/* ── plan-8 ── */}
           {/* ── plan-9 ── */}
         </TabsList>
         <TabsContent value="overview" className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Jugadores" value={o?.mc.online ? `${o.mc.playersOnline} / ${o.mc.playersMax}` : "—"} />
-          <Stat label="Versión detectada" value={o?.mc.version || "—"} />
-          <Stat label="Tiempo encendido" value={o?.state === "running" ? formatUptime(o.startedAtUnix) : "—"} />
-          <Stat label="Latencia" value={o?.mc.online ? `${o.mc.latencyMs} ms` : "—"} />
-          <Stat label="Contenedor" value={<code className="text-sm">{o?.containerId ? o.containerId.slice(0, 12) : "—"}</code>} />
+          <Stat label="Players" value={o?.mc.online ? `${o.mc.playersOnline} / ${o.mc.playersMax}` : "—"} />
+          <Stat label="Detected version" value={o?.mc.version || "—"} />
+          <Stat label="Uptime" value={o?.state === "running" ? formatUptime(o.startedAtUnix) : "—"} />
+          <Stat label="Latency" value={o?.mc.online ? `${o.mc.latencyMs} ms` : "—"} />
+          <Stat label="Container" value={<code className="text-sm">{o?.containerId ? o.containerId.slice(0, 12) : "—"}</code>} />
           <Stat label="Healthcheck" value={o?.health || "—"} />
-          <Stat label="Último exit code" value={o && o.state !== "running" ? o.exitCode : "—"} />
-          <Stat label="Spec" value={applying ? `v${s.specVersion} (aplicando; actual v${s.observedSpecVersion})` : `v${s.specVersion} (aplicada)`} />
+          <Stat label="Last exit code" value={o && o.state !== "running" ? o.exitCode : "—"} />
+          <Stat label="Spec" value={applying ? `v${s.specVersion} (applying; current v${s.observedSpecVersion})` : `v${s.specVersion} (applied)`} />
           <div className="col-span-2 mt-2 md:col-span-4"><ServerCharts key={s.id} serverId={s.id} /></div>
         </TabsContent>
         <TabsContent value="console" key={s.nodeId}><Console key={s.id} serverId={s.id} nodeOnline={nodeOnline} /></TabsContent>
@@ -119,11 +119,11 @@ export function ServerPage() {
         {/* ── plan-4 ── */}
         <TabsContent value="backups">{iv.backups ? <ExternalDataNote text={iv.backups} /> : <BackupsTab key={s.id} server={s} nodeOnline={nodeOnline} />}</TabsContent>
         <TabsContent value="history" className="flex flex-col gap-6">
-          <section aria-label="Eventos del servidor" className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Eventos</h2>
+          <section aria-label="Server events" className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Events</h2>
             <EventList key={s.id} filter={{ serverId: s.id }} showSubject={false} />
           </section>
-          <section aria-label="Jobs del servidor" className="flex flex-col gap-2">
+          <section aria-label="Server jobs" className="flex flex-col gap-2">
             <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Jobs</h2>
             <JobList key={s.id} filter={{ serverId: s.id }} showServer={false} />
           </section>
@@ -140,17 +140,17 @@ export function ServerPage() {
       <Dialog open={confirmDel} onOpenChange={(o) => { if (!del.isPending) setConfirmDel(o); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Eliminar «{s.name}»</DialogTitle>
+            <DialogTitle>Delete “{s.name}”</DialogTitle>
             <DialogDescription>{iv.deleteDescription}</DialogDescription>
           </DialogHeader>
           <label className={`flex items-start gap-2 text-sm${iv.deleteData ? " text-muted-foreground" : ""}`}>
             <input type="checkbox" className="mt-1" disabled={iv.deleteData !== null} checked={deleteData && iv.deleteData === null} onChange={(e) => setDeleteData(e.target.checked)} />
-            <span>{iv.deleteData ?? `Borrar también el mundo y los archivos de «${s.name}» en el nodo. Esta acción no se puede deshacer.`}</span>
+            <span>{iv.deleteData ?? `Also delete the world and files of “${s.name}” on the node. This action cannot be undone.`}</span>
           </label>
-          {del.error && <p role="alert" className="text-sm text-red-400">{del.error instanceof ApiError ? del.error.message : "Error inesperado"}</p>}
+          {del.error && <p role="alert" className="text-sm text-red-400">{del.error instanceof ApiError ? del.error.message : "Unexpected error"}</p>}
           <DialogFooter>
-            <Button variant="ghost" disabled={del.isPending} onClick={() => setConfirmDel(false)}>Cancelar</Button>
-            <Button variant="destructive" disabled={del.isPending} onClick={() => del.mutate()}>{del.isPending ? "Eliminando…" : deleteData && iv.deleteData === null ? "Eliminar con datos" : "Eliminar"}</Button>
+            <Button variant="ghost" disabled={del.isPending} onClick={() => setConfirmDel(false)}>Cancel</Button>
+            <Button variant="destructive" disabled={del.isPending} onClick={() => del.mutate()}>{del.isPending ? "Deleting…" : deleteData && iv.deleteData === null ? "Delete with data" : "Delete"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

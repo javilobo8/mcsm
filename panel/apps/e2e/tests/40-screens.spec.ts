@@ -1,21 +1,21 @@
 import { expect, test } from "@playwright/test";
 import { NODE_A, nodeId, poll, shot, watchCsp, watchForbidden } from "./helpers";
 
-test("rotación real de un token y capturas de las pantallas pendientes de revisión visual", async ({ page, request }) => {
+test("real token rotation and screenshots of the screens pending visual review", async ({ page, request }) => {
   const csp = watchCsp(page);
   const forbidden = watchForbidden(page);
   const a = await nodeId(request, NODE_A);
 
-  // Rotación de token contra el agente real: vuelve a conectar con el nuevo y deja de estar pendiente.
+  // Token rotation against the real agent: it reconnects with the new one and is no longer pending.
   const rot = await request.post(`/api/nodes/${a}/rotate-token`);
   expect(rot.status()).toBe(200);
   await poll(async () => {
     const n = ((await (await request.get("/api/nodes")).json()) as { id: string; status: string; tokenRotationPending: boolean }[]).find((x) => x.id === a);
     return n?.status === "online" && !n.tokenRotationPending;
-  }, "el nodo A con el token nuevo", 60_000);
+  }, "node A with the new token", 60_000);
 
   await page.goto("/");
-  await expect(page.getByRole("group", { name: "Uso del nodo" }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("group", { name: "Node usage" }).first()).toBeVisible({ timeout: 60_000 });
   await shot(page, "11-panel-tarjetas-nodo");
 
   await page.goto("/nodes");
@@ -23,7 +23,7 @@ test("rotación real de un token y capturas de las pantallas pendientes de revis
   await shot(page, "12-nodos-router");
 
   await page.goto(`/nodes/${a}`);
-  await expect(page.getByText(/Sin datos en este rango/)).toBeHidden({ timeout: 60_000 });
+  await expect(page.getByText(/No data in this range/)).toBeHidden({ timeout: 60_000 });
   await expect(page.locator("canvas").first()).toBeVisible();
   await shot(page, "13-nodo-detalle");
 
@@ -32,7 +32,7 @@ test("rotación real de un token y capturas de las pantallas pendientes de revis
   await shot(page, "14-importar");
 
   await page.goto("/settings");
-  await expect(page.getByLabel("Desde")).toHaveValue("26600");
+  await expect(page.getByLabel("From")).toHaveValue("26600");
   await shot(page, "15-ajustes");
 
   await page.goto("/events");

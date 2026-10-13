@@ -10,7 +10,7 @@ import { typeLabel } from "@/lib/spec-catalog";
 import { useTemplates } from "@/hooks/use-templates";
 import { useServers } from "@/hooks/use-servers";
 
-/** Página Plantillas: lista, crear, editar, duplicar, borrar y "crear servidor desde plantilla". */
+/** Templates page: list, create, edit, duplicate, delete and "create server from template". */
 export function TemplatesPage() {
   const templates = useTemplates();
   const servers = useServers();
@@ -34,17 +34,17 @@ export function TemplatesPage() {
   return (
     <div className="flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Plantillas</h1>
-        <Button asChild><Link to="/templates/new"><Plus className="size-4" /> Nueva plantilla</Link></Button>
+        <h1 className="text-xl font-semibold">Templates</h1>
+        <Button asChild><Link to="/templates/new"><Plus className="size-4" /> New template</Link></Button>
       </div>
-      <p className="text-sm text-muted-foreground">Una plantilla guarda toda la configuración de un servidor salvo nombre, puertos y contraseña RCON. Créalas desde cero o con «Guardar como plantilla» en la configuración de un servidor.</p>
-      {templates.isError && <p role="alert" className="text-sm text-red-400">No se pudieron cargar las plantillas: {templates.error.message}</p>}
-      {actionError && <p role="alert" className="text-sm text-red-400">{actionError instanceof ApiError ? actionError.message : "Error inesperado"}</p>}
+      <p className="text-sm text-muted-foreground">A template stores all of a server's configuration except name, ports and RCON password. Create them from scratch or with “Save as template” in a server's configuration.</p>
+      {templates.isError && <p role="alert" className="text-sm text-red-400">Could not load the templates: {templates.error.message}</p>}
+      {actionError && <p role="alert" className="text-sm text-red-400">{actionError instanceof ApiError ? actionError.message : "Unexpected error"}</p>}
       <Table>
-        <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Tipo</TableHead><TableHead>Memoria</TableHead><TableHead>Origen</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+        <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Type</TableHead><TableHead>Memory</TableHead><TableHead>Source</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
         <TableBody>
-          {templates.isPending && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Cargando plantillas…</TableCell></TableRow>}
-          {templates.data?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Aún no hay plantillas.</TableCell></TableRow>}
+          {templates.isPending && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Loading templates…</TableCell></TableRow>}
+          {templates.data?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No templates yet.</TableCell></TableRow>}
           {templates.data?.map((t) => (
             <TableRow key={t.id} data-testid={`template-row-${t.id}`}>
               <TableCell>
@@ -53,13 +53,13 @@ export function TemplatesPage() {
               </TableCell>
               <TableCell>{typeLabel(t.spec.type)} {t.spec.version}{t.spec.modpack ? ` · ${t.spec.modpack.slugOrUrl}` : ""}</TableCell>
               <TableCell>{t.spec.memory}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">{t.sourceServerId ? `«${serverName(t.sourceServerId) ?? "servidor"}»` : "—"}</TableCell>
+              <TableCell className="text-sm text-muted-foreground">{t.sourceServerId ? `“${serverName(t.sourceServerId) ?? "server"}”` : "—"}</TableCell>
               <TableCell>
                 <div className="flex justify-end gap-1">
-                  <Button asChild size="sm"><Link to="/servers/new" search={{ template: t.id }}><Rocket className="size-4" /> Crear servidor</Link></Button>
-                  <Button asChild size="icon" variant="ghost" aria-label={`Editar ${t.name}`}><Link to="/templates/$templateId" params={{ templateId: t.id }}><Pencil className="size-4" /></Link></Button>
-                  <Button size="icon" variant="ghost" aria-label={`Duplicar ${t.name}`} disabled={duplicate.isPending} onClick={() => duplicate.mutate(t.id)}><Copy className="size-4" /></Button>
-                  <Button size="icon" variant="ghost" aria-label={`Borrar ${t.name}`} onClick={() => { del.reset(); setToDelete(t); }}><Trash2 className="size-4" /></Button>
+                  <Button asChild size="sm"><Link to="/servers/new" search={{ template: t.id }}><Rocket className="size-4" /> Create server</Link></Button>
+                  <Button asChild size="icon" variant="ghost" aria-label={`Edit ${t.name}`}><Link to="/templates/$templateId" params={{ templateId: t.id }}><Pencil className="size-4" /></Link></Button>
+                  <Button size="icon" variant="ghost" aria-label={`Duplicate ${t.name}`} disabled={duplicate.isPending} onClick={() => duplicate.mutate(t.id)}><Copy className="size-4" /></Button>
+                  <Button size="icon" variant="ghost" aria-label={`Delete ${t.name}`} onClick={() => { del.reset(); setToDelete(t); }}><Trash2 className="size-4" /></Button>
                 </div>
               </TableCell>
             </TableRow>
@@ -70,13 +70,13 @@ export function TemplatesPage() {
       <Dialog open={toDelete !== null} onOpenChange={(o) => { if (!o && !del.isPending) setToDelete(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Borrar la plantilla «{toDelete?.name}»</DialogTitle>
-            <DialogDescription>Los servidores creados con ella no se ven afectados.</DialogDescription>
+            <DialogTitle>Delete the template “{toDelete?.name}”</DialogTitle>
+            <DialogDescription>Servers created from it are not affected.</DialogDescription>
           </DialogHeader>
-          {del.error && <p role="alert" className="text-sm text-red-400">{del.error instanceof ApiError ? del.error.message : "Error inesperado"}</p>}
+          {del.error && <p role="alert" className="text-sm text-red-400">{del.error instanceof ApiError ? del.error.message : "Unexpected error"}</p>}
           <DialogFooter>
-            <Button variant="ghost" disabled={del.isPending} onClick={() => setToDelete(null)}>Cancelar</Button>
-            <Button variant="destructive" disabled={del.isPending} onClick={() => toDelete && del.mutate(toDelete.id)}>{del.isPending ? "Borrando…" : "Borrar"}</Button>
+            <Button variant="ghost" disabled={del.isPending} onClick={() => setToDelete(null)}>Cancel</Button>
+            <Button variant="destructive" disabled={del.isPending} onClick={() => toDelete && del.mutate(toDelete.id)}>{del.isPending ? "Deleting…" : "Delete"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

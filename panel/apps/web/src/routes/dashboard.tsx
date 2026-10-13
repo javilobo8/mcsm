@@ -17,16 +17,16 @@ export function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <section aria-label="Nodos" className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        {nodes.isPending && <Card><CardContent className="p-4 text-sm text-muted-foreground">Cargando nodos…</CardContent></Card>}
-        {nodes.isError && <Card><CardContent role="alert" className="p-4 text-sm text-red-400">No se pudieron cargar los nodos: {nodes.error.message}</CardContent></Card>}
+      <section aria-label="Nodes" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        {nodes.isPending && <Card><CardContent className="p-4 text-sm text-muted-foreground">Loading nodes…</CardContent></Card>}
+        {nodes.isError && <Card><CardContent role="alert" className="p-4 text-sm text-red-400">Could not load the nodes: {nodes.error.message}</CardContent></Card>}
         {nodes.data?.map((n) => (
           <Card key={n.id} className={n.status === "online" ? "border-emerald-900" : "border-zinc-800 opacity-70"}>
             <CardContent className="flex flex-col gap-3 p-4">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <div className="truncate font-medium">{n.name}</div>
-                  <div className="text-xs text-zinc-400">{n.status === "online" ? `Agente ${n.agentVersion ?? "?"} · Docker ${n.dockerVersion ?? "?"}` : "Desconectado"}</div>
+                  <div className="text-xs text-zinc-400">{n.status === "online" ? `Agent ${n.agentVersion ?? "?"} · Docker ${n.dockerVersion ?? "?"}` : "Offline"}</div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1 text-xs text-zinc-400"><Cpu className="size-3" /> {n.hostInfo?.cpus ?? "?"} CPU · {formatBytes(n.hostInfo?.memTotalBytes ?? 0)}</div>
               </div>
@@ -34,22 +34,22 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         ))}
-        {nodes.data?.length === 0 && <Card><CardContent className="p-4 text-sm text-zinc-400">Aún no hay nodos. <Link to="/nodes" className="underline">Añade el primero</Link>.</CardContent></Card>}
+        {nodes.data?.length === 0 && <Card><CardContent className="p-4 text-sm text-zinc-400">No nodes yet. <Link to="/nodes" className="underline">Add the first one</Link>.</CardContent></Card>}
       </section>
 
-      <section aria-label="Servidores">
-        <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-zinc-400">Servidores</h2>
-        {servers.isError && <p role="alert" className="mb-2 text-sm text-red-400">No se pudieron cargar los servidores: {servers.error.message}</p>}
+      <section aria-label="Servers">
+        <h2 className="mb-2 text-sm font-medium uppercase tracking-wide text-zinc-400">Servers</h2>
+        {servers.isError && <p role="alert" className="mb-2 text-sm text-red-400">Could not load the servers: {servers.error.message}</p>}
         <Table>
-          <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Estado</TableHead><TableHead>Jugadores</TableHead><TableHead>Versión</TableHead><TableHead>Nodo</TableHead><TableHead>Puerto</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Players</TableHead><TableHead>Version</TableHead><TableHead>Node</TableHead><TableHead>Port</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
           <TableBody>
-            {servers.isPending && <TableRow><TableCell colSpan={7} className="text-center text-zinc-400">Cargando servidores…</TableCell></TableRow>}
+            {servers.isPending && <TableRow><TableCell colSpan={7} className="text-center text-zinc-400">Loading servers…</TableCell></TableRow>}
             {servers.data?.map((s) => (
               <TableRow key={s.id} data-testid={`server-row-${s.slug}`}>
                 <TableCell><Link to="/servers/$serverId" params={{ serverId: s.id }} className="font-medium hover:underline">{s.name}</Link><div className="text-xs text-zinc-500">{s.slug}</div></TableCell>
                 <TableCell>
                   <StateBadge observed={s.observed} desired={s.desiredState} nodeOnline={nodeOnline(s.nodeId)} />
-                  {s.observedSpecVersion !== s.specVersion && <span className="ml-2 text-xs text-amber-400">aplicando v{s.specVersion}…</span>}
+                  {s.observedSpecVersion !== s.specVersion && <span className="ml-2 text-xs text-amber-400">applying v{s.specVersion}…</span>}
                 </TableCell>
                 <TableCell>{s.observed?.mc.online ? <span className="flex items-center gap-1"><Users className="size-3" /> {s.observed.mc.playersOnline}/{s.observed.mc.playersMax}</span> : <span className="text-zinc-500">—</span>}</TableCell>
                 <TableCell>{s.observed?.mc.version || `${s.spec.type} ${s.spec.version}`}</TableCell>
@@ -58,7 +58,7 @@ export function DashboardPage() {
                 <TableCell><PowerButtons server={s} nodeOnline={nodeOnline(s.nodeId)} /></TableCell>
               </TableRow>
             ))}
-            {servers.data?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-zinc-400">No hay servidores. <Link to="/servers/new" className="underline">Crea el primero</Link>.</TableCell></TableRow>}
+            {servers.data?.length === 0 && <TableRow><TableCell colSpan={7} className="text-center text-zinc-400">No servers. <Link to="/servers/new" className="underline">Create the first one</Link>.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </section>
