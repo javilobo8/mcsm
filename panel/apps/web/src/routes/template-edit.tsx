@@ -10,7 +10,7 @@ import { SpecForm, type SpecFormErrors } from "@/components/spec-form/spec-form"
 import { Field } from "@/components/spec-form/fields";
 import { api, apiPath, ApiError, type TemplateDto } from "@/lib/api";
 import { editableFromTemplate, validateSpec, type EditableSpec } from "@/lib/spec-edit";
-import { templateCreateBody, templatePatchBody, templateSaveBlock } from "@/lib/template-edit";
+import { REMOVE_SCHEDULE_PATCH, templateCreateBody, templatePatchBody, templateSaveBlock } from "@/lib/template-edit";
 import { scheduleSummary } from "@/lib/backups";
 import { useTemplate } from "@/hooks/use-templates";
 
@@ -34,6 +34,11 @@ function TemplateEditor({ template }: { template?: TemplateDto }) {
     },
   });
 
+  const removeSchedule = useMutation({
+    mutationFn: (id: string) => api.patch<TemplateDto>(apiPath`/api/templates/${id}`, REMOVE_SCHEDULE_PATCH),
+    onSuccess: (t) => { qc.setQueryData(["template", t.id], t); void qc.invalidateQueries({ queryKey: ["templates"] }); },
+  });
+
   // La programación de copias viaja en la plantilla pero no se edita aquí (el editor solo envía FORM_KEYS).
   const schedule = scheduleSummary(template?.spec.backups);
   const blocked = templateSaveBlock(name, errors);
@@ -50,7 +55,13 @@ function TemplateEditor({ template }: { template?: TemplateDto }) {
       <Field id="tpl-name" label="Nombre de la plantilla"><Input id="tpl-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></Field>
       <Field id="tpl-desc" label="Descripción (opcional)"><Textarea id="tpl-desc" rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
       <p className="text-xs text-muted-foreground">Las plantillas no guardan puertos ni contraseña RCON: el panel los asigna al crear cada servidor.</p>
-      {schedule && <p className="text-xs text-muted-foreground" data-testid="tpl-backups">Copias automáticas: {schedule}. Cada servidor creado con la plantilla las hereda; se cambian en su pestaña Backups.</p>}
+      {schedule && template && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-testid="tpl-backups">
+          <span>Copias automáticas: {schedule}. Cada servidor creado con la plantilla las hereda; se cambian en su pestaña Backups.</span>
+          <Button type="button" size="sm" variant="ghost" disabled={removeSchedule.isPending} onClick={() => removeSchedule.mutate(template.id)}>Quitar copias automáticas</Button>
+          {removeSchedule.error && <span role="alert" className="text-red-400">{removeSchedule.error instanceof ApiError ? removeSchedule.error.message : "Error inesperado"}</span>}
+        </div>
+      )}
     </div>
   );
   const err = localErr ?? (save.error instanceof ApiError ? save.error.message : save.error ? "Error inesperado" : null);

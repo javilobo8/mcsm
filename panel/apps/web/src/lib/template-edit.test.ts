@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput } from "@mcsm/shared";
 import { editableFromTemplate } from "./spec-edit";
-import { templateCreateBody, templatePatchBody, templateSaveBlock } from "./template-edit";
+import { REMOVE_SCHEDULE_PATCH, templateCreateBody, templatePatchBody, templateSaveBlock } from "./template-edit";
 
 describe("templateSaveBlock", () => {
   it("exige nombre", () => {
@@ -33,4 +33,8 @@ describe("cuerpos de plantilla", () => {
     expect(b.spec).toEqual({ memory: "4G", mods: null });
     expect(b.spec).not.toHaveProperty("ports");
   });
+});
+
+it("quitar la programación de una plantilla es un PATCH con backups: null", () => {
+  expect(REMOVE_SCHEDULE_PATCH).toEqual({ spec: { backups: null } });
 });

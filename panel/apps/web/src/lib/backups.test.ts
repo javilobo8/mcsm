@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError, type BackupDto, type JobDto } from "./api";
 import { backupsSchema } from "@mcsm/shared";
-import { backupActions, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, restoreDialogText, scheduleSummary, scheduleToForm, templateScheduleNote, toggleBusyReason } from "./backups";
+import { backupActions, keepIdempotencyKey, parseRetention, resyncSchedule, deleteDialogText, formatBackupDate, formToSchedule, presetFor, restoreDialogText, scheduleSummary, scheduleToForm, templateScheduleNote, toggleBusyReason, scheduleDirty, scheduleLeaveWarning } from "./backups";
 
 const base: BackupDto = {
   id: "b1", serverId: "s1", nodeId: "n1", filename: "x.tar.zst", sizeBytes: 1, sha256: "", specVersion: 1,
@@ -142,5 +142,15 @@ describe("templateScheduleNote («Guardar como plantilla»)", () => {
   });
   it("sin programación, nada", () => {
     expect(templateScheduleNote(undefined)).toBeNull();
+  });
+});
+
+describe("guarda de la programación", () => {
+  it("sucio si cambia cualquier campo; aviso propio", () => {
+    const base = scheduleToForm(undefined);
+    expect(scheduleDirty(base, { ...base })).toBe(false);
+    expect(scheduleDirty({ ...base, cron: "0 5 * * *" }, base)).toBe(true);
+    expect(scheduleLeaveWarning(false)).toBeNull();
+    expect(scheduleLeaveWarning(true)?.title).toBe("Programación sin guardar");
   });
 });

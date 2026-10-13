@@ -1,5 +1,6 @@
 import { backupsSchema, type BackupsConfig } from "@mcsm/shared";
 import { ApiError, type BackupDto, type JobDto } from "./api";
+import type { GuardText } from "./tab-guard";
 
 export const CRON_PRESETS = [
   { value: "daily", label: "Cada día a las 4:00", cron: "0 4 * * *" },
@@ -54,6 +55,16 @@ export function parseRetention(s: string): number | null {
   const t = s.trim();
   if (t === "") return 0;
   return /^\d+$/.test(t) ? Number(t) : null;
+}
+
+export function scheduleDirty(f: ScheduleForm, base: ScheduleForm): boolean {
+  return JSON.stringify(f) !== JSON.stringify(base);
+}
+
+export function scheduleLeaveWarning(dirty: boolean): GuardText | null {
+  return dirty
+    ? { title: "Programación sin guardar", description: "Hay cambios sin guardar en la programación de copias. Si sales, se perderán.", confirmLabel: "Descartar y salir" }
+    : null;
 }
 
 const sameForm = (a: ScheduleForm, b: ScheduleForm) => JSON.stringify(a) === JSON.stringify(b);
