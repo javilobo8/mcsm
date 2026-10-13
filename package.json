@@ -8,6 +8,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "dev:api": "pnpm --filter @mcsm/api dev",
-    "dev:web": "pnpm --filter @mcsm/web dev"
+    "dev:web": "pnpm --filter @mcsm/web dev",
+    "e2e": "bash deploy/e2e/run.sh"
   }
 }

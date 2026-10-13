@@ -1,0 +1,15 @@
+{
+  "name": "@mcsm/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "^26.0.0",
+    "typescript": "^5.9.0"
+  }
+}

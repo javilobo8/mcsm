@@ -1,7 +1,7 @@
-ARG NODE_VERSION=26.11.1
 ARG PNPM_VERSION=12.10.1
 
-FROM node:${NODE_VERSION}-alpine AS build
+# Imagen base fijada por digest (L11). Para actualizarla: docker buildx imagetools inspect node:<versión>-alpine.
+FROM node:26.11.1-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS build
 ARG PNPM_VERSION
 RUN npm install -g pnpm@${PNPM_VERSION}
 WORKDIR /app
@@ -15,7 +15,7 @@ RUN pnpm install --frozen-lockfile --prod --filter "@mcsm/api..."
 # Fuera lo que no hace falta en ejecución: tests, fuentes de la web y fixtures.
 RUN rm -rf panel/apps/api/test panel/apps/web/src proto
 
-FROM node:${NODE_VERSION}-alpine
+FROM node:26.11.1-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a
 WORKDIR /app
 COPY --from=build /app /app
 RUN mkdir -p /data && chown node:node /data
