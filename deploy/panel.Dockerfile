@@ -19,7 +19,10 @@ FROM node:26.11.1-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384
 WORKDIR /app
 COPY --from=build /app /app
 RUN mkdir -p /data && chown node:node /data
-ENV NODE_ENV=production PORT=8080 DATA_DIR=/data WEB_DIST=/app/panel/apps/web/dist
+# Imagen del agente en el `docker run` de «Añadir nodo». La release la fija a ghcr.io/<dueño>/mcsm-agent:<versión>;
+# en una build local es la del agente construido a mano. MCSM_AGENT_IMAGE la cambia al arrancar.
+ARG AGENT_IMAGE=mcsm-agent:latest
+ENV NODE_ENV=production PORT=8080 DATA_DIR=/data WEB_DIST=/app/panel/apps/web/dist MCSM_AGENT_IMAGE=${AGENT_IMAGE}
 VOLUME ["/data"]
 EXPOSE 8080
 USER node

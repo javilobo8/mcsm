@@ -16,7 +16,7 @@ const dataRootSchema = z
 const SHELL_SAFE = /^[A-Za-z0-9._/:=@%+,-]+$/;
 export const shellArg = (v: string): string => (SHELL_SAFE.test(v) ? v : `'${v.replace(/'/g, `'\\''`)}'`);
 
-export function dockerRunSnippet(publicUrl: string, token: string, dataRoot = "/srv/minecraft"): string {
+export function dockerRunSnippet(publicUrl: string, token: string, dataRoot = "/srv/minecraft", image = "mcsm-agent:latest"): string {
   return [
     "docker network create mcsm 2>/dev/null || true",
     // --stop-timeout: docker stop mata a los 10 s; al pararse, el agente espera a la vez, hasta 25 s,
@@ -30,7 +30,7 @@ export function dockerRunSnippet(publicUrl: string, token: string, dataRoot = "/
     `  -e PANEL_URL=${shellArg(publicUrl)} \\`,
     `  -e ENROLL_TOKEN=${shellArg(token)} \\`,
     `  -e DATA_ROOT=${shellArg(dataRoot)} \\`,
-    "  mcsm-agent:latest",
+    `  ${shellArg(image)}`,
   ].join("\n");
 }
 
@@ -48,7 +48,7 @@ export async function nodeRoutes(app: FastifyInstance) {
     // req.host conserva el puerto (req.hostname no): sin él el agente no conectaría.
     const publicUrl = app.settings.publicUrl() || `http://${req.host}`;
     const { token, expiresAt } = repo.createEnrollmentToken(body.data.nameHint, app.config.enrollTtlSeconds, body.data.dataRoot);
-    return { token, expiresAt, dockerRun: dockerRunSnippet(publicUrl, token, body.data.dataRoot) };
+    return { token, expiresAt, dockerRun: dockerRunSnippet(publicUrl, token, body.data.dataRoot, app.config.agentImage) };
   });
 
   app.patch<{ Params: { id: string } }>("/api/nodes/:id", async (req, reply) => {
