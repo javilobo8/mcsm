@@ -1,15 +1,24 @@
-import { isSessionExpired } from "./session";
+import { createUnauthorizedGate, isSessionExpired } from "./session";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); this.name = "ApiError"; }
 }
 
 let unauthorizedHandler: (() => void) | null = null;
+const gate = createUnauthorizedGate(() => unauthorizedHandler?.());
+
+/**
+ * Retiene los 401 REST mientras una mutación cambia la sesión (cambio de contraseña): los de peticiones en vuelo
+ * van con la cookie vieja. Devuelve la función que suelta la retención con el resultado de la mutación y dice si
+ * hubo un 401 que, tras un éxito, obliga a invalidar las consultas ("invalidate").
+ */
+export const holdUnauthorized = () => gate.hold();
+
 /** Registra qué hacer cuando la API responde 401 con la sesión caducada. */
 export function setUnauthorizedHandler(h: (() => void) | null) { unauthorizedHandler = h; }
 
 /** Para peticiones que no pasan por `request` (subidas con XHR): mismo tratamiento del 401. */
-export function reportStatus(status: number, path: string) { if (isSessionExpired(status, path)) unauthorizedHandler?.(); }
+export function reportStatus(status: number, path: string) { if (isSessionExpired(status, path)) gate.report(); }
 
 export function errorMessage(status: number, statusText: string, data: unknown): string {
   const msg = (data as { error?: unknown } | null)?.error;
@@ -33,7 +42,7 @@ async function request<T>(method: string, path: string, body?: unknown, extraHea
   if (res.status === 204) return undefined as T;
   const data: unknown = await res.json().catch(() => null);
   if (!res.ok) {
-    if (isSessionExpired(res.status, path)) unauthorizedHandler?.();
+    if (isSessionExpired(res.status, path)) gate.report();
     throw new ApiError(res.status, errorMessage(res.status, res.statusText, data));
   }
   return data as T;

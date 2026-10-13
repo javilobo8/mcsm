@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, errorMessage } from "./api";
-import { createUnauthorizedHandler, isSessionExpired, loginRedirectFor, safeRedirect, shouldRetry } from "./session";
+import { createUnauthorizedGate, createUnauthorizedHandler, isSessionExpired, loginRedirectFor, resolveHeld401, safeRedirect, shouldRetry } from "./session";
 import { formatBytes, stateLabel } from "./format";
 
 describe("401 global", () => {
@@ -59,5 +59,48 @@ describe("format", () => {
     expect(stateLabel(o(""), "running").text).toBe("En marcha");
     expect(stateLabel(o("starting"), "running").text).toBe("Arrancando");
     expect(stateLabel(o("healthy"), "running").text).toBe("En marcha");
+  });
+});
+
+describe("401 REST durante un cambio de sesión", () => {
+  it("decisión pura al soltar la retención", () => {
+    expect(resolveHeld401(false, true)).toBe("none");
+    expect(resolveHeld401(false, false)).toBe("none");
+    expect(resolveHeld401(true, true)).toBe("invalidate");
+    expect(resolveHeld401(true, false)).toBe("unauthorized");
+  });
+
+  it("sin retención el 401 se notifica al momento", () => {
+    const fire = vi.fn();
+    createUnauthorizedGate(fire).report();
+    expect(fire).toHaveBeenCalledTimes(1);
+  });
+
+  it("con retención no se notifica; con éxito pide invalidar y con fallo notifica", () => {
+    const fire = vi.fn();
+    const gate = createUnauthorizedGate(fire);
+    const release = gate.hold();
+    gate.report();
+    expect(fire).not.toHaveBeenCalled();
+    expect(release(true)).toBe("invalidate");
+    expect(fire).not.toHaveBeenCalled();
+
+    const release2 = gate.hold();
+    gate.report();
+    expect(release2(false)).toBe("unauthorized");
+    expect(fire).toHaveBeenCalledTimes(1);
+    gate.report(); // ya sin retención
+    expect(fire).toHaveBeenCalledTimes(2);
+  });
+
+  it("retenciones solapadas deciden al soltar la última", () => {
+    const fire = vi.fn();
+    const gate = createUnauthorizedGate(fire);
+    const a = gate.hold(); const b = gate.hold();
+    gate.report();
+    expect(a(false)).toBe("none");
+    expect(b(true)).toBe("invalidate");
+    expect(a(true)).toBe("none"); // soltar dos veces no cuenta
+    expect(fire).not.toHaveBeenCalled();
   });
 });

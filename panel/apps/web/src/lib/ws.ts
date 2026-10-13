@@ -62,7 +62,11 @@ export class Realtime {
   private everOpened = false;
   private authLost = false;
   private current: SocketLike | null = null;
-  private expecting = false;
+  /** Cambios de sesión en curso (pueden solaparse) y si alguno del lote terminó bien. */
+  private expecting = 0;
+  private batchOk = false;
+  /** Sube con cada settle(true): una comprobación de sesión lanzada antes ya no vale (cookie vieja). */
+  private generation = 0;
   private sawAuthClose = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -101,9 +105,10 @@ export class Realtime {
       if (this.handlers.size === 0) return;
       if (!opened) {
         // El upgrade pudo fallar por 401: lo confirmamos antes de reintentar.
+        const gen = this.generation;
         void this.deps.checkAuthenticated().then(
-          (ok) => (ok ? this.scheduleRetry() : this.authFailed()),
-          () => this.scheduleRetry(),
+          (ok) => { if (gen === this.generation) { if (ok) this.scheduleRetry(); else this.authFailed(); } },
+          () => { if (gen === this.generation) this.scheduleRetry(); },
         );
         return;
       }
@@ -125,7 +130,7 @@ export class Realtime {
 
   /** Sesión rechazada: mientras se cambia a propósito (contraseña) solo se anota; lo decide `expectSessionChange`. */
   private authFailed() {
-    if (this.expecting) { this.sawAuthClose = true; return; }
+    if (this.expecting > 0) { this.sawAuthClose = true; return; }
     this.loseAuth();
   }
 
@@ -134,13 +139,22 @@ export class Realtime {
    * sesión perdida. Devuelve la función a llamar al terminar con `true` (éxito) o `false` (fallo).
    */
   expectSessionChange(): (ok: boolean) => void {
-    this.expecting = true; this.sawAuthClose = false;
+    if (this.expecting === 0) { this.sawAuthClose = false; this.batchOk = false; }
+    this.expecting++;
+    let settled = false;
     return (ok) => {
-      const action = settleSessionChange(this.sawAuthClose, ok);
-      this.expecting = false; this.sawAuthClose = false;
-      if (action === "lose") return this.loseAuth();
-      if (action !== "reconnect" || this.authLost) return;
+      if (settled) return;
+      settled = true;
+      this.expecting--;
+      if (ok) this.batchOk = true;
+      const last = this.expecting === 0;
+      const saw = this.sawAuthClose;
+      if (last) { this.sawAuthClose = false; }
+      // Con solapes, la sesión solo se da por perdida al acabar el último y si ninguno del lote tuvo éxito.
+      if (last && !this.batchOk && settleSessionChange(saw, false) === "lose") return this.loseAuth();
+      if (!ok || this.authLost) return;
       // La cookie nueva ya está puesta: se abre un socket nuevo y el viejo (si sigue) se descarta sin escuchar su cierre.
+      this.generation++;
       const old = this.current;
       if (old) { old.onopen = old.onmessage = old.onclose = old.onerror = null; old.close(); }
       this.ws = null; this.current = null; this.connecting = false;

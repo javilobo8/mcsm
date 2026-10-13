@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CurseForgeKeyNotice } from "@/components/spec-form/curseforge-key";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, holdUnauthorized } from "@/lib/api";
 import { realtime } from "@/lib/ws";
 import { parsePortRange, parsePublicUrl, passwordFormError, portRangeForm, publicUrlNote, settingsLeaveWarning } from "@/lib/settings";
 import { settingsKey, useSettings } from "@/hooks/use-settings";
@@ -41,8 +41,10 @@ function SettingsForms({ settings }: { settings: SettingsDto }) {
     // El servidor revoca todas las sesiones y cierra sus WS con 4401 (también el nuestro): no es una sesión perdida.
     mutationFn: async () => {
       const settle = realtime.expectSessionChange();
-      try { await api.post("/api/auth/password", { currentPassword: pw.current, newPassword: pw.next }); } catch (e) { settle(false); throw e; }
+      const release = holdUnauthorized(); // un 401 REST en vuelo va con la cookie vieja: no es una sesión perdida
+      try { await api.post("/api/auth/password", { currentPassword: pw.current, newPassword: pw.next }); } catch (e) { settle(false); release(false); throw e; }
       settle(true);
+      if (release(true) === "invalidate") void qc.invalidateQueries();
     },
     onSuccess: () => setPw({ current: "", next: "", repeat: "" }),
   });
