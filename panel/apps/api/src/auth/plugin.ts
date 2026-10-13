@@ -21,8 +21,8 @@ async function plugin(app: FastifyInstance) {
   app.decorateRequest("sessionId", null);
 
   app.addHook("onRequest", async (req: FastifyRequest, reply) => {
-    // Se decide por el patrón de ruta enrutada, no por la URL cruda: find-my-way decodifica
-    // el path al enrutar, así que `/%61pi/x` llega a `/api/x`.
+    // Decided by the routed route pattern, not by the raw URL: find-my-way decodes
+    // the path when routing, so `/%61pi/x` reaches `/api/x`.
     const route = req.routeOptions.url;
     const raw = req.cookies[SESSION_COOKIE];
     if (raw) {
@@ -32,10 +32,10 @@ async function plugin(app: FastifyInstance) {
       }
     }
     if (route === undefined) return;
-    // SameSite=Strict no frena a páginas del mismo host en otro puerto: una escritura con un Origin que no es el del
-    // panel se rechaza (como en el WS). Sin Origin (curl, agente) pasa; /agent/* queda fuera.
+    // SameSite=Strict does not stop pages on the same host on another port: a write with an Origin that is not the
+    // panel's is rejected (as on the WS). With no Origin (curl, agent) it passes; /agent/* is left out.
     if (route.startsWith("/api/") && !SAFE_METHODS.has(req.method) && !originAllowed(req.headers.origin, req.host, app.settings.publicUrl())) {
-      return reply.code(403).send({ error: "Origen no permitido" });
+      return reply.code(403).send({ error: "Origin not allowed" });
     }
     const protectedRoute = (route.startsWith("/api/") && !PUBLIC.has(route)) || route === "/ws";
     if (protectedRoute && !req.sessionId) {

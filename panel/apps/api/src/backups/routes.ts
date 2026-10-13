@@ -5,7 +5,7 @@ import { HttpError } from "../servers/service.js";
 import { BackupsRepo } from "./repo.js";
 import { BackupService } from "./service.js";
 
-/** Decora `app.backupsService` en la raíz y registra las rutas encapsuladas de copias. */
+/** Decorates `app.backupsService` at the root and registers the encapsulated backup routes. */
 export const backupRoutes = fp(async function backupRoutes(root: FastifyInstance) {
   const svc = new BackupService(root, new BackupsRepo(root.db));
   root.decorate("backupsService", svc);
@@ -18,7 +18,7 @@ async function backupRoutesInner(app: FastifyInstance) {
 
   app.get<{ Params: { id: string } }>("/api/servers/:id/backups", async (req) => svc.list(req.params.id));
 
-  // Acciones del usuario
+  // User actions
   app.post<{ Params: { id: string } }>("/api/servers/:id/backups", async (req, reply) =>
     reply.code(202).send(await svc.createNow(req.params.id, req.headers["idempotency-key"]?.toString())));
 
@@ -31,8 +31,8 @@ async function backupRoutesInner(app: FastifyInstance) {
   });
 
   app.get<{ Params: { id: string; backupId: string } }>("/api/servers/:id/backups/:backupId/download", {
-    exposeHeadRoute: false, // un HEAD pediría al agente subir la copia entera
-    // Un fallo antes del primer byte se responde en JSON, sin las cabeceras de la descarga.
+    exposeHeadRoute: false, // a HEAD would ask the agent to upload the whole backup
+    // A failure before the first byte is answered as JSON, without the download headers.
     onError: async (_req, reply) => {
       for (const h of ["content-type", "content-length", "content-disposition"]) {
         reply.removeHeader(h);
@@ -43,7 +43,7 @@ async function backupRoutesInner(app: FastifyInstance) {
     const ctrl = new AbortController();
     reply.raw.once("close", () => { if (!reply.raw.writableFinished) ctrl.abort(); });
     const dl = await svc.download(req.params.id, req.params.backupId, ctrl.signal);
-    dl.done.catch((e) => req.log.info({ err: e }, "el agente no confirmó la subida de la copia"));
+    dl.done.catch((e) => req.log.info({ err: e }, "the agent did not confirm the backup upload"));
     reply.header("content-type", "application/octet-stream");
     reply.header("cache-control", "no-store");
     reply.header("content-disposition", contentDisposition(dl.filename));
@@ -52,7 +52,7 @@ async function backupRoutesInner(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { id: string } }>("/api/servers/:id/backups/schedule", async (req) => {
-    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) throw new HttpError(400, "Falta la programación de copias");
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) throw new HttpError(400, "Missing backup schedule");
     return svc.updateSchedule(req.params.id, req.body as Record<string, unknown>);
   });
 }

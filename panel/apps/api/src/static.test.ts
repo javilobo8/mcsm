@@ -17,8 +17,8 @@ beforeEach(async () => {
 });
 afterEach(async () => { await app.close(); });
 
-describe("web estática", () => {
-  it("sirve index.html en / y los assets", async () => {
+describe("static web", () => {
+  it("serves index.html at / and the assets", async () => {
     let res = await app.inject({ method: "GET", url: "/" });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain("SPA");
@@ -27,22 +27,22 @@ describe("web estática", () => {
     expect(res.body).toContain("console.log");
   });
 
-  it("las rutas del cliente caen en index.html", async () => {
+  it("client routes fall back to index.html", async () => {
     const res = await app.inject({ method: "GET", url: "/servers/abc" });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain("SPA");
   });
 
-  it("las rutas reservadas (con variantes de mayusculas, codificacion y barra) dan 404 JSON", async () => {
+  it("reserved routes (with uppercase, encoding and slash variants) give a JSON 404", async () => {
     const urls = ["/api", "/api/nada", "/api/nada?x=1", "/agent", "/agent/nada", "/ws/", "/ws/x", "/API/x", "/%61pi/nada", "/%41gent/x", "/%zz/api"];
     for (const url of urls.slice(0, -1)) {
       const res = await app.inject({ method: "GET", url });
       expect(res.statusCode, url).toBe(404);
-      expect(res.json(), url).toEqual({ error: "No encontrado" });
+      expect(res.json(), url).toEqual({ error: "Not found" });
     }
   });
 
-  it("/assets inexistente da 404 y las rutas SPA siguen dando index.html", async () => {
+  it("a nonexistent /assets gives 404 and SPA routes keep giving index.html", async () => {
     let res = await app.inject({ method: "GET", url: "/assets/inexistente.js" });
     expect(res.statusCode).toBe(404);
     expect(res.body).not.toContain("SPA");
@@ -53,7 +53,7 @@ describe("web estática", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("/ws sin cookie sigue protegido y /%61pi/servers sin cookie da 401", async () => {
+  it("/ws without a cookie stays protected and /%61pi/servers without a cookie gives 401", async () => {
     let res = await app.inject({ method: "GET", url: "/ws" });
     expect(res.statusCode).toBe(401);
     res = await app.inject({ method: "GET", url: "/%61pi/servers" });
@@ -62,7 +62,7 @@ describe("web estática", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("solo GET/HEAD reciben el fallback", async () => {
+  it("only GET/HEAD get the fallback", async () => {
     const res = await app.inject({ method: "POST", url: "/servers/abc" });
     expect(res.statusCode).toBe(404);
   });

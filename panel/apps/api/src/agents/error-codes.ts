@@ -1,10 +1,10 @@
 /**
- * Catálogo de `Error.code` (ver el comentario de `message Error` en proto/mcsm/v1/agent.proto y
- * su espejo en Go, agent/internal/errcode). `agentErrorToHttp` (lib/http.ts) traduce cada código
- * a un estado HTTP; un código desconocido acaba en 502 con el texto del agente.
+ * Catalog of `Error.code` (see the comment on `message Error` in proto/mcsm/v1/agent.proto and
+ * its Go mirror, agent/internal/errcode). `agentErrorToHttp` (lib/http.ts) maps each code
+ * to an HTTP status; an unknown code ends up as 502 with the agent's text.
  */
 export const AgentErrorCode = {
-  // Agente → panel.
+  // Agent → panel.
   InvalidSpec: "invalid_spec",
   InvalidRequest: "invalid_request",
   UnknownServer: "unknown_server",
@@ -19,7 +19,7 @@ export const AgentErrorCode = {
   BadSpec: "bad_spec",
   BackupFailed: "backup_failed",
   RconFailed: "rcon_failed",
-  // Archivos.
+  // Files.
   InvalidPath: "invalid_path",
   PathOutside: "path_outside",
   IsDir: "is_dir",
@@ -27,9 +27,9 @@ export const AgentErrorCode = {
   Root: "root",
   TransferFailed: "transfer_failed",
   IoError: "io_error",
-  // Importación (Plan 6).
+  // Import (Plan 6).
   ExternalData: "external_data",
-  // Solo en el panel: AgentError local de AgentConn, nunca viaja por el WS.
+  // Panel only: local AgentError from AgentConn, never travels over the WS.
   Disconnected: "disconnected",
   Syncing: "syncing",
   Timeout: "timeout",

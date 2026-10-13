@@ -17,9 +17,9 @@ export function observedToDto(o: Observed | undefined): ObservedDto {
 }
 
 /**
- * Una fila se reenvía en SyncSpecs si el agente no la tiene, tiene otra versión o tiene otro
- * estado deseado. Un agente que no informa `desired_states` (anterior a ese campo) solo se
- * compara por versión.
+ * A row is resent in SyncSpecs if the agent does not have it, has another version or has another
+ * desired state. An agent that does not report `desired_states` (older than that field) is only
+ * compared by version.
  */
 export function specDiffers(r: ServerRow, hello: Hello): boolean {
   if (hello.specVersions[r.id] !== BigInt(r.spec_version)) return true;
@@ -70,11 +70,11 @@ export class AgentService {
         return;
       }
       // ── plan-2 ──
-      case "metricBatch": // no solicitado (id=0)
+      case "metricBatch": // unsolicited (id=0)
         try {
           this.app.metrics.ingest(nodeId, env.body.value);
         } catch (e) {
-          this.app.log.warn({ nodeId, err: e }, "fallo guardando un MetricBatch");
+          this.app.log.warn({ nodeId, err: e }, "failed saving a MetricBatch");
         }
         return;
       // ── plan-3 ──
@@ -89,15 +89,15 @@ export class AgentService {
       // ── plan-6 ──
       // ── plan-7 ──
       // ── plan-8 ──
-      case "routerObserved": // no solicitado (id=0)
+      case "routerObserved": // unsolicited (id=0)
         this.app.routerService.onObserved(nodeId, env.body.value);
         return;
       // ── plan-9 ──
-      case "event": // no solicitado (id=0): crashes, OOM, bucles de crash, drift, save-on (spec §5.3, §10)
+      case "event": // unsolicited (id=0): crashes, OOM, crash loops, drift, save-on (spec §5.3, §10)
         this.app.eventsService.ingest(nodeId, env.body.value);
         return;
       default:
-        this.app.log.warn({ nodeId, type: env.body.case }, "mensaje de agente no esperado");
+        this.app.log.warn({ nodeId, type: env.body.case }, "unexpected agent message");
     }
   }
 
@@ -109,13 +109,13 @@ export class AgentService {
     try {
       await this.handshake(nodeId, env, conn, hello);
     } catch (e) {
-      this.app.log.warn({ nodeId, err: e }, "fallo en el Hello del agente; se cierra la conexión");
+      this.app.log.warn({ nodeId, err: e }, "agent Hello failed; closing the connection");
       conn.terminate();
     }
   }
 
   private async handshake(nodeId: string, env: Envelope, conn: AgentConn, hello: Hello) {
-    if (!this.app.nodes.get(nodeId)) throw new Error("el nodo ya no existe");
+    if (!this.app.nodes.get(nodeId)) throw new Error("the node no longer exists");
     this.app.nodes.setStatus(nodeId, "online", {
       agentVersion: hello.agentVersion, dockerVersion: hello.dockerVersion,
       hostInfo: hello.host ? { hostname: hello.host.hostname, cpus: hello.host.cpus, memTotalBytes: Number(hello.host.memTotalBytes), os: hello.host.os, arch: hello.host.arch } : undefined,
@@ -127,15 +127,15 @@ export class AgentService {
     const known = new Set(Object.keys(hello.specVersions));
     const curseforgeApiKey = this.app.curseforge.get();
     const servers = rows.filter((r) => specDiffers(r, hello)).map((r) => toServerSpecMessage(r, curseforgeApiKey));
-    // plan-7: un servidor con una migración abierta que pasa por este nodo no se retira por un Hello (copia del
-    // destino aún sin confirmar u origen pendiente de retirar): lo limpia la migración.
+    // plan-7: a server with an open migration that goes through this node is not removed by a Hello (target copy
+    // not yet confirmed or source pending removal): the migration cleans it up.
     const removedIds = [...known].filter((id) => !rows.some((r) => r.id === id) && !this.app.migrations.protects(nodeId, id));
     try {
       await conn.request({ case: "syncSpecs", value: { servers, removedIds } }, 120_000);
     } catch (e) {
-      // Sin la foto del panel el agente no debe recibir nada más: se corta y, al reconectar,
-      // el agente repite Hello y SyncSpecs.
-      this.app.log.warn({ nodeId, err: e }, "SyncSpecs sin confirmación; se cierra la conexión");
+      // Without the panel's snapshot the agent must not receive anything else: the connection is cut and, on reconnect,
+      // the agent repeats Hello and SyncSpecs.
+      this.app.log.warn({ nodeId, err: e }, "SyncSpecs not acknowledged; closing the connection");
       conn.terminate();
       return;
     }

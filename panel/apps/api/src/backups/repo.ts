@@ -14,11 +14,11 @@ export interface BackupRow {
 export interface BackupDto {
   id: string; serverId: string; nodeId: string; filename: string; sizeBytes: number; sha256: string;
   specVersion: number; trigger: BackupTriggerName; status: BackupStatus; startedAt: string; finishedAt: string | null;
-  /** "directory": datos conservados antes de una restauración (no es un .tar.zst). */
+  /** "directory": data kept before a restore (not a .tar.zst). */
   kind: "archive" | "directory";
 }
 
-/** Una copia tal y como la describe el agente. */
+/** A backup as described by the agent. */
 export interface BackupInput {
   serverId: string; filename: string; sizeBytes: number; sha256: string; specVersion: number;
   trigger: BackupTriggerName; startedAt: string; finishedAt: string | null;
@@ -35,7 +35,7 @@ export function toBackupDto(r: BackupRow): BackupDto {
 export class BackupsRepo {
   constructor(private db: Db) {}
 
-  /** Inserta o actualiza (por servidor + fichero) una copia que existe en el nodo. */
+  /** Inserts or updates (by server + file) a backup that exists on the node. */
   upsertOk(nodeId: string, b: BackupInput): BackupRow {
     this.db.prepare(`INSERT INTO backups (id, server_id, node_id, filename, size_bytes, sha256, spec_version, trigger, status, started_at, finished_at, error, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?, ?, NULL, ?)
@@ -54,7 +54,7 @@ export class BackupsRepo {
     return (this.db.prepare("SELECT * FROM backups WHERE server_id = ? AND filename = ?").get(serverId, filename) as BackupRow | undefined) ?? null;
   }
 
-  /** Copias vigentes de un servidor, las más recientes primero. */
+  /** Current backups of a server, most recent first. */
   list(serverId: string): BackupRow[] {
     return this.db.prepare("SELECT * FROM backups WHERE server_id = ? AND status != 'deleted' ORDER BY started_at DESC, filename DESC")
       .all(serverId) as unknown as BackupRow[];
@@ -66,9 +66,9 @@ export class BackupsRepo {
   }
 
   /**
-   * Marca borradas las copias vigentes de un servidor que el nodo ya no tiene. Solo las que el panel ya conocía
-   * antes de `createdBefore` (cuando pidió el inventario): una copia anunciada después pudo crearse después de que
-   * el agente listara el disco.
+   * Marks as deleted the current backups of a server that the node no longer has. Only those the panel already knew
+   * before `createdBefore` (when it requested the inventory): a backup announced later may have been created after
+   * the agent listed the disk.
    */
   markMissingDeleted(serverId: string, present: ReadonlySet<string>, createdBefore: string): number {
     const rows = this.db.prepare("SELECT filename FROM backups WHERE server_id = ? AND status = 'ok' AND created_at < ?")

@@ -32,16 +32,16 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); });
 
 describe("agent hub", () => {
-  it("rechaza tokens inválidos", async () => {
+  it("rejects invalid tokens", async () => {
     const agent = new FakeAgent(url, "nope");
     await expect(agent.connect()).rejects.toThrow(/401/);
   });
 
-  it("Hello → HelloAck + SyncSpecs con lo que falta, y marca el nodo online/offline", async () => {
+  it("Hello → HelloAck + SyncSpecs with what is missing, and marks the node online/offline", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
     const s2 = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
-    app.servers.updateSpec(s2.id, { ...baseSpec, ports: { game: 25567, extra: [] } }); // s2 pasa a versión 2
+    app.servers.updateSpec(s2.id, { ...baseSpec, ports: { game: 25567, extra: [] } }); // s2 moves to version 2
 
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({ specVersions: { [s2.id]: 2n, "zombie-id": 1n } });
@@ -50,7 +50,7 @@ describe("agent hub", () => {
 
     const sync = await agent.waitFor("syncSpecs");
     if (sync.body.case !== "syncSpecs") throw new Error();
-    expect(sync.body.value.servers.map((s) => s.serverId)).toEqual([s1.id]); // s2 ya está al día
+    expect(sync.body.value.servers.map((s) => s.serverId)).toEqual([s1.id]); // s2 is already up to date
     expect(sync.body.value.removedIds).toEqual(["zombie-id"]);
     expect(sync.body.value.servers[0]!.slug).toBe("uno");
     expect(sync.body.value.servers[0]!.version).toBe(1n);
@@ -68,14 +68,14 @@ describe("agent hub", () => {
     expect(node.status).toBe("offline");
   });
 
-  it("SyncSpecs incluye también las specs cuyo estado deseado difiere del del agente", async () => {
+  it("SyncSpecs also includes specs whose desired state differs from the agent's", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
     const s2 = app.servers.create({ nodeId, name: "Dos", slug: "dos", spec: { ...baseSpec, ports: { game: 25566, extra: [] } }, desiredState: "stopped" });
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect({
       specVersions: { [s1.id]: 1n, [s2.id]: 1n },
-      desiredStates: { [s1.id]: DesiredState.RUNNING, [s2.id]: DesiredState.RUNNING }, // s2 derivó en el agente
+      desiredStates: { [s1.id]: DesiredState.RUNNING, [s2.id]: DesiredState.RUNNING }, // s2 drifted on the agent
     });
     const sync = await agent.handshake();
     if (sync.body.case !== "syncSpecs") throw new Error();
@@ -83,7 +83,7 @@ describe("agent hub", () => {
     expect(sync.body.value.servers[0]!.desiredState).toBe(DesiredState.STOPPED);
   });
 
-  it("ServerObserved actualiza la BD y emite evento", async () => {
+  it("ServerObserved updates the DB and emits an event", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
     const agent = new FakeAgent(url, nodeToken);
@@ -102,7 +102,7 @@ describe("agent hub", () => {
     expect(JSON.parse(row.observed!).mc.playersOnline).toBe(2);
   });
 
-  it("request() resuelve con la respuesta del mismo id y falla con Error", async () => {
+  it("request() resolves with the response carrying the same id and fails with Error", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
@@ -114,10 +114,10 @@ describe("agent hub", () => {
     expect((await p).body.case).toBe("ack");
     const p2 = conn.request({ case: "sendCommand", value: { serverId: "x", command: "list" } }, 2000);
     const req2 = await agent.waitFor("sendCommand");
-    agent.send({ id: req2.id, body: { case: "error", value: { code: "rcon_failed", message: "sin conexión" } } });
-    await expect(p2).rejects.toMatchObject({ code: "rcon_failed", message: "sin conexión" });
+    agent.send({ id: req2.id, body: { case: "error", value: { code: "rcon_failed", message: "no connection" } } });
+    await expect(p2).rejects.toMatchObject({ code: "rcon_failed", message: "no connection" });
   });
-  it("openStream no pierde el primer LogLine enviado en el mismo tick que el Ack", async () => {
+  it("openStream does not lose the first LogLine sent in the same tick as the Ack", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
@@ -128,7 +128,7 @@ describe("agent hub", () => {
       if (e.body.case === "logLine") lines.push(e.body.value.line);
     }, () => {});
     const req = await agent.waitFor("subscribeLogs");
-    // Ack y primera línea de log seguidos, sin ceder el control entre ambos.
+    // Ack and first log line back to back, without yielding control in between.
     agent.ack(req.id, req.id);
     agent.send({ streamId: req.id, body: { case: "logLine", value: create(LogLineSchema, { serverId: "x", tsUnixMs: 1n, line: "primera" }) } });
     agent.send({ streamId: req.id, body: { case: "logLine", value: create(LogLineSchema, { serverId: "x", tsUnixMs: 2n, line: "segunda" }) } });
@@ -137,7 +137,7 @@ describe("agent hub", () => {
     expect(lines).toEqual(["primera", "segunda"]);
   });
 
-  it("openStream borra el stream si la petición falla", async () => {
+  it("openStream deletes the stream if the request fails", async () => {
     const { nodeId, nodeToken } = await enrollNode();
     const agent = new FakeAgent(url, nodeToken);
     await agent.connect();
@@ -151,7 +151,7 @@ describe("agent hub", () => {
   });
 });
 
-describe("AgentConn.ready: nada sale al agente antes del Ack de SyncSpecs", () => {
+describe("AgentConn.ready: nothing goes out to the agent before the SyncSpecs Ack", () => {
   async function syncing() {
     const { nodeId, nodeToken } = await enrollNode();
     const agent = new FakeAgent(url, nodeToken);
@@ -161,16 +161,16 @@ describe("AgentConn.ready: nada sale al agente antes del Ack de SyncSpecs", () =
     return { nodeId, agent, sync, conn: app.agents.get(nodeId)! };
   }
 
-  it("las peticiones esperan al Ack y salen en orden", async () => {
+  it("requests wait for the Ack and go out in order", async () => {
     const { agent, sync, conn } = await syncing();
     let ready = false;
     void conn.ready.then(() => { ready = true; });
     const p1 = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 5000);
     const p2 = conn.request({ case: "sendCommand", value: { serverId: "x", command: "list" } }, 5000);
-    await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
+    await expect(agent.next(150)).rejects.toThrow(/no message/);
     expect(ready).toBe(false);
     agent.ack(sync.id);
-    await agent.waitFor("backupList"); // inventario que el panel pide solo tras cada Hello (Plan 4), antes que estas
+    await agent.waitFor("backupList"); // inventory the panel requests on its own after every Hello (Plan 4), before these
     const r1 = await agent.next();
     const r2 = await agent.next();
     expect([r1.body.case, r2.body.case]).toEqual(["powerAction", "sendCommand"]);
@@ -181,25 +181,25 @@ describe("AgentConn.ready: nada sale al agente antes del Ack de SyncSpecs", () =
     expect((await p2).body.case).toBe("commandResult");
   });
 
-  it("openStream también espera al Ack de SyncSpecs", async () => {
+  it("openStream also waits for the SyncSpecs Ack", async () => {
     const { agent, sync, conn } = await syncing();
     const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 0 } }, () => {}, () => {});
-    await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
+    await expect(agent.next(150)).rejects.toThrow(/no message/);
     agent.ack(sync.id);
     const req = await agent.waitFor("subscribeLogs");
     agent.ack(req.id, req.id);
     expect((await opened).streamId).toBe(req.id);
   });
 
-  it("si el plazo vence antes del Ack la petición falla con syncing y no llega a salir", async () => {
+  it("if the deadline expires before the Ack the request fails with syncing and never goes out", async () => {
     const { agent, sync, conn } = await syncing();
     await expect(conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 100)).rejects.toMatchObject({ code: "syncing" });
     agent.ack(sync.id);
-    await agent.waitFor("backupList"); // la del inventario (Plan 4) sí sale
-    await expect(agent.next(150)).rejects.toThrow(/sin mensaje/);
+    await agent.waitFor("backupList"); // the inventory one (Plan 4) does go out
+    await expect(agent.next(150)).rejects.toThrow(/no message/);
   });
 
-  it("si SyncSpecs falla se cierra la conexión y ready se rechaza", async () => {
+  it("if SyncSpecs fails the connection is closed and ready is rejected", async () => {
     const { agent, sync, conn } = await syncing();
     const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 5000);
     agent.send({ id: sync.id, body: { case: "error", value: { code: "apply_failed", message: "boom" } } });
@@ -211,7 +211,7 @@ describe("AgentConn.ready: nada sale al agente antes del Ack de SyncSpecs", () =
   });
 });
 
-describe("robustez del hub", () => {
+describe("hub robustness", () => {
   async function connected(name = "nas") {
     const { nodeId, nodeToken } = await enrollNode(name);
     const agent = new FakeAgent(url, nodeToken);
@@ -225,14 +225,14 @@ describe("robustez del hub", () => {
     expect(fn()).toBe(true);
   };
 
-  it("un Hello de un nodo borrado cierra la conexión sin promesas sin manejar", async () => {
+  it("a Hello from a deleted node closes the connection without unhandled promises", async () => {
     const { nodeId, agent } = await connected();
     app.nodes.delete(nodeId);
     agent.send({ id: 1n, body: { case: "hello", value: create(HelloSchema, { agentVersion: "x" }) } });
     await waitUntil(() => agent.closed);
   });
 
-  it("DELETE /api/nodes/:id desconecta al agente vivo", async () => {
+  it("DELETE /api/nodes/:id disconnects the live agent", async () => {
     const { nodeId, agent } = await connected();
     const res = await app.inject({ method: "DELETE", url: `/api/nodes/${nodeId}`, headers: { cookie } });
     expect(res.statusCode).toBe(204);
@@ -240,7 +240,7 @@ describe("robustez del hub", () => {
     expect(app.agents.isOnline(nodeId)).toBe(false);
   });
 
-  it("un callback o listener que lanza no tumba el proceso ni cierra la conexión", async () => {
+  it("a callback or listener that throws does not take down the process or close the connection", async () => {
     const { agent, conn } = await connected();
     const frames: string[] = [];
     const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 0 } }, (e) => {
@@ -261,7 +261,7 @@ describe("robustez del hub", () => {
     expect(app.agents.isOnline(conn.nodeId)).toBe(true);
   });
 
-  it("un mensaje no solicitado con el id de una petición pendiente no la consume", async () => {
+  it("an unsolicited message carrying the id of a pending request does not consume it", async () => {
     const { nodeId, nodeToken, agent, conn } = await connected();
     const s1 = app.servers.create({ nodeId, name: "Uno", slug: "uno", spec: baseSpec, desiredState: "running" });
     void nodeToken;
@@ -278,7 +278,7 @@ describe("robustez del hub", () => {
     expect((await p).body.case).toBe("ack");
   });
 
-  it("un Error con streamId != 0 y el id de la petición rechaza openStream al instante", async () => {
+  it("an Error with streamId != 0 and the request id rejects openStream immediately", async () => {
     const { agent, conn } = await connected();
     const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 1 } }, () => {}, () => {});
     const req = await agent.waitFor("subscribeLogs");
@@ -286,7 +286,7 @@ describe("robustez del hub", () => {
     await expect(opened).rejects.toMatchObject({ code: "unknown_server" });
   });
 
-  it("una segunda conexión del mismo nodo termina la vieja y su close tardío no desregistra la nueva", async () => {
+  it("a second connection from the same node ends the old one and its late close does not unregister the new one", async () => {
     const { nodeId, nodeToken, agent: a1 } = await connected();
     const a2 = new FakeAgent(url, nodeToken);
     await a2.connect();
@@ -298,7 +298,7 @@ describe("robustez del hub", () => {
     a2.close();
   });
 
-  it("al cerrar el socket se rechazan las pendientes y se cierran los streams", async () => {
+  it("when the socket closes, pending requests are rejected and streams are closed", async () => {
     const { nodeId, agent, conn } = await connected();
     const reasons: string[] = [];
     const opened = conn.openStream({ case: "subscribeLogs", value: { serverId: "x", tail: 0 } }, () => {}, (r) => reasons.push(r));
@@ -315,7 +315,7 @@ describe("robustez del hub", () => {
     await expect(conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } })).rejects.toMatchObject({ code: "disconnected" });
   });
 
-  it("ServerObserved de un servidor de otro nodo se ignora", async () => {
+  it("ServerObserved for a server on another node is ignored", async () => {
     const { agent } = await connected("uno");
     const other = await enrollNode("dos");
     const foreign = app.servers.create({ nodeId: other.nodeId, name: "Ajeno", slug: "ajeno", spec: baseSpec, desiredState: "running" });
@@ -327,7 +327,7 @@ describe("robustez del hub", () => {
     expect(app.servers.get(foreign.id)!.observed).toBeNull();
   });
 
-  it("protobuf malformado se ignora y la conexión sigue viva", async () => {
+  it("malformed protobuf is ignored and the connection stays alive", async () => {
     const { agent, conn } = await connected();
     agent.sendRaw(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0x0f, 0x80]));
     const p = conn.request({ case: "powerAction", value: { serverId: "x", action: 1 } }, 2000);
@@ -337,8 +337,8 @@ describe("robustez del hub", () => {
   });
 });
 
-describe("heartbeat del agente", () => {
-  it("hace terminate() tras 45 s sin actividad y los pings y mensajes cuentan como actividad", () => {
+describe("agent heartbeat", () => {
+  it("calls terminate() after 45 s without activity, and pings and messages count as activity", () => {
     vi.useFakeTimers();
     try {
       let t = 0;
@@ -355,13 +355,13 @@ describe("heartbeat del agente", () => {
 
       t = 40_000; vi.advanceTimersByTime(40_000);
       expect(terminated).toBe(false);
-      socket.emit("ping"); // actividad a los 40 s
+      socket.emit("ping"); // activity at 40 s
       t = 80_000; vi.advanceTimersByTime(40_000);
       expect(terminated).toBe(false);
-      socket.emit("message", Buffer.alloc(0)); // actividad a los 80 s (mensaje ilegible, igual cuenta)
+      socket.emit("message", Buffer.alloc(0)); // activity at 80 s (unreadable message, still counts)
       t = 120_000; vi.advanceTimersByTime(40_000);
       expect(terminated).toBe(false);
-      t = 126_000; vi.advanceTimersByTime(6_000); // 46 s desde la última actividad
+      t = 126_000; vi.advanceTimersByTime(6_000); // 46 s since the last activity
       expect(terminated).toBe(true);
       expect(detached).toEqual(["n1"]);
       expect(hub.isOnline("n1")).toBe(false);
@@ -371,7 +371,7 @@ describe("heartbeat del agente", () => {
   });
 });
 
-describe("ids de las peticiones del panel", () => {
+describe("panel request ids", () => {
   function fakeSocket() {
     const socket = new EventEmitter() as EventEmitter & { terminate(): void; send(): void; readyState: number; OPEN: number };
     socket.terminate = () => { socket.emit("close"); };
@@ -381,23 +381,23 @@ describe("ids de las peticiones del panel", () => {
     return socket as unknown as WebSocket;
   }
 
-  it("no se repiten entre sesiones del mismo nodo: un mensaje que cita un id de la sesión anterior no coincide con la nueva", () => {
+  it("are not repeated across sessions of the same node: a message citing an id from the previous session does not match the new one", () => {
     const hub = new AgentHub({ firstId: 100n });
     const c1 = hub.attach("n1", fakeSocket());
     expect(c1.send({ case: "helloAck", value: {} })).toBe(100n);
     const { id, response } = c1.requestTracked({ case: "backupList", value: { serverId: "" } }, 1000);
-    response.catch(() => {}); // la sesión se reemplaza enseguida: disconnected
+    response.catch(() => {}); // the session is replaced right away: disconnected
     expect(id).toBe(101n);
-    const c2 = hub.attach("n1", fakeSocket()); // reemplaza a la primera
+    const c2 = hub.attach("n1", fakeSocket()); // replaces the first
     expect(c2.send({ case: "helloAck", value: {} })).toBe(102n);
   });
 
-  it("cada proceso del panel empieza en un punto aleatorio (lo que el agente aún tenga en cola de un panel anterior no coincide)", () => {
+  it("each panel process starts at a random point (whatever the agent still has queued for a previous panel does not match)", () => {
     const firsts = new Set(Array.from({ length: 8 }, () => new AgentHub().attach("n", fakeSocket()).send({ case: "helloAck", value: {} })));
     expect(firsts.size).toBe(8);
     for (const id of firsts) {
-      expect(id).toBeGreaterThan(1n); // 0: no solicitado; 1: el Hello del agente
-      expect(id).toBeLessThan(2n ** 53n); // margen hasta 2^53 aunque el proceso viva años
+      expect(id).toBeGreaterThan(1n); // 0: unsolicited; 1: the agent's Hello
+      expect(id).toBeLessThan(2n ** 53n); // headroom up to 2^53 even if the process lives for years
     }
   });
 });

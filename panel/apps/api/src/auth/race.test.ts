@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 
-// Punto de inyección: tras verificar, la primera llamada armada espera a `gate.release`.
+// Injection point: after verifying, the first armed call waits for `gate.release`.
 const gate = vi.hoisted(() => ({ armed: null as null | { entered: () => void; wait: Promise<void> } }));
 vi.mock("./password.js", async (orig) => {
   const m = await orig<typeof import("./password.js")>();
@@ -24,8 +24,8 @@ let app: FastifyInstance;
 beforeEach(async () => { app = await buildApp({ db: openDb(":memory:") }); });
 afterEach(async () => { await app.close(); });
 
-describe("login en curso durante un cambio de contraseña", () => {
-  it("no deja sesión: el hash cambió mientras se verificaba", async () => {
+describe("login in progress during a password change", () => {
+  it("leaves no session: the hash changed while it was being verified", async () => {
     const setup = await app.inject({ method: "POST", url: "/api/auth/setup", payload: { password: "correct horse" } });
     const c = setup.cookies.find((c) => c.name === "mcsm_session")!;
     const mine = `${c.name}=${c.value}`;
@@ -35,7 +35,7 @@ describe("login en curso durante un cambio de contraseña", () => {
     const inside = new Promise<void>((r) => { entered = r; });
     gate.armed = { entered, wait: new Promise<void>((r) => { release = r; }) };
     const login = app.inject({ method: "POST", url: "/api/auth/login", payload: { password: "correct horse" } });
-    await inside; // el login ya aceptó la contraseña vieja y está parado antes de crear la sesión
+    await inside; // the login already accepted the old password and is stopped before creating the session
 
     const change = await app.inject({ method: "POST", url: "/api/auth/password", headers: { cookie: mine }, payload: { currentPassword: "correct horse", newPassword: "nueva-larga" } });
     expect(change.statusCode).toBe(200);
@@ -43,6 +43,6 @@ describe("login en curso durante un cambio de contraseña", () => {
     const res = await login;
     expect(res.statusCode).toBe(401);
     expect(res.cookies.find((c) => c.name === "mcsm_session")).toBeUndefined();
-    expect(app.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 1 }); // solo la de quien cambió la contraseña
+    expect(app.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 1 }); // only the one of whoever changed the password
   });
 });

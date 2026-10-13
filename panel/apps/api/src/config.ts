@@ -4,12 +4,12 @@ export const config = {
   dataDir: process.env.DATA_DIR ?? "./data",
   publicUrl: (process.env.PANEL_PUBLIC_URL ?? "").replace(/\/$/, ""),
   webDist: process.env.WEB_DIST ?? "",
-  /** Imagen del `docker run` de «Añadir nodo». La imagen publicada del panel fija la del agente de su versión. */
+  /** Image in the `docker run` of “Add node”. The published panel image sets the agent of its own version. */
   agentImage: process.env.MCSM_AGENT_IMAGE || "mcsm-agent:latest",
   sessionTtlSeconds: 30 * 24 * 3600,
   enrollTtlSeconds: 15 * 60,
   gamePortRange: { from: 25565, to: 25600 },
-  /** L3: token de un solo propósito para crear la contraseña (lo fija main.ts). "" = no se exige (tests). */
+  /** L3: single-purpose token to create the password (set by main.ts). "" = not required (tests). */
   setupToken: "",
 };
 export type Config = typeof config;

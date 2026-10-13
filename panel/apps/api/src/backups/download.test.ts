@@ -35,8 +35,8 @@ async function setupBackup(trigger = BackupTrigger.MANUAL, filename = "uno-20261
   return { s, agent, b };
 }
 
-describe("descarga de copias", () => {
-  it("el agente sube la copia al panel y el navegador la recibe en streaming", async () => {
+describe("backup download", () => {
+  it("the agent uploads the backup to the panel and the browser receives it streaming", async () => {
     const { s, agent, b } = await setupBackup();
     const browser = fetch(`${url}/api/servers/${s.id}/backups/${b.id}/download`, { headers: { cookie } });
     const push = await agent.waitFor("backupPush");
@@ -54,20 +54,20 @@ describe("descarga de copias", () => {
     agent.close();
   });
 
-  it("400 con datos pre-restore, 404 sin copia y 409 con el nodo desconectado", async () => {
+  it("400 with pre-restore data, 404 without a backup and 409 with the node offline", async () => {
     const { s, agent, b } = await setupBackup(BackupTrigger.PRE_RESTORE, "data.pre-restore-20261013-040000");
     expect((await app.inject({ method: "GET", url: `/api/servers/${s.id}/backups/${b.id}/download`, headers: { cookie } })).statusCode).toBe(400);
     expect((await app.inject({ method: "GET", url: `/api/servers/${s.id}/backups/no-existe/download`, headers: { cookie } })).statusCode).toBe(404);
     agent.close();
   });
 
-  it("cortar el navegador a mitad de la descarga cancela la transferencia y corta el PUT del agente", async () => {
+  it("cutting the browser mid-download cancels the transfer and cuts the agent's PUT", async () => {
     const { s, agent, b } = await setupBackup();
     const ctrl = new AbortController();
     const browser = fetch(`${url}/api/servers/${s.id}/backups/${b.id}/download`, { headers: { cookie }, signal: ctrl.signal });
     const push = await agent.waitFor("backupPush");
     if (push.body.case !== "backupPush") throw new Error();
-    // PUT que no termina: manda un trozo y se queda abierto.
+    // PUT that never ends: sends a chunk and stays open.
     let body!: ReadableStreamDefaultController<Uint8Array>;
     const stream = new ReadableStream<Uint8Array>({ start: (c) => { body = c; } });
     const put = fetch(`${url}/agent/transfer/${push.body.value.transferId}`, {
@@ -75,13 +75,13 @@ describe("descarga de copias", () => {
     } as RequestInit);
     body.enqueue(new Uint8Array([1, 2]));
     const res = await browser;
-    await res.body!.getReader().read(); // ya fluye hacia el navegador
-    ctrl.abort(); // el navegador se va
-    await expect(put).rejects.toThrow(); // el panel corta la conexión del agente
+    await res.body!.getReader().read(); // it already flows towards the browser
+    ctrl.abort(); // the browser leaves
+    await expect(put).rejects.toThrow(); // the panel cuts the agent's connection
     agent.close();
   });
 
-  it("404 al pedir la copia de otro servidor", async () => {
+  it("404 when requesting another server's backup", async () => {
     const { agent, b } = await setupBackup();
     const other = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Dos" } })).json();
     const res = await app.inject({ method: "GET", url: `/api/servers/${other.id}/backups/${b.id}/download`, headers: { cookie } });
@@ -89,7 +89,7 @@ describe("descarga de copias", () => {
     agent.close();
   });
 
-  it("409 con el nodo desconectado", async () => {
+  it("409 with the node offline", async () => {
     const { s, agent, b } = await setupBackup();
     agent.close();
     await vi.waitFor(() => expect(app.agents.get(nodeId)).toBeUndefined());

@@ -30,16 +30,16 @@ const connectAgent = async () => {
 const createServer = async () => (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId, name: "Uno" } })).json();
 const job = async (id: string) => (await app.inject({ method: "GET", url: `/api/jobs/${id}`, headers: { cookie } })).json();
 
-describe("copias y jobs (Plan 9)", () => {
-  it("agentIso: acepta horas razonables del agente", () => {
+describe("backups and jobs (Plan 9)", () => {
+  it("agentIso: accepts reasonable agent times", () => {
     const now = Date.parse("2026-10-13T12:00:00.000Z");
     expect(agentIso(BigInt(now - 3_600_000), now)).toBe("2026-10-13T11:00:00.000Z");
     expect(agentIso(0n, now)).toBeNull();
-    expect(agentIso(BigInt(now + 60_000), now)).toBeNull(); // más de 45 s en el futuro
+    expect(agentIso(BigInt(now + 60_000), now)).toBeNull(); // more than 45 s in the future
     expect(agentIso(BigInt(now - 40 * 86_400_000), now)).toBeNull();
   });
 
-  it("un job programado que llega por el inventario conserva las horas del agente en started/finished (created_at es del panel)", async () => {
+  it("a scheduled job arriving via the inventory keeps the agent's times in started/finished (created_at is the panel's)", async () => {
     const s = await createServer();
     const agent = await connectAgent();
     const started = Date.now() - 2 * 3_600_000;
@@ -55,19 +55,19 @@ describe("copias y jobs (Plan 9)", () => {
     agent.close();
   });
 
-  it("el JobProgress de un agente no toca un job que no es suyo (migrate)", async () => {
+  it("an agent's JobProgress does not touch a job that is not its own (migrate)", async () => {
     const s = await createServer();
     const agent = await connectAgent();
     const mig = app.jobs.create({ type: "migrate", serverId: s.id, nodeId, status: "running", message: "migrando" });
     agent.send({ body: { case: "jobProgress", value: { jobId: mig.id, serverId: s.id, type: "backup", status: JobStatus.OK, progress: 100, message: "x", tsUnixMs: BigInt(Date.now()) } } });
-    // Un aviso posterior que sí es suyo marca el orden: cuando se ha procesado, el anterior también.
+    // A later notice that is its own sets the order: once it has been processed, the earlier one has too.
     agent.send({ body: { case: "jobProgress", value: { jobId: "propio", serverId: s.id, type: "backup", status: JobStatus.RUNNING, progress: 1, message: "y", tsUnixMs: BigInt(Date.now()) } } });
     await vi.waitFor(async () => expect((await job("propio")).status).toBe("running"));
     expect(await job(mig.id)).toMatchObject({ status: "running", message: "migrando" });
     agent.close();
   });
 
-  it("syncAll pide el inventario a cada nodo conectado", async () => {
+  it("syncAll requests the inventory from every online node", async () => {
     const agent = await connectAgent();
     app.backupsService.syncAll();
     const list = await agent.waitFor("backupList");
