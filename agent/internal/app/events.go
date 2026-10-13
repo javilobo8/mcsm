@@ -28,6 +28,13 @@ func (a *App) emitEvent(serverID string, level mcsmv1.EventLevel, kind, msg stri
 	}}})
 }
 
+// crashStop es una parada por bucle de crash decidida: con cuántos cierres y con qué generación de arranques
+// manuales (reconcile.StartGen).
+type crashStop struct {
+	n   int
+	gen uint64
+}
+
 // onDie cuenta los cierres con error que no pidió nadie (spec §10). No son crashes: la salida limpia (código 0:
 // /stop, la parada de mc-router por inactividad), una parada que pidió el agente o el proxy del router en los
 // últimos minutos (Intents), nada mientras el servidor está reservado (copia, restauración, migración) ni los
@@ -48,9 +55,21 @@ func (a *App) onDie(serverID string, ev docker.Event) {
 		return
 	}
 	life := a.life
-	gen := a.rec.StartGen(serverID) // un arranque manual posterior deja sin efecto esta parada
+	// Un arranque manual posterior a esta decisión la deja sin efecto (gen). Se guarda como la última decisión del
+	// servidor: si ya hay una parada en cola, dispatch la fusiona y la ejecución usa esta, no la anterior.
+	a.stopMu.Lock()
+	a.crashStops[serverID] = crashStop{n: n, gen: a.rec.StartGen(serverID)}
+	a.stopMu.Unlock()
 	a.dispatch(life, "crashloop:"+serverID, func() {
-		stopped, err := a.rec.CrashLoopStopUnlessStarted(life, serverID, n, gen)
+		a.stopMu.Lock()
+		d, ok := a.crashStops[serverID]
+		delete(a.crashStops, serverID)
+		a.stopMu.Unlock()
+		if !ok {
+			return // ya la ejecutó una pasada anterior de esta misma tarea fusionada
+		}
+		n := d.n
+		stopped, err := a.rec.CrashLoopStopUnlessStarted(life, serverID, n, d.gen)
 		if err == nil && !stopped {
 			a.log.Info("bucle de crash descartado: el servidor se arrancó a mano después", "server", serverID)
 			return

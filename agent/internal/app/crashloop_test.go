@@ -191,3 +191,39 @@ func TestQueuedCrashLoopStopYieldsToAManualStart(t *testing.T) {
 		}
 	}
 }
+
+// N1: si una parada por bucle sigue en cola cuando llega otro disparo (tras un Arrancar del usuario), la fusión de
+// dispatch no la ejecuta con lo decidido la primera vez (gen viejo, descartado): usa la última decisión.
+func TestCoalescedCrashLoopStopUsesTheLatestDecision(t *testing.T) {
+	a, fake, s, cid := crashApp(t)
+	for i := 0; i < cap(a.sem); i++ {
+		a.sem <- struct{}{}
+	}
+	for i := 0; i < crashloop.MaxCrashes+1; i++ { // primer disparo: queda en cola
+		a.onDie("a", die(cid, "1"))
+	}
+	a.Handle(context.Background(), &mcsmv1.Envelope{Id: 9, Body: &mcsmv1.Envelope_PowerAction{PowerAction: &mcsmv1.PowerAction{ServerId: "a", Action: mcsmv1.PowerActionType_POWER_ACTION_TYPE_RESTART}}}, s.send)
+	cid = a.rec.ContainerID(context.Background(), "a")
+	for i := 0; i < crashloop.MaxCrashes+1; i++ { // el servidor arrancado a mano vuelve a entrar en bucle
+		a.onDie("a", die(cid, "1"))
+	}
+	for i := 0; i < cap(a.sem); i++ {
+		<-a.sem
+	}
+	waitBackground(t, a)
+	if l, _ := a.st.CrashLatch("a"); l == nil {
+		t.Fatal("el segundo bucle (posterior al Arrancar) retiene el servidor")
+	}
+	if ins, err := fake.Inspect(context.Background(), cid); err != nil || ins.Running {
+		t.Fatalf("y lo para: %+v %v", ins, err)
+	}
+	loops := 0
+	for _, e := range eventsOf(t, a, s) {
+		if e.Kind == KindCrashLoop {
+			loops++
+		}
+	}
+	if loops != 1 {
+		t.Fatalf("eventos crash_loop = %d", loops)
+	}
+}
