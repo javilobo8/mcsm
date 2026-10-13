@@ -3,7 +3,7 @@ import type { ServerDto } from "./api";
 import type { EditableSpec } from "./spec-edit";
 import type { GuardText } from "./tab-guard";
 
-/** Lo que el usuario revisa antes de adoptar un contenedor (Nodos → Importar). */
+/** What the user reviews before adopting a container (Nodes → Import). */
 export interface ReviewState { name: string; slug: string; spec: EditableSpec }
 
 export function initialReview(c: ImportCandidateDto): ReviewState {
@@ -11,35 +11,35 @@ export function initialReview(c: ImportCandidateDto): ReviewState {
 }
 
 /**
- * Plan 8: la importación no adopta el router (el panel lo descarta: un adoptado no tiene las etiquetas de mc-router
- * hasta que se recrea). La revisión no lo enseña y aquí no cuenta: se activa después, en Configuración → Red.
+ * Plan 8: the import does not adopt the router (the panel discards it: an adopted server does not have the mc-router labels
+ * until it is recreated). The review does not show it and here it does not count: it is enabled later, in Configuration → Network.
  */
 function withoutRouter(spec: EditableSpec): EditableSpec {
   const { router: _router, ...rest } = spec;
   return rest;
 }
 
-/** ¿La spec revisada es la deducida del contenedor, y esta es válida? Solo entonces se adopta sin parar. */
+/** Is the reviewed spec the one deduced from the container, and is it valid? Only then is it adopted without stopping. */
 export function isPristine(c: ImportCandidateDto, spec: EditableSpec): boolean {
   return c.proposal.specError === null && sameSpecInput(withoutRouter(c.proposal.spec), withoutRouter(spec));
 }
 
-/** ¿Hay algo que perder si se sale de la revisión? (nombre, slug o spec distintos de la propuesta). */
+/** Is there anything to lose if the review is left? (name, slug or spec different from the proposal). */
 export function reviewDirty(c: ImportCandidateDto, r: ReviewState): boolean {
   const init = initialReview(c);
   return r.name !== init.name || r.slug !== init.slug || canonicalJson(withoutRouter(r.spec)) !== canonicalJson(withoutRouter(init.spec));
 }
 
-/** Plan 8: lo que dice la pestaña Red de la revisión en lugar de la sección del router. */
-export const IMPORT_ROUTER_NOTE = "Router (mc-router): el hostname se activa después de importar el servidor, en su Configuración → Red.";
+/** Plan 8: what the review's Network tab says in place of the router section. */
+export const IMPORT_ROUTER_NOTE = "Router (mc-router): the hostname is enabled after importing the server, in its Configuration → Network.";
 
 const REVIEW_LEAVE_WARNING: GuardText = {
-  title: "Revisión sin terminar",
-  description: "Has cambiado la configuración de este contenedor y aún no lo has importado. Si sales, se perderán los cambios.",
-  confirmLabel: "Salir y descartar",
+  title: "Review not finished",
+  description: "You have changed this container's configuration and have not imported it yet. If you leave, the changes will be lost.",
+  confirmLabel: "Leave and discard",
 };
 
-/** Qué proteger al salir de la revisión (otra página, volver a la lista o cerrar el navegador). null si nada. */
+/** What to protect when leaving the review (another page, back to the list or closing the browser). null if nothing. */
 export function reviewLeaveWarning(dirty: boolean): GuardText | null {
   return dirty ? REVIEW_LEAVE_WARNING : null;
 }
@@ -47,108 +47,108 @@ export function reviewLeaveWarning(dirty: boolean): GuardText | null {
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 /**
- * Por qué no se puede adoptar (null = se puede). `applyNow`: «Adoptar y aplicar» (recrea enseguida);
- * si no, «Adoptar sin parar», que exige la propuesta sin cambios. `specError`: validateSpec de la revisión.
+ * Why it cannot be adopted (null = it can). `applyNow`: “Adopt and apply” (recreates right away);
+ * otherwise, “Adopt without stopping”, which requires the proposal unchanged. `specError`: validateSpec of the review.
  */
 export function adoptBlock(
   c: ImportCandidateDto, r: ReviewState,
   o: { fieldErrors: Readonly<Record<string, string>>; specError: string | null; applyNow: boolean },
 ): string | null {
   if (c.blockers.length > 0) return c.blockers[0]!;
-  if (!r.name.trim()) return "Escribe un nombre";
-  if (!SLUG_RE.test(r.slug)) return "Slug inválido: minúsculas, números y guiones (máx. 40)";
+  if (!r.name.trim()) return "Enter a name";
+  if (!SLUG_RE.test(r.slug)) return "Invalid slug: lowercase letters, numbers and hyphens (max. 40)";
   const n = Object.keys(o.fieldErrors).length;
-  if (n > 0) return `Corrige ${n} ${n === 1 ? "campo con error" : "campos con error"}`;
+  if (n > 0) return `Fix ${n} ${n === 1 ? "field with an error" : "fields with errors"}`;
   if (o.specError) return o.specError;
   if (!o.applyNow && !isPristine(c, r.spec)) {
     return c.proposal.specError
-      ? "La configuración del contenedor no es válida tal cual: corrígela y usa «Adoptar y aplicar»"
-      : "Has cambiado la configuración: usa «Adoptar y aplicar» (recrea el contenedor) o deshaz los cambios";
+      ? "The container's configuration is not valid as is: fix it and use “Adopt and apply”"
+      : "You have changed the configuration: use “Adopt and apply” (recreates the container) or undo the changes";
   }
   return null;
 }
 
-/** Cuerpo de POST /api/nodes/:id/import. dataPath no viaja (el panel lo saca del contenedor) ni el slug fijo, ni el router. */
+/** Body of POST /api/nodes/:id/import. dataPath does not travel (the panel takes it from the container), nor the fixed slug, nor the router. */
 export function adoptRequest(c: ImportCandidateDto, r: ReviewState, applyNow: boolean) {
   const { dataPath: _fromContainer, ...spec } = withoutRouter(r.spec);
   return { containerId: c.containerId, name: r.name.trim(), ...(c.proposal.slugLocked ? {} : { slug: r.slug }), spec, applyNow };
 }
 
-/** El servidor sigue en el contenedor original que se importó (aún sin recrear). */
+/** The server is still in the original container that was imported (not yet recreated). */
 export function isAdopted(s: Pick<ServerDto, "importedFrom" | "observed">): boolean {
   return !!s.importedFrom && !!s.observed && s.observed.containerId === s.importedFrom.containerId;
 }
 
-/** Avisos para la cabecera de la página del servidor. */
+/** Notices for the server page header. */
 export function importNotices(s: Pick<ServerDto, "importedFrom" | "observed" | "slug" | "spec">): string[] {
   const out: string[] = [];
   const from = s.importedFrom;
   if (from && isAdopted(s)) {
-    out.push(`Importado de «${from.containerName}»: sigue en su contenedor original hasta el primer «Guardar y aplicar», que lo recreará como mcsm-${s.slug} (parada breve; el mundo no se toca) y borrará el contenedor original.`);
+    out.push(`Imported from “${from.containerName}”: it stays in its original container until the first “Save and apply”, which will recreate it as mcsm-${s.slug} (brief stop; the world is not touched) and delete the original container.`);
     if (from.composeProject) {
-      out.push(`Viene de Docker Compose (proyecto «${from.composeProject}», servicio «${from.composeService}»): quita ese servicio del compose antes de aplicar cambios, o Compose volverá a crearlo.`);
+      out.push(`Comes from Docker Compose (project “${from.composeProject}”, service “${from.composeService}”): remove that service from the compose file before applying changes, or Compose will create it again.`);
     }
   }
   if (s.spec.dataPath) {
-    out.push(`Los datos están en ${s.spec.dataPath}, fuera de DATA_ROOT: este servidor no tiene copias de seguridad ni navegador de archivos, y no se puede migrar a otro nodo.`);
+    out.push(`The data is in ${s.spec.dataPath}, outside DATA_ROOT: this server has no backups or file browser, and cannot be migrated to another node.`);
   }
   return out;
 }
 
 /**
- * Qué cambia en la página de un servidor importado (I3, m5). Con dataPath el agente no ve los datos:
- * las pestañas Backups, Archivos y Migrar se sustituyen por una explicación y la casilla de borrar el mundo se
- * desactiva (el panel no lo borra). Si aún sigue en el contenedor original, el borrado lo elimina.
+ * What changes on an imported server's page (I3, m5). With dataPath the agent cannot see the data:
+ * the Backups, Files and Migrate tabs are replaced by an explanation and the delete-world checkbox is
+ * disabled (the panel does not delete it). If it is still in the original container, deleting removes it.
  */
 export interface ServerImportView {
-  /** Explicación en lugar de la pestaña Backups, o null si funciona. */
+  /** Explanation in place of the Backups tab, or null if it works. */
   backups: string | null;
-  /** Explicación en lugar de la pestaña Archivos, o null si funciona. */
+  /** Explanation in place of the Files tab, or null if it works. */
   files: string | null;
-  /** Por qué no se puede marcar «borrar también el mundo», o null. */
+  /** Why “also delete the world” cannot be checked, or null. */
   deleteData: string | null;
-  /** Explicación en lugar de la pestaña Migrar (el panel respondería 409), o null si se puede migrar. */
+  /** Explanation in place of the Migrate tab (the panel would answer 409), or null if it can be migrated. */
   migrate: string | null;
-  /** Aviso para confirmar una migración: la retirada del origen elimina el contenedor original importado. O null. */
+  /** Notice to confirm a migration: removing the source deletes the original imported container. Or null. */
   retire: string | null;
-  /** Texto del diálogo de borrado. */
+  /** Text of the delete dialog. */
   deleteDescription: string;
 }
 
-const DELETE_DESCRIPTION = "El servidor se quitará del panel y su contenedor se eliminará.";
+const DELETE_DESCRIPTION = "The server will be removed from the panel and its container will be deleted.";
 
 export function serverImportView(s: Pick<ServerDto, "importedFrom" | "observed" | "slug" | "spec">): ServerImportView {
   const dataPath = s.spec.dataPath;
   const outside = dataPath
-    ? `Los datos de este servidor están en ${dataPath}, fuera de DATA_ROOT, y el agente no los ve`
+    ? `This server's data is in ${dataPath}, outside DATA_ROOT, and the agent cannot see it`
     : null;
-  const howTo = `Para tenerlos, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${s.slug}/data y vuelve a importarlo.`;
+  const howTo = `To use them, delete it without deleting data, move that folder to DATA_ROOT/${s.slug}/data and import it again.`;
   const from = s.importedFrom;
   let deleteDescription = DELETE_DESCRIPTION;
   let retire: string | null = null;
   if (from) {
-    const compose = from.composeProject ? ` Si lo creó Docker Compose (proyecto «${from.composeProject}»), quita también ese servicio del compose.` : "";
-    // La retirada del origen (MigrateRetire) borra el contenedor igual que el borrado: si aún es el original, ese.
-    const composeRetire = from.composeProject ? ` Si lo creó Docker Compose (proyecto «${from.composeProject}»), quita también ese servicio del compose, o Compose lo volverá a crear en el origen.` : "";
+    const compose = from.composeProject ? ` If it was created by Docker Compose (project “${from.composeProject}”), also remove that service from the compose file.` : "";
+    // Removing the source (MigrateRetire) deletes the container just like deletion does: if it is still the original, that one.
+    const composeRetire = from.composeProject ? ` If it was created by Docker Compose (project “${from.composeProject}”), also remove that service from the compose file, or Compose will create it again on the source.` : "";
     if (isAdopted(s)) {
-      deleteDescription = `El servidor se quitará del panel y se eliminará su contenedor, que todavía es el original «${from.containerName}» que importaste: deja de existir también fuera del panel.${compose}`;
-      retire = `Sigue en el contenedor original «${from.containerName}» que importaste: al terminar, se eliminará al retirar el servidor del origen y dejará de existir también fuera del panel.${composeRetire}`;
+      deleteDescription = `The server will be removed from the panel and its container will be deleted, which is still the original “${from.containerName}” you imported: it also ceases to exist outside the panel.${compose}`;
+      retire = `It is still in the original container “${from.containerName}” you imported: when it finishes, it will be deleted when the server is removed from the source and will cease to exist outside the panel too.${composeRetire}`;
     } else if (!s.observed?.containerId) {
-      deleteDescription = `El servidor se quitará del panel y su contenedor se eliminará. Si aún no se ha recreado, ese contenedor es el original «${from.containerName}» que importaste.${compose}`;
-      retire = `Al terminar, la retirada del origen eliminará su contenedor. Si aún no se ha recreado, ese contenedor es el original «${from.containerName}» que importaste.${composeRetire}`;
+      deleteDescription = `The server will be removed from the panel and its container will be deleted. If it has not been recreated yet, that container is the original “${from.containerName}” you imported.${compose}`;
+      retire = `When it finishes, removing the source will delete its container. If it has not been recreated yet, that container is the original “${from.containerName}” you imported.${composeRetire}`;
     }
   }
   return {
-    backups: outside && `${outside}: no tiene copias de seguridad. ${howTo}`,
-    files: outside && `${outside}: no tiene navegador de archivos. ${howTo}`,
-    deleteData: dataPath ? `Los datos están en ${dataPath}, fuera de DATA_ROOT: el panel no los borra (bórralos a mano si quieres).` : null,
+    backups: outside && `${outside}: it has no backups. ${howTo}`,
+    files: outside && `${outside}: it has no file browser. ${howTo}`,
+    deleteData: dataPath ? `The data is in ${dataPath}, outside DATA_ROOT: the panel does not delete it (delete it by hand if you want).` : null,
     retire,
-    migrate: outside && `${outside}: no se puede migrar a otro nodo. Para migrarlo, elimínalo sin borrar datos, mueve esa carpeta a DATA_ROOT/${s.slug}/data y vuelve a importarlo.`,
+    migrate: outside && `${outside}: it cannot be migrated to another node. To migrate it, delete it without deleting data, move that folder to DATA_ROOT/${s.slug}/data and import it again.`,
     deleteDescription,
   };
 }
 
 const STATES: Record<string, string> = {
-  running: "En marcha", exited: "Parado", created: "Creado", restarting: "Reiniciando", paused: "En pausa", dead: "Muerto",
+  running: "Running", exited: "Stopped", created: "Created", restarting: "Restarting", paused: "Paused", dead: "Dead",
 };
 export const candidateStateLabel = (state: string): string => STATES[state] ?? state;

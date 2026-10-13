@@ -25,7 +25,7 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
   const [deleting, setDeleting] = useState<BackupDto | null>(null);
   const refreshJobs = () => qc.invalidateQueries({ queryKey: ["jobs"] });
 
-  // Una clave por intención: solo un fallo sin respuesta del servidor la conserva para el reintento.
+  // One key per intent: only a failure without a server response keeps it for the retry.
   const createKey = useRef<string | null>(null);
   const createNow = useMutation({
     mutationFn: () => createBackup(server.id, (createKey.current ??= newIdempotencyKey())),
@@ -48,26 +48,26 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
 
   return (
     <div className="flex flex-col gap-8">
-      <section className="flex flex-col gap-3" aria-label="Copias">
+      <section className="flex flex-col gap-3" aria-label="Backups">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Copias de seguridad</h2>
-            <p className="text-xs text-zinc-500">En el disco del nodo, en {server.slug}/backups.</p>
+            <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Backups</h2>
+            <p className="text-xs text-zinc-500">On the node's disk, in {server.slug}/backups.</p>
           </div>
           <Button onClick={() => { restore.reset(); remove.reset(); createNow.mutate(); }} disabled={busy || createNow.isPending} title={busyReason ?? undefined}>
-            <DatabaseBackup className="size-4" /> Crear copia ahora
+            <DatabaseBackup className="size-4" /> Create backup now
           </Button>
         </div>
         {active && <JobProgress job={active} />}
         {error && <p role="alert" className="text-sm text-red-400">{error.message}</p>}
         <Table>
           <TableHeader>
-            <TableRow><TableHead>Fecha</TableHead><TableHead>Tipo</TableHead><TableHead>Tamaño</TableHead><TableHead>Spec</TableHead><TableHead><span className="sr-only">Acciones</span></TableHead></TableRow>
+            <TableRow><TableHead>Date</TableHead><TableHead>Type</TableHead><TableHead>Size</TableHead><TableHead>Spec</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow>
           </TableHeader>
           <TableBody>
-            {backups.isPending && <TableRow><TableCell colSpan={5} className="text-center text-zinc-400">Cargando copias…</TableCell></TableRow>}
-            {backups.isError && <TableRow><TableCell colSpan={5} className="text-center text-red-400">No se pudieron cargar las copias: {backups.error.message}</TableCell></TableRow>}
-            {backups.data?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-zinc-400">Aún no hay copias. Crea una ahora o programa copias automáticas abajo.</TableCell></TableRow>}
+            {backups.isPending && <TableRow><TableCell colSpan={5} className="text-center text-zinc-400">Loading backups…</TableCell></TableRow>}
+            {backups.isError && <TableRow><TableCell colSpan={5} className="text-center text-red-400">Could not load the backups: {backups.error.message}</TableCell></TableRow>}
+            {backups.data?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-zinc-400">No backups yet. Create one now or set up scheduled backups below.</TableCell></TableRow>}
             {backups.data?.map((b) => {
               const act = backupActions(b, busy, offline);
               return (
@@ -75,22 +75,22 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
                   <TableCell><div>{formatBackupDate(b.startedAt)}</div><div className="font-mono text-xs text-zinc-500">{b.filename}</div></TableCell>
                   <TableCell>
                     <Badge variant={b.kind === "directory" ? "outline" : "secondary"}>{TRIGGER_LABEL[b.trigger]}</Badge>
-                    {b.status === "failed" && <Badge variant="destructive" className="ml-1">Fallida</Badge>}
+                    {b.status === "failed" && <Badge variant="destructive" className="ml-1">Failed</Badge>}
                   </TableCell>
                   <TableCell>{b.sizeBytes ? formatBytes(b.sizeBytes) : "—"}</TableCell>
                   <TableCell>{b.specVersion ? `v${b.specVersion}` : "—"}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-1">
                       {b.kind === "archive" && (
-                        <Button size="sm" variant="outline" disabled={!act.restore} onClick={() => { restore.reset(); setRestoring(b); }}><History className="size-4" /> Restaurar</Button>
+                        <Button size="sm" variant="outline" disabled={!act.restore} onClick={() => { restore.reset(); setRestoring(b); }}><History className="size-4" /> Restore</Button>
                       )}
                       {act.showDownload && (
-                        <Button size="sm" variant="ghost" disabled={!act.download} title={act.download ? "Descargar" : "La copia no se puede descargar ahora"}
+                        <Button size="sm" variant="ghost" disabled={!act.download} title={act.download ? "Download" : "The backup cannot be downloaded right now"}
                           onClick={() => startDownload(backupDownloadUrl(server.id, b.id), b.filename)}>
-                          <Download className="size-4" /><span className="sr-only">Descargar {b.filename}</span>
+                          <Download className="size-4" /><span className="sr-only">Download {b.filename}</span>
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" disabled={!act.remove || remove.isPending} onClick={() => { remove.reset(); setDeleting(b); }}><Trash2 className="size-4" /><span className="sr-only">Borrar {b.filename}</span></Button>
+                      <Button size="sm" variant="ghost" disabled={!act.remove || remove.isPending} onClick={() => { remove.reset(); setDeleting(b); }}><Trash2 className="size-4" /><span className="sr-only">Delete {b.filename}</span></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -100,23 +100,23 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
         </Table>
       </section>
 
-      <section className="flex flex-col gap-3" aria-label="Programación">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Programación</h2>
+      <section className="flex flex-col gap-3" aria-label="Schedule">
+        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Schedule</h2>
         <BackupScheduleForm server={server} />
       </section>
 
       <AlertDialog open={restoring !== null} onOpenChange={(open) => { if (!open && !restore.isPending) setRestoring(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Restaurar esta copia?</AlertDialogTitle>
+            <AlertDialogTitle>Restore this backup?</AlertDialogTitle>
             <AlertDialogDescription>
               {restoring ? restoreDialogText(server.name, restoring.startedAt) : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {restore.error && <p role="alert" className="text-sm text-red-400">{restore.error.message}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={restore.isPending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={restore.isPending} onClick={(e) => { e.preventDefault(); if (restoring) restore.mutate(restoring); }}>Restaurar</AlertDialogAction>
+            <AlertDialogCancel disabled={restore.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={restore.isPending} onClick={(e) => { e.preventDefault(); if (restoring) restore.mutate(restoring); }}>Restore</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -129,8 +129,8 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
           </AlertDialogHeader>
           {remove.error && <p role="alert" className="text-sm text-red-400">{remove.error.message}</p>}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={remove.isPending}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={remove.isPending} onClick={(e) => { e.preventDefault(); if (deleting) remove.mutate(deleting); }}>Borrar</AlertDialogAction>
+            <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" disabled={remove.isPending} onClick={(e) => { e.preventDefault(); if (deleting) remove.mutate(deleting); }}>Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

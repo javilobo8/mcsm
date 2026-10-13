@@ -4,7 +4,7 @@ import type { NodeDto, ServerDto, ServerMessage } from "./api";
 type ObservedMsg = Extract<ServerMessage, { type: "observed" }>;
 type NodeMsg = Extract<ServerMessage, { type: "node" }>;
 
-/** Subconjunto de `Realtime` que necesita la caché (facilita los tests). */
+/** Subset of `Realtime` the cache needs (makes testing easier). */
 export interface LiveSource {
   subscribe(topic: string, handler: (msg: ServerMessage) => void): () => void;
   onReconnect(cb: () => void): () => void;
@@ -12,7 +12,7 @@ export interface LiveSource {
 
 const ts = (iso: string | null | undefined) => (iso ? Date.parse(iso) || 0 : 0);
 
-/** Un evento más antiguo que lo que ya tenemos en caché no debe pisarlo. */
+/** An event older than what we already have in cache must not overwrite it. */
 const isStale = (s: ServerDto, m: ObservedMsg) => ts(m.observedAt) < ts(s.observedAt);
 
 const withObserved = (s: ServerDto, m: ObservedMsg): ServerDto =>
@@ -21,7 +21,7 @@ const withObserved = (s: ServerDto, m: ObservedMsg): ServerDto =>
 const UNKNOWN_THROTTLE_MS = 1000;
 const unknownThrottle = new WeakMap<QueryClient, { last: number; timer: ReturnType<typeof setTimeout> | null }>();
 
-/** Invalida ["servers"] como mucho una vez por segundo, con llamada final (trailing) para no perder el último. */
+/** Invalidates ["servers"] at most once per second, with a final (trailing) call so the last one is not lost. */
 function invalidateServersThrottled(qc: QueryClient) {
   const st = unknownThrottle.get(qc) ?? { last: 0, timer: null };
   unknownThrottle.set(qc, st);
@@ -32,10 +32,10 @@ function invalidateServersThrottled(qc: QueryClient) {
 }
 
 /**
- * Fusiona `update` en la query `queryKey` si ya tiene datos. Sin datos (carga inicial) no hace
- * nada: cancelarla la dejaría pending para siempre y la propia carga traerá el estado. Si la query
- * está en REFETCH se cancela (para que la respuesta vieja no pise el evento) y se escribe cuando la
- * cancelación, que revierte de forma asíncrona, ha terminado.
+ * Merges `update` into the `queryKey` query if it already has data. Without data (initial load) it does
+ * nothing: cancelling it would leave it pending forever and the load itself will bring the state. If the query
+ * is REFETCHING it is cancelled (so the old response does not overwrite the event) and written once the
+ * cancellation, which reverts asynchronously, has finished.
  */
 export function mergeIntoCached<T>(qc: QueryClient, queryKey: readonly unknown[], update: (old: T) => T): void {
   if (qc.getQueryData<T>(queryKey) === undefined) return;
@@ -45,16 +45,16 @@ export function mergeIntoCached<T>(qc: QueryClient, queryKey: readonly unknown[]
 }
 
 export function applyObservedEvent(qc: QueryClient, msg: ObservedMsg): void {
-  // Lista ["servers"].
+  // List ["servers"].
   const list = qc.getQueryData<ServerDto[]>(["servers"]);
   if (list && !list.some((s) => s.id === msg.serverId)) {
-    // Servidor creado desde otra pestaña/cliente: no hay datos para construirlo, se recarga (con límite).
-    // Sin cancelar: abortaría el propio refetch recién lanzado.
+    // Server created from another tab/client: there is no data to build it, it is reloaded (throttled).
+    // Without cancelling: it would abort the refetch just launched.
     invalidateServersThrottled(qc);
   } else {
     mergeIntoCached<ServerDto[]>(qc, ["servers"], (old) => old.map((s) => (s.id === msg.serverId ? withObserved(s, msg) : s)));
   }
-  // Detalle ["server", id]: independiente de la lista (puede estar en caché aunque la lista no lo conozca).
+  // Detail ["server", id]: independent of the list (it may be cached even if the list does not know it).
   mergeIntoCached<ServerDto>(qc, ["server", msg.serverId], (old) => withObserved(old, msg));
 }
 
@@ -65,12 +65,12 @@ export function applyNodeEvent(qc: QueryClient, msg: NodeMsg): void {
   });
 }
 
-/** Conecta la caché de React Query con el tiempo real. Devuelve la función de limpieza. */
+/** Connects the React Query cache to realtime. Returns the cleanup function. */
 export function bindLive(qc: QueryClient, live: LiveSource): () => void {
   const offs = [
     live.subscribe("servers", (m) => { if (m.type === "observed") applyObservedEvent(qc, m); }),
     live.subscribe("nodes", (m) => { if (m.type === "node") applyNodeEvent(qc, m); }),
-    // Durante la desconexión se pierden eventos: recargamos todo.
+    // Events are lost during the disconnection: we reload everything.
     live.onReconnect(() => {
       void qc.invalidateQueries({ queryKey: ["servers"] });
       void qc.invalidateQueries({ queryKey: ["server"] });

@@ -4,14 +4,14 @@ import { createBackup } from "./use-backups";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("createBackup", () => {
-  it("envía POST con la cabecera Idempotency-Key y el id codificado", async () => {
+  it("sends POST with the Idempotency-Key header and the encoded id", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "j1" }), { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
-    await createBackup("a/b?c", "clave-1");
+    await createBackup("a/b?c", "key-1");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("/api/servers/a%2Fb%3Fc/backups");
     expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("clave-1");
+    expect((init.headers as Record<string, string>)["Idempotency-Key"]).toBe("key-1");
     expect(init.body).toBeUndefined();
   });
 });

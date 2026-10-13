@@ -8,23 +8,23 @@ let unauthorizedHandler: (() => void) | null = null;
 const gate = createUnauthorizedGate(() => unauthorizedHandler?.());
 
 /**
- * Retiene los 401 REST mientras una mutación cambia la sesión (cambio de contraseña): los de peticiones en vuelo
- * van con la cookie vieja. Devuelve la función que suelta la retención con el resultado de la mutación y dice si
- * hubo un 401 que, tras un éxito, obliga a invalidar las consultas ("invalidate").
+ * Holds REST 401s while a mutation changes the session (password change): those from in-flight requests
+ * carry the old cookie. Returns the function that releases the hold with the mutation's result and says whether
+ * there was a 401 that, after a success, requires invalidating the queries ("invalidate").
  */
 export const holdUnauthorized = () => gate.hold();
 
-/** Registra qué hacer cuando la API responde 401 con la sesión caducada. */
+/** Registers what to do when the API answers 401 with an expired session. */
 export function setUnauthorizedHandler(h: (() => void) | null) { unauthorizedHandler = h; }
 
-/** Para peticiones que no pasan por `request` (subidas con XHR): mismo tratamiento del 401. */
+/** For requests that do not go through `request` (XHR uploads): same 401 handling. */
 export function reportStatus(status: number, path: string) { if (isSessionExpired(status, path)) gate.report(); }
 
 export function errorMessage(status: number, statusText: string, data: unknown): string {
   const msg = (data as { error?: unknown } | null)?.error;
   if (typeof msg === "string" && msg) return msg;
-  if (status >= 500) return `El panel no responde correctamente (HTTP ${status})`;
-  return statusText || `Error HTTP ${status}`;
+  if (status >= 500) return `The panel is not responding correctly (HTTP ${status})`;
+  return statusText || `HTTP error ${status}`;
 }
 
 async function request<T>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> {
@@ -37,7 +37,7 @@ async function request<T>(method: string, path: string, body?: unknown, extraHea
       credentials: "same-origin",
     });
   } catch {
-    throw new ApiError(0, "Error de red: no se pudo contactar con el panel");
+    throw new ApiError(0, "Network error: could not reach the panel");
   }
   if (res.status === 204) return undefined as T;
   const data: unknown = await res.json().catch(() => null);
@@ -49,8 +49,8 @@ async function request<T>(method: string, path: string, body?: unknown, extraHea
 }
 
 /**
- * Ruta de la API con cada valor interpolado codificado con encodeURIComponent (L8): un id con
- * `?`, `#` o `/` no puede añadir parámetros ni cambiar de ruta. Úsalo en toda ruta con valores:
+ * API path with each interpolated value encoded with encodeURIComponent (L8): an id containing
+ * `?`, `#` or `/` cannot add parameters or change the route. Use it for every path with values:
  * apiPath`/api/servers/${id}/power`.
  */
 export function apiPath(strings: TemplateStringsArray, ...values: (string | number | boolean)[]): string {
@@ -67,14 +67,14 @@ export const api = {
 
 export interface AuthStatus {
   configured: boolean; authenticated: boolean;
-  /** L3: el alta pide el token de configuración del log del panel. */
+  /** L3: enrollment asks for the panel log's configuration token. */
   setupTokenRequired?: boolean;
 }
 
 export interface NodeDto {
   id: string; name: string; dataRoot: string; status: "online" | "offline"; agentVersion: string | null; dockerVersion: string | null;
   hostInfo: { hostname?: string; cpus?: number; memTotalBytes?: number; os?: string; arch?: string } | null; lastSeenAt: string | null; createdAt: string;
-  /** plan-9: el agente aún no se ha conectado con su token nuevo. */
+  /** plan-9: the agent has not yet connected with its new token. */
   tokenRotationPending: boolean;
 }
 export interface ObservedDto {
@@ -85,11 +85,11 @@ export interface ServerDto {
   id: string; nodeId: string; name: string; slug: string; specVersion: number; desiredState: "running" | "stopped";
   observed: ObservedDto | null; observedSpecVersion: number; observedAt: string | null; createdAt: string; updatedAt: string;
   spec: import("@mcsm/shared").SpecInput & { ports: { game: number }; rconPassword?: string };
-  /** plan-6: origen de un servidor importado (null si lo creó el panel). */
+  /** plan-6: origin of an imported server (null if the panel created it). */
   importedFrom: import("@mcsm/shared").ImportedFrom | null;
 }
 
-// plan-4: copias y jobs
+// plan-4: backups and jobs
 export type JobState = "queued" | "running" | "ok" | "failed" | "cancelled";
 export interface JobDto {
   id: string; type: string; serverId: string | null; nodeId: string | null; status: JobState; progress: number; message: string;
@@ -104,7 +104,7 @@ export interface BackupDto {
 }
 
 export type ServerMessage =
-  | { type: "job"; job: JobDto; logChunk: string; /** Log completo (reemplaza al acumulado); el panel hoy no lo envía. */ log?: string }
+  | { type: "job"; job: JobDto; logChunk: string; /** Full log (replaces the accumulated one); the panel does not send it today. */ log?: string }
   | { type: "backups"; serverId: string }
   | { type: "observed"; serverId: string; observed: ObservedDto; observedAt: string }
   | { type: "node"; node: NodeDto }

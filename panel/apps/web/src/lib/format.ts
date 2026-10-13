@@ -13,18 +13,18 @@ export function formatUptime(startedAtUnix: number): string {
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
 }
 export function stateLabel(o: { state: string; health: string; error: string } | null, desired: string): { text: string; tone: "ok" | "warn" | "bad" | "muted" } {
-  if (!o) return { text: "Sin datos", tone: "muted" };
+  if (!o) return { text: "No data", tone: "muted" };
   if (o.error) return { text: "Error", tone: "bad" };
-  if (o.state === "running") return o.health === "starting" ? { text: "Arrancando", tone: "warn" } : o.health === "unhealthy" ? { text: "No saludable", tone: "bad" } : { text: "En marcha", tone: "ok" };
-  if (o.state === "missing") return { text: desired === "running" ? "Creando…" : "Sin crear", tone: "muted" };
-  if (o.state === "restarting") return { text: "Reiniciando", tone: "warn" };
-  return { text: "Parado", tone: "muted" };
+  if (o.state === "running") return o.health === "starting" ? { text: "Starting", tone: "warn" } : o.health === "unhealthy" ? { text: "Unhealthy", tone: "bad" } : { text: "Running", tone: "ok" };
+  if (o.state === "missing") return { text: desired === "running" ? "Creating…" : "Not created", tone: "muted" };
+  if (o.state === "restarting") return { text: "Restarting", tone: "warn" };
+  return { text: "Stopped", tone: "muted" };
 }
 
-/** Estado a mostrar: con el nodo caído el último observed es obsoleto. `undefined` = nodo aún desconocido. */
+/** State to show: with the node down the last observed is stale. `undefined` = node still unknown. */
 export function displayState(o: { state: string; health: string; error: string } | null, desired: string, nodeOnline: boolean | undefined) {
-  if (nodeOnline === false) return { text: "Nodo desconectado", tone: "muted" as const };
+  if (nodeOnline === false) return { text: "Node offline", tone: "muted" as const };
   return stateLabel(o, desired);
 }
-/** La API responde 409 a las acciones de energía con el nodo desconectado. */
+/** The API answers 409 to power actions with the node offline. */
 export const canPower = (nodeOnline: boolean | undefined): boolean => nodeOnline !== false;

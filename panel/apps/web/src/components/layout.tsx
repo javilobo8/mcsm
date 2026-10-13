@@ -6,20 +6,20 @@ import { api } from "@/lib/api";
 import { useLive } from "@/hooks/use-live";
 
 const nav = [
-  { to: "/", label: "Servidores", icon: LayoutDashboard },
-  { to: "/nodes", label: "Nodos", icon: Server },
-  { to: "/templates", label: "Plantillas", icon: LayoutTemplate },
+  { to: "/", label: "Servers", icon: LayoutDashboard },
+  { to: "/nodes", label: "Nodes", icon: Server },
+  { to: "/templates", label: "Templates", icon: LayoutTemplate },
   { to: "/jobs", label: "Jobs", icon: ListChecks }, // plan-4
-  { to: "/events", label: "Eventos", icon: Bell }, // plan-9
-  { to: "/settings", label: "Ajustes", icon: Settings }, // plan-9
+  { to: "/events", label: "Events", icon: Bell }, // plan-9
+  { to: "/settings", label: "Settings", icon: Settings }, // plan-9
 ] as const;
 
 export function Layout() {
-  useLive(); // un único bind del tiempo real para toda la app autenticada
+  useLive(); // a single realtime bind for the whole authenticated app
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const logout = async () => {
-    try { await api.post("/api/auth/logout"); } catch { /* la sesión puede haber caducado ya: salimos igualmente */ }
+    try { await api.post("/api/auth/logout"); } catch { /* the session may have already expired: we leave anyway */ }
     queryClient.clear();
     await navigate({ to: "/login", search: {} });
   };
@@ -34,10 +34,10 @@ export function Layout() {
             </Link>
           ))}
           <Link to="/servers/new" className="mt-2 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:border-ring hover:text-foreground">
-            <Plus className="size-4" /> Nuevo servidor
+            <Plus className="size-4" /> New server
           </Link>
         </nav>
-        <Button variant="ghost" className="justify-start text-muted-foreground" onClick={logout}><LogOut className="size-4" /> Salir</Button>
+        <Button variant="ghost" className="justify-start text-muted-foreground" onClick={logout}><LogOut className="size-4" /> Sign out</Button>
       </aside>
       <main className="flex-1 overflow-auto"><Outlet /></main>
     </div>

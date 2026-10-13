@@ -23,17 +23,17 @@ function languageExtension(lang: EditorLanguage): Extension {
 interface Props {
   initial: string;
   language: EditorLanguage;
-  /** Recibe la vista al montarse (y null al desmontarse) para leer el documento al guardar. */
+  /** Receives the view on mount (and null on unmount) to read the document when saving. */
   onView(view: EditorView | null): void;
-  /** Se llama tras cada cambio del documento; lee el contenido de la vista recibida en onView. */
+  /** Called after every document change; reads the content from the view received in onView. */
   onChange(): void;
   onSave(): void;
 }
 
 /**
- * CodeMirror 6 sin dependencias de React: se crea al montar y se destruye al desmontar.
- * `initial` y `language` solo se aplican al montar: un cambio posterior NO recrea la vista ni
- * pisa lo editado. Para cargar otro contenido/lenguaje, remonta el componente con `key`.
+ * CodeMirror 6 without React dependencies: created on mount and destroyed on unmount.
+ * `initial` and `language` only apply on mount: a later change does NOT recreate the view nor
+ * overwrite what was edited. To load other content/language, remount the component with `key`.
  */
 export function CodeEditor({ initial, language, onView, onChange, onSave }: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -57,7 +57,7 @@ export function CodeEditor({ initial, language, onView, onChange, onSave }: Prop
     });
     cb.current.onView(view);
     return () => { cb.current.onView(null); view.destroy(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar (ver doc del componente)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on mount (see the component's doc)
   }, []);
 
   return <div ref={host} className="overflow-hidden rounded-md border border-border" />;

@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-/** E2E mínima (Plan 9, spec §11): un navegador, en serie, contra el compose levantado por deploy/e2e/run.sh. */
+/** Minimal E2E (Plan 9, spec §11): one browser, serial, against the compose brought up by deploy/e2e/run.sh. */
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: false,
@@ -14,7 +14,7 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? "http://panel:8080",
     headless: true,
     viewport: { width: 1440, height: 900 },
-    locale: "es-ES",
+    locale: "en-GB",
     colorScheme: "dark",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",

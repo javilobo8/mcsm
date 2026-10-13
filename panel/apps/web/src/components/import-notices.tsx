@@ -2,7 +2,7 @@ import { Info } from "lucide-react";
 import type { ServerDto } from "@/lib/api";
 import { importNotices } from "@/lib/import";
 
-/** Avisos de un servidor importado (cabecera de su página): adopción pendiente, Compose y datos fuera de DATA_ROOT. */
+/** Notices of an imported server (its page header): pending adoption, Compose and data outside DATA_ROOT. */
 export function ImportNotices({ server }: { server: ServerDto }) {
   const notes = importNotices(server);
   if (notes.length === 0) return null;
@@ -13,7 +13,7 @@ export function ImportNotices({ server }: { server: ServerDto }) {
   );
 }
 
-/** Explicación en lugar de una pestaña que no aplica a este servidor (p. ej. datos fuera de DATA_ROOT). */
+/** Explanation in place of a tab that does not apply to this server (e.g. data outside DATA_ROOT). */
 export function ExternalDataNote({ text }: { text: string }) {
   return (
     <div role="note" className="flex max-w-3xl gap-2 rounded-md border border-sky-900 bg-sky-950/30 p-3 text-sm text-sky-200">

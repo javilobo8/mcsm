@@ -14,32 +14,32 @@ const render = (spec: EditableSpec, mode: "server" | "template") =>
     </QueryClientProvider>,
   );
 
-describe("sección Router de la pestaña Red", () => {
+describe("Router section of the Network tab", () => {
   const routed: EditableSpec = { ...defaultSpecInput(), router: { enabled: true, hostname: "survival.lan" } };
 
-  it("se pinta en Red con su hostname; las plantillas no la tienen", () => {
+  it("is rendered in Network with its hostname; templates do not have it", () => {
     const html = render(routed, "server");
     expect(html).toContain("Router (mc-router)");
     expect(html).toContain("survival.lan");
     expect(render(routed, "template")).not.toContain("Router (mc-router)");
-    expect(sectionOfField("sf-router-hostname")).toBe("Red");
+    expect(sectionOfField("sf-router-hostname")).toBe("Network");
   });
 
-  it("valida el hostname como la API", () => {
+  it("validates the hostname like the API", () => {
     expect(routerSectionError(undefined)).toBeNull();
     expect(routerSectionError({ enabled: true, hostname: "survival.lan" })).toBeNull();
-    expect(routerSectionError({ enabled: true, hostname: "" })).toBe("Indica el hostname para entrar por el router");
+    expect(routerSectionError({ enabled: true, hostname: "" })).toBe("Specify the hostname to join through the router");
     expect(routerSectionError({ enabled: false, hostname: "a_b.lan" })).toMatch(/Invalid hostname/);
   });
 
-  it("desactivado y sin hostname vuelve a «sin sección»: no hay cambios que enviar", () => {
+  it("disabled and without a hostname goes back to “no section”: there are no changes to send", () => {
     const base = defaultSpecInput();
     const toggled = withRouter(withRouter(base, { enabled: true, hostname: "" }), { enabled: false, hostname: "" });
     expect("router" in toggled).toBe(false);
     expect(buildSpecPatch(base, toggled)).toEqual({});
   });
 
-  it("el PATCH lleva la sección entera, y null al quitarla", () => {
+  it("the PATCH carries the whole section, and null when removing it", () => {
     const base = defaultSpecInput();
     expect(buildSpecPatch(base, routed)).toEqual({ router: { enabled: true, hostname: "survival.lan" } });
     const off = withRouter(routed, { enabled: false, hostname: "survival.lan" });
@@ -47,14 +47,14 @@ describe("sección Router de la pestaña Red", () => {
     expect(buildSpecPatch(routed, withRouter(routed, { enabled: false, hostname: "" }))).toEqual({ router: null });
   });
 
-  it("las plantillas no envían el router", () => {
+  it("templates do not send the router", () => {
     expect(TEMPLATE_KEYS).not.toContain("router");
     expect("router" in templateCreateBody("t", "", routed).spec).toBe(false);
   });
 
-  it("el diff lo explica en castellano", () => {
-    expect(diffSpecs(defaultSpecInput(), routed)).toContainEqual({ label: "Router (mc-router)", before: "—", after: "entrada por survival.lan" });
+  it("the diff explains it in English", () => {
+    expect(diffSpecs(defaultSpecInput(), routed)).toContainEqual({ label: "Router (mc-router)", before: "—", after: "entry via survival.lan" });
     expect(diffSpecs(routed, withRouter(routed, { enabled: false, hostname: "survival.lan" }))).toContainEqual(
-      { label: "Router (mc-router)", before: "entrada por survival.lan", after: "desactivado (survival.lan)" });
+      { label: "Router (mc-router)", before: "entry via survival.lan", after: "disabled (survival.lan)" });
   });
 });

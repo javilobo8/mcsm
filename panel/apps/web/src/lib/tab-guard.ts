@@ -1,18 +1,18 @@
-/** Cambiar de pestaña: se pide confirmación solo si hay cambios sin guardar y de verdad se sale de la pestaña. */
+/** Switching tabs: confirmation is requested only if there are unsaved changes and the tab is really being left. */
 export function decideTabChange(dirty: boolean, current: string, next: string): "switch" | "confirm" {
   return dirty && next !== current ? "confirm" : "switch";
 }
 
-/** Texto del diálogo que confirma salir de una pestaña protegida. */
+/** Text of the dialog that confirms leaving a protected tab. */
 export interface GuardText { title: string; description: string; confirmLabel: string }
 
 const DEFAULT_GUARD_TEXT: GuardText = {
-  title: "Cambios sin guardar",
-  description: "Hay cambios sin guardar en esta pestaña. Si cambias de pestaña se perderán.",
-  confirmLabel: "Descartar y cambiar",
+  title: "Unsaved changes",
+  description: "There are unsaved changes in this tab. If you switch tabs they will be lost.",
+  confirmLabel: "Discard and switch",
 };
 
-/** El texto que registró la pestaña (p. ej. "se cancelará la subida") o el genérico de cambios sin guardar. */
+/** The text the tab registered (e.g. "the upload will be cancelled") or the generic unsaved-changes one. */
 export function tabGuardText(custom: GuardText | null | undefined): GuardText {
   return custom ?? DEFAULT_GUARD_TEXT;
 }

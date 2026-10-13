@@ -2,9 +2,9 @@ import { portRangeSchema, publicUrlSchema, type PortRange, type SettingsDto } fr
 import type { GuardText } from "./tab-guard";
 
 export function passwordFormError(f: { current: string; next: string; repeat: string }): string | null {
-  if (!f.current) return "Escribe la contraseña actual";
-  if (f.next.length < 8) return "La contraseña nueva necesita al menos 8 caracteres";
-  if (f.next !== f.repeat) return "Las contraseñas nuevas no coinciden";
+  if (!f.current) return "Enter the current password";
+  if (f.next.length < 8) return "The new password needs at least 8 characters";
+  if (f.next !== f.repeat) return "The new passwords do not match";
   return null;
 }
 
@@ -12,23 +12,23 @@ export const portRangeForm = (r: PortRange) => ({ from: String(r.from), to: Stri
 
 export function parsePortRange(f: { from: string; to: string }): { ok: true; value: PortRange } | { ok: false; error: string } {
   const from = f.from.trim(), to = f.to.trim();
-  if (!/^\d+$/.test(from) || !/^\d+$/.test(to)) return { ok: false, error: "Escribe dos números de puerto" };
+  if (!/^\d+$/.test(from) || !/^\d+$/.test(to)) return { ok: false, error: "Enter two port numbers" };
   const r = portRangeSchema.safeParse({ from: Number(from), to: Number(to) });
-  return r.success ? { ok: true, value: r.data } : { ok: false, error: r.error.issues[0]?.message ?? "Rango inválido" };
+  return r.success ? { ok: true, value: r.data } : { ok: false, error: r.error.issues[0]?.message ?? "Invalid range" };
 }
 
 export function parsePublicUrl(v: string): { ok: true; value: string } | { ok: false; error: string } {
   const r = publicUrlSchema.safeParse(v);
-  return r.success ? { ok: true, value: r.data } : { ok: false, error: r.error.issues[0]?.message ?? "URL inválida" };
+  return r.success ? { ok: true, value: r.data } : { ok: false, error: r.error.issues[0]?.message ?? "Invalid URL" };
 }
 
-/** Explica de dónde sale la URL que va en el comando de alta. */
+/** Explains where the URL used in the enrollment command comes from. */
 export function publicUrlNote(s: SettingsDto): string {
-  if (s.publicUrlSource === "settings") return `Guardada aquí. ${s.envPublicUrl ? `Si la borras se usará la del entorno (${s.envPublicUrl}).` : "Si la borras se usará la dirección con la que abres el panel."}`;
-  if (s.publicUrlSource === "env") return `Viene del entorno (PANEL_PUBLIC_URL = ${s.envPublicUrl}). Guardar otra aquí la sustituye.`;
-  return "Sin configurar: el comando de alta usa la dirección con la que abres el panel (pon aquí la IP de la LAN y el puerto).";
+  if (s.publicUrlSource === "settings") return `Saved here. ${s.envPublicUrl ? `If you delete it, the one from the environment (${s.envPublicUrl}) will be used.` : "If you delete it, the address you use to open the panel will be used."}`;
+  if (s.publicUrlSource === "env") return `It comes from the environment (PANEL_PUBLIC_URL = ${s.envPublicUrl}). Saving another one here replaces it.`;
+  return "Not configured: the enrollment command uses the address you use to open the panel (enter the LAN IP and port here).";
 }
 
 export function settingsLeaveWarning(dirty: boolean): GuardText | null {
-  return dirty ? { title: "Ajustes sin guardar", description: "Hay cambios sin guardar en Ajustes. Si sales, se perderán.", confirmLabel: "Salir sin guardar" } : null;
+  return dirty ? { title: "Unsaved settings", description: "There are unsaved changes in Settings. If you leave, they will be lost.", confirmLabel: "Leave without saving" } : null;
 }

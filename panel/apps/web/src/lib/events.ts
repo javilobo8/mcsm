@@ -7,10 +7,10 @@ export type EventsFilter = { serverId?: string; minLevel?: EventLevelName };
 
 export const eventsKey = (f: EventsFilter) => ["events", f.serverId ?? "", f.minLevel ?? ""] as const;
 
-/** Cuántos eventos recientes muestra la lista. */
+/** How many recent events the list shows. */
 export const EVENTS_LIMIT = 100;
 
-/** GET /api/events con los filtros codificados (los más recientes, hasta EVENTS_LIMIT). */
+/** GET /api/events with the filters encoded (the most recent ones, up to EVENTS_LIMIT). */
 export function eventsUrl(f: EventsFilter): string {
   const p = new URLSearchParams({ limit: String(EVENTS_LIMIT) });
   if (f.serverId) p.set("serverId", f.serverId);
@@ -25,16 +25,16 @@ const TONES: Record<EventLevelName, string> = {
 };
 export const levelTone = (level: EventLevelName): string => TONES[level];
 
-/** De qué trata el evento: su servidor (con el nombre de entonces), su nodo o el panel. */
+/** What the event is about: its server (with the name it had then), its node or the panel. */
 export function eventSubject(e: EventDto, nodeName?: string): string {
   if (e.serverId) return e.serverName ?? e.serverId;
-  if (e.nodeId) return `Nodo «${nodeName ?? e.nodeId}»`;
+  if (e.nodeId) return `Node “${nodeName ?? e.nodeId}”`;
   return "Panel";
 }
 
 type EventMsg = Extract<ServerMessage, { type: "event" }>;
 
-/** Un evento nuevo recarga las listas; un bucle de crash, además, el servidor (el panel lo dejó en «parado»). */
+/** A new event reloads the lists; a crash loop also reloads the server (the panel left it “stopped”). */
 export function applyServerEvent(qc: QueryClient, msg: EventMsg): void {
   void qc.invalidateQueries({ queryKey: ["events"] });
   if (msg.event.kind === "crash_loop" && msg.event.serverId) {
@@ -43,7 +43,7 @@ export function applyServerEvent(qc: QueryClient, msg: EventMsg): void {
   }
 }
 
-/** Conecta el topic `events` con la caché. Devuelve la función de limpieza. */
+/** Connects the `events` topic to the cache. Returns the cleanup function. */
 export function bindEvents(qc: QueryClient, live: LiveSource): () => void {
   const offs = [
     live.subscribe("events", (m) => { if (m.type === "event") applyServerEvent(qc, m); }),
@@ -53,7 +53,7 @@ export function bindEvents(qc: QueryClient, live: LiveSource): () => void {
 }
 
 export const EVENT_FILTERS: readonly { label: string; minLevel?: EventLevelName }[] = [
-  { label: "Todos" },
-  { label: "Avisos y errores", minLevel: "warn" },
-  { label: "Errores", minLevel: "error" },
+  { label: "All" },
+  { label: "Warnings and errors", minLevel: "warn" },
+  { label: "Errors", minLevel: "error" },
 ];

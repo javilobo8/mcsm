@@ -8,44 +8,44 @@ import { withType, type EditableSpec } from "@/lib/spec-edit";
 const render = (spec: EditableSpec) =>
   renderToString(<QueryClientProvider client={new QueryClient()}><VersionSection spec={spec} onChange={() => {}} /></QueryClientProvider>);
 
-describe("VersionSection (render en servidor, sin DOM)", () => {
-  it("Fabric muestra Mods y no Plugins", () => {
+describe("VersionSection (server render, no DOM)", () => {
+  it("Fabric shows Mods and not Plugins", () => {
     const html = render({ ...defaultSpecInput(), type: "FABRIC", mods: { modrinthProjects: ["lithium"], curseforgeFiles: [], urls: [] } });
     expect(html).toContain("MODRINTH_PROJECTS");
     expect(html).toContain("lithium");
     expect(html).not.toContain("SPIGET_RESOURCES");
-    expect(html).not.toContain("API key de CurseForge");
+    expect(html).not.toContain("CurseForge API key");
   });
-  it("Paper muestra Plugins y no Mods", () => {
+  it("Paper shows Plugins and not Mods", () => {
     const html = render({ ...defaultSpecInput(), type: "PAPER" });
     expect(html).toContain("SPIGET_RESOURCES");
     expect(html).not.toContain("CURSEFORGE_FILES");
   });
-  it("un modpack de CurseForge pide el slug y muestra el estado de la API key", () => {
+  it("a CurseForge modpack asks for the slug and shows the API key status", () => {
     const html = render({ ...withType(defaultSpecInput(), "AUTO_CURSEFORGE"), modpack: { platform: "AUTO_CURSEFORGE", slugOrUrl: "all-the-mods-9", versionId: "", loader: "" } });
-    expect(html).toContain("Modpack de CurseForge");
+    expect(html).toContain("CurseForge modpack");
     expect(html).toContain("all-the-mods-9");
-    expect(html).toContain("API key de CurseForge");
-    expect(html).not.toContain("Loader (opcional)");
+    expect(html).toContain("CurseForge API key");
+    expect(html).not.toContain("Loader (optional)");
   });
-  it("Vanilla sin mods explica que no carga mods ni plugins", () => {
-    expect(render({ ...defaultSpecInput(), type: "VANILLA" })).toContain("Vanilla no carga mods ni plugins");
+  it("Vanilla without mods explains that it loads neither mods nor plugins", () => {
+    expect(render({ ...defaultSpecInput(), type: "VANILLA" })).toContain("Vanilla does not load mods or plugins");
   });
 });
 
-describe("VersionSection: visibilidad estable", () => {
-  it("Paper con mods vacíos pero la sección presente sigue mostrando Mods", () => {
+describe("VersionSection: stable visibility", () => {
+  it("Paper with empty mods but the section present still shows Mods", () => {
     const html = render({ ...defaultSpecInput(), type: "PAPER", mods: { modrinthProjects: [], curseforgeFiles: [], urls: [] } });
     expect(html).toContain("CURSEFORGE_FILES");
   });
-  it("Fabric con plugins vacíos pero presentes sigue mostrando Plugins", () => {
+  it("Fabric with empty but present plugins still shows Plugins", () => {
     const html = render({ ...defaultSpecInput(), type: "FABRIC", plugins: { modrinthProjects: [], spigetResources: [], urls: [] } });
     expect(html).toContain("SPIGET_RESOURCES");
   });
 });
 
-describe("VersionSection: aria-describedby heredado de Field", () => {
-  it("sf-version y sf-mp-slug referencian su hint", () => {
+describe("VersionSection: aria-describedby inherited from Field", () => {
+  it("sf-version and sf-mp-slug reference their hint", () => {
     const html = render({ ...withType(defaultSpecInput(), "MODRINTH"), modpack: { platform: "MODRINTH", slugOrUrl: "x", versionId: "", loader: "" } });
     expect(html).toMatch(/id="sf-version"[^>]*aria-describedby="sf-version-hint"|aria-describedby="sf-version-hint"[^>]*id="sf-version"/);
     expect(html).toMatch(/id="sf-mp-slug"[^>]*aria-describedby="sf-mp-slug-hint"|aria-describedby="sf-mp-slug-hint"[^>]*id="sf-mp-slug"/);
@@ -53,27 +53,27 @@ describe("VersionSection: aria-describedby heredado de Field", () => {
   });
 });
 
-describe("VersionSection: selector de versión y build (plan 10)", () => {
-  it("Paper: combobox de versión con su hint, build de Paper y la pista de Java nueva", () => {
+describe("VersionSection: version and build picker (plan 10)", () => {
+  it("Paper: version combobox with its hint, Paper build and the new Java hint", () => {
     const html = render({ ...defaultSpecInput(), type: "PAPER", version: "1.20.1" });
     expect(html).toMatch(/<button[^>]*role="combobox"[^>]*id="sf-version"|<button[^>]*id="sf-version"[^>]*role="combobox"/);
     expect(html).toMatch(/id="sf-version"[^>]*aria-describedby="sf-version-hint"|aria-describedby="sf-version-hint"[^>]*id="sf-version"/);
-    expect(html).toContain("Build de Paper");
+    expect(html).toContain("Paper build");
     expect(html).toContain('id="sf-build"');
-    expect(html).toContain("java25 para 26.x");
+    expect(html).toContain("java25 for 26.x");
   });
-  it("modpack: versión como texto libre y sin build", () => {
+  it("modpack: version as free text and no build", () => {
     const html = render({ ...withType(defaultSpecInput(), "MODRINTH"), modpack: { platform: "MODRINTH", slugOrUrl: "x", versionId: "", loader: "" } });
     expect(html).toMatch(/<input[^>]*id="sf-version"/);
     expect(html).not.toContain('id="sf-build"');
   });
-  it("Vanilla sin build; Spigot avisa de BUILD_FROM_SOURCE", () => {
+  it("Vanilla without build; Spigot warns about BUILD_FROM_SOURCE", () => {
     expect(render({ ...defaultSpecInput(), type: "VANILLA" })).not.toContain('id="sf-build"');
     const spigot = render({ ...defaultSpecInput(), type: "SPIGOT", version: "1.21.4" });
     expect(spigot).toContain("BUILD_FROM_SOURCE=true");
     expect(spigot).not.toContain('id="sf-build"');
   });
-  it("con LATEST el build pide una versión concreta", () => {
-    expect(render({ ...defaultSpecInput(), type: "FABRIC", version: "LATEST" })).toContain("Elige una versión concreta de Minecraft para fijar el build");
+  it("with LATEST the build asks for a specific version", () => {
+    expect(render({ ...defaultSpecInput(), type: "FABRIC", version: "LATEST" })).toContain("Choose a specific Minecraft version to pin the build");
   });
 });

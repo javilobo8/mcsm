@@ -12,96 +12,96 @@ const job = (over: Partial<JobDto>): JobDto => ({
   payload: {}, createdAt: "", updatedAt: "", startedAt: null, finishedAt: null, ...over,
 });
 
-describe("programación de copias", () => {
-  it("sin programación muestra los valores por defecto desactivados", () => {
+describe("backup schedule", () => {
+  it("without a schedule it shows the disabled defaults", () => {
     expect(scheduleToForm(undefined)).toEqual({
       enabled: false, cron: "0 4 * * *", keepDays: "7", keepCount: "10", excludes: "logs\ncache\n*.tmp", onlyIfPlayersSince: true,
     });
   });
-  it("reconoce los presets", () => {
+  it("recognizes the presets", () => {
     expect(presetFor("0 4 * * *")).toBe("daily");
     expect(presetFor(" 0 */6 * * * ")).toBe("6h");
     expect(presetFor("15 3 * * 1")).toBe("custom");
   });
-  it("convierte el formulario y limpia las exclusiones", () => {
+  it("converts the form and cleans up the exclusions", () => {
     const r = formToSchedule({ enabled: true, cron: " * * * * * ", keepDays: "", keepCount: "3", excludes: " logs \n\n*.jar\n", onlyIfPlayersSince: false });
     expect(r).toEqual({ ok: true, value: { enabled: true, cron: "* * * * *", keepDays: 0, keepCount: 3, excludes: ["logs", "*.jar"], onlyIfPlayersSince: false } });
   });
-  it("devuelve el error en castellano", () => {
+  it("returns the error in English", () => {
     expect(formToSchedule({ ...scheduleToForm(undefined), enabled: true, cron: "0 4 * * MON" })).toEqual({ ok: false, error: 'Field "Day of week" is not valid: MON' });
-    expect(formToSchedule({ ...scheduleToForm(undefined), keepDays: "siete" })).toMatchObject({ ok: false, error: expect.stringMatching(/enteros/) });
+    expect(formToSchedule({ ...scheduleToForm(undefined), keepDays: "seven" })).toMatchObject({ ok: false, error: expect.stringMatching(/integers/) });
     expect(formToSchedule({ ...scheduleToForm(undefined), excludes: "../world" })).toMatchObject({ ok: false });
   });
-  it("rechaza números negativos o decimales", () => {
+  it("rejects negative numbers or decimals", () => {
     expect(formToSchedule({ ...scheduleToForm(undefined), keepCount: "2.5" })).toMatchObject({ ok: false });
     expect(formToSchedule({ ...scheduleToForm(undefined), keepDays: "-1" })).toMatchObject({ ok: false });
   });
 });
 
-describe("estado de los botones", () => {
-  it("el botón de crear se bloquea con nodo caído o job de copia/restauración activo", () => {
+describe("button state", () => {
+  it("the create button is disabled with the node down or a backup/restore job active", () => {
     expect(toggleBusyReason(true, undefined)).toBeNull();
     expect(toggleBusyReason(undefined, undefined)).toBeNull();
-    expect(toggleBusyReason(false, undefined)).toMatch(/desconectado/);
-    expect(toggleBusyReason(true, job({}))).toMatch(/en curso/);
+    expect(toggleBusyReason(false, undefined)).toMatch(/offline/);
+    expect(toggleBusyReason(true, job({}))).toMatch(/in progress/);
   });
-  it("restaurar solo en archivos y sin ocupado", () => {
+  it("restore only on archives and when not busy", () => {
     expect(backupActions(base, false, false)).toMatchObject({ restore: true, download: true, remove: true });
     expect(backupActions(base, true, false).restore).toBe(false);
     expect(backupActions({ ...base, kind: "directory" }, false, false)).toMatchObject({ restore: false, showDownload: false });
     expect(backupActions(base, false, true).remove).toBe(false);
     expect(backupActions(base, true, false).remove).toBe(false);
   });
-  it("descarga: solo copias .tar.zst correctas y con el nodo conectado; url codificada", () => {
-    expect(backupActions({ kind: "archive", status: "ok" }, true, false).download).toBe(true); // un job en curso no impide leerla
+  it("download: only correct .tar.zst backups and with the node online; encoded url", () => {
+    expect(backupActions({ kind: "archive", status: "ok" }, true, false).download).toBe(true); // a job in progress does not prevent reading it
     expect(backupActions({ kind: "archive", status: "ok" }, false, true).download).toBe(false);
     expect(backupActions({ kind: "archive", status: "failed" }, false, false).download).toBe(false);
     expect(backupActions({ kind: "directory", status: "ok" }, false, false).download).toBe(false);
     expect(backupDownloadUrl("s/1", "b?2")).toBe("/api/servers/s%2F1/backups/b%3F2/download");
   });
-  it("las copias que no están ok no se restauran", () => {
+  it("backups that are not ok cannot be restored", () => {
     expect(backupActions({ ...base, status: "failed" }, false, false).restore).toBe(false);
   });
 });
 
-describe("textos", () => {
-  it("diálogo de borrado distingue datos pre-restore", () => {
-    expect(deleteDialogText({ ...base, kind: "directory", filename: "data.pre-restore-1" }).title).toMatch(/anteriores/);
+describe("texts", () => {
+  it("delete dialog distinguishes pre-restore data", () => {
+    expect(deleteDialogText({ ...base, kind: "directory", filename: "data.pre-restore-1" }).title).toMatch(/before the restore/);
     expect(deleteDialogText(base).description).toContain("x.tar.zst");
   });
-  it("formatea la fecha y tolera valores inválidos", () => {
-    expect(formatBackupDate("no-fecha")).toBe("—");
+  it("formats the date and tolerates invalid values", () => {
+    expect(formatBackupDate("no-date")).toBe("—");
     expect(formatBackupDate("2026-10-12T10:00:00Z")).not.toBe("—");
   });
 });
 
-describe("retención", () => {
-  it("solo enteros decimales", () => {
+describe("retention", () => {
+  it("decimal integers only", () => {
     expect(parseRetention("")).toBe(0);
     expect(parseRetention(" 12 ")).toBe(12);
-    for (const bad of ["1e2", "0x10", "-1", "2.5", "siete", "+3"]) expect(parseRetention(bad)).toBeNull();
+    for (const bad of ["1e2", "0x10", "-1", "2.5", "seven", "+3"]) expect(parseRetention(bad)).toBeNull();
     expect(formToSchedule({ ...scheduleToForm(undefined), keepDays: "1e2" })).toMatchObject({ ok: false });
   });
 });
 
-describe("resincronización del formulario", () => {
+describe("form resync", () => {
   const a = scheduleToForm(undefined);
   const incoming = { ...a, keepDays: "30" };
-  it("sin cambios sin guardar adopta lo del servidor", () => {
+  it("without unsaved changes it adopts the server's value", () => {
     expect(resyncSchedule(a, a, incoming)).toEqual({ form: incoming, base: incoming });
   });
-  it("con cambios sin guardar conserva lo editado", () => {
+  it("with unsaved changes it keeps what was edited", () => {
     const edited = { ...a, cron: "* * * * *" };
     expect(resyncSchedule(edited, a, incoming)).toEqual({ form: edited, base: incoming });
   });
-  it("lo editado mientras se guardaba sobrevive a la respuesta del PATCH", () => {
+  it("what was edited while saving survives the PATCH response", () => {
     const sent = { ...a, keepDays: "30" };
     const typedMeanwhile = { ...sent, keepCount: "5" };
     const saved = { ...sent };
     expect(resyncSchedule(typedMeanwhile, sent, saved)).toEqual({ form: typedMeanwhile, base: saved });
     expect(resyncSchedule(sent, sent, saved)).toEqual({ form: saved, base: saved });
   });
-  it("tras el PATCH propio queda limpio", () => {
+  it("after its own PATCH it is clean", () => {
     const edited = { ...a, keepDays: "30" };
     const r = resyncSchedule(edited, a, edited);
     expect(r.form).toEqual(edited);
@@ -109,62 +109,62 @@ describe("resincronización del formulario", () => {
   });
 });
 
-describe("clave de idempotencia", () => {
-  it("solo se conserva si no hubo respuesta del servidor", () => {
+describe("idempotency key", () => {
+  it("it is only kept if there was no response from the server", () => {
     expect(keepIdempotencyKey(new TypeError("Failed to fetch"))).toBe(true);
-    expect(keepIdempotencyKey(new ApiError(0, "sin conexión"))).toBe(true);
+    expect(keepIdempotencyKey(new ApiError(0, "no connection"))).toBe(true);
     expect(keepIdempotencyKey(new ApiError(409, "busy"))).toBe(false);
-    expect(keepIdempotencyKey(new ApiError(502, "agente"))).toBe(false);
+    expect(keepIdempotencyKey(new ApiError(502, "agent"))).toBe(false);
     expect(keepIdempotencyKey(null)).toBe(false);
   });
 });
 
-describe("diálogo de restaurar", () => {
-  it("habla del estado deseado, no de si el servidor estaba en marcha (el agente arranca según el deseado)", () => {
+describe("restore dialog", () => {
+  it("talks about the desired state, not about whether the server was running (the agent starts according to the desired state)", () => {
     const t = restoreDialogText("Survival", "2026-10-12T10:00:00Z");
-    expect(t).toContain("«Survival»");
+    expect(t).toContain("“Survival”");
     expect(t).toContain(formatBackupDate("2026-10-12T10:00:00Z"));
     expect(t).toContain("data.pre-restore-");
-    expect(t).toMatch(/si el servidor debe estar en marcha.*se volverá a arrancar/);
-    expect(t).not.toMatch(/si estaba en marcha/);
+    expect(t).toMatch(/if the server should be running.*it will be started again/);
+    expect(t).not.toMatch(/if it was running/);
   });
 });
 
-describe("scheduleSummary (plantillas y asistente, solo lectura)", () => {
+describe("scheduleSummary (templates and wizard, read-only)", () => {
   const b = (over: object) => backupsSchema.parse({ enabled: true, ...over });
-  it("sin sección backups no hay nada que enseñar", () => {
+  it("without a backups section there is nothing to show", () => {
     expect(scheduleSummary(undefined)).toBeNull();
   });
-  it("una línea: expresión, el preset si lo es, y la retención", () => {
-    expect(scheduleSummary(b({}))).toBe("0 4 * * * (cada día a las 4:00) · como máximo 10 copias y 7 días");
-    expect(scheduleSummary(b({ cron: "30 2 * * 1", keepDays: 0 }))).toBe("30 2 * * 1 · como máximo 10 copias");
-    expect(scheduleSummary(b({ keepCount: 0, keepDays: 30 }))).toBe("0 4 * * * (cada día a las 4:00) · como máximo 30 días");
-    expect(scheduleSummary(b({ keepCount: 1, keepDays: 1 }))).toBe("0 4 * * * (cada día a las 4:00) · como máximo 1 copia y 1 día");
-    expect(scheduleSummary(b({ keepCount: 0, keepDays: 0 }))).toBe("0 4 * * * (cada día a las 4:00) · sin límite de retención");
+  it("one line: expression, the preset if it is one, and the retention", () => {
+    expect(scheduleSummary(b({}))).toBe("0 4 * * * (every day at 4:00) · at most 10 backups and 7 days");
+    expect(scheduleSummary(b({ cron: "30 2 * * 1", keepDays: 0 }))).toBe("30 2 * * 1 · at most 10 backups");
+    expect(scheduleSummary(b({ keepCount: 0, keepDays: 30 }))).toBe("0 4 * * * (every day at 4:00) · at most 30 days");
+    expect(scheduleSummary(b({ keepCount: 1, keepDays: 1 }))).toBe("0 4 * * * (every day at 4:00) · at most 1 backup and 1 day");
+    expect(scheduleSummary(b({ keepCount: 0, keepDays: 0 }))).toBe("0 4 * * * (every day at 4:00) · no retention limit");
   });
-  it("desactivadas", () => {
-    expect(scheduleSummary(b({ enabled: false }))).toBe("desactivadas");
+  it("disabled", () => {
+    expect(scheduleSummary(b({ enabled: false }))).toBe("disabled");
   });
 });
 
-describe("templateScheduleNote («Guardar como plantilla»)", () => {
-  it("avisa de que la plantilla se lleva la programación de copias", () => {
+describe("templateScheduleNote (“Save as template”)", () => {
+  it("warns that the template takes the backup schedule with it", () => {
     expect(templateScheduleNote(backupsSchema.parse({ enabled: true }))).toBe(
-      "Incluye la programación de copias (0 4 * * * (cada día a las 4:00) · como máximo 10 copias y 7 días): los servidores creados con la plantilla la heredan.",
+      "Includes the backup schedule (0 4 * * * (every day at 4:00) · at most 10 backups and 7 days): servers created from the template inherit it.",
     );
-    expect(templateScheduleNote(backupsSchema.parse({}))).toMatch(/^Incluye la programación de copias \(desactivadas\)/);
+    expect(templateScheduleNote(backupsSchema.parse({}))).toMatch(/^Includes the backup schedule \(disabled\)/);
   });
-  it("sin programación, nada", () => {
+  it("without a schedule, nothing", () => {
     expect(templateScheduleNote(undefined)).toBeNull();
   });
 });
 
-describe("guarda de la programación", () => {
-  it("sucio si cambia cualquier campo; aviso propio", () => {
+describe("schedule guard", () => {
+  it("dirty if any field changes; own notice", () => {
     const base = scheduleToForm(undefined);
     expect(scheduleDirty(base, { ...base })).toBe(false);
     expect(scheduleDirty({ ...base, cron: "0 5 * * *" }, base)).toBe(true);
     expect(scheduleLeaveWarning(false)).toBeNull();
-    expect(scheduleLeaveWarning(true)?.title).toBe("Programación sin guardar");
+    expect(scheduleLeaveWarning(true)?.title).toBe("Unsaved schedule");
   });
 });

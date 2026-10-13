@@ -5,11 +5,11 @@ import { hostLabel, nodeChartsData, rotationNote } from "./node-detail";
 
 const node = (over: Partial<NodeDto> = {}): NodeDto => ({
   id: "n1", name: "nas", dataRoot: "/srv/minecraft", status: "online", agentVersion: "0.9.0", dockerVersion: "29.7.2",
-  hostInfo: { hostname: "torre", os: "linux", arch: "amd64", cpus: 8 }, lastSeenAt: null, createdAt: "", tokenRotationPending: false, ...over,
+  hostInfo: { hostname: "tower", os: "linux", arch: "amd64", cpus: 8 }, lastSeenAt: null, createdAt: "", tokenRotationPending: false, ...over,
 });
 
-describe("detalle de nodo", () => {
-  it("series de CPU, memoria (usada y total) y disco (usado y total)", () => {
+describe("node detail", () => {
+  it("CPU, memory (used and total) and disk (used and total) series", () => {
     const nulls = () => [null, null];
     const s = {
       range: "1h", step: 10, t: [10, 20], cpuPct: [5, 6], memBytes: [1, 2], memLimitBytes: [8, 8], diskBytes: [3, 4], diskTotalBytes: [9, 9],
@@ -21,10 +21,10 @@ describe("detalle de nodo", () => {
     expect(d.disk).toEqual([[10, 20], [3, 4], [9, 9]]);
   });
 
-  it("aviso de rotación pendiente y etiqueta del host", () => {
+  it("pending rotation notice and host label", () => {
     expect(rotationNote(node())).toBeNull();
-    expect(rotationNote(node({ tokenRotationPending: true }))).toMatch(/aún no se ha conectado con el token nuevo/);
-    expect(hostLabel(node())).toBe("torre · linux/amd64 · 8 CPU");
+    expect(rotationNote(node({ tokenRotationPending: true }))).toMatch(/has not yet connected with the new token/);
+    expect(hostLabel(node())).toBe("tower · linux/amd64 · 8 CPU");
     expect(hostLabel(node({ hostInfo: null }))).toBe("—");
   });
 });

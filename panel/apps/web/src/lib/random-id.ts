@@ -1,4 +1,4 @@
-/** UUID v4 con `crypto.getRandomValues` (existe en contexto no seguro; `randomUUID` no, y el panel va por HTTP en la LAN). */
+/** UUID v4 with `crypto.getRandomValues` (it exists in an insecure context; `randomUUID` does not, and the panel runs over HTTP on the LAN). */
 export function randomId(): string {
   const b = crypto.getRandomValues(new Uint8Array(16));
   b[6] = (b[6]! & 0x0f) | 0x40;

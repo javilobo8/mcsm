@@ -3,8 +3,8 @@ import { PROPERTY_DEFS, type PropDef } from "@/lib/spec-catalog";
 import { replaceOtherProperties, setProperty, splitProperties, validateExtraProperties, type EditableSpec } from "@/lib/spec-edit";
 import { Field, KvField, NumberField, OptionalSelect, type ReportError } from "./fields";
 
-const BOOL_OPTIONS = [{ value: "true", label: "Sí" }, { value: "false", label: "No" }] as const;
-/** Los valores de server.properties son de una línea: un salto pegado se convierte en espacio. */
+const BOOL_OPTIONS = [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] as const;
+/** The server.properties values are single-line: a pasted line break becomes a space. */
 const oneLine = (s: string) => s.replace(/[\r\n]+/g, " ");
 
 function TypedProperty({ def, value, onChange, onError }: { def: PropDef; value: string | undefined; onChange: (v: string | undefined) => void; onError: ReportError }) {
@@ -20,7 +20,7 @@ function TypedProperty({ def, value, onChange, onError }: { def: PropDef; value:
   return <Field id={id} label={label}><Input id={id} value={value ?? ""} placeholder={def.placeholder} onChange={(e) => onChange(oneLine(e.target.value))} /></Field>;
 }
 
-/** Sección "Propiedades": ~20 campos tipados + el resto de server.properties como texto. Vacío = valor por defecto de la imagen. */
+/** "Properties" section: ~20 typed fields + the rest of server.properties as text. Empty = the image's default value. */
 export function PropertiesSection({ spec, onChange, onError }: { spec: EditableSpec; onChange: (s: EditableSpec) => void; onError: ReportError }) {
   const props = spec.properties;
   const { other } = splitProperties(props);
@@ -32,9 +32,9 @@ export function PropertiesSection({ spec, onChange, onError }: { spec: EditableS
             onChange={(v) => onChange({ ...spec, properties: setProperty(spec.properties, def.key, v) })} />
         ))}
       </div>
-      <KvField id="sf-props-other" label="Otras propiedades de server.properties (clave=valor por línea)" value={other} onError={onError}
+      <KvField id="sf-props-other" label="Other server.properties properties (key=value per line)" value={other} onError={onError}
         validate={validateExtraProperties}
-        placeholder={"spawn-npcs=true\nresource-pack=https://…"} hint="Se pasan con CUSTOM_SERVER_PROPERTIES. No se admiten server-port, enable-rcon ni rcon.*; los valores son de una sola línea."
+        placeholder={"spawn-npcs=true\nresource-pack=https://…"} hint="They are passed with CUSTOM_SERVER_PROPERTIES. server-port, enable-rcon and rcon.* are not allowed; values are single-line."
         onChange={(kv) => onChange({ ...spec, properties: replaceOtherProperties(spec.properties, kv) })} />
     </div>
   );
