@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Realtime, type SocketLike } from "./ws";
+import { Realtime, topicOf, type SocketLike } from "./ws";
 
 class FakeSocket implements SocketLike {
   readyState = 0;
@@ -97,5 +97,12 @@ describe("Realtime", () => {
     sockets[0]!.drop(1006);
     await vi.advanceTimersByTimeAsync(1000);
     expect(sockets).toHaveLength(2);
+  });
+});
+
+describe("topicOf (Plan 9)", () => {
+  it("eventos al topic events y el estado del router al topic nodes", () => {
+    expect(topicOf({ type: "event", event: { id: "e", nodeId: null, serverId: null, serverName: null, level: "info", kind: "drift", message: "m", createdAt: "", agentAt: null } })).toBe("events");
+    expect(topicOf({ type: "router", nodeId: "n1", router: {} as never })).toBe("nodes");
   });
 });

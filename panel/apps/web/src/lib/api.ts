@@ -56,11 +56,17 @@ export const api = {
   del: <T>(p: string) => request<T>("DELETE", p),
 };
 
-export interface AuthStatus { configured: boolean; authenticated: boolean }
+export interface AuthStatus {
+  configured: boolean; authenticated: boolean;
+  /** L3: el alta pide el token de configuración del log del panel. */
+  setupTokenRequired?: boolean;
+}
 
 export interface NodeDto {
   id: string; name: string; dataRoot: string; status: "online" | "offline"; agentVersion: string | null; dockerVersion: string | null;
   hostInfo: { hostname?: string; cpus?: number; memTotalBytes?: number; os?: string; arch?: string } | null; lastSeenAt: string | null; createdAt: string;
+  /** plan-9: el agente aún no se ha conectado con su token nuevo. */
+  tokenRotationPending: boolean;
 }
 export interface ObservedDto {
   containerId: string; state: string; health: string; startedAtUnix: number; exitCode: number; appliedVersion: number; error: string;
@@ -99,6 +105,7 @@ export type ServerMessage =
   | { type: "stream_closed"; serverId: string; reason: string }
   | { type: "node_metrics"; nodeId: string; sample: import("@mcsm/shared").NodeLiveSample }
   | { type: "router"; nodeId: string; router: import("@mcsm/shared").RouterDto } // plan-8
+  | { type: "event"; event: import("@mcsm/shared").EventDto } // plan-9
   | { type: "error"; message: string };
 
 export interface TemplateDto {

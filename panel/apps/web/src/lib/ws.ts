@@ -11,7 +11,9 @@ export function topicOf(msg: ServerMessage): string | null {
     case "job":
     case "backups": return "jobs"; // plan-4
     case "node":
-    case "node_metrics": return "nodes";
+    case "node_metrics":
+    case "router": return "nodes"; // plan-8: faltaba; el estado del router no llegaba en vivo
+    case "event": return "events"; // plan-9
     case "observed": return "servers";
     case "log":
     case "log_reset":

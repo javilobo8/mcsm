@@ -12,7 +12,7 @@ const server = (id: string): ServerDto => ({
   observedAt: null, createdAt: "", updatedAt: "", spec: { ports: { game: 25565 } } as ServerDto["spec"], importedFrom: null,
 });
 const node = (id: string, name = id): NodeDto => ({
-  id, name, dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "",
+  id, name, dataRoot: "/srv", status: "online", agentVersion: null, dockerVersion: null, hostInfo: null, lastSeenAt: null, createdAt: "", tokenRotationPending: false,
 });
 const observedMsg = (serverId: string, o = obs()): Extract<ServerMessage, { type: "observed" }> => ({ type: "observed", serverId, observed: o, observedAt: "2026-01-01T00:00:00Z" });
 
