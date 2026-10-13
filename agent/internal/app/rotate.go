@@ -16,7 +16,12 @@ var nodeTokenRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 // handleRotateToken (spec §9) guarda el token nuevo ANTES de responder y, tras el Ack, cierra la sesión para
 // reconectar con él. Si el Ack se pierde, el panel conserva el token como pendiente y lo acepta en la reconexión.
 // Las transferencias leen el token del store en cada una (App.transfers): usan el nuevo desde ya.
+//
+// Se atienden de uno en uno: el cliente despacha cada mensaje en su goroutine y, mezcladas, dos rotaciones podrían
+// dejar en el store un token y en el cliente el otro.
 func (a *App) handleRotateToken(id uint64, req *mcsmv1.RotateToken, send func(*mcsmv1.Envelope) error) {
+	a.rotateMu.Lock()
+	defer a.rotateMu.Unlock()
 	tok := req.GetToken()
 	if !nodeTokenRe.MatchString(tok) {
 		_ = send(errMsg(id, errcode.InvalidRequest, errors.New("token de nodo con formato inválido")))

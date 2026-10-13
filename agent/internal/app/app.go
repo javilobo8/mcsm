@@ -90,6 +90,7 @@ type App struct {
 	// plan-9: RotateToken. Run los conecta al cliente WS; en tests son no-ops o fakes.
 	setToken  func(string)
 	reconnect func()
+	rotateMu  sync.Mutex // serializa RotateToken: guardar, setToken, Ack y reconectar van juntos
 }
 
 // New construye la aplicación. send se fija después (Run) o en tests.
