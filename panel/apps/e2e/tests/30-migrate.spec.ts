@@ -11,7 +11,7 @@ test("migrate the server to the second node (dind) and see it running there", as
   await page.locator("#mig-target").click();
   await page.getByRole("option", { name: NODE_B }).click();
   await expect(page.locator("#mig-port")).toHaveAttribute("placeholder", /^\d+$/);
-  await shot(page, "09-migrar");
+  await shot(page, "09-migrate");
   await page.getByRole("button", { name: /Migrate…/ }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Migrate" }).click();
   await poll(async () => {
@@ -25,7 +25,7 @@ test("migrate the server to the second node (dind) and see it running there", as
   }, "the server running on node B", 5 * 60_000);
   await page.reload();
   await expect(page.getByText(NODE_B).first()).toBeVisible();
-  await shot(page, "10-migrado");
+  await shot(page, "10-migrated");
   expect(csp).toEqual([]);
   expect(forbidden).toEqual([]);
 });

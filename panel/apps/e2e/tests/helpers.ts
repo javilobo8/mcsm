@@ -3,8 +3,8 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 export const SHOTS = process.env.E2E_SHOTS ?? "screenshots";
 export const NODE_A = process.env.E2E_NODE_A ?? "e2e-a";
 export const NODE_B = process.env.E2E_NODE_B ?? "e2e-b";
-/** Slug test-e2e-uno → container mcsm-test-e2e-uno (test prefix). */
-export const SERVER = "test-e2e-uno";
+/** Slug test-e2e-one → container mcsm-test-e2e-one (test prefix). */
+export const SERVER = "test-e2e-one";
 
 /** Full-page capture for the visual review (the controller looks at them). */
 export async function shot(page: Page, name: string): Promise<void> {

@@ -34,10 +34,10 @@ test("manual backup and restore: what was written after the backup disappears", 
 
   await page.getByRole("tab", { name: "Files" }).click();
   await expect(page.getByText("server.properties")).toBeVisible();
-  await shot(page, "07-archivos");
+  await shot(page, "07-files");
   await page.getByRole("tab", { name: "History" }).click();
   await expect(page.getByRole("region", { name: "Server jobs" })).toBeVisible();
-  await shot(page, "08-historial");
+  await shot(page, "08-history");
   expect(csp).toEqual([]);
   expect(forbidden).toEqual([]);
 });

@@ -22,7 +22,7 @@ test("create a server, watch it start, use the console and see its charts", asyn
   await page.getByRole("option", { name: NODE_A }).click();
   await page.locator("#ns-name").fill(SERVER);
   await page.getByRole("button", { name: /Next/ }).click();
-  await shot(page, "02-asistente-revisar");
+  await shot(page, "02-wizard-review");
   await page.getByRole("button", { name: "Create server" }).click();
   await expect(page).toHaveURL(/\/servers\/[0-9a-f-]+$/);
   const id = page.url().split("/").pop()!;
@@ -36,7 +36,7 @@ test("create a server, watch it start, use the console and see its charts", asyn
   // Overview charts: one sample every 10 s while it is running.
   await expect(page.getByText(/No data in this range/)).toBeHidden({ timeout: 90_000 });
   await expect(page.locator("canvas").first()).toBeVisible();
-  await shot(page, "03-resumen-graficas");
+  await shot(page, "03-overview-charts");
 
   await page.getByRole("tab", { name: "Console" }).click();
   const log = page.getByRole("log", { name: "Server log" });
@@ -44,11 +44,11 @@ test("create a server, watch it start, use the console and see its charts", asyn
   await page.getByLabel("Command", { exact: true }).fill("list");
   await page.keyboard.press("Enter");
   await expect(log).toContainText(/There are 0 of a max of \d+ players online/);
-  await shot(page, "04-consola");
+  await shot(page, "04-console");
 
   await page.getByRole("tab", { name: "Configuration" }).click();
   await expect(page.getByTestId("config-form")).toBeVisible();
-  await shot(page, "05-configuracion");
+  await shot(page, "05-configuration");
   expect(csp).toEqual([]);
   expect(forbidden).toEqual([]);
 });

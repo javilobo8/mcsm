@@ -42,7 +42,7 @@ describe("?template=", () => {
     expect(parseNewServerSearch({ template: "t1" })).toEqual({ template: "t1" });
     expect(parseNewServerSearch({ template: "" })).toEqual({});
     expect(parseNewServerSearch({ template: 5 })).toEqual({});
-    expect(parseNewServerSearch({ template: ["a"], otro: "x" })).toEqual({});
+    expect(parseNewServerSearch({ template: ["a"], other: "x" })).toEqual({});
     expect(parseNewServerSearch({})).toEqual({});
   });
 });

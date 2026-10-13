@@ -16,28 +16,28 @@ test("real token rotation and screenshots of the screens pending visual review",
 
   await page.goto("/");
   await expect(page.getByRole("group", { name: "Node usage" }).first()).toBeVisible({ timeout: 60_000 });
-  await shot(page, "11-panel-tarjetas-nodo");
+  await shot(page, "11-dashboard-node-cards");
 
   await page.goto("/nodes");
   await expect(page.getByRole("link", { name: NODE_A })).toBeVisible();
-  await shot(page, "12-nodos-router");
+  await shot(page, "12-nodes-router");
 
   await page.goto(`/nodes/${a}`);
   await expect(page.getByText(/No data in this range/)).toBeHidden({ timeout: 60_000 });
   await expect(page.locator("canvas").first()).toBeVisible();
-  await shot(page, "13-nodo-detalle");
+  await shot(page, "13-node-detail");
 
   await page.goto(`/nodes/${a}/import`);
   await page.waitForLoadState("networkidle");
-  await shot(page, "14-importar");
+  await shot(page, "14-import");
 
   await page.goto("/settings");
   await expect(page.getByLabel("From")).toHaveValue("26600");
-  await shot(page, "15-ajustes");
+  await shot(page, "15-settings");
 
   await page.goto("/events");
   await expect(page.getByTestId("event-token_rotated").first()).toBeVisible();
-  await shot(page, "16-eventos");
+  await shot(page, "16-events");
 
   await page.goto("/jobs");
   await shot(page, "17-jobs");
