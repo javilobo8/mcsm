@@ -10,6 +10,7 @@ import (
 
 	mcsmv1 "mcsm/agent/gen/mcsm/v1"
 	"mcsm/agent/internal/jobs"
+	"mcsm/agent/internal/reconcile"
 )
 
 // failingSaveOn hace que save-on falle mientras fail esté a true; el resto va al RCON falso del entorno.
@@ -115,6 +116,39 @@ func TestResumeAtStartMarksPendingWhenSaveOnFails(t *testing.T) {
 	}
 	e.a.bk.resumeInterrupted(context.Background())
 	if ids, _ := e.st.SaveOnPending(); !slices.Equal(ids, []string{"a"}) {
+		t.Fatalf("pendientes = %v", ids)
+	}
+}
+
+// Una copia en caliente que arranca mientras retrySaveOn envía save-on no puede colarse: el servidor está
+// reservado durante el RCON (si no, el save-on reactivaría el guardado a mitad de su tar).
+func TestRetrySaveOnReservesTheServerDuringTheRcon(t *testing.T) {
+	e := newBackupEnv(t, backupsSpecJSON)
+	if err := e.st.MarkSaveOnPending("a", time.Unix(1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	var sent atomic.Bool
+	e.a.rcon = func(ctx context.Context, host string, port uint16, pass, cmd string) (string, error) {
+		if cmd == "save-on" {
+			sent.Store(true)
+			release, err := e.a.rec.Hold("a", holdBackup) // la copia llega justo ahora
+			if err == nil {
+				release(context.Background())
+				t.Error("una copia pudo reservar el servidor a mitad del save-on")
+			} else if !errors.Is(err, reconcile.ErrBusy) {
+				t.Errorf("err = %v", err)
+			}
+		}
+		return e.rc.fn(ctx, host, port, pass, cmd)
+	}
+	e.a.bk.retrySaveOn(context.Background())
+	if !sent.Load() {
+		t.Fatal("no se envió save-on")
+	}
+	if e.a.rec.Held("a") {
+		t.Fatal("la reserva del save-on se libera al terminar")
+	}
+	if ids, _ := e.st.SaveOnPending(); len(ids) != 0 {
 		t.Fatalf("pendientes = %v", ids)
 	}
 }

@@ -1093,38 +1093,54 @@ func (b *backupService) retrySaveOn(ctx context.Context) {
 		return
 	}
 	for _, id := range ids {
-		if b.a.rec.Held(id) {
-			continue
-		}
-		t, err := b.target(id)
-		if errors.Is(err, errUnknownServer) {
-			_ = b.a.st.ClearSaveOnPending(id)
-			continue
-		}
-		if err != nil {
-			continue
-		}
-		running, err := b.isRunning(ctx, id)
-		if err != nil {
-			continue
-		}
-		if !running {
-			_ = b.a.st.ClearSaveOnPending(id)
-			b.a.log.Info("save-on pendiente olvidado: el servidor está parado y guardará al arrancar", "server", t.slug)
-			continue
-		}
-		cctx, cancel := context.WithTimeout(ctx, resumeOnStartTimeout)
-		_, err = b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on")
-		cancel()
-		if err != nil {
-			continue
-		}
-		if err := b.a.st.ClearSaveOnPending(id); err != nil {
-			b.a.log.Warn("borrar save-on pendiente", "server", t.slug, "err", err)
-		}
-		b.a.log.Info("guardado automático reactivado (save-on)", "server", t.slug)
-		b.a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_INFO, KindSaveOnResumed, "Guardado automático reactivado (save-on)")
+		b.retryOneSaveOn(ctx, id)
 	}
+}
+
+// holdSaveOn es el motivo de la reserva corta con la que retrySaveOn envía save-on.
+const holdSaveOn = "reactivando el guardado automático"
+
+// retryOneSaveOn reintenta el save-on de id con el servidor reservado (Hold) mientras dura: una copia en caliente
+// que arrancara entre la comprobación y el RCON haría save-off y este save-on le reactivaría el guardado a mitad del
+// tar. Con la reserva, esa copia recibe busy; si la reserva ya está tomada, esta pasada se salta. No usa withSlot:
+// no es un job ni escribe en disco.
+func (b *backupService) retryOneSaveOn(ctx context.Context, id string) {
+	if b.a.rec.Held(id) {
+		return // sin esperar al lock del servidor
+	}
+	t, err := b.target(id)
+	if errors.Is(err, errUnknownServer) {
+		_ = b.a.st.ClearSaveOnPending(id)
+		return
+	}
+	if err != nil {
+		return
+	}
+	release, err := b.a.rec.Hold(id, holdSaveOn)
+	if err != nil {
+		return // lo reservó otro entre medias (copia, restauración…): la siguiente pasada
+	}
+	defer release(ctx)
+	running, err := b.isRunning(ctx, id)
+	if err != nil {
+		return
+	}
+	if !running {
+		_ = b.a.st.ClearSaveOnPending(id)
+		b.a.log.Info("save-on pendiente olvidado: el servidor está parado y guardará al arrancar", "server", t.slug)
+		return
+	}
+	cctx, cancel := context.WithTimeout(ctx, resumeOnStartTimeout)
+	_, err = b.a.rcon(cctx, spec.ContainerName(t.slug), uint16(spec.RconPort), t.spec.RconPassword, "save-on")
+	cancel()
+	if err != nil {
+		return
+	}
+	if err := b.a.st.ClearSaveOnPending(id); err != nil {
+		b.a.log.Warn("borrar save-on pendiente", "server", t.slug, "err", err)
+	}
+	b.a.log.Info("guardado automático reactivado (save-on)", "server", t.slug)
+	b.a.emitEvent(id, mcsmv1.EventLevel_EVENT_LEVEL_INFO, KindSaveOnResumed, "Guardado automático reactivado (save-on)")
 }
 
 // outbox entrega al panel, en orden y sin bloquear a quien los emite, los avisos de copias y
