@@ -36,10 +36,13 @@ export function BackupScheduleForm({ server }: { server: ServerDto }) {
 
   const set = <K extends keyof ScheduleForm>(k: K, v: ScheduleForm[K]) => { if (save.isSuccess) save.reset(); setF((o) => ({ ...o, [k]: v })); };
   const save = useMutation({
-    mutationFn: (cfg: BackupsConfig) => api.patch<ServerDto>(apiPath`/api/servers/${server.id}/backups/schedule`, cfg),
-    onSuccess: (dto) => {
+    mutationFn: ({ cfg }: { cfg: BackupsConfig; sent: ScheduleForm }) => api.patch<ServerDto>(apiPath`/api/servers/${server.id}/backups/schedule`, cfg),
+    onSuccess: (dto, { sent }) => {
       qc.setQueryData(["server", server.id], dto);
-      const saved = scheduleToForm(dto.spec.backups); setF(saved); setBase({ form: saved, json: JSON.stringify(saved) });
+      // Lo editado mientras se guardaba no se pisa: solo se adopta lo guardado si el formulario sigue como se envió.
+      const saved = scheduleToForm(dto.spec.backups);
+      setF((cur) => resyncSchedule(cur, sent, saved).form);
+      setBase({ form: saved, json: JSON.stringify(saved) });
       void qc.invalidateQueries({ queryKey: ["servers"] });
     },
   });
@@ -49,7 +52,7 @@ export function BackupScheduleForm({ server }: { server: ServerDto }) {
     save.reset();
     const r = formToSchedule(f);
     if (!r.ok) return setLocalErr(r.error);
-    save.mutate(r.value);
+    save.mutate({ cfg: r.value, sent: f });
   };
   return (
     <form onSubmit={submit} className="flex max-w-3xl flex-col gap-4">
