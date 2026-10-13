@@ -96,6 +96,17 @@ describe("rotación del token de un nodo", () => {
     (await connect(nodeToken)).close();
   });
 
+  it.each([["io_error", 502], ["invalid_request", 400]])("un error %s del agente borra el pendiente (HTTP %i)", async (code, status) => {
+    const agent = await connect(nodeToken);
+    const { res, msg } = await startRotation(agent);
+    agent.send({ id: msg.id, body: { case: "error", value: { code, message: "no pude guardarlo" } } });
+    const r = await res;
+    expect(r.statusCode).toBe(status);
+    expect((await node()).tokenRotationPending).toBe(false);
+    agent.close();
+    (await connect(nodeToken)).close();
+  });
+
   it("sin confirmación del agente el token nuevo queda pendiente (pudo guardarlo)", async () => {
     const agent = await connect(nodeToken);
     const { res, token } = await startRotation(agent);

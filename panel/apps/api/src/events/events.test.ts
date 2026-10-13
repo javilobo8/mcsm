@@ -61,6 +61,20 @@ describe("eventos del agente", () => {
     agent.close();
   });
 
+  it("descarta un servidor real de OTRO nodo (y no le cambia el estado deseado)", async () => {
+    const t = (await app.inject({ method: "POST", url: "/api/nodes/enrollment-tokens", headers: { cookie }, payload: { nameHint: "otro" } })).json().token;
+    const other = (await app.inject({ method: "POST", url: "/agent/enroll", payload: { enrollToken: t, nameHint: "otro", agentVersion: "fake" } })).json();
+    const foreign = (await app.inject({ method: "POST", url: "/api/servers", headers: { cookie }, payload: { nodeId: other.nodeId, name: "Ajeno", desiredState: "running" } })).json();
+    const agent = await connect();
+    sendEvent(agent, { level: EventLevel.ERROR, serverId: foreign.id, kind: "crash_loop", message: "no es mío" });
+    sendEvent(agent, { level: EventLevel.INFO, kind: "drift", message: "marca" }); // se procesan en orden
+    const evs = await waitEvents(1);
+    expect(evs[0]).toMatchObject({ kind: "drift", serverId: null });
+    const row = (await app.inject({ method: "GET", url: `/api/servers/${foreign.id}`, headers: { cookie } })).json();
+    expect(row.desiredState).toBe("running");
+    agent.close();
+  });
+
   it("crash_loop deja el servidor deseado en parado", async () => {
     const s = await createServer("Uno");
     const agent = await connect();
