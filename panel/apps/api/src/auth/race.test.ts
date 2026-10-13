@@ -43,6 +43,6 @@ describe("login en curso durante un cambio de contraseña", () => {
     const res = await login;
     expect(res.statusCode).toBe(401);
     expect(res.cookies.find((c) => c.name === "mcsm_session")).toBeUndefined();
-    expect(app.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 1 }) // solo la de quien cambió la contraseña;
+    expect(app.db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 1 }); // solo la de quien cambió la contraseña
   });
 });
