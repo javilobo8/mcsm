@@ -81,6 +81,7 @@ describe("MigrationsRepo", () => {
     expect(app.migrations.commit(m2, "stopped", observed)).toBe(true);
     const row = app.servers.get(s.id)!;
     expect(row).toMatchObject({ node_id: b.nodeId, slug: "uno", spec_version: 3, desired_state: "stopped", observed_spec_version: 3 });
+    expect(row.desired_changed_at).not.toBeNull(); // el commit cambia el estado deseado: marca la hora (un crash_loop atrasado no lo deshace)
     expect(JSON.parse(row.spec).ports.game).toBe(25570);
     expect(JSON.parse(row.observed!).containerId).toBe("c1");
     expect(app.migrations.get(m2.id)).toMatchObject({ phase: "committed", source_pending: 1 });

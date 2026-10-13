@@ -195,10 +195,10 @@ export class MigrationsRepo {
         return false;
       }
       // imported_from = NULL (Plan 6): en el destino el servidor ya no sigue a ningún contenedor original (sin `adopt`).
-      const moved = this.db.prepare(`UPDATE servers SET node_id = ?, slug = ?, spec = ?, spec_version = ?, desired_state = ?,
+      const moved = this.db.prepare(`UPDATE servers SET node_id = ?, slug = ?, spec = ?, spec_version = ?, desired_state = ?, desired_changed_at = ?,
           observed = ?, observed_spec_version = ?, observed_at = ?, updated_at = ?, imported_from = NULL
         WHERE id = ? AND node_id = ? AND spec_version = ?`)
-        .run(m.target_node_id, m.target_slug, m.target_spec, m.target_version, desired,
+        .run(m.target_node_id, m.target_slug, m.target_spec, m.target_version, desired, now,
           observed ? JSON.stringify(observed) : null, m.target_version, observed ? now : null, now,
           m.server_id, m.source_node_id, m.source_version);
       const done = this.db.prepare(`UPDATE migrations SET phase = 'committed', source_pending = 1, target_confirm_pending = 1, error = NULL,
