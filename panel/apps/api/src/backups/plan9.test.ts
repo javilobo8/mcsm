@@ -4,7 +4,7 @@ import { JobStatus } from "@mcsm/proto";
 import { buildApp } from "../app.js";
 import { openDb } from "../db/db.js";
 import { FakeAgent } from "../../test/fake-agent.js";
-import { agentIso } from "./service.js";
+import { agentIso } from "../lib/time.js";
 
 let app: FastifyInstance; let url: string; let cookie: string; let nodeId: string; let nodeToken: string;
 
