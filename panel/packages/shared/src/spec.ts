@@ -172,3 +172,4 @@ export function specPatchNullError(patch: SpecPatch): string | null {
 // ── plan-8 ──
 export * from "./router.js";
 // ── plan-9 ──
+export * from "./events.js";

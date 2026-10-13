@@ -223,4 +223,33 @@ CREATE TABLE router_deployments (
 `,
   },
   // ── plan-9 ──
+  {
+    // Incidencias de los agentes (Event, spec §5.3) y del panel. server_id sin clave foránea a propósito: el historial
+    // sobrevive al servidor (server_name guarda su nombre de entonces). Borrar un nodo borra los suyos.
+    name: "080_events",
+    sql: `
+CREATE TABLE events (
+  id TEXT PRIMARY KEY,
+  node_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+  server_id TEXT,
+  server_name TEXT,
+  level TEXT NOT NULL CHECK (level IN ('info','warn','error')),
+  kind TEXT NOT NULL,
+  message TEXT NOT NULL,
+  agent_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX events_created_idx ON events(created_at);
+CREATE INDEX events_server_idx ON events(server_id, created_at);
+`,
+  },
+  {
+    // Rotación del token de nodo (spec §9): el hash nuevo vale junto al vigente hasta que el agente conecta con él.
+    name: "081_nodes_pending_token",
+    sql: `
+ALTER TABLE nodes ADD COLUMN pending_token_hash TEXT;
+ALTER TABLE nodes ADD COLUMN pending_token_at TEXT;
+CREATE UNIQUE INDEX nodes_pending_token_idx ON nodes(pending_token_hash) WHERE pending_token_hash IS NOT NULL;
+`,
+  },
 ];
