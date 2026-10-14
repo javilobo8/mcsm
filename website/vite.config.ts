@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { docsPlugin } from "./build/vite-plugin-docs.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..");
@@ -25,7 +26,7 @@ function siteHtml(): Plugin {
 
 export default defineConfig({
   base,
-  plugins: [react(), tailwindcss(), siteHtml()],
+  plugins: [react(), tailwindcss(), siteHtml(), docsPlugin({ repoRoot, base })],
   define: {
     __MCSM_VERSION__: JSON.stringify(version),
     __SITE_URL__: JSON.stringify(siteUrl),
