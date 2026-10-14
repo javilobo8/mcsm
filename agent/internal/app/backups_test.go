@@ -248,6 +248,9 @@ func newBackupEnvEngine(t *testing.T, eng docker.Engine, fake *docker.Fake, spec
 	a.rcon = e.rc.fn
 	a.bk = newBackupService(a, e.clk)
 	a.bk.sleep = func(context.Context, time.Duration) error { return nil }
+	// syncfs(2) waits for all the dirty data of the temporary directory's filesystem, also that of the
+	// rest of `go test ./...` (in CI /tmp is on the runner's disk): it took the restores beyond settle.
+	a.bk.syncFS = func(string) error { return nil }
 	a.bk.loop(func() { a.bk.out.run(ctx) })
 	t.Cleanup(func() {
 		cancel()
@@ -604,6 +607,43 @@ func TestRestoreKeepsPreviousDataAndRestarts(t *testing.T) {
 	}
 	if !e.running(t) || e.a.rec.Held("a") {
 		t.Fatal("when finished it is released and starts again (desired state running)")
+	}
+}
+
+// The restore flushes the extracted backup to disk (backupService.syncFS) before swapping it with
+// data, and waits for that flush however long it takes, with the server still reserved.
+func TestRestoreFlushesTheExtractedBackupBeforeSwapping(t *testing.T) {
+	e := newBackupEnv(t, specJSON)
+	e.handle(10, &mcsmv1.BackupNow{ServerId: "a", JobId: "job-1"})
+	e.settle(t)
+	name := e.col.created()[0].Filename
+	e.writeLevel(t, "LEVEL-2")
+	e.clk.Advance(time.Hour)
+	reached, unblock := make(chan string, 1), make(chan struct{})
+	e.a.bk.syncFS = func(dir string) error {
+		reached <- dir
+		<-unblock
+		return nil
+	}
+	if r := e.handle(20, &mcsmv1.BackupRestore{ServerId: "a", Filename: name, JobId: "job-r"}); r.GetAck() == nil {
+		t.Fatalf("resp = %+v", r)
+	}
+	var dir string
+	select {
+	case dir = <-reached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the restore did not flush the extracted backup")
+	}
+	if filepath.Dir(dir) != filepath.Dir(e.dataDir()) || dir == e.dataDir() || readLevel(t, dir) != "LEVEL-1" {
+		t.Fatalf("flushed %q: it must be the extracted backup, next to data", dir)
+	}
+	if readLevel(t, e.dataDir()) != "LEVEL-2" || e.col.final("job-r") != nil || !e.a.rec.Held("a") {
+		t.Fatal("while the flush lasts nothing is swapped, the job goes on and the server stays reserved")
+	}
+	close(unblock)
+	e.settle(t)
+	if fin := e.col.final("job-r"); fin == nil || fin.Status != jobOK || readLevel(t, e.dataDir()) != "LEVEL-1" {
+		t.Fatalf("final = %+v", fin)
 	}
 }
 

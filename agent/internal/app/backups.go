@@ -109,6 +109,7 @@ type backupService struct {
 	restore        func(ctx context.Context, req backup.RestoreRequest) (backup.Meta, error)
 	recoverDisk    func(backupsDir, dataDir, slug string) (backup.Recovery, error)
 	freeSpace      func(dir string) (uint64, error) // nil: statfs
+	syncFS         func(dir string) error           // backup.RestoreRequest.SyncFS (nil: syncfs(2))
 	releaseWait    time.Duration
 	drainWait      time.Duration // ver fileWritesDrainWait
 	inventoryLimit int
@@ -916,7 +917,7 @@ func (b *backupService) runRestore(ctx context.Context, serverID, filename strin
 	}
 	pre, err := b.restore(ctx, backup.RestoreRequest{
 		ServerID: serverID, Slug: t.slug, Filename: filename, DataDir: t.dataDir, BackupsDir: t.backupsDir,
-		Now: b.clock.Now, Progress: j.Progress, Log: j.Log,
+		Now: b.clock.Now, Progress: j.Progress, Log: j.Log, SyncFS: b.syncFS,
 	})
 	if err != nil {
 		return err

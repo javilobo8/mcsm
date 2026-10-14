@@ -41,6 +41,10 @@ type RestoreRequest struct {
 	Now        func() time.Time
 	Progress   func(pct uint32, msg string)
 	Log        func(line string)
+	// SyncFS flushes to disk the filesystem containing dir before the swap (nil: syncfs(2)). It
+	// waits for ALL of that filesystem's dirty data, also other processes': tests inject it so as not
+	// to depend on the load of a shared disk.
+	SyncFS func(dir string) error
 }
 
 func (r *RestoreRequest) defaults() {
@@ -52,6 +56,9 @@ func (r *RestoreRequest) defaults() {
 	}
 	if r.Log == nil {
 		r.Log = func(string) {}
+	}
+	if r.SyncFS == nil {
+		r.SyncFS = syncFS
 	}
 }
 
@@ -174,7 +181,7 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 	}
 	// What was extracted, on disk before activating it: a power cut after the swap must not
 	// leave half-written files in data (the previous ones will already be in the pre-restore).
-	if err := syncCtx(ctx, staging); err != nil {
+	if err := syncCtx(ctx, req.SyncFS, staging); err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			return Meta{}, fmt.Errorf("restore cancelled: %w", cerr)
 		}
@@ -231,7 +238,7 @@ func Restore(ctx context.Context, req RestoreRequest) (Meta, error) {
 // restore (with the server stopped and reserved) on a slow flush. A completely dead data
 // filesystem would already block the extraction and the temporary's cleanup;
 // only the data FS is flushed, never the host's other mounts.
-func syncCtx(ctx context.Context, dir string) error {
+func syncCtx(ctx context.Context, syncFS func(string) error, dir string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
