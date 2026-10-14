@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { docTitle } from "../src/lib/doc-title.ts";
 
 /** `path` is relative to the base: "", "docs/", "docs/backups/". */
 export interface RouteMeta {
@@ -53,7 +54,6 @@ export function robotsTxt(siteUrl: string): string {
   return `User-agent: *\nAllow: /\n\nSitemap: ${siteUrl}/sitemap.xml\n`;
 }
 
-export const docTitle = (title: string) => `${title} · MC Server Manager docs`;
 
 /**
  * Writes, next to the built `index.html`: one `index.html` per docs route with its own meta, `docs/index.html`

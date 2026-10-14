@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Plugin } from "vite";
 import { loadDocs, type LoadedDoc } from "./docs/load.ts";
+import { webpSize } from "./docs/image-size.ts";
 import { writeRouteFiles } from "./postbuild.ts";
 
 export interface DocsPluginOptions {
@@ -33,6 +34,7 @@ export function docsPlugin(options: DocsPluginOptions): Plugin {
   let root = process.cwd();
   let isBuild = false;
   let outDir = "dist";
+  let publicDir = "public";
   let docs: LoadedDoc[] | undefined;
   const included = new Set<string>();
 
@@ -47,6 +49,15 @@ export function docsPlugin(options: DocsPluginOptions): Plugin {
         included.add(abs);
         return fs.readFileSync(abs, "utf8");
       },
+      imageSize: (src) => {
+        const file = path.resolve(publicDir, `.${src}`);
+        if (!src.startsWith("/") || !src.endsWith(".webp") || !file.startsWith(publicDir + path.sep)) return undefined;
+        try {
+          return webpSize(fs.readFileSync(file));
+        } catch {
+          return undefined;
+        }
+      },
     });
     return docs;
   }
@@ -57,6 +68,7 @@ export function docsPlugin(options: DocsPluginOptions): Plugin {
       root = config.root;
       isBuild = config.command === "build";
       outDir = path.resolve(config.root, config.build.outDir);
+      if (config.publicDir) publicDir = config.publicDir;
     },
     resolveId(id) {
       return id === VIRTUAL_ID ? RESOLVED_ID : undefined;

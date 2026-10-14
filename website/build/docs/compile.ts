@@ -27,6 +27,8 @@ export interface CompileOptions {
   readFile?: (absPath: string) => string;
   /** For error messages. */
   file?: string;
+  /** Size of an image by its src as written ("/screenshots/x.webp"), to set width and height (no layout shift). */
+  imageSize?: (src: string) => { width: number; height: number } | undefined;
 }
 
 export interface CompiledDoc {
@@ -177,6 +179,11 @@ function rehypeDocs(opts: CompileOptions, out: Collected) {
         const src = el.properties.src;
         if (!isExternal(src) && !isOtherScheme(src) && !src.startsWith("//")) {
           out.images.push(src);
+          const size = opts.imageSize?.(src);
+          if (size) {
+            el.properties.width = size.width;
+            el.properties.height = size.height;
+          }
           if (src.startsWith("/")) el.properties.src = `${opts.base}${src.replace(/^\/+/, "")}`;
         }
         el.properties.loading = "lazy";
