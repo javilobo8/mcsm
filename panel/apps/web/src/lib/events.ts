@@ -19,9 +19,9 @@ export function eventsUrl(f: EventsFilter): string {
 }
 
 const TONES: Record<EventLevelName, string> = {
-  info: "border-sky-800 text-sky-300",
-  warn: "border-amber-700 text-amber-300",
-  error: "border-red-800 text-red-300",
+  info: "border-diamond/30 text-info",
+  warn: "border-torch/40 text-warn",
+  error: "border-redstone/40 text-bad",
 };
 export const levelTone = (level: EventLevelName): string => TONES[level];
 

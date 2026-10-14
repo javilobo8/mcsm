@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SpecForm, type SpecFormErrors } from "@/components/spec-form/spec-form";
 import { Field } from "@/components/spec-form/fields";
+import { PAGE, PageHeader, SectionTitle } from "@/components/page-header";
 import { useNodes } from "@/hooks/use-nodes";
 import { useImportCandidates } from "@/hooks/use-import";
 import { api, apiPath, ApiError, type ServerDto } from "@/lib/api";
@@ -31,27 +32,27 @@ function NodeImport({ nodeId }: { nodeId: string }) {
   const [selected, setSelected] = useState<ImportCandidateDto | null>(null);
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold">Import into “{node?.name ?? "…"}”</h1>
-          <p className="text-sm text-muted-foreground">itzg/minecraft-server containers on this node that the panel does not manage yet. They are adopted without stopping them.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="ghost" asChild><Link to="/nodes">Back to Nodes</Link></Button>
-          {!selected && (
-            <Button variant="secondary" disabled={q.isFetching} onClick={() => void q.refetch()}>
-              {q.isFetching ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />} Search again
-            </Button>
-          )}
-        </div>
-      </div>
+    <div className={PAGE}>
+      <PageHeader
+        title={`Import into “${node?.name ?? "…"}”`}
+        description="itzg/minecraft-server containers on this node that the panel does not manage yet. They are adopted without stopping them."
+        actions={
+          <>
+            <Button variant="ghost" asChild><Link to="/nodes">Back to Nodes</Link></Button>
+            {!selected && (
+              <Button variant="secondary" disabled={q.isFetching} onClick={() => void q.refetch()}>
+                {q.isFetching ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />} Search again
+              </Button>
+            )}
+          </>
+        }
+      />
       {selected
         ? <ImportReview key={selected.containerId} nodeId={nodeId} candidate={selected} onCancel={() => setSelected(null)} />
         : (
           <>
             {q.isPending && <p className="flex items-center gap-2 text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Searching containers…</p>}
-            {q.isError && <p role="alert" className="text-sm text-red-400">{q.error.message}</p>}
+            {q.isError && <p role="alert" className="text-sm text-bad">{q.error.message}</p>}
             {q.data?.length === 0 && <p className="text-sm text-muted-foreground">There are no unmanaged itzg/minecraft-server containers on this node.</p>}
             <div className="grid gap-3 lg:grid-cols-2">{q.data?.map((c) => <CandidateCard key={c.containerId} c={c} onReview={() => setSelected(c)} />)}</div>
           </>
@@ -63,11 +64,11 @@ function NodeImport({ nodeId }: { nodeId: string }) {
 function CandidateCard({ c, onReview }: { c: ImportCandidateDto; onReview: () => void }) {
   const p = c.proposal;
   return (
-    <Card data-testid="import-candidate">
+    <Card data-testid="import-candidate" className="py-0">
       <CardContent className="flex flex-col gap-2 p-4">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="font-medium">{c.containerName}</div>
+            <div className="font-medium text-bone">{c.containerName}</div>
             <div className="text-xs text-muted-foreground">
               <code>{c.image}</code> · {candidateStateLabel(c.state)}{c.composeProject ? ` · compose ${c.composeProject}/${c.composeService}` : ""}
             </div>
@@ -77,8 +78,8 @@ function CandidateCard({ c, onReview }: { c: ImportCandidateDto; onReview: () =>
         <div className="text-sm text-muted-foreground">
           {p.spec.type} {p.spec.version} · {p.spec.memory} · port {p.spec.ports.game ?? "—"} · data <code>{p.dataPath ?? `DATA_ROOT/${p.slug}/data`}</code>
         </div>
-        {c.blockers.map((b) => <p key={b} className="flex gap-2 text-sm text-red-400"><Ban className="mt-0.5 size-4 shrink-0" />{b}</p>)}
-        {c.warnings.map((w) => <p key={w} className="flex gap-2 text-sm text-amber-400"><AlertTriangle className="mt-0.5 size-4 shrink-0" />{w}</p>)}
+        {c.blockers.map((b) => <p key={b} className="flex gap-2 text-sm text-bad"><Ban className="mt-0.5 size-4 shrink-0" />{b}</p>)}
+        {c.warnings.map((w) => <p key={w} className="flex gap-2 text-sm text-warn"><AlertTriangle className="mt-0.5 size-4 shrink-0" />{w}</p>)}
       </CardContent>
     </Card>
   );
@@ -135,18 +136,18 @@ function ImportReview({ nodeId, candidate: c, onCancel }: { nodeId: string; cand
   return (
     <div className="flex max-w-5xl flex-col gap-4" data-testid="import-review">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Review “{c.containerName}”</h2>
+        <SectionTitle className="text-lg">Review “{c.containerName}”</SectionTitle>
         <Button variant="ghost" disabled={adopt.isPending} onClick={back}>Back to the list</Button>
       </div>
       {c.warnings.length > 0 && (
-        <ul className="flex flex-col gap-1 rounded-md border border-amber-900 bg-amber-950/30 p-2 text-sm text-amber-300">
+        <ul className="flex flex-col gap-1 rounded-md border border-torch/30 bg-torch/[0.07] p-2 text-sm text-warn">
           {c.warnings.map((w) => <li key={w} className="flex gap-2"><AlertTriangle className="mt-0.5 size-4 shrink-0" />{w}</li>)}
         </ul>
       )}
-      {c.proposal.specError && <p role="alert" className="text-sm text-red-400">The deduced configuration is not valid as is ({c.proposal.specError}): fix it and use “Adopt and apply”.</p>}
+      {c.proposal.specError && <p role="alert" className="text-sm text-bad">The deduced configuration is not valid as is ({c.proposal.specError}): fix it and use “Adopt and apply”.</p>}
       <SpecForm value={review.spec} onChange={(spec) => setReview((r) => ({ ...r, spec }))} onError={setErrors} mode="server" general={general}
         routerHidden={IMPORT_ROUTER_NOTE} />
-      {err && !confirmApply && <p role="alert" className="text-sm text-red-400">{err}</p>}
+      {err && !confirmApply && <p role="alert" className="text-sm text-bad">{err}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <Button disabled={adopt.isPending || hotBlock !== null} aria-describedby={hotBlock ? "imp-hot-why" : undefined} onClick={() => adopt.mutate(false)}>
           {adopt.isPending && !confirmApply ? "Adopting…" : "Adopt without stopping"}

@@ -42,9 +42,9 @@ export function JobList({ filter, showServer = true }: { filter: JobsFilter; sho
         </TableRow>
       </TableHeader>
       <TableBody>
-        {jobs.isPending && <TableRow><TableCell colSpan={cols} className="text-center text-zinc-400">Loading…</TableCell></TableRow>}
-        {jobs.isError && <TableRow><TableCell colSpan={cols} className="text-center text-red-400">Could not load the jobs: {jobs.error.message}</TableCell></TableRow>}
-        {rows?.length === 0 && <TableRow><TableCell colSpan={cols} className="text-center text-zinc-400">No jobs.</TableCell></TableRow>}
+        {jobs.isPending && <TableRow><TableCell colSpan={cols} className="text-center text-muted-foreground">Loading…</TableCell></TableRow>}
+        {jobs.isError && <TableRow><TableCell colSpan={cols} className="text-center text-bad">Could not load the jobs: {jobs.error.message}</TableCell></TableRow>}
+        {rows?.length === 0 && <TableRow><TableCell colSpan={cols} className="text-center text-muted-foreground">No jobs.</TableCell></TableRow>}
         {rows?.map((j) => (
           <JobRow key={j.id} job={j} cols={cols} showServer={showServer} isOpen={open === j.id} onToggle={toggle}
             serverLabel={j.serverId ? jobServerName(j.serverId, servers.data) : null} />
@@ -67,7 +67,7 @@ const JobRow = memo(function JobRow({ job: j, cols, showServer, isOpen, serverLa
         <TableCell>
           <button
             type="button"
-            className="rounded p-0.5 hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-ring"
+            className="rounded p-0.5 hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
             aria-expanded={isOpen}
             aria-controls={isOpen ? logId : undefined}
             aria-label={`${isOpen ? "Hide" : "View"} log of ${jobTypeLabel(j.type)}`}
@@ -76,20 +76,20 @@ const JobRow = memo(function JobRow({ job: j, cols, showServer, isOpen, serverLa
             {isOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           </button>
         </TableCell>
-        <TableCell>{jobTypeLabel(j.type)}{trigger && <span className="ml-1 text-xs text-zinc-500">({trigger.toLowerCase()})</span>}</TableCell>
+        <TableCell>{jobTypeLabel(j.type)}{trigger && <span className="ml-1 text-xs text-muted-foreground">({trigger.toLowerCase()})</span>}</TableCell>
         {showServer && (
           <TableCell>
             {j.serverId
               ? <Link to="/servers/$serverId" params={{ serverId: j.serverId }} className="hover:underline">{serverLabel}</Link>
-              : <span className="text-zinc-500">—</span>}
+              : <span className="text-muted-foreground">—</span>}
           </TableCell>
         )}
         <TableCell>
           <Badge variant={VARIANT[j.status]}>{JOB_STATUS_LABEL[j.status]}</Badge>
-          {j.message && <div className="mt-1 max-w-md truncate text-xs text-zinc-400" title={j.message}>{j.message}</div>}
+          {j.message && <div className="mt-1 max-w-md truncate text-xs text-muted-foreground" title={j.message}>{j.message}</div>}
         </TableCell>
-        <TableCell className="w-40">{isActive(j) ? <ProgressBar value={j.progress} /> : <span className="text-xs text-zinc-500">{j.progress}%</span>}</TableCell>
-        <TableCell className="text-xs text-zinc-400">
+        <TableCell className="w-40">{isActive(j) ? <ProgressBar value={j.progress} /> : <span className="text-xs text-muted-foreground">{j.progress}%</span>}</TableCell>
+        <TableCell className="text-xs text-muted-foreground">
           {formatBackupDate(j.createdAt)}
           {finish && <div>end {finish}</div>}
         </TableCell>
@@ -111,16 +111,16 @@ function JobLog({ id }: { id: string }) {
     const el = preRef.current;
     if (el && atBottom.current) el.scrollTop = el.scrollHeight;
   }, [log]);
-  if (q.isPending) return <p className="text-xs text-zinc-400">Loading log…</p>;
-  if (!q.data) return <p className="text-xs text-red-400">Could not load the log: {q.error?.message}</p>;
+  if (q.isPending) return <p className="text-xs text-muted-foreground">Loading log…</p>;
+  if (!q.data) return <p className="text-xs text-bad">Could not load the log: {q.error?.message}</p>;
   return (
     <div>
-      {q.isError && <p className="mb-1 text-xs text-amber-400">Could not refresh the log: {q.error.message}</p>}
+      {q.isError && <p className="mb-1 text-xs text-warn">Could not refresh the log: {q.error.message}</p>}
       <pre
         ref={preRef}
         tabIndex={0}
         onScroll={(e) => { const el = e.currentTarget; atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX; }}
-        className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded bg-black p-3 font-mono text-xs text-zinc-300"
+        className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-md border border-cobble bg-obsidian p-3 font-mono text-xs leading-[1.65] text-[#d5dae0]"
       >{q.data.log || "(no log)"}</pre>
     </div>
   );

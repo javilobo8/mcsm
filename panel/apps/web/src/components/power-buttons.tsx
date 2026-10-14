@@ -30,7 +30,7 @@ export function PowerButtons({ server, size = "sm", nodeOnline }: { server: Serv
       {running && <Button size={size} variant="secondary" disabled={off} onClick={() => m.mutate("stop")} title={t("Stop")} aria-label={`Stop ${server.name}`}><Square className="size-4" /></Button>}
       {running && <Button size={size} variant="ghost" disabled={off} onClick={() => m.mutate("restart")} title={t("Restart")} aria-label={`Restart ${server.name}`}><RotateCcw className="size-4" /></Button>}
       {running && <Button size={size} variant="ghost" disabled={off} onClick={kill} title={t("Kill")} aria-label={`Kill ${server.name}`}><Skull className="size-4" /></Button>}
-      {err && <span role="alert" className="max-w-48 text-xs text-red-400">{err}</span>}
+      {err && <span role="alert" className="max-w-48 text-xs text-bad">{err}</span>}
     </div>
   );
 }

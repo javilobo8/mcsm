@@ -32,8 +32,8 @@ export function NameDialog({ open, title, confirmLabel, initial = "", existing, 
         <form onSubmit={dialogSubmit(submit)} className="flex flex-col gap-3">
           <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>No slashes or “..”. The name is applied in the current folder.</DialogDescription></DialogHeader>
           <Input aria-label="Name" autoFocus value={name} onChange={(e) => setName(e.target.value)} aria-invalid={name !== "" && !!invalid} />
-          {name !== "" && invalid && <p className="text-sm text-red-400">{invalid}</p>}
-          {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+          {name !== "" && invalid && <p className="text-sm text-bad">{invalid}</p>}
+          {error && <p role="alert" className="text-sm text-bad">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={!!invalid || unchanged || pending}>{pending ? "Saving…" : confirmLabel}</Button>

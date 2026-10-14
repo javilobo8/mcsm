@@ -25,12 +25,12 @@ export function EventList({ filter, showSubject = true }: { filter: EventsFilter
         </TableRow>
       </TableHeader>
       <TableBody>
-        {events.isPending && <TableRow><TableCell colSpan={cols} className="text-center text-zinc-400">Loading events…</TableCell></TableRow>}
-        {events.isError && <TableRow><TableCell colSpan={cols} className="text-center text-red-400">Could not load the events: {events.error.message}</TableCell></TableRow>}
-        {events.data?.length === 0 && <TableRow><TableCell colSpan={cols} className="text-center text-zinc-400">No events.</TableCell></TableRow>}
+        {events.isPending && <TableRow><TableCell colSpan={cols} className="text-center text-muted-foreground">Loading events…</TableCell></TableRow>}
+        {events.isError && <TableRow><TableCell colSpan={cols} className="text-center text-bad">Could not load the events: {events.error.message}</TableCell></TableRow>}
+        {events.data?.length === 0 && <TableRow><TableCell colSpan={cols} className="text-center text-muted-foreground">No events.</TableCell></TableRow>}
         {events.data?.map((e) => (
           <TableRow key={e.id} data-testid={`event-${e.kind}`}>
-            <TableCell className="text-xs text-zinc-400">{new Date(e.createdAt).toLocaleString()}</TableCell>
+            <TableCell className="text-xs text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</TableCell>
             <TableCell><Badge variant="outline" className={levelTone(e.level)}>{EVENT_LEVEL_LABEL[e.level]}</Badge></TableCell>
             <TableCell className="text-sm">{eventKindLabel(e.kind)}</TableCell>
             {showSubject && (
@@ -45,7 +45,7 @@ export function EventList({ filter, showSubject = true }: { filter: EventsFilter
         ))}
       </TableBody>
     </Table>
-    <p className="mt-2 text-xs text-zinc-500">Showing the {EVENTS_LIMIT} most recent events.</p>
+    <p className="mt-2 text-xs text-muted-foreground">Showing the {EVENTS_LIMIT} most recent events.</p>
     </>
   );
 }

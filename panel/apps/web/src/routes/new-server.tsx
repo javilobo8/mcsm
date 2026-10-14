@@ -5,7 +5,8 @@ import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { defaultSpecInput, slugify } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { PAGE, PageHeader } from "@/components/page-header";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Field, ValidatedInput } from "@/components/spec-form/fields";
 import { VersionSection } from "@/components/spec-form/version-section";
@@ -82,22 +83,28 @@ export function NewServerPage() {
   const summary = tpl ? summarizeSpec(tpl.spec) : source === SCRATCH ? summarizeSpec(spec) : [];
 
   return (
-    <div className="flex flex-col gap-4 p-6">
-      <ol className="flex flex-wrap gap-2 text-sm" aria-label="Steps">
-        {STEPS.map((s) => (
-          <li key={s.n} aria-current={s.n === step ? "step" : undefined}
-            className={cn("rounded-full border px-3 py-1", s.n === step ? "border-ring bg-accent" : s.n < step ? "border-emerald-800 text-emerald-400" : "border-border text-muted-foreground")}>
-            {s.n < step ? <Check className="mr-1 inline size-3" /> : `${s.n}. `}{s.label}
+    <div className={PAGE}>
+      <PageHeader title="New server" description="Start from a template or from scratch, pick the node it runs on, and review before creating it." />
+      <ol className="flex max-w-4xl flex-wrap items-center gap-x-3 gap-y-2 text-sm" aria-label="Steps">
+        {STEPS.map((s, i) => (
+          <li key={s.n} aria-current={s.n === step ? "step" : undefined} className="flex items-center gap-3">
+            {i > 0 && <span aria-hidden="true" className={cn("hidden h-px w-8 sm:block", s.n <= step ? "bg-grass/60" : "bg-cobble-2")} />}
+            <span className={cn("flex items-center gap-2", s.n === step ? "font-medium text-bone" : s.n < step ? "text-ok" : "text-muted-foreground")}>
+              <span aria-hidden="true" className={cn("notch flex size-6 items-center justify-center text-xs font-semibold [--notch:2px]",
+                s.n === step ? "bg-grass text-primary-foreground" : s.n < step ? "bg-grass/15 text-ok" : "bg-bedrock-2 text-muted-foreground")}>
+                {s.n < step ? <Check className="size-3.5" /> : s.n}
+              </span>
+              {s.label}
+            </span>
           </li>
         ))}
       </ol>
 
       <Card className="max-w-4xl">
-        <CardHeader><CardTitle>New server</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-5">
           {step === 1 && (
             <>
-              {gone && <p role="status" className="text-sm text-amber-400">The link's template no longer exists. Choose another or create the server from scratch.</p>}
+              {gone && <p role="status" className="text-sm text-warn">The link's template no longer exists. Choose another or create the server from scratch.</p>}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Source">
                 <SourceCard selected={source === SCRATCH} onSelect={() => pick(SCRATCH)} title="From scratch" subtitle="Choose type, version and mods. The rest is adjusted later in Configuration." />
                 {templates.data?.map((t) => (
@@ -106,7 +113,7 @@ export function NewServerPage() {
                 ))}
               </div>
               {templates.isPending && <p className="text-xs text-muted-foreground">Loading templates…</p>}
-              {templates.isError && <p role="alert" className="text-xs text-red-400">Could not load the templates: {templates.error.message}</p>}
+              {templates.isError && <p role="alert" className="text-xs text-bad">Could not load the templates: {templates.error.message}</p>}
               {source === SCRATCH && (
                 <div className="flex flex-col gap-4 border-t border-border pt-4">
                   <VersionSection spec={spec} onChange={setSpec} onError={onError} />
@@ -136,9 +143,9 @@ export function NewServerPage() {
               </Field>
               <label className="flex items-center gap-2 self-end text-sm"><input type="checkbox" checked={start} onChange={(e) => setStart(e.target.checked)} /> Start on creation</label>
               <div className="flex flex-col gap-1 sm:col-span-2">
-                {nodes.isError && <p role="alert" className="text-xs text-red-400">Could not load the nodes: {nodes.error.message}</p>}
-                {selectedNode && selectedNode.status !== "online" && <p className="text-xs text-amber-400">The node “{selectedNode.name}” is offline: the server will be created but will not start until it returns.</p>}
-                {nodes.data && online.length === 0 && <p className="text-xs text-amber-400">No node is online: the server will be created when the node returns.</p>}
+                {nodes.isError && <p role="alert" className="text-xs text-bad">Could not load the nodes: {nodes.error.message}</p>}
+                {selectedNode && selectedNode.status !== "online" && <p className="text-xs text-warn">The node “{selectedNode.name}” is offline: the server will be created but will not start until it returns.</p>}
+                {nodes.data && online.length === 0 && <p className="text-xs text-warn">No node is online: the server will be created when the node returns.</p>}
               </div>
             </div>
           )}
@@ -154,7 +161,7 @@ export function NewServerPage() {
             </dl>
           )}
 
-          {create.isError && !conflict && <p role="alert" className="text-sm text-red-400">{createMsg}</p>}
+          {create.isError && !conflict && <p role="alert" className="text-sm text-bad">{createMsg}</p>}
           <div className="flex items-center justify-between gap-3">
             <Button type="button" variant="ghost" disabled={step === 1 || create.isPending} onClick={back}><ArrowLeft className="size-4" /> Back</Button>
             <div className="flex items-center gap-3">
@@ -171,14 +178,17 @@ export function NewServerPage() {
 }
 
 function Row({ label, value }: { label: string; value: string }) {
-  return <><dt className="text-muted-foreground">{label}</dt><dd>{value}</dd></>;
+  return <><dt className="text-muted-foreground">{label}</dt><dd className="text-bone">{value}</dd></>;
 }
 
 function SourceCard({ selected, onSelect, title, subtitle }: { selected: boolean; onSelect: () => void; title: string; subtitle: string }) {
   return (
     <button type="button" role="radio" aria-checked={selected} onClick={onSelect}
-      className={cn("flex flex-col items-start gap-1 rounded-md border p-3 text-left text-sm hover:border-ring", selected ? "border-ring bg-accent" : "border-border")}>
-      <span className="font-medium">{title}</span>
+      className={cn("relative flex cursor-pointer flex-col items-start gap-1 rounded-md border p-3 text-left text-sm transition-colors", selected ? "border-grass/70 bg-grass/[0.06]" : "border-cobble bg-deepslate/50 hover:border-cobble-2")}>
+      <span className="flex items-center gap-2 font-medium text-bone">
+        <span aria-hidden="true" className={cn("size-2", selected ? "bg-grass" : "bg-cobble-2")} />
+        {title}
+      </span>
       <span className="text-xs text-muted-foreground">{subtitle}</span>
     </button>
   );

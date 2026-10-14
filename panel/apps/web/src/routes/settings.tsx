@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CurseForgeKeyNotice } from "@/components/spec-form/curseforge-key";
+import { PAGE, PageHeader } from "@/components/page-header";
+import { cn } from "@/lib/utils";
 import { api, ApiError, holdUnauthorized } from "@/lib/api";
 import { realtime } from "@/lib/ws";
 import { connectForm, parseConnectAddress, parsePortRange, parsePublicUrl, passwordFormError, portRangeForm, publicUrlNote, settingsLeaveWarning } from "@/lib/settings";
@@ -17,8 +19,8 @@ const errText = (e: unknown) => (e instanceof ApiError ? e.message : "Unexpected
 
 export function SettingsPage() {
   const q = useSettings();
-  if (q.isPending) return <p className="p-6 text-muted-foreground">Loading settings…</p>;
-  if (q.isError) return <p role="alert" className="p-6 text-red-400">Could not load the settings: {q.error.message}</p>;
+  if (q.isPending) return <p className="p-4 sm:p-6 lg:p-8 text-muted-foreground">Loading settings…</p>;
+  if (q.isError) return <p role="alert" className="p-4 sm:p-6 lg:p-8 text-bad">Could not load the settings: {q.error.message}</p>;
   return <SettingsForms settings={q.data} />;
 }
 
@@ -55,8 +57,8 @@ function SettingsForms({ settings }: { settings: SettingsDto }) {
   const saveRange = useMutation({ mutationFn: (gamePortRange: { from: number; to: number }) => api.put<SettingsDto>("/api/settings", { gamePortRange }), onSuccess: (s) => { onSaved(s); setRange(portRangeForm(s.gamePortRange)); } });
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4 p-6">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+    <div className={cn(PAGE, "max-w-4xl")}>
+      <PageHeader title="Settings" description="Your password, the panel's address for new nodes, the address players use to join, the game port range and the CurseForge key." />
 
       <Card>
         <CardHeader><CardTitle>Administrator password</CardTitle></CardHeader>
@@ -67,8 +69,8 @@ function SettingsForms({ settings }: { settings: SettingsDto }) {
             <div className="flex flex-col gap-1.5"><Label htmlFor="set-pw-repeat">Repeat the new one</Label><Input id="set-pw-repeat" type="password" autoComplete="new-password" value={pw.repeat} onChange={(e) => setPw({ ...pw, repeat: e.target.value })} /></div>
             <div className="flex items-center gap-3 sm:col-span-3">
               <Button type="submit" disabled={password.isPending}>{password.isPending ? "Saving…" : "Change password"}</Button>
-              {(localErr.pw || password.error) && <span role="alert" className="text-sm text-red-400">{localErr.pw ?? errText(password.error)}</span>}
-              {password.isSuccess && <span role="status" className="text-sm text-emerald-400">Password changed. The other sessions have been closed.</span>}
+              {(localErr.pw || password.error) && <span role="alert" className="text-sm text-bad">{localErr.pw ?? errText(password.error)}</span>}
+              {password.isSuccess && <span role="status" className="text-sm text-ok">Password changed. The other sessions have been closed.</span>}
             </div>
           </form>
         </CardContent>
@@ -83,8 +85,8 @@ function SettingsForms({ settings }: { settings: SettingsDto }) {
             <p className="text-xs text-muted-foreground">{publicUrlNote(settings)}</p>
             <div className="flex items-center gap-3">
               <Button type="submit" disabled={saveUrl.isPending}>Save URL</Button>
-              {(localErr.url || saveUrl.error) && <span role="alert" className="text-sm text-red-400">{localErr.url ?? errText(saveUrl.error)}</span>}
-              {saveUrl.isSuccess && <span role="status" className="text-sm text-emerald-400">Saved.</span>}
+              {(localErr.url || saveUrl.error) && <span role="alert" className="text-sm text-bad">{localErr.url ?? errText(saveUrl.error)}</span>}
+              {saveUrl.isSuccess && <span role="status" className="text-sm text-ok">Saved.</span>}
             </div>
           </form>
         </CardContent>
@@ -100,8 +102,8 @@ function SettingsForms({ settings }: { settings: SettingsDto }) {
               <Button type="submit" disabled={saveRange.isPending}>Save range</Button>
             </div>
             <p className="text-xs text-muted-foreground">The panel assigns from here the port of new servers that do not choose one (default {settings.defaultGamePortRange.from}–{settings.defaultGamePortRange.to}). It does not change the port of servers that already exist.</p>
-            {(localErr.range || saveRange.error) && <p role="alert" className="text-sm text-red-400">{localErr.range ?? errText(saveRange.error)}</p>}
-            {saveRange.isSuccess && <p role="status" className="text-sm text-emerald-400">Saved.</p>}
+            {(localErr.range || saveRange.error) && <p role="alert" className="text-sm text-bad">{localErr.range ?? errText(saveRange.error)}</p>}
+            {saveRange.isSuccess && <p role="status" className="text-sm text-ok">Saved.</p>}
           </form>
         </CardContent>
       </Card>
@@ -116,8 +118,8 @@ function SettingsForms({ settings }: { settings: SettingsDto }) {
               <Button type="submit" disabled={saveConnect.isPending}>Save address</Button>
             </div>
             <p className="text-xs text-muted-foreground">What players type in Minecraft, shown next to each server in the list: your domain or public IP and the port forwarded on your router (e.g. 55567). Empty port = each server's own port. Servers that join through mc-router show their hostname with this port (or the router's).</p>
-            {(localErr.connect || saveConnect.error) && <p role="alert" className="text-sm text-red-400">{localErr.connect ?? errText(saveConnect.error)}</p>}
-            {saveConnect.isSuccess && <p role="status" className="text-sm text-emerald-400">Saved.</p>}
+            {(localErr.connect || saveConnect.error) && <p role="alert" className="text-sm text-bad">{localErr.connect ?? errText(saveConnect.error)}</p>}
+            {saveConnect.isSuccess && <p role="status" className="text-sm text-ok">Saved.</p>}
           </form>
         </CardContent>
       </Card>

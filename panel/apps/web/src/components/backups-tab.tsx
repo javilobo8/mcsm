@@ -51,28 +51,28 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
       <section className="flex flex-col gap-3" aria-label="Backups">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Backups</h2>
-            <p className="text-xs text-zinc-500">On the node's disk, in {server.slug}/backups.</p>
+            <h2 className="text-base font-semibold text-bone">Backups</h2>
+            <p className="text-xs text-muted-foreground">On the node's disk, in {server.slug}/backups.</p>
           </div>
           <Button onClick={() => { restore.reset(); remove.reset(); createNow.mutate(); }} disabled={busy || createNow.isPending} title={busyReason ?? undefined}>
             <DatabaseBackup className="size-4" /> Create backup now
           </Button>
         </div>
         {active && <JobProgress job={active} />}
-        {error && <p role="alert" className="text-sm text-red-400">{error.message}</p>}
+        {error && <p role="alert" className="text-sm text-bad">{error.message}</p>}
         <Table>
           <TableHeader>
             <TableRow><TableHead>Date</TableHead><TableHead>Type</TableHead><TableHead>Size</TableHead><TableHead>Spec</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow>
           </TableHeader>
           <TableBody>
-            {backups.isPending && <TableRow><TableCell colSpan={5} className="text-center text-zinc-400">Loading backups…</TableCell></TableRow>}
-            {backups.isError && <TableRow><TableCell colSpan={5} className="text-center text-red-400">Could not load the backups: {backups.error.message}</TableCell></TableRow>}
-            {backups.data?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-zinc-400">No backups yet. Create one now or set up scheduled backups below.</TableCell></TableRow>}
+            {backups.isPending && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Loading backups…</TableCell></TableRow>}
+            {backups.isError && <TableRow><TableCell colSpan={5} className="text-center text-bad">Could not load the backups: {backups.error.message}</TableCell></TableRow>}
+            {backups.data?.length === 0 && <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No backups yet. Create one now or set up scheduled backups below.</TableCell></TableRow>}
             {backups.data?.map((b) => {
               const act = backupActions(b, busy, offline);
               return (
                 <TableRow key={b.id} data-testid={`backup-row-${b.filename}`}>
-                  <TableCell><div>{formatBackupDate(b.startedAt)}</div><div className="font-mono text-xs text-zinc-500">{b.filename}</div></TableCell>
+                  <TableCell><div>{formatBackupDate(b.startedAt)}</div><div className="font-mono text-xs text-muted-foreground">{b.filename}</div></TableCell>
                   <TableCell>
                     <Badge variant={b.kind === "directory" ? "outline" : "secondary"}>{TRIGGER_LABEL[b.trigger]}</Badge>
                     {b.status === "failed" && <Badge variant="destructive" className="ml-1">Failed</Badge>}
@@ -101,7 +101,7 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
       </section>
 
       <section className="flex flex-col gap-3" aria-label="Schedule">
-        <h2 className="text-sm font-medium uppercase tracking-wide text-zinc-400">Schedule</h2>
+        <h2 className="text-base font-semibold text-bone">Schedule</h2>
         <BackupScheduleForm server={server} />
       </section>
 
@@ -113,7 +113,7 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
               {restoring ? restoreDialogText(server.name, restoring.startedAt) : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {restore.error && <p role="alert" className="text-sm text-red-400">{restore.error.message}</p>}
+          {restore.error && <p role="alert" className="text-sm text-bad">{restore.error.message}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={restore.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={restore.isPending} onClick={(e) => { e.preventDefault(); if (restoring) restore.mutate(restoring); }}>Restore</AlertDialogAction>
@@ -127,7 +127,7 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
             <AlertDialogTitle>{del?.title}</AlertDialogTitle>
             <AlertDialogDescription>{del?.description}</AlertDialogDescription>
           </AlertDialogHeader>
-          {remove.error && <p role="alert" className="text-sm text-red-400">{remove.error.message}</p>}
+          {remove.error && <p role="alert" className="text-sm text-bad">{remove.error.message}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={remove.isPending} onClick={(e) => { e.preventDefault(); if (deleting) remove.mutate(deleting); }}>Delete</AlertDialogAction>

@@ -86,8 +86,8 @@ export function TimeSeriesChart({ title, data, lines, format, yRange, axis: axis
   useEffect(() => { plot.current?.setData(data); }, [data]);
 
   return (
-    <figure className="min-w-0">
-      <figcaption className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">{title}</figcaption>
+    <figure className="min-w-0 rounded-lg border border-cobble bg-bedrock/70 p-3">
+      <figcaption className="mb-2 text-sm font-medium text-bone">{title}</figcaption>
       <div ref={box} className="w-full" role="img" aria-label={`Chart of ${title}`} aria-describedby={descId} />
       <p id={descId} className="sr-only">{summarize(data, lines.map((l) => l.label), format)}</p>
     </figure>

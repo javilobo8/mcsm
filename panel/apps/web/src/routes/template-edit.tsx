@@ -14,6 +14,8 @@ import { editableFromTemplate, validateSpec, type EditableSpec } from "@/lib/spe
 import { REMOVE_SCHEDULE_PATCH, templateCreateBody, templatePatchBody, templateSaveBlock } from "@/lib/template-edit";
 import { scheduleSummary } from "@/lib/backups";
 import { useTemplate } from "@/hooks/use-templates";
+import { PAGE, PageHeader } from "@/components/page-header";
+import { cn } from "@/lib/utils";
 
 function TemplateEditor({ template }: { template?: TemplateDto }) {
   const qc = useQueryClient();
@@ -72,13 +74,14 @@ function TemplateEditor({ template }: { template?: TemplateDto }) {
   const err = localErr ?? (save.error instanceof ApiError ? save.error.message : save.error ? "Unexpected error" : null);
 
   return (
-    <form onSubmit={submit} className="flex max-w-5xl flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{template ? `Template “${template.name}”` : "New template"}</h1>
-        <Button asChild variant="ghost"><Link to="/templates">Back</Link></Button>
-      </div>
+    <form onSubmit={submit} className={cn(PAGE, "max-w-5xl")}>
+      <PageHeader
+        title={template ? `Template “${template.name}”` : "New template"}
+        description="Everything a new server starts with, except its name, ports and RCON password."
+        actions={<Button asChild variant="ghost"><Link to="/templates">Back</Link></Button>}
+      />
       <SpecForm value={spec} onChange={setSpec} onError={setErrors} mode="template" general={general} />
-      {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
+      {err && <p role="alert" className="text-sm text-bad">{err}</p>}
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={save.isPending || blocked !== null} aria-describedby={blocked ? "tpl-save-why" : undefined}>
           {save.isPending ? "Saving…" : template ? "Save changes" : "Create template"}
@@ -96,10 +99,10 @@ export function NewTemplatePage() {
 export function EditTemplatePage() {
   const { templateId } = useParams({ from: "/app/templates/$templateId" });
   const q = useTemplate(templateId);
-  if (q.isPending) return <div className="flex items-center gap-2 p-6 text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading…</div>;
+  if (q.isPending) return <div className="flex items-center gap-2 p-4 sm:p-6 lg:p-8 text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading…</div>;
   if (q.isError) {
     const notFound = q.error instanceof ApiError && q.error.status === 404;
-    return <div role="alert" className="p-6 text-red-400">{notFound ? "Template not found" : `Could not load the template: ${q.error.message}`}</div>;
+    return <div role="alert" className="p-4 sm:p-6 lg:p-8 text-bad">{notFound ? "Template not found" : `Could not load the template: ${q.error.message}`}</div>;
   }
   return <TemplateEditor key={q.data.id} template={q.data} />;
 }

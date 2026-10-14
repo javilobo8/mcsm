@@ -91,8 +91,8 @@ export function NetworkSection({ spec, onChange, onError, routerHidden }: {
             <Button type="button" size="icon" variant="ghost" aria-label="Remove port" onClick={() => { keys.current.splice(i, 1); setExtra(extra.filter((_, j) => j !== i)); }}><Trash2 className="size-4" /></Button>
           </div>
         ))}
-        {dups.length > 0 && <p role="status" className="text-xs text-amber-400">Repeated host port ({dups.join(", ")}): Docker cannot publish the same port twice.</p>}
-        {portsError && <p role="alert" className="text-xs text-red-400">{portsError}</p>}
+        {dups.length > 0 && <p role="status" className="text-xs text-warn">Repeated host port ({dups.join(", ")}): Docker cannot publish the same port twice.</p>}
+        {portsError && <p role="alert" className="text-xs text-bad">{portsError}</p>}
         <div>
           <Button type="button" size="sm" variant="secondary" onClick={() => setExtra([...extra, { host: 0, container: 0, proto: "tcp", label: "" }])}>
             <Plus className="size-4" /> Add port

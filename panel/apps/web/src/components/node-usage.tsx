@@ -2,8 +2,7 @@ import { useEffect, useReducer } from "react";
 import { cn } from "@/lib/utils";
 import { clampPct, formatCpu, isFresh, percent, totalText, usageTone } from "@/lib/metrics";
 import { useNodeLive } from "@/hooks/use-metrics";
-
-const TONE = { ok: "bg-emerald-500", warn: "bg-amber-500", bad: "bg-red-500" } as const;
+import { TONE_FILL as TONE } from "@/components/status";
 
 /** With an unknown total (`pct` null) no bar or % is drawn: only the used value. */
 function UsageBar({ label, pct, text }: { label: string; pct: number | null; text: string }) {
@@ -16,7 +15,7 @@ function UsageBar({ label, pct, text }: { label: string; pct: number | null; tex
         <div
           role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}
           aria-valuetext={`${Math.round(pct)} % · ${text}`}
-          className="h-1.5 overflow-hidden rounded bg-muted"
+          className="h-2 overflow-hidden bg-obsidian shadow-[inset_0_0_0_1px_var(--cobble)]"
         >
           <div className={cn("h-full transition-[width]", TONE[usageTone(pct)])} style={{ width: `${pct}%` }} />
         </div>
@@ -41,7 +40,7 @@ export function NodeUsage({ nodeId }: { nodeId: string }) {
   useTick(10_000);
   const e = q.data;
   if (q.isPending) return <p className="text-xs text-muted-foreground">Loading usage…</p>;
-  if (q.isError && !e && q.dataUpdatedAt === 0) return <p role="alert" className="text-xs text-red-400">Could not load the node's usage</p>;
+  if (q.isError && !e && q.dataUpdatedAt === 0) return <p role="alert" className="text-xs text-bad">Could not load the node's usage</p>;
   if (!isFresh(e, Date.now())) return <p className="text-xs text-muted-foreground">No recent data from the node</p>;
   const s = e.sample;
   return (

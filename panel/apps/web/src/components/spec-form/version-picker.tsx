@@ -40,7 +40,7 @@ export function VersionPicker({ id, type, value, onChange, "aria-describedby": d
             <CommandInput placeholder="Search or type a version…" value={query} onValueChange={setQuery} />
             <CommandList>
               {versions.isPending && <p className="px-3 py-2 text-xs text-muted-foreground">Loading versions…</p>}
-              {versions.isError && <p role="alert" className="px-3 py-2 text-xs text-red-400">{versions.error.message}. You can type the version by hand.</p>}
+              {versions.isError && <p role="alert" className="px-3 py-2 text-xs text-bad">{versions.error.message}. You can type the version by hand.</p>}
               {opts.freeText && <CommandGroup heading="Typed by hand">{item(opts.freeText, `Use “${opts.freeText}”`)}</CommandGroup>}
               {opts.specials.length > 0 && <CommandGroup heading="Specials">{opts.specials.map((s) => item(s.id, s.label))}</CommandGroup>}
               {opts.stable.length > 0 && <CommandGroup heading="Stable">{opts.stable.map((v) => item(v))}</CommandGroup>}
@@ -55,7 +55,7 @@ export function VersionPicker({ id, type, value, onChange, "aria-describedby": d
         </PopoverContent>
       </Popover>
       {versions.data?.stale && (
-        <p className="text-xs text-amber-400">The source is not responding; list from {ageText(versions.data.fetchedAt, Date.now())}.</p>
+        <p className="text-xs text-warn">The source is not responding; list from {ageText(versions.data.fetchedAt, Date.now())}.</p>
       )}
     </div>
   );

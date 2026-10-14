@@ -30,10 +30,10 @@ export function SaveTemplateDialog({ server }: { server: ServerDto }) {
           <DialogTitle>Save “{server.name}” as template</DialogTitle>
           <DialogDescription>Saves the applied configuration (v{server.specVersion}) without ports or RCON password. Unapplied changes are not included.</DialogDescription>
         </DialogHeader>
-        {scheduleNote && <p className="text-sm text-amber-300" data-testid="stpl-backups">{scheduleNote}</p>}
+        {scheduleNote && <p className="text-sm text-warn" data-testid="stpl-backups">{scheduleNote}</p>}
         {save.isSuccess ? (
           <div className="flex flex-col gap-3 text-sm">
-            <p role="status" className="text-emerald-400">Template “{save.data.name}” created.</p>
+            <p role="status" className="text-ok">Template “{save.data.name}” created.</p>
             <DialogFooter>
               <Button asChild variant="secondary"><Link to="/templates">View templates</Link></Button>
               <Button type="button" onClick={() => setOpen(false)}>Close</Button>
@@ -43,7 +43,7 @@ export function SaveTemplateDialog({ server }: { server: ServerDto }) {
           <form className="flex flex-col gap-3" onSubmit={dialogSubmit(() => save.mutate())}>
             <Field id="stpl-name" label="Name"><Input id="stpl-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></Field>
             <Field id="stpl-desc" label="Description (optional)"><Textarea id="stpl-desc" rows={3} maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
-            {save.error && <p role="alert" className="text-sm text-red-400">{save.error instanceof ApiError ? save.error.message : "Unexpected error"}</p>}
+            {save.error && <p role="alert" className="text-sm text-bad">{save.error instanceof ApiError ? save.error.message : "Unexpected error"}</p>}
             <DialogFooter><Button type="submit" disabled={save.isPending || !name.trim()}>{save.isPending ? "Saving…" : "Save template"}</Button></DialogFooter>
           </form>
         )}
