@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { compileDoc } from "../build/docs/compile";
 
@@ -45,14 +47,29 @@ describe("compileDoc", () => {
     expect(d.html).toContain('data-lang="bash"');
     expect(d.html).toContain("<pre");
   });
-  it("includes a file under deploy/", async () => {
-    const d = await compileDoc('```yaml include="deploy/example.yml"\n```\n', opts);
+  it("includes one of the deploy/ files of the contract", async () => {
+    const d = await compileDoc('```yaml include="deploy/docker-compose.yml"\n```\n', opts);
     expect(d.html).toContain("example-service");
+    expect(d.html).toContain('data-file="deploy/docker-compose.yml"');
   });
-  it.each(["../secret.txt", "/etc/passwd", "deploy/../../x", "README.md"])("refuses to include %s", async (p) => {
-    await expect(compileDoc(`\`\`\`yaml include="${p}"\n\`\`\`\n`, opts)).rejects.toThrow(/include/);
-  });
+  it.each(["../secret.txt", "/etc/passwd", "deploy/../../x", "README.md", "deploy/.env", "deploy/docker-compose.build.yml", "deploy/../deploy/docker-compose.yml"])(
+    "refuses to include %s",
+    async (p) => {
+      await expect(compileDoc(`\`\`\`yaml include="${p}"\n\`\`\`\n`, opts)).rejects.toThrow(/include ".*" is not allowed/);
+    },
+  );
   it("fails on a missing include", async () => {
-    await expect(compileDoc('```yaml include="deploy/missing.yml"\n```\n', opts)).rejects.toThrow(/missing\.yml/);
+    await expect(compileDoc('```yaml include="deploy/docker-compose.node.yml"\n```\n', opts)).rejects.toThrow(/docker-compose\.node\.yml" not found/);
+  });
+  it("refuses an allowed name that is a symbolic link out of deploy/", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mcsm-repo-"));
+    try {
+      fs.mkdirSync(path.join(root, "deploy"));
+      fs.writeFileSync(path.join(root, "secret.txt"), "TOKEN=hunter2\n");
+      fs.symlinkSync(path.join(root, "secret.txt"), path.join(root, "deploy/docker-compose.yml"));
+      await expect(compileDoc('```yaml include="deploy/docker-compose.yml"\n```\n', { ...opts, repoRoot: root })).rejects.toThrow(/resolves outside deploy\//);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

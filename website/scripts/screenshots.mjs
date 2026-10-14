@@ -73,12 +73,23 @@ async function shoot(name, url, viewport, { fullPage = true, before } = {}) {
 }
 
 const desktop = { width: 1440, height: 900 };
+const tablet = { width: 820, height: 1180 };
 const mobile = { width: 390, height: 844 };
 
 await shoot("landing-1440", site, desktop);
 await shoot("landing-390", site, mobile);
 if (docSlug) {
   await shoot("docs-1440", `${site}docs/${docSlug}/`, desktop);
+  await shoot("docs-820", `${site}docs/${docSlug}/`, tablet);
+  // Between md and lg the docs sidebar is hidden: the menu must still reach the docs navigation.
+  await shoot("docs-menu-820", `${site}docs/${docSlug}/`, tablet, {
+    fullPage: false,
+    before: async (page) => {
+      await page.getByRole("button", { name: "Open the menu" }).click();
+      await page.getByRole("dialog").getByRole("navigation", { name: "Documentation" }).waitFor();
+      await page.waitForTimeout(500);
+    },
+  });
   await shoot("docs-390", `${site}docs/${docSlug}/`, mobile);
   await shoot("search-1440", `${site}docs/${docSlug}/`, desktop, {
     fullPage: false,

@@ -9,7 +9,7 @@ import { GitHubMark, Wordmark } from "./logo";
 
 const SearchDialog = lazy(() => import("@/components/docs/search-dialog"));
 
-const navLink = "rounded-sm px-1 py-1 text-sm text-fog transition-colors hover:text-bone";
+const navLink = "rounded-sm px-1 py-1 text-sm whitespace-nowrap text-fog transition-colors hover:text-bone";
 
 /** Sticky site header shared by the landing and the docs. `mobileExtra` goes into the mobile menu (the docs pages). */
 export function Navbar({ mobileExtra, wide = false }: { mobileExtra?: ReactNode; wide?: boolean }) {
@@ -56,7 +56,7 @@ export function Navbar({ mobileExtra, wide = false }: { mobileExtra?: ReactNode;
           </button>
           <a
             href={RELEASES_URL}
-            className="notch hidden bg-torch/12 px-2 py-1 font-mono text-xs font-medium text-torch transition-colors hover:bg-torch/20 sm:inline-block"
+            className="notch hidden bg-torch/12 px-2 py-1 font-mono text-xs font-medium text-torch transition-colors hover:bg-torch/20 sm:inline-block md:hidden lg:inline-block"
             style={{ ["--notch" as string]: "2px" }}
             title="Release notes"
           >
@@ -71,7 +71,12 @@ export function Navbar({ mobileExtra, wide = false }: { mobileExtra?: ReactNode;
 
           <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
             <SheetTrigger asChild>
-              <button type="button" className="inline-flex size-9 items-center justify-center rounded-md text-bone md:hidden" aria-label="Open the menu">
+              {/* With docs navigation in it, the menu is needed until the docs sidebar appears (lg). */}
+              <button
+                type="button"
+                className={cn("inline-flex size-9 items-center justify-center rounded-md text-bone", mobileExtra ? "lg:hidden" : "md:hidden")}
+                aria-label="Open the menu"
+              >
                 <Menu className="size-5" aria-hidden="true" />
               </button>
             </SheetTrigger>

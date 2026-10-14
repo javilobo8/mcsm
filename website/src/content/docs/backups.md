@@ -25,7 +25,7 @@ Open the server's **Backups** tab and click **Create backup now**. You can do it
 
 In the same tab, configure:
 
-- **Frequency** or a **Cron expression (node time)**. The cron is evaluated in the node's time.
+- A **Frequency** preset, which fills in the **Cron expression (node time)**, or your own cron expression. The cron is evaluated in the node's time.
 - Retention: **Keep days** and **Keep backups** (0 means no limit).
 - **Exclude** patterns, one per line.
 - **Only if someone has played since the last backup.**

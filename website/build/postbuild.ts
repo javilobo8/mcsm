@@ -58,7 +58,7 @@ export function robotsTxt(siteUrl: string): string {
 /**
  * Writes, next to the built `index.html`: one `index.html` per docs route with its own meta, `docs/index.html`
  * (meta of the introduction, which it redirects to), `404.html` (the SPA fallback GitHub Pages serves for any
- * unknown path), `sitemap.xml` and `robots.txt`.
+ * unknown path, marked noindex), `sitemap.xml` and `robots.txt`.
  */
 export function writeRouteFiles(outDir: string, pages: { slug: string; title: string; description: string }[], siteUrl: string): void {
   const template = fs.readFileSync(path.join(outDir, "index.html"), "utf8");
@@ -78,7 +78,8 @@ export function writeRouteFiles(outDir: string, pages: { slug: string; title: st
   for (const p of pages) {
     write(`docs/${p.slug}/index.html`, renderRouteHtml(template, { path: `docs/${p.slug}/`, title: docTitle(p.title), description: p.description }, siteUrl));
   }
-  write("404.html", template);
+  // GitHub Pages serves it with status 404 for any unknown path; noindex says so to crawlers explicitly.
+  write("404.html", replaceOne(template, /<\/head>/, "</head>", '<meta name="robots" content="noindex"></head>'));
   // "docs/" only redirects to the introduction: its canonical is the introduction, so it stays out of the sitemap.
   write("sitemap.xml", sitemapXml(siteUrl, routePaths(pages.map((p) => p.slug)).filter((p) => p !== "docs/")));
   write("robots.txt", robotsTxt(siteUrl));

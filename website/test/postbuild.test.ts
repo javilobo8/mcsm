@@ -40,7 +40,8 @@ describe("writeRouteFiles", () => {
       const read = (p: string) => fs.readFileSync(path.join(out, p), "utf8");
       expect(read("docs/backups/index.html")).toContain("<title>Backups · MC Server Manager docs</title>");
       expect(read("docs/index.html")).toContain('<link rel="canonical" href="https://javilobo8.github.io/mcsm/docs/introduction/">');
-      expect(read("404.html")).toBe(tpl);
+      // The SPA fallback is the template, kept out of search results.
+      expect(read("404.html")).toBe(tpl.replace("</head>", '<meta name="robots" content="noindex"></head>'));
       expect(read("sitemap.xml")).toContain("<loc>https://javilobo8.github.io/mcsm/docs/introduction/</loc>");
       expect(read("sitemap.xml")).not.toContain("<loc>https://javilobo8.github.io/mcsm/docs/</loc>");
       expect(read("robots.txt")).toContain("Sitemap:");

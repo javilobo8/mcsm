@@ -14,8 +14,9 @@ sudo mkdir -p /srv/minecraft
 docker compose up -d panel`;
 
 const STEP_2 = `docker compose logs panel | grep "Initial setup token"
-# open http://<ip>:8080 and create the password with that token,
-# then put the token from Nodes → Add node in ENROLL_TOKEN in .env
+# open http://<ip>:8080 and create the password with that token, then
+# in Nodes → Add node enter your DATA_ROOT as the "Data directory"
+# and put the token it gives you in ENROLL_TOKEN in .env
 docker compose up -d agent`;
 
 const STEP_3 = `docker network create mcsm 2>/dev/null || true
@@ -40,7 +41,7 @@ const STEPS = [
   },
   {
     title: "Create your password and enroll the local agent",
-    body: "The panel writes an initial setup token to its log: open the panel and create your password with it. Then generate a node token in Nodes → Add node, put it in the .env and start the agent.",
+    body: "The panel writes an initial setup token to its log: open the panel and create your password with it. Then, in Nodes → Add node, enter the same DATA_ROOT as the “Data directory”, put the token it gives you in ENROLL_TOKEN in the .env and start the agent.",
     snippet: STEP_2,
     snippetTitle: "Main machine",
     doc: { slug: "installation", label: "First start, step by step" },

@@ -7,8 +7,6 @@ order: 20
 
 This page deploys the **panel** and an **agent** on the same machine, using the published images from GitHub Container Registry. To add more machines afterwards, see [Adding nodes](/docs/adding-nodes).
 
-![Login and password creation screen](/screenshots/01-login.webp)
-
 ## Images
 
 | Image | What it is |
@@ -52,7 +50,7 @@ The example file lists every variable. Only the ones below need your attention; 
 | `MCSM_VERSION` | Pin a version, for example `0.10.0`, so that updating is always a deliberate step. Empty means `latest`. |
 | `PANEL_PUBLIC_URL` | The panel address with the port, as the other nodes and your browser see it, for example `http://192.168.1.10:8080`. Empty means the address you use to open the panel in the browser. |
 | `DATA_ROOT` | Host directory (**absolute** path) for this machine's worlds. |
-| `ENROLL_TOKEN` | Leave empty for now: you fill it in at step 4 below. |
+| `ENROLL_TOKEN` | Leave empty for now: you fill it in at step 4 of [First start](#first-start). |
 | `PANEL_SETUP_TOKEN` | Optional. Sets the initial setup token yourself (use a long, random value). Empty means the panel generates one and writes it to its log. |
 | `UPLOAD_MAX_BYTES` | Optional. Maximum file upload size in bytes. See [Upload limit](/docs/files#upload-limit). |
 

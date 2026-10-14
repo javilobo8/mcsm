@@ -6,7 +6,7 @@ import { Section, SectionHeading } from "./section";
 // Real screenshots from the end-to-end run of the panel (panel/apps/e2e), one line each.
 const STOPS = [
   { id: "dashboard", label: "Dashboard", shot: "11-dashboard-node-cards", caption: "Every node with its CPU, RAM and disk, and every server with its status, players, version, node and the address players join." },
-  { id: "new-server", label: "New server", shot: "01b-selector-version", caption: "A three-step wizard: a template or from scratch, then the type, a version from the official lists and the memory." },
+  { id: "new-server", label: "New server", shot: "01b-selector-version", caption: "A three-step wizard: a template or a server from scratch (type, a version from the official lists, memory), then the node and name, then a review." },
   { id: "overview", label: "Overview", shot: "03-overview-charts", height: 914, caption: "Players, detected version, uptime, latency and health, with charts for the last hour, day or week." },
   { id: "console", label: "Console", shot: "04-console", caption: "The live log with a filter, and commands sent over RCON with history." },
   { id: "configuration", label: "Configuration", shot: "05-configuration", caption: "Version and mods, properties, players, network, resources and advanced settings, reviewed before they are applied." },

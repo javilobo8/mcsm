@@ -18,7 +18,7 @@ export function Wordmark({ className }: { className?: string }) {
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <BlockMark />
-      <span className="font-pixel text-[1.0625rem] font-semibold tracking-tight text-bone">MC Server Manager</span>
+      <span className="font-pixel text-[1.0625rem] font-semibold tracking-tight whitespace-nowrap text-bone">MC Server Manager</span>
     </span>
   );
 }

@@ -37,7 +37,9 @@ concurrency:
 jobs:
   build:
     name: Build
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # After a Release run, only if it succeeded, was started by a published release and ran in this
+    # repository (workflow_run matches by name: a "Release" workflow from elsewhere must not trigger it).
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:

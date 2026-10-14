@@ -27,7 +27,7 @@ If the proxy rewrites `Host`, logging in through it gives a 403. Do one of these
 - Set `PANEL_PUBLIC_URL` in the compose `.env`. It only counts if none is saved here.
 - Make the proxy preserve `Host`. In nginx: `proxy_set_header Host $http_host;`.
 
-## Game port range
+## Game ports
 
 The range the panel picks ports from. It is only used for new servers without a port.
 

@@ -19,7 +19,7 @@ The **panel** (a web UI and API on port 8080) is the single source of truth for 
 ┌────────────────────────── Main machine ──────────────────────────┐
 │  panel (container)                                               │
 │   ├─ web UI + HTTP API       ← your browser                      │
-│   ├─ WebSocket /agent        ← agents (they connect out)         │
+│   ├─ WebSocket /agent/ws     ← agents (they connect out)         │
 │   └─ SQLite (panel.db)                                           │
 │  agent (container) ── docker.sock ── the node's Minecraft servers│
 └──────────────────────────────────────────────────────────────────┘

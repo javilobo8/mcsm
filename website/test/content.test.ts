@@ -20,6 +20,9 @@ describe.skipIf(docs.length === 0)("docs content", () => {
     }
   });
   it.each(docs.map((d) => [d.slug, d] as const))("%s: images exist", (_slug, d) => {
-    for (const img of d.images) expect(fs.existsSync(path.join(root, "public", img)), img).toBe(true);
+    for (const img of d.images) {
+      expect(img, `images must be /screenshots/<name>.webp: ${img}`).toMatch(/^\/screenshots\/[\w.-]+\.webp$/);
+      expect(fs.existsSync(path.join(root, "public", img)), img).toBe(true);
+    }
   });
 });

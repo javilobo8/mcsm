@@ -63,8 +63,17 @@ const ALERT_MARKER = /^\[!(note|tip|important|warning|caution)\][ \t]*(?:\r?\n|$
 
 const INCLUDE_META = /(?:^|\s)include="([^"]*)"/;
 
-/** Absolute path of an include, or an error if it is not a file under `<repoRoot>/deploy/`. */
+/**
+ * The only files a page may include (spec §5.2): the deployment files the README copies. Anything else
+ * under deploy/ (a developer's gitignored deploy/.env with its tokens, the build override) is refused.
+ */
+export const INCLUDABLE = ["deploy/docker-compose.yml", "deploy/docker-compose.node.yml", "deploy/.env.example"] as const;
+
+/** Absolute path of an include, or an error if it is not one of INCLUDABLE under `<repoRoot>/deploy/`. */
 function resolveInclude(p: string, repoRoot: string, file: string): string {
+  if (!(INCLUDABLE as readonly string[]).includes(p)) {
+    throw new Error(`${file}: include "${p}" is not allowed: only ${INCLUDABLE.join(", ")}`);
+  }
   const deployDir = path.resolve(repoRoot, "deploy");
   const abs = path.resolve(repoRoot, p);
   const rel = path.relative(deployDir, abs);
