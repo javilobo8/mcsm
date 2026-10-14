@@ -26,7 +26,7 @@ function siteHtml(): Plugin {
 
 export default defineConfig({
   base,
-  plugins: [react(), tailwindcss(), siteHtml(), docsPlugin({ repoRoot, base })],
+  plugins: [react(), tailwindcss(), siteHtml(), docsPlugin({ repoRoot, base, siteUrl })],
   define: {
     __MCSM_VERSION__: JSON.stringify(version),
     __SITE_URL__: JSON.stringify(siteUrl),

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Plugin } from "vite";
 import { loadDocs, type LoadedDoc } from "./docs/load.ts";
+import { writeRouteFiles } from "./postbuild.ts";
 
 export interface DocsPluginOptions {
   /** Directory of the Markdown pages; default `src/content/docs`, or `DOCS_DIR` (relative to the Vite root). */
@@ -10,6 +11,8 @@ export interface DocsPluginOptions {
   repoRoot: string;
   /** Base path with a trailing slash, e.g. "/mcsm/". */
   base: string;
+  /** Absolute site URL without a trailing slash, for canonical URLs, the sitemap and robots.txt. */
+  siteUrl: string;
 }
 
 const VIRTUAL_ID = "virtual:docs";
@@ -23,10 +26,13 @@ function toModule(docs: LoadedDoc[]): string {
 
 /**
  * Compiles the Markdown documentation at build time and exposes it as `virtual:docs`.
- * In dev, editing, adding or removing a page (or an included file) reloads the browser.
+ * In dev, editing, adding or removing a page (or an included file) reloads the browser. After a build it
+ * writes the per-route files (see postbuild.ts).
  */
 export function docsPlugin(options: DocsPluginOptions): Plugin {
   let root = process.cwd();
+  let isBuild = false;
+  let outDir = "dist";
   let docs: LoadedDoc[] | undefined;
   const included = new Set<string>();
 
@@ -49,6 +55,8 @@ export function docsPlugin(options: DocsPluginOptions): Plugin {
     name: "mcsm-docs",
     configResolved(config) {
       root = config.root;
+      isBuild = config.command === "build";
+      outDir = path.resolve(config.root, config.build.outDir);
     },
     resolveId(id) {
       return id === VIRTUAL_ID ? RESOLVED_ID : undefined;
@@ -62,6 +70,11 @@ export function docsPlugin(options: DocsPluginOptions): Plugin {
       }
       for (const file of included) this.addWatchFile(file);
       return toModule(loaded);
+    },
+    // After the bundle is written: per-route HTML, the 404 fallback, the sitemap and robots.txt.
+    async closeBundle() {
+      if (!isBuild) return;
+      writeRouteFiles(outDir, docs ?? (await load()), options.siteUrl);
     },
     configureServer(server) {
       const dir = docsDir();
