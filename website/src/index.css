@@ -1,0 +1,303 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./styles/prose.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Palette (dark only). Named after the blocks they come from:
+ *   deepslate  page background          bedrock  raised surfaces
+ *   cobble     lines and borders        grass    primary accent
+ *   dirt       voxel sides, rare detail torch    warm accent, used sparingly (focus, "hot" things)
+ *   bone       text                     fog      secondary text
+ */
+:root {
+  color-scheme: dark;
+
+  --deepslate: #101215;
+  --bedrock: #171a1f;
+  --bedrock-2: #1d2127;
+  --cobble: #282d35;
+  --cobble-2: #353b45;
+  --grass: #72c04e;
+  --grass-bright: #8fd668;
+  --grass-deep: #3f7a2a;
+  --dirt: #8a5a37;
+  --torch: #f2b544;
+  --bone: #e9e7e1;
+  --fog: #a0a7af;
+
+  --radius: 0.375rem;
+  --background: var(--deepslate);
+  --foreground: var(--bone);
+  --card: var(--bedrock);
+  --card-foreground: var(--bone);
+  --popover: var(--bedrock);
+  --popover-foreground: var(--bone);
+  --primary: var(--grass);
+  --primary-foreground: #0c1907;
+  --secondary: var(--bedrock-2);
+  --secondary-foreground: var(--bone);
+  --muted: var(--bedrock-2);
+  --muted-foreground: var(--fog);
+  --accent: #232830;
+  --accent-foreground: var(--bone);
+  --destructive: #ef6a5f;
+  --border: var(--cobble);
+  --input: var(--cobble-2);
+  --ring: var(--torch);
+  --chart-1: var(--grass);
+  --chart-2: var(--torch);
+  --chart-3: var(--dirt);
+  --chart-4: var(--fog);
+  --chart-5: var(--cobble-2);
+  --sidebar: var(--deepslate);
+  --sidebar-foreground: var(--bone);
+  --sidebar-primary: var(--grass);
+  --sidebar-primary-foreground: #0c1907;
+  --sidebar-accent: #232830;
+  --sidebar-accent-foreground: var(--bone);
+  --sidebar-border: var(--cobble);
+  --sidebar-ring: var(--torch);
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-pixel: "Pixelify Sans Variable", "Geist Variable", ui-sans-serif, sans-serif;
+
+  --color-deepslate: var(--deepslate);
+  --color-bedrock: var(--bedrock);
+  --color-bedrock-2: var(--bedrock-2);
+  --color-cobble: var(--cobble);
+  --color-cobble-2: var(--cobble-2);
+  --color-grass: var(--grass);
+  --color-grass-bright: var(--grass-bright);
+  --color-grass-deep: var(--grass-deep);
+  --color-dirt: var(--dirt);
+  --color-torch: var(--torch);
+  --color-bone: var(--bone);
+  --color-fog: var(--fog);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 5rem;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    font-feature-settings: "ss01", "cv11";
+    overflow-x: clip;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--grass) 35%, transparent);
+    color: var(--bone);
+  }
+  :focus-visible {
+    outline: 2px solid var(--torch);
+    outline-offset: 2px;
+  }
+}
+
+/* A notched rectangle: one square pixel missing at each corner. */
+@utility notch {
+  clip-path: polygon(
+    0 var(--notch, 3px), var(--notch, 3px) var(--notch, 3px), var(--notch, 3px) 0,
+    calc(100% - var(--notch, 3px)) 0, calc(100% - var(--notch, 3px)) var(--notch, 3px), 100% var(--notch, 3px),
+    100% calc(100% - var(--notch, 3px)), calc(100% - var(--notch, 3px)) calc(100% - var(--notch, 3px)),
+    calc(100% - var(--notch, 3px)) 100%, var(--notch, 3px) 100%, var(--notch, 3px) calc(100% - var(--notch, 3px)),
+    0 calc(100% - var(--notch, 3px))
+  );
+}
+
+@layer components {
+  /*
+   * Block button: the shape lives on ::before (clipped into a notched block with a darker bottom edge),
+   * so the element's own focus outline is never clipped.
+   */
+  .btn-block {
+    --fill: var(--grass);
+    --edge: var(--grass-deep);
+    --shine: rgb(255 255 255 / 0.22);
+    --ink: #0c1907;
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 2.75rem;
+    padding: 0 1.125rem 3px;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    text-decoration: none;
+    transition: transform 80ms ease-out;
+  }
+  .btn-block::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--fill);
+    box-shadow: inset 0 -3px 0 var(--edge), inset 0 2px 0 var(--shine);
+    transition: filter 120ms ease-out, box-shadow 80ms ease-out;
+    @apply notch;
+  }
+  .btn-block:hover::before {
+    filter: brightness(1.1);
+  }
+  .btn-block:active {
+    transform: translateY(2px);
+  }
+  .btn-block:active::before {
+    box-shadow: inset 0 -1px 0 var(--edge), inset 0 2px 0 var(--shine);
+  }
+  .btn-block:focus-visible {
+    outline: 2px solid var(--torch);
+    outline-offset: 3px;
+  }
+  .btn-block svg {
+    width: 1.05em;
+    height: 1.05em;
+    flex-shrink: 0;
+  }
+  .btn-block.btn-stone {
+    --fill: #2a3038;
+    --edge: #14171b;
+    --shine: rgb(255 255 255 / 0.1);
+    --ink: var(--bone);
+  }
+  .btn-block.btn-sm {
+    height: 2.25rem;
+    padding: 0 0.875rem 3px;
+    font-size: 0.875rem;
+  }
+
+  .kbd {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.0625rem 0.375rem;
+    border: 1px solid var(--cobble-2);
+    border-bottom-width: 2px;
+    border-radius: 0.25rem;
+    background: var(--bedrock);
+    color: var(--fog);
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Section headings inside the search dialog. */
+.search-group [cmdk-group-heading] {
+  padding: 0.75rem 0.75rem 0.375rem;
+  color: var(--fog);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Hero illustration: islands bob gently, server LEDs blink now and then (both off with reduced motion). */
+@keyframes voxel-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+.voxel-float {
+  animation: voxel-float 7s ease-in-out infinite;
+}
+@keyframes voxel-led {
+  0%,
+  86% {
+    opacity: 1;
+  }
+  88%,
+  94% {
+    opacity: 0.3;
+  }
+  96%,
+  100% {
+    opacity: 1;
+  }
+}
+.voxel-led {
+  animation: voxel-led 6s steps(1, end) infinite;
+}
+
+@keyframes hero-star {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+.hero-star {
+  animation: hero-star 4.5s steps(3, end) infinite;
+}

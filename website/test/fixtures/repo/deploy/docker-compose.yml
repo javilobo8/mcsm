@@ -1,0 +1,3 @@
+services:
+  example-service:
+    image: alpine

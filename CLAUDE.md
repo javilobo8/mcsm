@@ -16,6 +16,7 @@ agent/            Go module mcsm/agent (cmd/agent, internal/*)
 panel/            pnpm workspace: apps/api, apps/web, packages/shared, packages/proto-ts
 proto/            .proto, single source of the protocol (buf)
 deploy/           deployment docker-compose
+website/          project site + docs (own pnpm project, GitHub Pages)
 docs/             spec, plan, notes
 .claude/agents/   project subagents (see "Agents")
 ```
@@ -313,3 +314,12 @@ know.)
   the scheduler letting another goroutine run fails; try it with `GOMAXPROCS=1`.
 - The README (“Deployment”) carries literal copies of `deploy/docker-compose.yml`, `deploy/docker-compose.node.yml` and of the
   `docker run` from `dockerRunSnippet`: if they change, update the README (and its example `.env` files).
+- Website (`website/`): its own pnpm project (own `pnpm-workspace.yaml` and lockfile; not in the root workspace, so
+  root `pnpm typecheck/test` and the panel image ignore it): `cd website && pnpm install && pnpm test && pnpm build`.
+  Deployed by `.github/workflows/pages.yml` (push to main touching `website/**` or the included `deploy/` files, and
+  after each successful Release so the version badge follows `agent/VERSION`). Docs are Markdown in
+  `website/src/content/docs/` under the contract in `docs/superpowers/specs/2026-10-14-website-design.md` §5.2; the
+  content test fails on dead links/anchors/images. The composes and `.env.example` are included at build time
+  (`include="deploy/…"`), but `adding-nodes.md` and `components/landing/quick-start.tsx` carry copies of the
+  `docker run` from `dockerRunSnippet`: update them with the README. Visual check: `pnpm build && bash
+  scripts/screenshots.sh` (Playwright container `mcsm-test-site-shots`, PNGs in `website/screenshots/`).

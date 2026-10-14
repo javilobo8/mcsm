@@ -2,6 +2,8 @@
 
 Self-hosted panel to manage Minecraft servers (`itzg/minecraft-server` image) spread across several machines running Docker. One panel, one agent per machine.
 
+**Website and documentation:** <https://javilobo8.github.io/mcsm/>
+
 ## Deployment
 
 A **panel** (web and API, port 8080) and an **agent** on every machine that will host servers; the panel's machine usually runs its own too. Images are published to GitHub Container Registry with each [release](https://github.com/javilobo8/mcsm/releases):

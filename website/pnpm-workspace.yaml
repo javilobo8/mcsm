@@ -1,0 +1,4 @@
+# The website is its own pnpm project, outside the panel workspace at the repository root:
+# installing here never touches the root pnpm-lock.yaml.
+allowBuilds:
+  esbuild: true
