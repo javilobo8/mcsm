@@ -151,13 +151,78 @@ func TestTransferPutLongBodyFailsWithoutDrainingIt(t *testing.T) {
 	// the file grew: it announces 5 bytes and there are 4 MiB. net/http would read the rest in full to
 	// discard it (with an endless source, forever); it is cut at size+1.
 	src := &counting{r: io.LimitReader(&pattern{}, 4<<20)}
-	if err := NewTransferClient(srv.URL, "tok").Put(context.Background(), tid, src, 5); err == nil {
-		t.Fatal("a body longer than Content-Length must fail")
+	if err := NewTransferClient(srv.URL, "tok").Put(context.Background(), tid, src, 5); !errors.Is(err, errBodyTooLong) {
+		t.Fatalf("a body longer than Content-Length must fail: %v", err)
 	}
 	if n := src.n.Load(); n > 6 {
 		t.Fatalf("%d bytes were read from a body announced as 5", n)
 	}
 }
+
+// The panel answers as soon as it has Content-Length bytes and net/http returns whichever comes first,
+// that response or the error of reading byte size+1: the body Put hands to net/http must fail BEFORE
+// delivering the bytes that complete size, or a body longer than announced may be reported as sent.
+func TestTransferPutBodyNeverCompletesWhenTheSourceIsLonger(t *testing.T) {
+	for _, chunk := range []int{1, 2, 5, 64} {
+		for _, srcLen := range []int{6, 7, 4 << 10} {
+			src := &counting{r: io.LimitReader(&pattern{}, int64(srcLen))}
+			body := putBody(src, 5)
+			// as net/http does: up to Content-Length, then the rest to measure it
+			var delivered int
+			var err error
+			buf := make([]byte, chunk)
+			for delivered < 5 {
+				var n int
+				n, err = body.Read(buf[:min(chunk, 5-delivered)])
+				delivered += n
+				if err != nil {
+					break
+				}
+			}
+			if delivered >= 5 {
+				t.Fatalf("chunk %d, source %d: the 5 announced bytes were delivered from a longer source", chunk, srcLen)
+			}
+			if !errors.Is(err, errBodyTooLong) {
+				t.Fatalf("chunk %d, source %d: err = %v", chunk, srcLen, err)
+			}
+			if n := src.n.Load(); n > 6 {
+				t.Fatalf("chunk %d, source %d: %d bytes read from the source", chunk, srcLen, n)
+			}
+		}
+	}
+}
+
+func TestTransferPutBodyExactAndShort(t *testing.T) {
+	for _, chunk := range []int{1, 3, 5, 64} {
+		got, err := io.ReadAll(struct{ io.Reader }{io.LimitReader(&chunked{r: putBody(strings.NewReader("abcde"), 5), max: chunk}, 1<<20)})
+		if err != nil || string(got) != "abcde" {
+			t.Fatalf("exact, chunk %d: %q %v", chunk, got, err)
+		}
+		// short: it ends early and net/http fails because of Content-Length
+		got, err = io.ReadAll(&chunked{r: putBody(strings.NewReader("abc"), 5), max: chunk})
+		if err != nil || string(got) != "abc" {
+			t.Fatalf("short, chunk %d: %q %v", chunk, got, err)
+		}
+	}
+	// an error from the source while completing size does not deliver the last bytes either
+	boom := errors.New("boom")
+	body := putBody(io.MultiReader(strings.NewReader("abcde"), iotestErr{boom}), 5)
+	if n, err := body.Read(make([]byte, 5)); n != 0 || !errors.Is(err, boom) {
+		t.Fatalf("source error = %d %v", n, err)
+	}
+}
+
+// chunked reads at most max bytes per call.
+type chunked struct {
+	r   io.Reader
+	max int
+}
+
+func (c *chunked) Read(p []byte) (int, error) { return c.r.Read(p[:min(len(p), c.max)]) }
+
+type iotestErr struct{ err error }
+
+func (e iotestErr) Read([]byte) (int, error) { return 0, e.err }
 
 func TestTransferErrors(t *testing.T) {
 	srv := transferPanel(t, func(w http.ResponseWriter, r *http.Request) {
