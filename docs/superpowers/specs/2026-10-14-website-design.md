@@ -58,7 +58,7 @@ In order:
 3. **Features** (bento grid): any server the itzg image runs (types, versions, mods, modpacks);
    live console and 7-day metrics; hot and scheduled backups with restore; file manager;
    migration between nodes; import of existing itzg containers; mc-router hostnames with
-   autoscale; templates and cloning; crash-loop protection, events and jobs; multi-node with
+   autoscale; templates (save a server as a template, create new ones from it); crash-loop protection, events and jobs; multi-node with
    one agent per machine.
 4. **How it works**: an animated SVG diagram — panel (Fastify API + React web + SQLite) and
    agents (Go) per node; agents connect outbound over WebSocket with protobuf and never listen;
@@ -95,7 +95,7 @@ the page at the anchor. Code blocks have a copy button and a language label.
 | Getting started | `installation` | Main machine (panel + agent): network, compose, `.env`, first start, setup token, password, enrolling the local agent |
 | Getting started | `adding-nodes` | Other machines: node compose or the `docker run` from **Add node**; rotating a node's token |
 | Getting started | `updating` | Updating, version pinning, panel database backup |
-| Guides | `servers` | Creating (wizard, templates, types, versions, builds), configuration, console, power actions, connection address, metrics, cloning |
+| Guides | `servers` | Creating (wizard, templates, types, versions, builds), configuration, console, power actions, connection address, metrics (there is no clone feature) |
 | Guides | `backups` | Backups, schedules, retention, restore, pre-restore data, server locked without `data`, space, simultaneous jobs, stopping the agent |
 | Guides | `files` | File manager, upload limits, transfers |
 | Guides | `migration` | Migration between nodes |
@@ -131,9 +131,10 @@ Body rules:
   `> [!CAUTION]`.
 - Includes: a fenced block with an empty body and `include="<path from repo root>"` in its
   meta is replaced with that file's content at build time, e.g.
-  ```` ```yaml include="deploy/docker-compose.yml" ```` followed by the closing fence. Only paths
-  under `deploy/` are allowed. Use it for `deploy/docker-compose.yml`,
-  `deploy/docker-compose.node.yml` and `deploy/.env.example` so the docs never drift.
+  ```` ```yaml include="deploy/docker-compose.yml" ```` followed by the closing fence. Only `deploy/docker-compose.yml`,
+  `deploy/docker-compose.node.yml` and `deploy/.env.example` are allowed (an allowlist, so the
+  gitignored `deploy/.env` can never be pulled in; symlinks out of `deploy/` are refused), so
+  the docs never drift.
 - Images: `![alt](/screenshots/<name>.webp)`, where `<name>` is the basename of a file in
   `panel/apps/e2e/screenshots/` (e.g. `06-backups`). A test fails the build if it doesn't exist.
 - External links are absolute `https://` URLs (rendered with `target="_blank" rel="noopener"`).
