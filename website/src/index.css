@@ -258,3 +258,47 @@
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+/* Hero illustration: islands bob gently, server LEDs blink now and then (both off with reduced motion). */
+@keyframes voxel-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+.voxel-float {
+  animation: voxel-float 7s ease-in-out infinite;
+}
+@keyframes voxel-led {
+  0%,
+  86% {
+    opacity: 1;
+  }
+  88%,
+  94% {
+    opacity: 0.3;
+  }
+  96%,
+  100% {
+    opacity: 1;
+  }
+}
+.voxel-led {
+  animation: voxel-led 6s steps(1, end) infinite;
+}
+
+@keyframes hero-star {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+.hero-star {
+  animation: hero-star 4.5s steps(3, end) infinite;
+}

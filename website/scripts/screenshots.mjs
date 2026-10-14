@@ -40,6 +40,18 @@ async function settle(page) {
   await page.waitForTimeout(1800); // let the one-off entrance animation finish
 }
 
+/** Scrolls through the page like a reader would, so scroll-triggered reveals run, then back to the top. */
+async function scrollThrough(page) {
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  for (let y = 0; y < height; y += 500) {
+    await page.evaluate((top) => window.scrollTo(0, top), y);
+    await page.waitForTimeout(120);
+  }
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(300);
+}
+
 async function shoot(name, url, viewport, { fullPage = true, before } = {}) {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
   const page = await context.newPage();
@@ -51,6 +63,7 @@ async function shoot(name, url, viewport, { fullPage = true, before } = {}) {
   page.on("response", (r) => r.status() >= 400 && !r.url().includes("/docs/nope") && problems.push(`${name}: ${r.status()} ${r.url()}`));
   await page.goto(url);
   await settle(page);
+  if (fullPage) await scrollThrough(page);
   if (before) await before(page);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   if (overflow > 0) problems.push(`${name}: horizontal overflow of ${overflow}px`);

@@ -24,8 +24,8 @@ export function Footer({ wide = false }: { wide?: boolean }) {
   const container = cn("mx-auto px-4 sm:px-6 lg:px-8", wide ? "max-w-[1400px]" : "max-w-[1240px]");
   return (
     <footer className="border-t border-cobble bg-deepslate">
-      <div className={cn(container, "grid gap-10 py-12 md:grid-cols-[1.4fr_repeat(3,1fr)]")}>
-        <div className="max-w-xs">
+      <div className={cn(container, "grid grid-cols-2 gap-10 py-12 md:grid-cols-[1.4fr_repeat(3,1fr)]")}>
+        <div className="col-span-2 max-w-xs md:col-span-1">
           <Wordmark />
           <p className="mt-4 text-sm leading-relaxed text-fog">
             A self-hosted panel for the Minecraft Java servers on the Docker machines of your LAN. Open source, MIT licensed.
