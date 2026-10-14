@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BackupScheduleForm } from "@/components/backup-schedule-form";
 import { JobProgress } from "@/components/job-progress";
+import { StatusBadge } from "@/components/status";
 import { createBackup, newIdempotencyKey, useBackups } from "@/hooks/use-backups";
 import { useJobs, useJobsLive } from "@/hooks/use-jobs";
 import { api, apiPath, type BackupDto, type JobDto, type ServerDto } from "@/lib/api";
@@ -75,7 +76,7 @@ export function BackupsTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
                   <TableCell><div>{formatBackupDate(b.startedAt)}</div><div className="font-mono text-xs text-muted-foreground">{b.filename}</div></TableCell>
                   <TableCell>
                     <Badge variant={b.kind === "directory" ? "outline" : "secondary"}>{TRIGGER_LABEL[b.trigger]}</Badge>
-                    {b.status === "failed" && <Badge variant="destructive" className="ml-1">Failed</Badge>}
+                    {b.status === "failed" && <StatusBadge tone="bad" className="ml-1">Failed</StatusBadge>}
                   </TableCell>
                   <TableCell>{b.sizeBytes ? formatBytes(b.sizeBytes) : "—"}</TableCell>
                   <TableCell>{b.specVersion ? `v${b.specVersion}` : "—"}</TableCell>

@@ -1,7 +1,7 @@
 import { Fragment, memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type Tone } from "@/components/status";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ProgressBar } from "@/components/job-progress";
 import { useJob, useJobs, useJobsLive } from "@/hooks/use-jobs";
@@ -10,8 +10,8 @@ import type { JobDto, JobState } from "@/lib/api";
 import { formatBackupDate } from "@/lib/backups";
 import { formatFinishTime, isActive, JOB_STATUS_LABEL, jobsKey, jobServerName, jobTriggerLabel, jobTypeLabel, openRowId, withOpenRow, type JobsFilter, type OpenRow } from "@/lib/jobs";
 
-const VARIANT: Record<JobState, "default" | "secondary" | "destructive" | "outline"> = {
-  queued: "outline", running: "secondary", ok: "default", failed: "destructive", cancelled: "outline",
+const TONE: Record<JobState, Tone> = {
+  queued: "muted", running: "info", ok: "ok", failed: "bad", cancelled: "muted",
 };
 
 /**
@@ -85,7 +85,7 @@ const JobRow = memo(function JobRow({ job: j, cols, showServer, isOpen, serverLa
           </TableCell>
         )}
         <TableCell>
-          <Badge variant={VARIANT[j.status]}>{JOB_STATUS_LABEL[j.status]}</Badge>
+          <StatusBadge tone={TONE[j.status]}>{JOB_STATUS_LABEL[j.status]}</StatusBadge>
           {j.message && <div className="mt-1 max-w-md truncate text-xs text-muted-foreground" title={j.message}>{j.message}</div>}
         </TableCell>
         <TableCell className="w-40">{isActive(j) ? <ProgressBar value={j.progress} /> : <span className="text-xs text-muted-foreground">{j.progress}%</span>}</TableCell>

@@ -22,15 +22,16 @@ function Tabs({
   )
 }
 
-// A tab bar over a hairline, with a grass bar under the active tab (the website's accent). `line` is kept for
-// compatibility and looks the same.
+// A tab bar over a hairline, with a grass bar under the active tab (the website's accent); `line` is kept for
+// compatibility and looks the same. `pill`: tabs nested inside a tab (sections of a form), raised when active.
 const tabsListVariants = cva(
-  "group/tabs-list inline-flex items-center text-muted-foreground group-data-[orientation=horizontal]/tabs:w-full group-data-[orientation=horizontal]/tabs:justify-start group-data-[orientation=horizontal]/tabs:gap-1 group-data-[orientation=horizontal]/tabs:border-b group-data-[orientation=horizontal]/tabs:border-cobble group-data-[orientation=horizontal]/tabs:overflow-x-auto group-data-[orientation=horizontal]/tabs:[scrollbar-width:none] group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col",
+  "group/tabs-list inline-flex items-center text-muted-foreground group-data-[orientation=horizontal]/tabs:w-full group-data-[orientation=horizontal]/tabs:justify-start group-data-[orientation=horizontal]/tabs:gap-1 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col",
   {
     variants: {
       variant: {
-        default: "",
-        line: "",
+        default: "group-data-[orientation=horizontal]/tabs:overflow-x-auto group-data-[orientation=horizontal]/tabs:border-b group-data-[orientation=horizontal]/tabs:border-cobble group-data-[orientation=horizontal]/tabs:[scrollbar-width:none]",
+        line: "group-data-[orientation=horizontal]/tabs:overflow-x-auto group-data-[orientation=horizontal]/tabs:border-b group-data-[orientation=horizontal]/tabs:border-cobble group-data-[orientation=horizontal]/tabs:[scrollbar-width:none]",
+        pill: "",
       },
     },
     defaultVariants: {
@@ -67,6 +68,7 @@ function TabsTrigger({
         "after:absolute after:bg-grass after:opacity-0 after:transition-opacity data-[state=active]:after:opacity-100",
         "group-data-[orientation=horizontal]/tabs:after:inset-x-2 group-data-[orientation=horizontal]/tabs:after:bottom-0 group-data-[orientation=horizontal]/tabs:after:h-0.5",
         "group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start group-data-[orientation=vertical]/tabs:after:inset-y-1.5 group-data-[orientation=vertical]/tabs:after:left-0 group-data-[orientation=vertical]/tabs:after:w-0.5",
+        "group-data-[variant=pill]/tabs-list:rounded-md group-data-[variant=pill]/tabs-list:border group-data-[variant=pill]/tabs-list:border-transparent group-data-[variant=pill]/tabs-list:py-1.5 group-data-[variant=pill]/tabs-list:after:hidden group-data-[variant=pill]/tabs-list:data-[state=active]:border-cobble group-data-[variant=pill]/tabs-list:data-[state=active]:bg-bedrock-2",
         className
       )}
       {...props}

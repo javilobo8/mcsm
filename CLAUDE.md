@@ -329,6 +329,7 @@ know.)
   `components/status.tsx`), never Tailwind palette classes (`red-400`, `zinc-500`…); chart series from
   `components/chart-colors.ts`; every page root is `PAGE` + `PageHeader` (`components/page-header.tsx`, pixel-font h1),
   block headings `SectionTitle` (sentence case, no uppercase labels). Filled buttons are notched blocks (`.block-btn`
-  + `block-grass|stone|slab|redstone` in index.css); `Table` brings its own frame. Fonts are bundled with
+  + `block-grass|stone|redstone` in index.css), `outline` is bordered like the inputs; `Table` brings its own frame;
+  tabs nested in a tab use `TabsList variant="pill"`. Fonts are bundled with
   `@fontsource-variable` (the panel works offline on the LAN). After changing the panel's look, refresh the website's
   screenshots (`website/public/screenshots/*.webp`, from the E2E PNGs) and `og-image.png` (`scripts/og-image.sh`).

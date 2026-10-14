@@ -236,11 +236,6 @@ body,
     --edge: #14171b;
     --shine: rgb(255 255 255 / 0.08);
   }
-  .block-slab {
-    --fill: var(--bedrock-2);
-    --edge: #121519;
-    --shine: rgb(255 255 255 / 0.05);
-  }
   .block-redstone {
     --fill: #c4433a;
     --edge: #74241e;

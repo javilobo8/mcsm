@@ -91,7 +91,7 @@ export function NodesPage() {
               <TableCell>{n.agentVersion ?? "—"}</TableCell>
               <TableCell>{n.dockerVersion ?? "—"}</TableCell>
               <TableCell className="text-xs text-muted-foreground">{n.hostInfo?.hostname ? `${n.hostInfo.hostname} · ${n.hostInfo.os ?? "?"}/${n.hostInfo.arch ?? "?"}` : "—"}</TableCell>
-              <TableCell className="font-mono text-xs">{n.dataRoot}</TableCell>
+              <TableCell className="max-w-64 font-mono text-xs break-all whitespace-normal">{n.dataRoot}</TableCell>
               <TableCell className="text-xs text-muted-foreground">{n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : "never"}</TableCell>
               <TableCell>
                 <div className="flex items-center justify-end gap-1">

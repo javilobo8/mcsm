@@ -93,7 +93,7 @@ export function SpecForm({ value, onChange, onError, mode, general, routerHidden
           </ul>
         </div>
       )}
-      <TabsList className="flex-wrap">
+      <TabsList variant="pill" className="flex-wrap">
         {TABS.filter((t) => t.value !== "network" || mode === "server").map((t) => (
           <TabsTrigger key={t.value} value={t.value}>
             {t.label}

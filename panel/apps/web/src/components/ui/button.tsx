@@ -12,7 +12,8 @@ const buttonVariants = cva(
       variant: {
         default: "block-btn block-grass font-semibold text-primary-foreground",
         destructive: "block-btn block-redstone font-semibold text-white",
-        outline: "block-btn block-slab text-foreground",
+        // Bordered like the inputs: also the trigger of the comboboxes (version picker).
+        outline: "rounded-md border border-input bg-deepslate/70 text-foreground hover:border-cobble-2 hover:bg-bedrock",
         secondary: "block-btn block-stone text-foreground",
         ghost: "rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground",
         link: "text-grass-bright underline-offset-4 hover:underline",

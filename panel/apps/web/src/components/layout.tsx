@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { LayoutDashboard, ListChecks, Server, LogOut, Plus, LayoutTemplate, Bell, Settings, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Wordmark } from "@/components/logo";
 import { api } from "@/lib/api";
+import { navActive } from "@/lib/nav";
 import { useLive } from "@/hooks/use-live";
 
 const nav = [
@@ -18,16 +19,19 @@ const nav = [
 
 const navItem =
   "relative flex items-center gap-2.5 rounded-sm px-3 py-2 text-sm text-fog transition-colors hover:bg-bedrock-2/70 hover:text-bone " +
-  "[&.active]:bg-bedrock-2 [&.active]:font-medium [&.active]:text-bone " +
-  "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:bg-grass before:opacity-0 [&.active]:before:opacity-100";
+  "aria-[current=page]:bg-bedrock-2 aria-[current=page]:font-medium aria-[current=page]:text-bone " +
+  "before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:bg-grass before:opacity-0 aria-[current=page]:before:opacity-100";
 
 /** Logo, sections, “New server” and sign out: the desktop sidebar and the mobile menu share it. */
 function SidebarBody({ onNavigate, onLogout }: { onNavigate?: () => void; onLogout: () => void }) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <>
       <nav aria-label="Main" className="flex flex-col gap-0.5">
         {nav.map((n) => (
-          <Link key={n.to} to={n.to} onClick={onNavigate} className={navItem} activeOptions={{ exact: n.to === "/" }}>
+          // The section is marked on the pages under it too (a server → Servers), not only on its own page. The router
+          // only adds its own aria-current on an exact match (which navActive also marks).
+          <Link key={n.to} to={n.to} onClick={onNavigate} className={navItem} activeOptions={{ exact: true, includeSearch: false }} aria-current={navActive(pathname, n.to) ? "page" : undefined}>
             <n.icon className="size-4 shrink-0" aria-hidden="true" /> {n.label}
           </Link>
         ))}

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { EVENT_LEVEL_LABEL, eventKindLabel } from "@mcsm/shared";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/status";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useEvents } from "@/hooks/use-events";
 import { useNodes } from "@/hooks/use-nodes";
@@ -31,7 +31,7 @@ export function EventList({ filter, showSubject = true }: { filter: EventsFilter
         {events.data?.map((e) => (
           <TableRow key={e.id} data-testid={`event-${e.kind}`}>
             <TableCell className="text-xs text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</TableCell>
-            <TableCell><Badge variant="outline" className={levelTone(e.level)}>{EVENT_LEVEL_LABEL[e.level]}</Badge></TableCell>
+            <TableCell><StatusBadge tone={levelTone(e.level)}>{EVENT_LEVEL_LABEL[e.level]}</StatusBadge></TableCell>
             <TableCell className="text-sm">{eventKindLabel(e.kind)}</TableCell>
             {showSubject && (
               <TableCell className="text-sm">
