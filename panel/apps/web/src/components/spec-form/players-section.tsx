@@ -30,7 +30,7 @@ export function PlayersSection({ spec, onChange, onError }: { spec: EditableSpec
   };
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-      {offline && <p role="note" className="text-xs text-amber-400 sm:col-span-2">{offline}</p>}
+      {offline && <p role="note" className="text-xs text-warn sm:col-span-2">{offline}</p>}
       <div className="flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" checked={wl?.enabled ?? false}
@@ -40,14 +40,14 @@ export function PlayersSection({ spec, onChange, onError }: { spec: EditableSpec
         <ListField key={`wl-${resets.wl}`} id="sf-whitelist" label="Whitelist players" kind="player" value={wl?.players} rows={6} onError={onError} placeholder={"Lobo\nSteve"}
           hint="Java name or UUID, one per line. On start, whitelist.json ends up identical to this list: anything added with /whitelist add is lost (set EXISTING_WHITELIST_FILE=MERGE in Advanced if you prefer to add)."
           onChange={(players) => onChange({ ...spec, whitelist: { enabled: wl?.enabled ?? false, players } })} />
-        {wlEnvErr && <p role="alert" className="text-xs text-red-400">{wlEnvErr}</p>}
+        {wlEnvErr && <p role="alert" className="text-xs text-bad">{wlEnvErr}</p>}
         <Gestion managed={!!wl} what="the whitelist" onStop={() => clear("whitelist", ["sf-whitelist"])} />
       </div>
       <div className="flex flex-col gap-3">
         <ListField key={`ops-${resets.ops}`} id="sf-ops" label="Operators (OPS)" kind="player" value={ops} rows={6} onError={onError} placeholder="Lobo"
           hint="Java name or UUID, one per line. With the section managed, removing someone removes their op on restart and an empty list leaves ops.json without operators."
           onChange={(list) => onChange({ ...spec, ops: list })} />
-        {opsEnvErr && <p role="alert" className="text-xs text-red-400">{opsEnvErr}</p>}
+        {opsEnvErr && <p role="alert" className="text-xs text-bad">{opsEnvErr}</p>}
         <Gestion managed={ops !== undefined} what="the operators" onStop={() => clear("ops", ["sf-ops"])} />
       </div>
     </div>

@@ -14,10 +14,10 @@ export function MigrationBanner({ serverId }: { serverId: string }) {
   const active = activeMigrationJob(jobs.data);
   if (!active) return null;
   return (
-    <div role="status" className="rounded-md border border-sky-900 bg-sky-950/40 p-3 text-sm">
-      <div className="mb-2 flex justify-between gap-2"><span>{`Migration in progress · ${active.message || "…"}`}</span><span className="tabular-nums text-zinc-400">{`${active.progress}%`}</span></div>
+    <div role="status" className="rounded-md border border-diamond/30 bg-diamond/[0.07] p-3 text-sm">
+      <div className="mb-2 flex justify-between gap-2"><span>{`Migration in progress · ${active.message || "…"}`}</span><span className="tabular-nums text-muted-foreground">{`${active.progress}%`}</span></div>
       <ProgressBar value={active.progress} />
-      <p className="mt-2 text-xs text-zinc-400">While it lasts, the server can only be viewed: other actions wait for it to finish.</p>
+      <p className="mt-2 text-xs text-muted-foreground">While it lasts, the server can only be viewed: other actions wait for it to finish.</p>
     </div>
   );
 }

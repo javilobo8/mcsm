@@ -23,7 +23,7 @@ export function ConfirmDialog({ open, title, description, confirmLabel, cancelLa
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+        {error && <p role="alert" className="text-sm text-bad">{error}</p>}
         <DialogFooter>
           <Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>{cancelLabel}</Button>
           <Button type="button" variant="destructive" disabled={pending} onClick={onConfirm}>{pending ? "Working…" : confirmLabel}</Button>

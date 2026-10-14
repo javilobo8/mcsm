@@ -27,7 +27,7 @@ class EditorBoundary extends Component<{ children: ReactNode; onClose(): void },
   render() {
     if (!this.state.failed) return this.props.children;
     return (
-      <div role="alert" className="flex flex-col items-start gap-2 text-sm text-red-400">
+      <div role="alert" className="flex flex-col items-start gap-2 text-sm text-bad">
         <p>Could not load the editor.</p>
         <Button size="sm" variant="secondary" onClick={this.props.onClose}>Back to the list</Button>
       </div>
@@ -218,7 +218,7 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
           {breadcrumbs(path).map((b, i, all) => (
             <span key={b.path} className="flex items-center gap-1">
               {i > 0 && <span className="text-muted-foreground">/</span>}
-              {i === all.length - 1 ? <span>{b.name}</span> : <button type="button" className="text-sky-400 hover:underline" onClick={() => setPath(b.path)}>{b.name}</button>}
+              {i === all.length - 1 ? <span>{b.name}</span> : <button type="button" className="text-info hover:underline" onClick={() => setPath(b.path)}>{b.name}</button>}
             </span>
           ))}
         </nav>
@@ -230,11 +230,11 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
         </div>
       </div>
 
-      {offline && <p className="text-sm text-amber-400">The node is offline: files are not available.</p>}
+      {offline && <p className="text-sm text-warn">The node is offline: files are not available.</p>}
       {uploads.map((u, i) => (
         <div key={i} className="flex flex-wrap items-center gap-3 text-sm">
           <span className="w-64 truncate font-mono">{u.name}</span>
-          {u.error ? <span role="alert" className="text-red-400">{u.error}</span> : (
+          {u.error ? <span role="alert" className="text-bad">{u.error}</span> : (
             <>
               <div className="h-2 w-48 overflow-hidden rounded bg-muted"><div className="h-full bg-primary" style={{ width: `${progressPct(u.sent, u.total)}%` }} /></div>
               <span className="text-muted-foreground">{progressPct(u.sent, u.total)} % of {formatBytes(u.total)}</span>
@@ -243,9 +243,9 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
         </div>
       ))}
       {uploading && <div><Button size="xs" variant="secondary" onClick={() => abort.current?.abort()}><X /> Cancel upload</Button></div>}
-      {list.isError && <p role="alert" className="text-sm text-red-400">{errText(list.error)}</p>}
+      {list.isError && <p role="alert" className="text-sm text-bad">{errText(list.error)}</p>}
       {downloadError && (
-        <div role="alert" className="flex items-center gap-2 text-sm text-red-400">
+        <div role="alert" className="flex items-center gap-2 text-sm text-bad">
           <span>{downloadError}</span>
           <Button size="icon-xs" variant="ghost" aria-label="Close notice" onClick={() => setDownloadError(null)}><X /></Button>
         </div>
@@ -271,7 +271,7 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
               <TableRow key={e.name}>
                 <TableCell>
                   <button type="button" disabled={!clickable} className="flex items-center gap-2 font-mono text-sm enabled:hover:underline disabled:cursor-default" onClick={() => open(e)} title={clickable ? undefined : "Cannot be opened in the editor: download it"}>
-                    <Icon className={`size-4 ${e.dir ? "text-sky-400" : "text-muted-foreground"}`} />{e.name}
+                    <Icon className={`size-4 ${e.dir ? "text-info" : "text-muted-foreground"}`} />{e.name}
                   </button>
                 </TableCell>
                 <TableCell className="text-right text-muted-foreground">{e.dir ? "—" : formatBytes(e.size)}</TableCell>
@@ -292,7 +292,7 @@ export function FileBrowser({ serverId, nodeOnline }: Props) {
           })}
         </TableBody>
       </Table>
-      {list.data?.truncated && <p className="text-sm text-amber-400">The folder has too many entries: only the first 5000 are shown.</p>}
+      {list.data?.truncated && <p className="text-sm text-warn">The folder has too many entries: only the first 5000 are shown.</p>}
 
       <NameDialog
         open={nameAction !== null}

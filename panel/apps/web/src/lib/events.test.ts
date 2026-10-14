@@ -20,8 +20,9 @@ describe("events in the web", () => {
     expect(eventSubject(ev())).toBe("One");
     expect(eventSubject(ev({ serverId: null, serverName: null }), "nas")).toBe("Node “nas”");
     expect(eventSubject(ev({ serverId: null, serverName: null, nodeId: null }))).toBe("Panel");
-    expect(levelTone("error")).toContain("red");
-    expect(levelTone("warn")).toContain("amber");
+    expect(levelTone("error")).toBe("bad");
+    expect(levelTone("warn")).toBe("warn");
+    expect(levelTone("info")).toBe("info");
   });
 
   it("an event reloads the lists; a crash loop also reloads the server", () => {

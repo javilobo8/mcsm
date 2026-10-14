@@ -96,13 +96,13 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
     <form onSubmit={submit} className="flex max-w-5xl flex-col gap-6" data-testid="config-form">
       <SpecForm key={formKey} value={spec} onChange={setSpec} onError={setErrors} mode="server" general={general} />
       {stale && dirty && (
-        <p role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-amber-700 bg-amber-950/30 p-2 text-sm text-amber-300">
+        <p role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-torch/40 bg-torch/[0.07] p-2 text-sm text-warn">
           The configuration changed on the server (v{server.specVersion}) and you have unsaved changes.
           <Button type="button" size="sm" variant="secondary" onClick={() => resetTo(server)}>Reload and discard my changes</Button>
         </p>
       )}
-      {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
-      {save.isSuccess && <p role="status" className="text-sm text-emerald-400">Saved (v{save.data.specVersion}). The agent will recreate the container if needed.</p>}
+      {err && <p role="alert" className="text-sm text-bad">{err}</p>}
+      {save.isSuccess && <p role="status" className="text-sm text-ok">Saved (v{save.data.specVersion}). The agent will recreate the container if needed.</p>}
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={save.isPending || blocked !== null} aria-describedby={blocked ? "cf-apply-why" : undefined}>Review and apply</Button>
         {dirty && <Button type="button" variant="ghost" onClick={() => resetTo(server)}>Discard changes</Button>}
@@ -123,8 +123,8 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
             {pending?.changes.map((c) => (
               <li key={c.label} className="rounded border border-border p-2">
                 <div className="text-muted-foreground">{c.label}</div>
-                <div className="break-all font-mono text-red-300">- {c.before}</div>
-                <div className="break-all font-mono text-emerald-300">+ {c.after}</div>
+                <div className="break-all font-mono text-bad">- {c.before}</div>
+                <div className="break-all font-mono text-ok">+ {c.after}</div>
               </li>
             ))}
           </ul>

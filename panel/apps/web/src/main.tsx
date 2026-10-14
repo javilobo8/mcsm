@@ -7,6 +7,9 @@ import { router } from "./router";
 import { setUnauthorizedHandler } from "./lib/api";
 import { realtime } from "./lib/ws";
 import { createUnauthorizedHandler, shouldRetry } from "./lib/session";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/jetbrains-mono";
+import "@fontsource-variable/pixelify-sans";
 import "./index.css";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: shouldRetry, refetchOnWindowFocus: false } } });

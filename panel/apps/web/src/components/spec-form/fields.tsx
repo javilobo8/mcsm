@@ -21,7 +21,7 @@ export function Field({ id, label, hint, error, children }: { id: string; label:
       <Label htmlFor={id}>{label}</Label>
       {isValidElement<{ "aria-describedby"?: string }>(children) ? cloneElement(children, { "aria-describedby": describedBy(id, hint, error) }) : children}
       {hint && <p id={hintId(id)} className="text-xs text-muted-foreground">{hint}</p>}
-      {error && <p id={errId(id)} role="alert" className="text-xs text-red-400">{error}</p>}
+      {error && <p id={errId(id)} role="alert" className="text-xs text-bad">{error}</p>}
     </div>
   );
 }

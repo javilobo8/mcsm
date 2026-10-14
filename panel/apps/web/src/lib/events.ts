@@ -18,12 +18,9 @@ export function eventsUrl(f: EventsFilter): string {
   return `/api/events?${p}`;
 }
 
-const TONES: Record<EventLevelName, string> = {
-  info: "border-sky-800 text-sky-300",
-  warn: "border-amber-700 text-amber-300",
-  error: "border-red-800 text-red-300",
-};
-export const levelTone = (level: EventLevelName): string => TONES[level];
+/** Status tone of each level (components/status.tsx). */
+const TONES = { info: "info", warn: "warn", error: "bad" } as const satisfies Record<EventLevelName, string>;
+export const levelTone = (level: EventLevelName): (typeof TONES)[EventLevelName] => TONES[level];
 
 /** What the event is about: its server (with the name it had then), its node or the panel. */
 export function eventSubject(e: EventDto, nodeName?: string): string {

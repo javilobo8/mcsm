@@ -47,8 +47,8 @@ export function FileEditor({ serverId, path, onClose, onDirtyChange }: { serverI
         <div className="flex items-center gap-2 font-mono text-sm">
           <span>{path}</span>
           {file.data && <span className="text-muted-foreground">{formatBytes(file.data.size)}</span>}
-          {dirty && <span className="text-amber-400">· unsaved</span>}
-          {!dirty && save.isSuccess && <span className="text-emerald-400">· saved</span>}
+          {dirty && <span className="text-warn">· unsaved</span>}
+          {!dirty && save.isSuccess && <span className="text-ok">· saved</span>}
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" disabled={!dirty || save.isPending || !file.data} onClick={doSave}>{save.isPending ? <Loader2 className="animate-spin" /> : <Save />} Save</Button>
@@ -58,9 +58,9 @@ export function FileEditor({ serverId, path, onClose, onDirtyChange }: { serverI
       {name === "server.properties" && (
         <p className="text-sm text-muted-foreground">The properties defined in the Configuration tab are applied again when the server starts; change them there. Changes made here take effect on restart.</p>
       )}
-      {save.error && <p role="alert" className="text-sm text-red-400">{errText(save.error)}</p>}
+      {save.error && <p role="alert" className="text-sm text-bad">{errText(save.error)}</p>}
       {file.isPending && <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Loading…</div>}
-      {file.isError && <p role="alert" className="text-sm text-red-400">{errText(file.error)}</p>}
+      {file.isError && <p role="alert" className="text-sm text-bad">{errText(file.error)}</p>}
       {file.data && (
         <CodeEditor
           initial={file.data.content}

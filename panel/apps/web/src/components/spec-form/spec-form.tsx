@@ -78,7 +78,7 @@ export function SpecForm({ value, onChange, onError, mode, general, routerHidden
   return (
     <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)} className="flex flex-col gap-4">
       {entries.length > 0 && (
-        <div role="alert" data-testid="spec-form-errors" className="rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+        <div role="alert" data-testid="spec-form-errors" className="rounded-md border border-redstone/40 bg-redstone/10 p-3 text-sm text-bad">
           <p className="font-medium">
             {entries.length === 1 ? "There is 1 error" : `There are ${entries.length} errors`} that prevent saving or applying:
           </p>
@@ -93,11 +93,11 @@ export function SpecForm({ value, onChange, onError, mode, general, routerHidden
           </ul>
         </div>
       )}
-      <TabsList className="flex-wrap">
+      <TabsList variant="pill" className="flex-wrap">
         {TABS.filter((t) => t.value !== "network" || mode === "server").map((t) => (
           <TabsTrigger key={t.value} value={t.value}>
             {t.label}
-            {perTab.has(t.value) && <span className="ml-1 text-red-400" aria-label={`${perTab.get(t.value)} with errors`}>({perTab.get(t.value)})</span>}
+            {perTab.has(t.value) && <span className="ml-1 text-bad" aria-label={`${perTab.get(t.value)} with errors`}>({perTab.get(t.value)})</span>}
           </TabsTrigger>
         ))}
       </TabsList>

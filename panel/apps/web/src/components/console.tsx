@@ -13,12 +13,12 @@ const reducer = (s: ConsoleState, a: Action): ConsoleState => {
   return { lines: [], nextId: s.nextId };
 };
 
-const color: Record<LineKind, string> = { log: "text-zinc-300", cmd: "text-sky-300", out: "text-emerald-300", sys: "text-amber-400" };
+const color: Record<LineKind, string> = { log: "text-log", cmd: "text-info", out: "text-ok", sys: "text-warn" };
 
 const Row = memo(function Row({ time, text, kind }: { time: string; text: string; kind: LineKind }) {
   return (
     <div className={`whitespace-pre-wrap break-all ${color[kind]}`}>
-      <span className="mr-2 select-none text-zinc-600">{time}</span>{text}
+      <span className="mr-2 select-none text-fog/75">{time}</span>{text}
     </div>
   );
 });
@@ -96,22 +96,23 @@ export function Console({ serverId, nodeOnline }: { serverId: string; nodeOnline
   };
 
   return (
-    <div className="flex h-[70vh] flex-col rounded-md border border-zinc-800 bg-black font-mono text-xs" data-testid="console">
-      <div className="flex items-center gap-2 border-b border-zinc-800 p-2">
+    <div className="flex h-[70vh] flex-col overflow-hidden rounded-lg border border-cobble bg-obsidian font-mono text-xs" data-testid="console">
+      <div className="flex items-center gap-2 border-b border-cobble bg-bedrock/60 p-2">
         <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter lines…" aria-label="Filter console lines" className="h-8 max-w-xs font-mono text-xs" />
-        <span className="text-zinc-500">{filter ? `${shown.length} of ${state.lines.length}` : `${state.lines.length} lines`}</span>
+        <span className="shrink-0 whitespace-nowrap text-fog">{filter ? `${shown.length} of ${state.lines.length}` : `${state.lines.length} lines`}</span>
         {!following && <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={resume}><ArrowDown className="size-3.5" /> Jump to end</Button>}
       </div>
-      <div ref={scroller} onScroll={onScroll} className="flex-1 overflow-auto p-3" role="log" aria-live="off" aria-label="Server log" tabIndex={0}>
-        {state.lines.length === 0 && <p className="text-zinc-600">No output yet…</p>}
+      <div ref={scroller} onScroll={onScroll} className="flex-1 overflow-auto px-3 py-2.5 leading-[1.65]" role="log" aria-live="off" aria-label="Server log" tabIndex={0}>
+        {state.lines.length === 0 && <p className="text-fog">No output yet…</p>}
         {shown.map((l) => <Row key={l.id} time={l.time} text={l.text} kind={l.kind} />)}
       </div>
-      <div className="border-t border-zinc-800 p-2">
+      <div className="flex items-center gap-2 border-t border-cobble py-1.5 pr-2 pl-3 focus-within:bg-bedrock/50 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-ring/70">
+        <span className="select-none text-sm text-grass" aria-hidden="true">❯</span>
         <Input
           value={cmd} onChange={(e) => { setCmd(e.target.value); setHIdx(-1); }} onKeyDown={onKey}
           disabled={nodeOnline === false || sending} aria-label={sending ? "Command (sending…)" : "Command"}
           placeholder={nodeOnline === false ? "Node offline" : sending ? "Sending…" : "Command (without /): list, say hello, whitelist add Lobo…  (↑/↓ history)"}
-          className="font-mono" autoComplete="off" spellCheck={false}
+          className="border-transparent bg-transparent px-1 font-mono text-xs focus-visible:border-transparent focus-visible:ring-0 md:text-xs dark:bg-transparent" autoComplete="off" spellCheck={false}
         />
       </div>
     </div>

@@ -7,7 +7,7 @@ import { Section, SectionHeading } from "./section";
 const STOPS = [
   { id: "dashboard", label: "Dashboard", shot: "11-dashboard-node-cards", caption: "Every node with its CPU, RAM and disk, and every server with its status, players, version, node and the address players join." },
   { id: "new-server", label: "New server", shot: "01b-selector-version", caption: "A three-step wizard: a template or a server from scratch (type, a version from the official lists, memory), then the node and name, then a review." },
-  { id: "overview", label: "Overview", shot: "03-overview-charts", height: 914, caption: "Players, detected version, uptime, latency and health, with charts for the last hour, day or week." },
+  { id: "overview", label: "Overview", shot: "03-overview-charts", caption: "Players, detected version, uptime, latency and health, with charts for the last hour, day or week." },
   { id: "console", label: "Console", shot: "04-console", caption: "The live log with a filter, and commands sent over RCON with history." },
   { id: "configuration", label: "Configuration", shot: "05-configuration", caption: "Version and mods, properties, players, network, resources and advanced settings, reviewed before they are applied." },
   { id: "backups", label: "Backups", shot: "06-backups", caption: "Backups on demand or on a schedule, with retention and exclusions, and restore with the current data set aside." },
@@ -43,7 +43,7 @@ export function Tour() {
         </Tabs.List>
         {STOPS.map((s) => (
           <Tabs.Content key={s.id} value={s.id} className="mt-2 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-torch lg:mt-0">
-            <BrowserFrame src={screenshot(s.shot)} alt={`${s.label}: ${s.caption}`} height={"height" in s ? s.height : 900} />
+            <BrowserFrame src={screenshot(s.shot)} alt={`${s.label}: ${s.caption}`} />
             <p className="mt-4 max-w-[46rem] text-[0.9375rem] leading-relaxed text-fog">{s.caption}</p>
           </Tabs.Content>
         ))}

@@ -17,7 +17,7 @@ export function RouterSection({ spec, onChange, onError }: { spec: EditableSpec;
     <div className="flex flex-col gap-3 border-t border-border pt-4">
       <div className="text-sm font-medium">Router (mc-router)</div>
       <label className="flex items-center gap-2 text-sm">
-        <input id="sf-router-enabled" type="checkbox" className="size-4 accent-emerald-500" checked={router.enabled}
+        <input id="sf-router-enabled" type="checkbox" className="size-4 accent-grass" checked={router.enabled}
           onChange={(e) => onChange(withRouter(spec, { ...router, enabled: e.target.checked }))} />
         Join by hostname through the node's router
       </label>

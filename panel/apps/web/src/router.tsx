@@ -1,6 +1,8 @@
 import { type ErrorComponentProps, createRootRoute, createRoute, createRouter, redirect, Outlet } from "@tanstack/react-router";
 import { api, type AuthStatus } from "./lib/api";
 import { Layout } from "./components/layout";
+import { BlockMark } from "./components/logo";
+import { Button } from "./components/ui/button";
 import { LoginPage } from "./routes/login";
 import { DashboardPage } from "./routes/dashboard";
 import { NodesPage } from "./routes/nodes";
@@ -20,9 +22,10 @@ const getStatus = () => api.get<AuthStatus>("/api/auth/status");
 function RouteError({ error, reset }: ErrorComponentProps) {
   return (
     <div role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <p className="text-lg font-semibold">Something went wrong</p>
-      <p className="text-sm text-muted-foreground">{error instanceof Error ? error.message : "Unexpected error"}</p>
-      <button type="button" className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent" onClick={reset}>Retry</button>
+      <BlockMark className="size-12 opacity-80 grayscale" />
+      <p className="font-pixel text-xl font-semibold text-bone">Something went wrong</p>
+      <p className="max-w-md text-sm text-muted-foreground">{error instanceof Error ? error.message : "Unexpected error"}</p>
+      <Button variant="secondary" onClick={reset}>Retry</Button>
     </div>
   );
 }

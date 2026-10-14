@@ -32,11 +32,11 @@ export function CurseForgeKeyNotice() {
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-xs">
       <KeyRound className="size-4 text-muted-foreground" />
       <span>
-        CurseForge API key: {status.isError ? <strong role="alert" className="text-red-400">could not be checked</strong> : configured === undefined ? "…" : configured ? <strong className="text-emerald-400">configured</strong> : <strong className="text-amber-400">not configured</strong>}
+        CurseForge API key: {status.isError ? <strong role="alert" className="text-bad">could not be checked</strong> : configured === undefined ? "…" : configured ? <strong className="text-ok">configured</strong> : <strong className="text-warn">not configured</strong>}
         {configured === false && " (java17 or newer images include one; with java8 it is required)"}
       </span>
       {configured && status.data?.valid === false && (
-        <span role="alert" className="text-amber-400">The saved key is not valid (it has spaces or disallowed characters): paste it again.</span>
+        <span role="alert" className="text-warn">The saved key is not valid (it has spaces or disallowed characters): paste it again.</span>
       )}
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setKey(""); save.reset(); } }}>
         <DialogTrigger asChild><Button type="button" size="sm" variant="secondary">{configured ? "Change" : "Configure"}</Button></DialogTrigger>
@@ -51,7 +51,7 @@ export function CurseForgeKeyNotice() {
               <Input id="cf-api-key" type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder="$2a$10$…" />
               <p className="text-xs text-muted-foreground">Get it at console.curseforge.com. Paste it as is: “$” signs are not escaped.</p>
             </div>
-            {save.error && <p role="alert" className="text-sm text-red-400">{save.error instanceof ApiError ? save.error.message : "Unexpected error"}</p>}
+            {save.error && <p role="alert" className="text-sm text-bad">{save.error instanceof ApiError ? save.error.message : "Unexpected error"}</p>}
             <DialogFooter>
               {configured && <Button type="button" variant="ghost" disabled={save.isPending} onClick={removeKey}>Remove the key</Button>}
               <Button type="submit" disabled={save.isPending || key.trim() === ""}>{save.isPending ? "Saving…" : "Save"}</Button>

@@ -63,7 +63,7 @@ export function VersionSection({ spec, onChange, onError }: { spec: EditableSpec
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field id="sf-type" label="Type">
           <RequiredSelect id="sf-type" value={spec.type} options={SERVER_TYPES} onChange={(t) => { setNotice(typeChangeNotice(spec, t)); setJavaNotice(null); onChange(withType(spec, t)); }} />
-          {notice && <p role="status" className="text-xs text-amber-400">{notice}</p>}
+          {notice && <p role="status" className="text-xs text-warn">{notice}</p>}
         </Field>
         {hasVersionList(spec.type) ? (
           <Field id="sf-version" label="Minecraft version" hint="Choose from the list or type a version.">
@@ -85,13 +85,13 @@ export function VersionSection({ spec, onChange, onError }: { spec: EditableSpec
             <RequiredSelect id="sf-java" value={spec.imageTag} options={JAVA_TAGS.map((t) => ({ value: t, label: t }))}
               onChange={(t) => { setJavaNotice(null); onChange({ ...spec, imageTag: t }); }} />
           </Field>
-          {javaNotice && <p role="status" className="text-xs text-amber-400">{javaNotice}</p>}
+          {javaNotice && <p role="status" className="text-xs text-warn">{javaNotice}</p>}
         </div>
         {/* `build` is missing in old specs: it is read as empty. */}
         <BuildPicker type={spec.type} version={spec.version} value={spec.build ?? ""} onChange={(build) => { if ((spec.build ?? "") !== build) onChange({ ...spec, build }); }} />
       </div>
       {spec.type === "SPIGOT" && (
-        <p className="text-xs text-amber-400">itzg no longer downloads Spigot automatically: add BUILD_FROM_SOURCE=true to the environment variables (Advanced) or use Paper.</p>
+        <p className="text-xs text-warn">itzg no longer downloads Spigot automatically: add BUILD_FROM_SOURCE=true to the environment variables (Advanced) or use Paper.</p>
       )}
 
       {mp && help && (

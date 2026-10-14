@@ -22,7 +22,7 @@ function AddressView({ address, port }: { address: string | null; port: number }
   return (
     <div className="min-w-0">
       <div data-testid="server-address" className="select-all break-all font-mono text-sm">{address}</div>
-      <div className="text-xs text-zinc-500">port {port}</div>
+      <div className="text-xs text-muted-foreground">port {port}</div>
     </div>
   );
 }

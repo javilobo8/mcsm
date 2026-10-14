@@ -57,7 +57,7 @@ export function BackupScheduleForm({ server }: { server: ServerDto }) {
   return (
     <form onSubmit={submit} className="flex max-w-3xl flex-col gap-4">
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" className="size-4 accent-emerald-500" checked={f.enabled} onChange={(e) => set("enabled", e.target.checked)} />
+        <input type="checkbox" className="size-4 accent-grass" checked={f.enabled} onChange={(e) => set("enabled", e.target.checked)} />
         Scheduled backups
       </label>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -81,22 +81,22 @@ export function BackupScheduleForm({ server }: { server: ServerDto }) {
           <Input id="backup-count" inputMode="numeric" value={f.keepCount} onChange={(e) => set("keepCount", e.target.value)} />
         </div>
       </div>
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-muted-foreground">
         Retention only deletes scheduled backups (never the most recent one). Manual backups and the data saved before a restore are kept until you delete them.
       </p>
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" className="size-4 accent-emerald-500" checked={f.onlyIfPlayersSince} onChange={(e) => set("onlyIfPlayersSince", e.target.checked)} />
+        <input type="checkbox" className="size-4 accent-grass" checked={f.onlyIfPlayersSince} onChange={(e) => set("onlyIfPlayersSince", e.target.checked)} />
         Only if someone has played since the last backup
       </label>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="backup-excludes">Exclude (one pattern per line)</Label>
         <Textarea id="backup-excludes" rows={4} className="font-mono text-xs" value={f.excludes} onChange={(e) => set("excludes", e.target.value)} />
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           A name without “/” is excluded at any depth (logs, *.tmp); with “/”, the exact path (world/session.lock). Add *.jar to skip the .jar files the image downloads again (note: this also skips the ones you uploaded by hand).
         </p>
       </div>
-      {(localErr || save.error) && <p role="alert" className="text-sm text-red-400">{localErr ?? save.error?.message}</p>}
-      {save.isSuccess && <p className="text-sm text-emerald-400">Schedule saved (spec v{save.data.specVersion}).</p>}
+      {(localErr || save.error) && <p role="alert" className="text-sm text-bad">{localErr ?? save.error?.message}</p>}
+      {save.isSuccess && <p className="text-sm text-ok">Schedule saved (spec v{save.data.specVersion}).</p>}
       <div><Button type="submit" disabled={save.isPending}>Save schedule</Button></div>
       <ConfirmDialog open={blocker.status === "blocked"} title={lastLeave.current?.title ?? "Leave"} description={lastLeave.current?.description ?? ""}
         confirmLabel={lastLeave.current?.confirmLabel ?? "Leave"} cancelLabel="Stay" onConfirm={() => blocker.proceed?.()} onCancel={() => blocker.reset?.()} />
