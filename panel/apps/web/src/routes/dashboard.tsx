@@ -56,29 +56,27 @@ export function DashboardPage() {
       </section>
 
       {servers.isError && <p role="alert" className="text-sm text-bad">Could not load the servers: {servers.error.message}</p>}
-      <div className={cn(panel, "px-2")}>
-        <Table>
-          <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Players</TableHead><TableHead>Version</TableHead><TableHead>Node</TableHead><TableHead>Address</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
-          <TableBody>
-            {servers.isPending && <TableRow><TableCell colSpan={7} className="py-6 text-center text-muted-foreground">Loading servers…</TableCell></TableRow>}
-            {servers.data?.map((s) => (
-              <TableRow key={s.id} data-testid={`server-row-${s.slug}`}>
-                <TableCell><Link to="/servers/$serverId" params={{ serverId: s.id }} className="font-medium text-bone hover:underline">{s.name}</Link><div className="text-xs text-muted-foreground">{s.slug}</div></TableCell>
-                <TableCell>
-                  <StateBadge observed={s.observed} desired={s.desiredState} nodeOnline={nodeOnline(s.nodeId)} />
-                  {s.observedSpecVersion !== s.specVersion && <span className="ml-2 text-xs text-warn">applying v{s.specVersion}…</span>}
-                </TableCell>
-                <TableCell>{s.observed?.mc.online ? <span className="flex items-center gap-1 tabular-nums"><Users className="size-3 text-muted-foreground" /> {s.observed.mc.playersOnline}/{s.observed.mc.playersMax}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
-                <TableCell>{s.observed?.mc.version || `${s.spec.type} ${s.spec.version}`}</TableCell>
-                <TableCell>{nodeName(s.nodeId)}</TableCell>
-                <TableCell><ServerAddress server={s} connect={settings.data?.connectAddress} /></TableCell>
-                <TableCell><PowerButtons server={s} nodeOnline={nodeOnline(s.nodeId)} /></TableCell>
-              </TableRow>
-            ))}
-            {servers.data?.length === 0 && <TableRow><TableCell colSpan={7} className="py-6 text-center text-muted-foreground">No servers. <Link to="/servers/new" className="text-grass-bright hover:underline">Create the first one</Link>.</TableCell></TableRow>}
-          </TableBody>
-        </Table>
-      </div>
+      <Table>
+        <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Players</TableHead><TableHead>Version</TableHead><TableHead>Node</TableHead><TableHead>Address</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+        <TableBody>
+          {servers.isPending && <TableRow><TableCell colSpan={7} className="py-6 text-center text-muted-foreground">Loading servers…</TableCell></TableRow>}
+          {servers.data?.map((s) => (
+            <TableRow key={s.id} data-testid={`server-row-${s.slug}`}>
+              <TableCell><Link to="/servers/$serverId" params={{ serverId: s.id }} className="font-medium text-bone hover:underline">{s.name}</Link><div className="text-xs text-muted-foreground">{s.slug}</div></TableCell>
+              <TableCell>
+                <StateBadge observed={s.observed} desired={s.desiredState} nodeOnline={nodeOnline(s.nodeId)} />
+                {s.observedSpecVersion !== s.specVersion && <span className="ml-2 text-xs text-warn">applying v{s.specVersion}…</span>}
+              </TableCell>
+              <TableCell>{s.observed?.mc.online ? <span className="flex items-center gap-1 tabular-nums"><Users className="size-3 text-muted-foreground" /> {s.observed.mc.playersOnline}/{s.observed.mc.playersMax}</span> : <span className="text-muted-foreground">—</span>}</TableCell>
+              <TableCell>{s.observed?.mc.version || `${s.spec.type} ${s.spec.version}`}</TableCell>
+              <TableCell>{nodeName(s.nodeId)}</TableCell>
+              <TableCell><ServerAddress server={s} connect={settings.data?.connectAddress} /></TableCell>
+              <TableCell><PowerButtons server={s} nodeOnline={nodeOnline(s.nodeId)} /></TableCell>
+            </TableRow>
+          ))}
+          {servers.data?.length === 0 && <TableRow><TableCell colSpan={7} className="py-6 text-center text-muted-foreground">No servers. <Link to="/servers/new" className="text-grass-bright hover:underline">Create the first one</Link>.</TableCell></TableRow>}
+        </TableBody>
+      </Table>
     </section>
   );
 }

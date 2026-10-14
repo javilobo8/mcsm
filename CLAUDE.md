@@ -323,3 +323,12 @@ know.)
   (`include="deploy/…"`), but `adding-nodes.md` and `components/landing/quick-start.tsx` carry copies of the
   `docker run` from `dockerRunSnippet`: update them with the README. Visual check: `pnpm build && bash
   scripts/screenshots.sh` (Playwright container `mcsm-test-site-shots`, PNGs in `website/screenshots/`).
+- Panel look = website look: the palette tokens (`:root` of `panel/apps/web/src/index.css` ↔ `website/src/index.css`),
+  the grass-block logo (`components/logo.tsx` in both, `favicon.svg`) and `hash01` (login sky/ground) are copies: change
+  them together. Web UI: status colours only through the tones (`text-ok|warn|bad|info`, `StatusBadge`/`TONE_*` in
+  `components/status.tsx`), never Tailwind palette classes (`red-400`, `zinc-500`…); chart series from
+  `components/chart-colors.ts`; every page root is `PAGE` + `PageHeader` (`components/page-header.tsx`, pixel-font h1),
+  block headings `SectionTitle` (sentence case, no uppercase labels). Filled buttons are notched blocks (`.block-btn`
+  + `block-grass|stone|slab|redstone` in index.css); `Table` brings its own frame. Fonts are bundled with
+  `@fontsource-variable` (the panel works offline on the LAN). After changing the panel's look, refresh the website's
+  screenshots (`website/public/screenshots/*.webp`, from the E2E PNGs) and `og-image.png` (`scripts/og-image.sh`).

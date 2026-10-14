@@ -78,34 +78,32 @@ export function NodesPage() {
       />
 
       {nodes.isError && <p role="alert" className="text-sm text-bad">Could not load the nodes: {nodes.error.message}</p>}
-      <div className="rounded-lg border border-cobble bg-bedrock/70 px-2">
-        <Table>
-          <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Router</TableHead><TableHead>Agent</TableHead><TableHead>Docker</TableHead><TableHead>Host</TableHead><TableHead>Data</TableHead><TableHead>Last seen</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
-          <TableBody>
-            {nodes.isPending && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">Loading nodes…</TableCell></TableRow>}
-            {nodes.data?.length === 0 && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">No nodes. Press “Add node” to enroll the first one.</TableCell></TableRow>}
-            {nodes.data?.map((n) => (
-              <TableRow key={n.id}>
-                <TableCell className="font-medium"><Link to="/nodes/$nodeId" params={{ nodeId: n.id }} className="text-bone hover:underline">{n.name}</Link></TableCell>
-                <TableCell><StatusBadge tone={n.status === "online" ? "ok" : "muted"}>{n.status === "online" ? "Online" : "Offline"}</StatusBadge></TableCell>
-                <TableCell><NodeRouterCell node={n} /></TableCell>
-                <TableCell>{n.agentVersion ?? "—"}</TableCell>
-                <TableCell>{n.dockerVersion ?? "—"}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{n.hostInfo?.hostname ? `${n.hostInfo.hostname} · ${n.hostInfo.os ?? "?"}/${n.hostInfo.arch ?? "?"}` : "—"}</TableCell>
-                <TableCell className="font-mono text-xs">{n.dataRoot}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : "never"}</TableCell>
-                <TableCell>
-                  <div className="flex items-center justify-end gap-1">
-                    {/* plan-6: Nodes → Import */}
-                    <Button size="sm" variant="secondary" asChild><Link to="/nodes/$nodeId/import" params={{ nodeId: n.id }}>Import</Link></Button>
-                    <Button size="sm" variant="ghost" aria-label={`Delete node ${n.name}`} title="Delete" disabled={del.isPending} onClick={() => { if (confirm(`Delete the node "${n.name}"? This is only possible if it has no servers. If it takes part in a half-finished migration, the panel forgets it: if the node is only isolated from the network, the server's copy may still be running there; check before starting the server on its source node.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <Table>
+        <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Status</TableHead><TableHead>Router</TableHead><TableHead>Agent</TableHead><TableHead>Docker</TableHead><TableHead>Host</TableHead><TableHead>Data</TableHead><TableHead>Last seen</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader>
+        <TableBody>
+          {nodes.isPending && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">Loading nodes…</TableCell></TableRow>}
+          {nodes.data?.length === 0 && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">No nodes. Press “Add node” to enroll the first one.</TableCell></TableRow>}
+          {nodes.data?.map((n) => (
+            <TableRow key={n.id}>
+              <TableCell className="font-medium"><Link to="/nodes/$nodeId" params={{ nodeId: n.id }} className="text-bone hover:underline">{n.name}</Link></TableCell>
+              <TableCell><StatusBadge tone={n.status === "online" ? "ok" : "muted"}>{n.status === "online" ? "Online" : "Offline"}</StatusBadge></TableCell>
+              <TableCell><NodeRouterCell node={n} /></TableCell>
+              <TableCell>{n.agentVersion ?? "—"}</TableCell>
+              <TableCell>{n.dockerVersion ?? "—"}</TableCell>
+              <TableCell className="text-xs text-muted-foreground">{n.hostInfo?.hostname ? `${n.hostInfo.hostname} · ${n.hostInfo.os ?? "?"}/${n.hostInfo.arch ?? "?"}` : "—"}</TableCell>
+              <TableCell className="font-mono text-xs">{n.dataRoot}</TableCell>
+              <TableCell className="text-xs text-muted-foreground">{n.lastSeenAt ? new Date(n.lastSeenAt).toLocaleString() : "never"}</TableCell>
+              <TableCell>
+                <div className="flex items-center justify-end gap-1">
+                  {/* plan-6: Nodes → Import */}
+                  <Button size="sm" variant="secondary" asChild><Link to="/nodes/$nodeId/import" params={{ nodeId: n.id }}>Import</Link></Button>
+                  <Button size="sm" variant="ghost" aria-label={`Delete node ${n.name}`} title="Delete" disabled={del.isPending} onClick={() => { if (confirm(`Delete the node "${n.name}"? This is only possible if it has no servers. If it takes part in a half-finished migration, the panel forgets it: if the node is only isolated from the network, the server's copy may still be running there; check before starting the server on its source node.`)) del.mutate(n.id); }}><Trash2 className="size-4" /></Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
       {del.error && <p role="alert" className="text-sm text-bad">{del.error.message}</p>}
     </div>
   );
