@@ -177,6 +177,54 @@ func (b scrubBody) Read(p []byte) (int, error) {
 	return n, err
 }
 
+var errBodyTooLong = errors.New("the body carries more bytes than announced")
+
+// putBody returns the body of a Put with Content-Length size > 0. If body carries more than size bytes,
+// it fails BEFORE handing over the bytes that complete size: the panel answers 2xx as soon as it has
+// Content-Length bytes and net/http returns whichever comes first, that response or the error of the
+// extra byte, so failing later could report a longer body as sent. It reads at most size+1 bytes from
+// body (net/http would read the rest in full to measure it; with a source that never ends, forever).
+// A shorter body just ends early and net/http fails because of Content-Length.
+func putBody(body io.Reader, size int64) io.Reader {
+	return &sizedBody{r: body, left: size}
+}
+
+type sizedBody struct {
+	r    io.Reader
+	left int64 // bytes still to deliver
+	err  error // sticky end: io.EOF once size has been delivered, or the failure
+}
+
+func (b *sizedBody) Read(p []byte) (int, error) {
+	if b.err != nil {
+		return 0, b.err
+	}
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if int64(len(p)) > b.left {
+		p = p[:b.left]
+	}
+	n, err := b.r.Read(p)
+	b.left -= int64(n)
+	if b.left > 0 {
+		return n, err // short so far: an io.EOF here is a short body, which net/http rejects
+	}
+	// these n bytes complete size: they are handed over only if the source ends right here
+	if err == nil {
+		var extra [1]byte
+		if _, err = io.ReadFull(b.r, extra[:]); err == nil {
+			err = errBodyTooLong
+		}
+	}
+	if err != nil && err != io.EOF {
+		b.err = err
+		return 0, err
+	}
+	b.err = io.EOF
+	return n, nil
+}
+
 // readerOnly hides Close (and any other method) of the caller's body.
 type readerOnly struct{ io.Reader }
 
@@ -193,9 +241,7 @@ func (c *TransferClient) Put(ctx context.Context, id string, body io.Reader, siz
 	case size == 0:
 		body = http.NoBody // with ContentLength 0 and a non-nil body, net/http would use chunked
 	case size > 0 && size+1 > 0:
-		// If body carries too much, net/http would read the rest in full to measure it (with a source that
-		// never ends, forever); one extra byte is enough to fail.
-		body = io.LimitReader(body, size+1)
+		body = putBody(body, size)
 	default:
 		if size < 0 {
 			size = -1

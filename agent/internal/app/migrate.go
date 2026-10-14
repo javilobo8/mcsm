@@ -271,7 +271,7 @@ func (b *backupService) receive(ctx context.Context, m *mcsmv1.MigrateReceive, d
 	_, err = b.restore(ctx, backup.RestoreRequest{
 		ServerID: m.GetServerId(), Slug: m.GetSlug(), Filename: m.GetFilename(),
 		DataDir: filepath.Join(dir, "data"), BackupsDir: backupsDir, Now: b.clock.Now,
-		Progress: func(pct uint32, msg string) { j.Progress(50+pct/2, msg) }, Log: j.Log,
+		Progress: func(pct uint32, msg string) { j.Progress(50+pct/2, msg) }, Log: j.Log, SyncFS: b.syncFS,
 	})
 	return err
 }
