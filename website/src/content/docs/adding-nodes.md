@@ -43,7 +43,7 @@ docker run -d --name mcsm-agent --restart unless-stopped --stop-timeout 30 \
   -e PANEL_URL=http://192.168.1.10:8080 \
   -e ENROLL_TOKEN=<enrollment-token> \
   -e DATA_ROOT=/srv/minecraft \
-  ghcr.io/javilobo8/mcsm-agent:0.10.0
+  ghcr.io/javilobo8/mcsm-agent:0.11.0
 ```
 
 To raise the upload limit on this node, add `-e UPLOAD_MAX_BYTES=…` to the command (see [Upload limit](/docs/files#upload-limit)).
@@ -65,7 +65,7 @@ It is identical to `deploy/docker-compose.node.yml`:
 Create its `.env`:
 
 ```bash
-MCSM_VERSION=0.10.0
+MCSM_VERSION=0.11.0
 PANEL_URL=http://192.168.1.10:8080
 ENROLL_TOKEN=<enrollment-token>
 DATA_ROOT=/srv/minecraft
