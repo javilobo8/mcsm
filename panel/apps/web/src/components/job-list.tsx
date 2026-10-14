@@ -120,7 +120,7 @@ function JobLog({ id }: { id: string }) {
         ref={preRef}
         tabIndex={0}
         onScroll={(e) => { const el = e.currentTarget; atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX; }}
-        className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-md border border-cobble bg-obsidian p-3 font-mono text-xs leading-[1.65] text-[#d5dae0]"
+        className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-md border border-cobble bg-obsidian p-3 font-mono text-xs leading-[1.65] text-log"
       >{q.data.log || "(no log)"}</pre>
     </div>
   );

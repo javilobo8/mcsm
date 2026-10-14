@@ -41,7 +41,9 @@ export function DashboardPage() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <Link to="/nodes/$nodeId" params={{ nodeId: n.id }} className="block truncate font-medium text-bone hover:underline">{n.name}</Link>
-                  <div className="mt-0.5 text-xs text-muted-foreground">Agent {n.agentVersion ?? "?"} · Docker {n.dockerVersion ?? "?"}</div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {n.agentVersion ? `Agent ${n.agentVersion} · Docker ${n.dockerVersion ?? "?"}` : "The agent has not connected yet"}
+                  </div>
                 </div>
                 <StatusBadge tone={online ? "ok" : "muted"}>{online ? "Online" : "Offline"}</StatusBadge>
               </div>

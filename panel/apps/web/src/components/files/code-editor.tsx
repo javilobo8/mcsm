@@ -12,7 +12,7 @@ import type { EditorLanguage } from "@mcsm/shared";
 
 /** One Dark's syntax colours on the panel's palette (index.css): obsidian page, cobble gutter, grass cursor. */
 const panelTheme = EditorView.theme({
-  "&": { height: "65vh", fontSize: "12px", color: "#d5dae0", backgroundColor: "var(--obsidian)" },
+  "&": { height: "65vh", fontSize: "12px", color: "var(--log)", backgroundColor: "var(--obsidian)" },
   ".cm-scroller": { fontFamily: "var(--font-mono)", lineHeight: "1.65" },
   ".cm-content": { caretColor: "var(--grass)" },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--grass)" },

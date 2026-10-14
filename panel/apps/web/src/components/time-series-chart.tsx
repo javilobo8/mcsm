@@ -57,8 +57,8 @@ export function TimeSeriesChart({ title, data, lines, format, yRange, axis: axis
     void Promise.all([import("uplot"), import("uplot/dist/uPlot.min.css")]).then(([mod]) => {
       if (cancelled) return;
       const UPlot = mod.default;
-      const ink = token(el, "--muted-foreground", "#a1a1aa");
-      const rule = token(el, "--border", "#27272a");
+      const ink = token(el, "--muted-foreground", "#a0a7af");
+      const rule = token(el, "--border", "#282d35");
       const axis: uPlot.Axis = { stroke: ink, grid: { stroke: rule, width: 1 }, ticks: { stroke: rule, width: 1 } };
       const u = new UPlot({
         width: Math.max(el.clientWidth, MIN_WIDTH),

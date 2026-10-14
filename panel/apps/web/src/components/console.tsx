@@ -13,12 +13,12 @@ const reducer = (s: ConsoleState, a: Action): ConsoleState => {
   return { lines: [], nextId: s.nextId };
 };
 
-const color: Record<LineKind, string> = { log: "text-[#d5dae0]", cmd: "text-info", out: "text-ok", sys: "text-warn" };
+const color: Record<LineKind, string> = { log: "text-log", cmd: "text-info", out: "text-ok", sys: "text-warn" };
 
 const Row = memo(function Row({ time, text, kind }: { time: string; text: string; kind: LineKind }) {
   return (
     <div className={`whitespace-pre-wrap break-all ${color[kind]}`}>
-      <span className="mr-2 select-none text-fog/60">{time}</span>{text}
+      <span className="mr-2 select-none text-fog/75">{time}</span>{text}
     </div>
   );
 });
@@ -103,7 +103,7 @@ export function Console({ serverId, nodeOnline }: { serverId: string; nodeOnline
         {!following && <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={resume}><ArrowDown className="size-3.5" /> Jump to end</Button>}
       </div>
       <div ref={scroller} onScroll={onScroll} className="flex-1 overflow-auto px-3 py-2.5 leading-[1.65]" role="log" aria-live="off" aria-label="Server log" tabIndex={0}>
-        {state.lines.length === 0 && <p className="text-fog/60">No output yet…</p>}
+        {state.lines.length === 0 && <p className="text-fog">No output yet…</p>}
         {shown.map((l) => <Row key={l.id} time={l.time} text={l.text} kind={l.kind} />)}
       </div>
       <div className="flex items-center gap-2 border-t border-cobble py-1.5 pr-2 pl-3 focus-within:bg-bedrock/50 focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-ring/70">

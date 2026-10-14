@@ -24,13 +24,15 @@ function Tabs({
 
 // A tab bar over a hairline, with a grass bar under the active tab (the website's accent); `line` is kept for
 // compatibility and looks the same. `pill`: tabs nested inside a tab (sections of a form), raised when active.
+const tabBar = "group-data-[orientation=horizontal]/tabs:overflow-x-auto group-data-[orientation=horizontal]/tabs:border-b group-data-[orientation=horizontal]/tabs:border-cobble group-data-[orientation=horizontal]/tabs:[scrollbar-width:none]"
+
 const tabsListVariants = cva(
   "group/tabs-list inline-flex items-center text-muted-foreground group-data-[orientation=horizontal]/tabs:w-full group-data-[orientation=horizontal]/tabs:justify-start group-data-[orientation=horizontal]/tabs:gap-1 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col",
   {
     variants: {
       variant: {
-        default: "group-data-[orientation=horizontal]/tabs:overflow-x-auto group-data-[orientation=horizontal]/tabs:border-b group-data-[orientation=horizontal]/tabs:border-cobble group-data-[orientation=horizontal]/tabs:[scrollbar-width:none]",
-        line: "group-data-[orientation=horizontal]/tabs:overflow-x-auto group-data-[orientation=horizontal]/tabs:border-b group-data-[orientation=horizontal]/tabs:border-cobble group-data-[orientation=horizontal]/tabs:[scrollbar-width:none]",
+        default: tabBar,
+        line: tabBar,
         pill: "",
       },
     },

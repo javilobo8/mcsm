@@ -32,6 +32,7 @@
   --diamond: #5fc8d6;
   --amethyst: #ac8fe3;
   --obsidian: #0b0d10;
+  --log: #d5dae0; /* text of consoles and logs on obsidian */
 
   --ok: var(--grass-bright);
   --warn: var(--torch);
@@ -93,6 +94,7 @@
   --color-diamond: var(--diamond);
   --color-amethyst: var(--amethyst);
   --color-obsidian: var(--obsidian);
+  --color-log: var(--log);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-bad: var(--bad);

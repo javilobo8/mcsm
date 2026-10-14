@@ -5,10 +5,6 @@ import { cn } from "@/lib/utils";
 /** Status tones of the palette: ok (grass), warn (torch), bad (redstone), info (diamond) and muted. */
 export type Tone = "ok" | "warn" | "bad" | "info" | "muted";
 
-export const TONE_TEXT: Record<Tone, string> = {
-  ok: "text-ok", warn: "text-warn", bad: "text-bad", info: "text-info", muted: "text-muted-foreground",
-};
-
 export const TONE_FILL: Record<Tone, string> = {
   ok: "bg-grass", warn: "bg-torch", bad: "bg-redstone", info: "bg-diamond", muted: "bg-cobble-2",
 };
