@@ -99,7 +99,7 @@ export function Console({ serverId, nodeOnline }: { serverId: string; nodeOnline
     <div className="flex h-[70vh] flex-col overflow-hidden rounded-lg border border-cobble bg-obsidian font-mono text-xs" data-testid="console">
       <div className="flex items-center gap-2 border-b border-cobble bg-bedrock/60 p-2">
         <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter lines…" aria-label="Filter console lines" className="h-8 max-w-xs font-mono text-xs" />
-        <span className="text-fog">{filter ? `${shown.length} of ${state.lines.length}` : `${state.lines.length} lines`}</span>
+        <span className="shrink-0 whitespace-nowrap text-fog">{filter ? `${shown.length} of ${state.lines.length}` : `${state.lines.length} lines`}</span>
         {!following && <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={resume}><ArrowDown className="size-3.5" /> Jump to end</Button>}
       </div>
       <div ref={scroller} onScroll={onScroll} className="flex-1 overflow-auto px-3 py-2.5 leading-[1.65]" role="log" aria-live="off" aria-label="Server log" tabIndex={0}>

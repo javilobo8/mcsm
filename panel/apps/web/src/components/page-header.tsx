@@ -8,7 +8,8 @@ export const PAGE = "flex flex-col gap-6 p-4 sm:p-6 lg:p-8";
 export function PageHeader({ title, description, actions, children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; children?: ReactNode }) {
   return (
     <header className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-      <div className="min-w-0 flex-1">
+      {/* At least 18rem: on a phone the actions wrap under the title instead of squeezing it. */}
+      <div className="min-w-[min(100%,18rem)] flex-1">
         <h1 className="font-pixel text-[1.75rem] leading-[1.15] font-semibold tracking-tight break-words text-bone">{title}</h1>
         {description && <div className="mt-1.5 max-w-[48rem] text-sm leading-relaxed text-fog">{description}</div>}
         {children}
