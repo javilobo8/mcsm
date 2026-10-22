@@ -197,9 +197,9 @@ If you suspect a node's token has leaked, rotating it is not enough: delete the 
 | Machine | Open (inbound) | What for |
 |---|---|---|
 | Panel | `8080/tcp` from the LAN | The web UI and the agents on the other machines (HTTP and WebSocket). Don't open it to the Internet. |
-| Each node | Each server's game port (`tcp`; the panel hands them out from 25565 up to 25600), its extra ports (e.g. Geyser's `19132/udp`) and the router's port if you enable it | Players |
+| Each node | Each server's game port (`tcp`; the panel hands them out from 25565 up to 25600), its extra ports (e.g. Geyser's `19132/udp`), the router's port if you enable it, and the RCON port of the servers that publish it | Players and RCON clients |
 
-- The agent listens on no port: it only connects **out** to `PANEL_URL` (the panel's 8080). RCON (25575) goes over the `mcsm` Docker network and is not published.
+- The agent listens on no port: it only connects **out** to `PANEL_URL` (the panel's 8080). RCON (25575) goes over the `mcsm` Docker network and is not published, unless a server turns on **Publish RCON** (Configuration → Network): then it gets its own host port. RCON is not encrypted: don't forward it to the Internet unless you accept that.
 - Nodes need Internet access: Docker Hub images and itzg downloads (Paper, mods, modpacks).
 - To play from outside your home, forward the server's port (or mc-router's) on your home router to the node's IP. Never 8080.
 - **Port 25565.** The first server on each node gets 25565 (the first free port), which is also mc-router's default port. If you are going to use the router, enable it before creating servers on that node. If a server is already on 25565, enabling it fails with “Port 25565 is used by server “…” on this node”: give the router another port or change the server's (Configuration → Network). If another program on the machine already holds the port (e.g. a Minecraft server the panel doesn't manage), the server won't start and its header shows Docker's error: change its port.
@@ -407,6 +407,7 @@ Designed for a home LAN and a single administrator. The agent mounts the Docker 
 - Servers run without extra privileges: no capabilities except those the image needs to start (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`), with `no-new-privileges`, a process limit and a memory limit (by default, JVM memory + 1G). itzg features that need more capabilities (autopause/autostop with knockd) are not supported.
 - **Headers and attempt limit.** The web is served with a restrictive CSP and `frame-ancestors 'none'`. Failed logins have a global limit (30 per minute): if someone on the LAN brute-forces passwords, it also locks the administrator out for a minute; restarting the panel clears it.
 - **Secrets in the console.** The console hides the RCON password and the CurseForge API key.
+- **Published RCON.** A server with **Publish RCON** (Configuration → Network) accepts RCON on its own host port. RCON is not encrypted: the password and the commands travel in clear text. Prefer the LAN or a VPN to forwarding it to the Internet. mc-router cannot route RCON, so each server uses its own port.
 
 ## License
 
