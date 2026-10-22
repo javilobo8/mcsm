@@ -323,6 +323,10 @@ know.)
   (`include="deploy/…"`), but `adding-nodes.md` and `components/landing/quick-start.tsx` carry copies of the
   `docker run` from `dockerRunSnippet`: update them with the README. Visual check: `pnpm build && bash
   scripts/screenshots.sh` (Playwright container `mcsm-test-site-shots`, PNGs in `website/screenshots/`).
+- Published RCON (2026-10-22): optional `ports.rcon` (host port, TCP; absent = not published, never 0/null in the
+  stored spec). Input accepts `"auto"` (resolved in `completeSpec`; keeps the current port). Every place that lists a
+  server's host ports uses `specHostPorts` (shared), never `[game, ...extra]` by hand. `ports` is replaced whole in a
+  PATCH: whoever sends `ports` carries `rcon` or unpublishes it. Fixture `rcon-port-cases.json` (Go and zod).
 - Panel look = website look: the palette tokens (`:root` of `panel/apps/web/src/index.css` ↔ `website/src/index.css`),
   the grass-block logo (`components/logo.tsx` in both, `favicon.svg`) and `hash01` (login sky/ground) are copies: change
   them together. Web UI: status colours only through the tones (`text-ok|warn|bad|info`, `StatusBadge`/`TONE_*` in
