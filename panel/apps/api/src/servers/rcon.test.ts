@@ -105,11 +105,25 @@ describe("publishing RCON per server", () => {
     expect(res.json().specVersion).toBe(4);
   });
 
-  it("PATCH with \"auto\" on a server that already publishes re-allocates a free port", async () => {
+  it("PATCH with \"auto\" on a server that already publishes keeps its port", async () => {
     const s = (await make("A", { game: 25570, rcon: 25571 })).json();
     const res = await patch(s.id, { spec: { ports: { game: 25570, extra: [], rcon: "auto" } } });
     expect(res.statusCode).toBe(200);
-    expect(res.json().spec.ports.rcon).toBe(25565);
+    expect(res.json().spec.ports.rcon).toBe(25571);
+    expect(res.json().specVersion).toBe(1);
+  });
+
+  it("PATCH with \"auto\" re-allocates when the kept port is now the game port or an extra", async () => {
+    const s = (await make("A", { game: 25570, rcon: 25571 })).json();
+    const res = await patch(s.id, { spec: { ports: { game: 25571, extra: [], rcon: "auto" } } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().spec.ports).toMatchObject({ game: 25571, rcon: 25565 });
+  });
+
+  it("an explicit RCON port is not handed out as the auto-allocated game port", async () => {
+    const res = await make("A", { rcon: 25565 });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().spec.ports).toMatchObject({ game: 25566, rcon: 25565 });
   });
 
   it("the listing and the detail expose ports.rcon", async () => {

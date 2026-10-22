@@ -77,9 +77,14 @@ export class ServersService {
 
   private completeSpec(nodeId: string, input: SpecInput, previous?: Spec): Spec {
     const extraHosts = input.ports.extra.map((e) => e.host);
-    const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId, new Set(extraHosts));
-    // "auto" is resolved after the game port (which may have just been allocated) so both differ. Absent = not published.
-    const rcon = input.ports.rcon === "auto" ? this.allocatePort(nodeId, new Set([game, ...extraHosts])) : input.ports.rcon;
+    const explicitRcon = typeof input.ports.rcon === "number" ? [input.ports.rcon] : [];
+    const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId, new Set([...extraHosts, ...explicitRcon]));
+    // "auto" is resolved after the game port (which may have just been allocated) so both differ; a server that already
+    // publishes keeps its port. Absent = not published.
+    const kept = previous?.ports.rcon;
+    const rcon = input.ports.rcon !== "auto" ? input.ports.rcon
+      : kept !== undefined && kept !== game && !extraHosts.includes(kept) ? kept
+        : this.allocatePort(nodeId, new Set([game, ...extraHosts]));
     const candidate = {
       ...input,
       ports: rcon === undefined ? { game, extra: input.ports.extra } : { game, extra: input.ports.extra, rcon },
