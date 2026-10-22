@@ -2,7 +2,7 @@
 export type FormErrors = Readonly<Record<string, string>>;
 
 /** Ids that are not a DOM element (computed errors): never purged for being "not mounted". */
-export const VIRTUAL_ERROR_IDS: ReadonlySet<string> = new Set(["sf-memlimit-rel", "sf-extra-ports", "sf-ops-env", "sf-whitelist-env"]);
+export const VIRTUAL_ERROR_IDS: ReadonlySet<string> = new Set(["sf-memlimit-rel", "sf-extra-ports", "sf-rcon-port", "sf-ops-env", "sf-whitelist-env"]);
 
 /** Sets or removes (message null) a field's error; returns the same object if nothing changes. */
 export function applyError(prev: FormErrors, field: string, message: string | null): FormErrors {

@@ -221,6 +221,25 @@ export function validateMemLimit(limit: string, memory: string): string | null {
   return null;
 }
 
+/** "Publish RCON" switch: on keeps `previous` (the saved/last typed port) or asks the panel for one ("auto"); off removes it. */
+export function withRconPublished(spec: EditableSpec, on: boolean, previous?: number): EditableSpec {
+  const { rcon: _drop, ...ports } = spec.ports;
+  return on ? { ...spec, ports: { ...ports, rcon: previous ?? "auto" } } : { ...spec, ports };
+}
+
+/** Port typed in the RCON field: empty = let the panel choose ("auto"). */
+export function withRconPort(spec: EditableSpec, port: number | undefined): EditableSpec {
+  return { ...spec, ports: { ...spec.ports, rcon: port ?? "auto" } };
+}
+
+/** Message the API schema gives for `ports.rcon` (same as the game/extra port collision, range…), or null. */
+export function rconPortError(spec: EditableSpec): string | null {
+  const r = specInputSchema.safeParse(spec);
+  if (r.success) return null;
+  const issue = r.error.issues.find((i) => i.path[0] === "ports" && i.path[1] === "rcon");
+  return issue ? `Published RCON port: ${issue.message}` : null;
+}
+
 /** Extra ports with the same schema as the API (ranges, proto and no publishing RCON 25575). First error "Extra port #n: …" or null. */
 export function validateExtraPorts(extra: readonly EditableSpec["ports"]["extra"][number][]): string | null {
   for (const [i, e] of extra.entries()) {

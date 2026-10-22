@@ -28,7 +28,7 @@ const FIELD_TABS: readonly [RegExp, TabValue][] = [
   [/^sf-(type|version|java|mp-|mods-|pl-)/, "version"],
   [/^sf-(prop-|props-)/, "properties"],
   [/^sf-(whitelist|ops)/, "players"],
-  [/^sf-(port|extra-|proto-|router-)/, "network"],
+  [/^sf-(port|extra-|rcon-|proto-|router-)/, "network"],
   [/^sf-(memory|memlimit|cpus|restart)/, "resources"],
   [/^sf-env/, "advanced"],
 ];

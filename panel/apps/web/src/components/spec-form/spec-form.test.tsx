@@ -68,6 +68,8 @@ describe("SpecForm (server render, no DOM)", () => {
     expect(sectionOfField("sf-props-other")).toBe("Properties");
     expect(sectionOfField("sf-ops")).toBe("Players");
     expect(sectionOfField("sf-extra-ports")).toBe("Network");
+    expect(sectionOfField("sf-rcon-port")).toBe("Network");
+    expect(sectionOfField("sf-rcon-port-input")).toBe("Network");
     expect(sectionOfField("sf-memlimit")).toBe("Resources");
     expect(sectionOfField("sf-env")).toBe("Advanced");
     expect(sectionOfField("other")).toBe("General");

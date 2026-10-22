@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { validateExtraPorts, type EditableSpec } from "@/lib/spec-edit";
+import { rconPortError, validateExtraPorts, withRconPort, withRconPublished, type EditableSpec } from "@/lib/spec-edit";
 import { NumberField, RequiredSelect, describedBy, errId, type ReportError } from "./fields";
 import { RouterSection } from "./router-section";
 
@@ -57,6 +57,38 @@ export function duplicateHostPorts(game: number | undefined, extra: readonly Ext
  * "Network" section: game port (on the host), extra ports (Geyser, voice, web maps…) and the router (plan-8), which
  * `routerHidden` replaces with a text.
  */
+/** "Publish RCON": switch + port (empty = the panel assigns a free one when applying). */
+function RconPublish({ spec, onChange, onError }: { spec: EditableSpec; onChange: (s: EditableSpec) => void; onError: ReportError }) {
+  const rcon = spec.ports.rcon;
+  const on = rcon !== undefined;
+  // Remembers the last port so that off → on restores it instead of asking for a new one.
+  const last = useRef<number | undefined>(typeof rcon === "number" ? rcon : undefined);
+  if (typeof rcon === "number") last.current = rcon;
+  const error = rconPortError(spec);
+  useEffect(() => { onError("sf-rcon-port", error); }, [error, onError]);
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input type="checkbox" role="switch" className="size-4 accent-grass" checked={on} data-testid="rcon-publish"
+          onChange={(e) => onChange(withRconPublished(spec, e.target.checked, last.current))} />
+        Publish RCON
+      </label>
+      {on && (
+        <div className="max-w-xs">
+          <NumberField id="sf-rcon-port-input" label="RCON port (host)" value={typeof rcon === "number" ? rcon : undefined} min={1} max={65535}
+            onError={onError} placeholder="Assigned when you apply"
+            hint="Leave empty to get a free port from the node's range when you apply."
+            onChange={(p) => onChange(withRconPort(spec, p))} />
+        </div>
+      )}
+      {error && <p role="alert" className="text-xs text-bad">{error}</p>}
+      <p className="text-xs text-muted-foreground">
+        RCON is not encrypted: publish it only on a network you trust. mc-router cannot route it, so it uses its own port.
+      </p>
+    </div>
+  );
+}
+
 export function NetworkSection({ spec, onChange, onError, routerHidden }: {
   spec: EditableSpec; onChange: (s: EditableSpec) => void; onError: ReportError; routerHidden?: string;
 }) {
@@ -79,9 +111,10 @@ export function NetworkSection({ spec, onChange, onError, routerHidden }: {
           hint="Inside the container it is always 25565. Empty = the current port is kept."
           onChange={(game) => onChange({ ...spec, ports: { ...spec.ports, game } })} />
       </div>
+      <RconPublish spec={spec} onChange={onChange} onError={onError} />
       <div className="flex flex-col gap-2">
         <div className="text-sm font-medium">Extra ports</div>
-        {extra.length === 0 && <p className="text-xs text-muted-foreground">None. RCON (25575) is never published.</p>}
+        {extra.length === 0 && <p className="text-xs text-muted-foreground">None. To expose RCON use “Publish RCON” above; container port 25575 cannot be an extra port.</p>}
         {extra.map((e, i) => (
           <div key={keys.current[i]} className="grid grid-cols-[1fr_1fr_6rem_1.5fr_auto] items-center gap-2">
             <PortInput id={`sf-extra-${keys.current[i]}-host`} label={`Extra port #${i + 1}: host port`} placeholder="host" value={e.host} onError={onError} onChange={(host) => update(i, { host })} />
