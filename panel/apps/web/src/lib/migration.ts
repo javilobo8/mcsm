@@ -54,6 +54,14 @@ export function portHint(p: MigrationProposalDto | undefined, typed: number | un
 }
 
 /** Why it cannot be migrated now (null = it can). */
+/** Line about the RCON port on the target, or null when the server does not publish RCON. */
+export function rconProposalText(p: MigrationProposalDto | undefined): string | null {
+  if (!p || p.rconPort === null) return null;
+  return p.rconChanged
+    ? `RCON port on the target: ${p.rconPort} (the current one is taken there).`
+    : `RCON port on the target: ${p.rconPort}, the same as now.`;
+}
+
 export function migrateBlockedReason(o: {
   sourceOnline: boolean | undefined; active: JobDto | undefined; migration: MigrationDto | null | undefined;
   target: TargetOption | undefined; portInvalid: boolean; proposalError: string | null;
@@ -148,11 +156,12 @@ export function routerDnsNote(router: Spec["router"], source: string, target: st
 
 export function confirmText(o: {
   serverName: string; slug: string; source: string; target: string; port: number; deleteSource: boolean; running: boolean; imported?: string | null;
-  dns?: string | null;
+  dns?: string | null; rcon?: string | null;
 }): string {
   return [
     o.running ? `“${o.serverName}” will be stopped on “${o.source}” during the migration.` : `“${o.serverName}” is stopped on “${o.source}”.`,
     "A backup will be made first, sent to the target (checking its sha256) and restored there.",
+    ...(o.rcon ? [o.rcon] : []),
     `On “${o.target}” it will use port ${o.port} and be started to check that it works${o.running ? "; afterwards it will stay running" : "; afterwards it will be stopped again"}.`,
     o.deleteSource
       ? `When it finishes, its data and backups on “${o.source}” will be DELETED.`

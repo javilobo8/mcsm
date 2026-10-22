@@ -15,7 +15,7 @@ import { useNodes } from "@/hooks/use-nodes";
 import type { JobDto, ServerDto } from "@/lib/api";
 import {
   activeMigrationJob, canCloseMigration, closeMigrationText, confirmText, lastMigrationJob, migrateBlockedReason, migrateFormDirty, migrationBody, migrationKey,
-  parsePortInput, pendingText, portHint, routerDnsNote, stepStates, targetOptions, type StepState,
+  parsePortInput, pendingText, portHint, rconProposalText, routerDnsNote, stepStates, targetOptions, type StepState,
 } from "@/lib/migration";
 import { serverImportView } from "@/lib/import";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,7 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
     sourceOnline: nodeOnline, active, migration: migration.data, target, portInvalid: port === null, proposalError: proposal.error?.message ?? null,
   });
   const finalPort = port ?? proposal.data?.port;
+  const rconText = rconProposalText(proposal.data);
   // Plan 6: if it is still the original imported container, removing the source deletes it (like deleting the server).
   const importedRetire = serverImportView(server).retire;
   // Plan 8: with a hostname, DNS has to point at the target after migrating.
@@ -146,6 +147,7 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
               placeholder={proposal.data ? String(proposal.data.port) : ""}
               onChange={(e) => { setPortText(e.target.value); start.reset(); }} />
             <p className="text-xs text-muted-foreground">{portHint(proposal.data, port)}</p>
+            {rconText && <p className={cn("text-xs", proposal.data?.rconChanged ? "text-warn" : "text-muted-foreground")} data-testid="migrate-rcon">{rconText}</p>}
             {proposal.isError && <p role="alert" className="text-xs text-bad">{proposal.error.message}</p>}
           </div>
           <label className="flex items-start gap-2 text-sm">
@@ -187,7 +189,7 @@ export function MigrateTab({ server, nodeOnline }: { server: ServerDto; nodeOnli
             <AlertDialogDescription>
               {finalPort !== undefined ? confirmText({
                 serverName: server.name, slug: server.slug, source: nodeName(server.nodeId), target: target?.label ?? "", port: finalPort,
-                deleteSource, running: server.desiredState === "running", imported: importedRetire, dns: dnsNote,
+                deleteSource, running: server.desiredState === "running", imported: importedRetire, dns: dnsNote, rcon: rconText,
               }) : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

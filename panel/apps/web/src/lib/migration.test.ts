@@ -4,7 +4,7 @@ import type { JobDto, NodeDto } from "./api";
 import { jobTypeLabel } from "./jobs";
 import {
   activeMigrationJob, canCloseMigration, closeMigrationText, confirmText, lastMigrationJob, migrateBlockedReason, migrateFormDirty, migrationBody, migrationFinished,
-  migrationSync, parsePortInput, pendingText, portHint, proposalPath, routerDnsNote, stepStates, targetOptions,
+  migrationSync, parsePortInput, pendingText, portHint, rconProposalText, proposalPath, routerDnsNote, stepStates, targetOptions,
 } from "./migration";
 
 const node = (id: string, name: string, status: "online" | "offline" = "online"): NodeDto => ({
@@ -51,6 +51,14 @@ describe("migration in the web", () => {
     expect(portHint({ targetNodeId: "b", slug: "x", port: 25565, currentPort: 25565, portChanged: false, rconPort: null, rconChanged: false }, undefined)).toMatch(/the same as now/);
     expect(portHint(undefined, 25570)).toBe("Port 25570 will be used.");
     expect(portHint(undefined, null)).toMatch(/between 1 and 65535/);
+  });
+
+  it("RCON port line: absent without RCON, says when it changed", () => {
+    const p = { targetNodeId: "b", slug: "x", port: 25565, currentPort: 25565, portChanged: false };
+    expect(rconProposalText(undefined)).toBeNull();
+    expect(rconProposalText({ ...p, rconPort: null, rconChanged: false })).toBeNull();
+    expect(rconProposalText({ ...p, rconPort: 25580, rconChanged: false })).toMatch(/25580, the same as now/);
+    expect(rconProposalText({ ...p, rconPort: 25581, rconChanged: true })).toMatch(/25581 \(the current one is taken there\)/);
   });
 
   it("reasons for blocking a migration", () => {
