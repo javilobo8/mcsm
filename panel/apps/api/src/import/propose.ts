@@ -224,7 +224,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
       warn("It publishes RCON but does not set a usable RCON_PASSWORD: it will not be published; turn on Publish RCON in the review if you want it (the panel generates a password)");
       rconHost = undefined;
     } else {
-      warn("RCON is published with the container's own password: it is kept as is and may be weak; change it before exposing the port on the LAN");
+      warn("RCON is published with the container's own password: it is kept as is and may be weak (the panel does not change it): check it before relying on the published port");
     }
   }
   const cfKey = take("CF_API_KEY");
