@@ -47,8 +47,8 @@ describe("migration in the web", () => {
 
   it("port hint", () => {
     expect(portHint(undefined, undefined)).toMatch(/Choose the target node first/);
-    expect(portHint({ targetNodeId: "b", slug: "x", port: 25566, currentPort: 25565, portChanged: true }, undefined)).toMatch(/Proposed: 25566 \(25565 is busy/);
-    expect(portHint({ targetNodeId: "b", slug: "x", port: 25565, currentPort: 25565, portChanged: false }, undefined)).toMatch(/the same as now/);
+    expect(portHint({ targetNodeId: "b", slug: "x", port: 25566, currentPort: 25565, portChanged: true, rconPort: null, rconChanged: false }, undefined)).toMatch(/Proposed: 25566 \(25565 is busy/);
+    expect(portHint({ targetNodeId: "b", slug: "x", port: 25565, currentPort: 25565, portChanged: false, rconPort: null, rconChanged: false }, undefined)).toMatch(/the same as now/);
     expect(portHint(undefined, 25570)).toBe("Port 25570 will be used.");
     expect(portHint(undefined, null)).toMatch(/between 1 and 65535/);
   });

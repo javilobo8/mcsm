@@ -58,4 +58,12 @@ describe("diffSpecs", () => {
     expect(diffSpecs({ plugins: { modrinthProjects: [], spigetResources: [], urls: [] } }, {}))
       .toEqual([{ label: "Plugins (section)", before: "managed by the panel", after: "(not managed)" }]);
   });
+
+  it("published RCON port: absent reads as not published, auto as assigned on apply", () => {
+    const base = { ports: { game: 25565, extra: [] } };
+    expect(diffSpecs(base, { ports: { ...base.ports, rcon: 25580 } })).toEqual([{ label: "Published RCON port", before: "not published", after: "25580" }]);
+    expect(diffSpecs(base, { ports: { ...base.ports, rcon: "auto" } })).toEqual([{ label: "Published RCON port", before: "not published", after: "assigned on apply" }]);
+    expect(diffSpecs({ ports: { ...base.ports, rcon: 25580 } }, base)).toEqual([{ label: "Published RCON port", before: "25580", after: "not published" }]);
+    expect(diffSpecs({ ports: { ...base.ports, rcon: 25580 } }, { ports: { ...base.ports, rcon: 25581 } })).toEqual([{ label: "Published RCON port", before: "25580", after: "25581" }]);
+  });
 });
