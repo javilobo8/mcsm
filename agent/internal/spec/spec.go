@@ -130,6 +130,8 @@ type Spec struct {
 type Ports struct {
 	Game  int           `json:"game"`
 	Extra []PortMapping `json:"extra"`
+	// Rcon is the host TCP port that publishes the container's RCON (25575); 0 = not published.
+	Rcon int `json:"rcon,omitempty"`
 }
 
 type PortMapping struct {
@@ -211,6 +213,19 @@ func (s Spec) Validate() error {
 		}
 		if pm.Container == RconPort {
 			return fmt.Errorf("spec: the extra port cannot publish RCON (%d)", RconPort)
+		}
+	}
+	if s.Ports.Rcon != 0 {
+		if !validPort(s.Ports.Rcon) {
+			return fmt.Errorf("spec: rcon port out of range: %d", s.Ports.Rcon)
+		}
+		if s.Ports.Rcon == s.Ports.Game {
+			return fmt.Errorf("spec: the rcon port (%d) cannot be the game port", s.Ports.Rcon)
+		}
+		for _, pm := range s.Ports.Extra {
+			if pm.Host == s.Ports.Rcon {
+				return fmt.Errorf("spec: the rcon port (%d) is already used by an extra port", s.Ports.Rcon)
+			}
 		}
 	}
 	if len(s.RconPassword) < 8 {
@@ -304,6 +319,11 @@ func BuildContainer(meta Meta, s Spec, dataRoot, networkName string) (*Build, er
 		p := mustPort(fmt.Sprintf("%d/%s", pm.Container, pm.Proto))
 		exposed[p] = struct{}{}
 		bindings[p] = append(bindings[p], network.PortBinding{HostPort: strconv.Itoa(pm.Host)})
+	}
+	if s.Ports.Rcon != 0 {
+		rcon := mustPort(fmt.Sprintf("%d/tcp", RconPort))
+		exposed[rcon] = struct{}{}
+		bindings[rcon] = []network.PortBinding{{HostPort: strconv.Itoa(s.Ports.Rcon)}}
 	}
 
 	cfg := &container.Config{
