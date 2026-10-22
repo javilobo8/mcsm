@@ -108,6 +108,46 @@ describe("Nodes → Import", () => {
     agent.close();
   });
 
+  it("a container that publishes RCON on the host is adopted with ports.rcon (it travels to the agent unchanged)", async () => {
+    const agent = await online();
+    const withRcon = candidate({ ports: [
+      { containerPort: 25565, proto: "tcp", hostIp: "", hostPort: 25565 },
+      { containerPort: 25575, proto: "tcp", hostIp: "", hostPort: 25575 },
+    ] });
+    const [c] = (await listCandidates(agent, [withRcon])).json();
+    expect(c.proposal.spec.ports).toEqual({ game: 25565, extra: [], rcon: 25575 });
+    expect(c.warnings.join(" ")).not.toMatch(/25575/);
+    const adopting = post(`/api/nodes/${nodeId}/import`, { containerId: ID, name: "Survival", slug: "survival", spec: c.proposal.spec });
+    await answerScan(agent, [withRcon]);
+    const adopt = await agent.waitFor("importAdopt");
+    if (adopt.body.case !== "importAdopt") throw new Error("expected importAdopt");
+    expect((decode(adopt.body.value.server!.specJson).ports as Record<string, unknown>).rcon).toBe(25575);
+    agent.ack(adopt.id);
+    const res = await adopting;
+    expect(res.statusCode).toBe(201);
+    expect(res.json().spec.ports.rcon).toBe(25575);
+    agent.close();
+  });
+
+  it("its RCON port is checked like any other: 409 if another server already uses it", async () => {
+    app.servers.create({
+      nodeId, name: "Other", slug: "other", desiredState: "stopped",
+      spec: specSchema.parse({ type: "PAPER", version: "1.21.4", memory: "2G", ports: { game: 25599, rcon: 25575 }, rconPassword: "abcdefgh" }),
+    });
+    const agent = await online();
+    const withRcon = candidate({ ports: [
+      { containerPort: 25565, proto: "tcp", hostIp: "", hostPort: 25565 },
+      { containerPort: 25575, proto: "tcp", hostIp: "", hostPort: 25575 },
+    ] });
+    const [c] = (await listCandidates(agent, [withRcon])).json();
+    const adopting = post(`/api/nodes/${nodeId}/import`, { containerId: ID, name: "Survival", spec: c.proposal.spec });
+    await answerScan(agent, [withRcon]);
+    const res = await adopting;
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/Port 25575 is already used/);
+    agent.close();
+  });
+
   it("with spec changes, hot adoption gives 409 and creates nothing or asks the agent for anything", async () => {
     const agent = await online();
     const [c] = (await listCandidates(agent)).json();
