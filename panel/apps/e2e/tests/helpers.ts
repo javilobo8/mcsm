@@ -71,7 +71,7 @@ export async function rconExec(host: string, port: number, password: string, com
     sock.on("connect", () => sock.write(packet(1, 3, password)));
     sock.on("error", (e) => done(e));
     sock.on("close", () => done(new Error("RCON connection closed before a reply")));
-    sock.on("data", (d) => {
+    sock.on("data", (d: Buffer) => {
       buf = Buffer.concat([buf, d]);
       while (buf.length >= 4 && buf.length >= 4 + buf.readInt32LE(0)) {
         const size = buf.readInt32LE(0);
