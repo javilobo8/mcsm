@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { NODE_A, SERVER, poll, shot, watchCsp, watchForbidden } from "./helpers";
+import { NODE_A, SERVER, defaultGateway, poll, rconExec, serverByName, shot, watchCsp, watchForbidden } from "./helpers";
 
 test("create a server, watch it start, use the console and see its charts", async ({ page, request }) => {
   const csp = watchCsp(page);
@@ -49,6 +49,64 @@ test("create a server, watch it start, use the console and see its charts", asyn
   await page.getByRole("tab", { name: "Configuration" }).click();
   await expect(page.getByTestId("config-form")).toBeVisible();
   await shot(page, "05-configuration");
+  expect(csp).toEqual([]);
+  expect(forbidden).toEqual([]);
+});
+
+type Dto = { id: string; specVersion: number; spec: { ports: { game: number; rcon?: number }; rconPassword: string }; observed?: { appliedVersion?: number; mc?: { online?: boolean } } };
+
+test("publish RCON: turn it on, see the port everywhere, log in over the published port, turn it off", async ({ page, request }) => {
+  const csp = watchCsp(page);
+  const forbidden = watchForbidden(page);
+  const s = await serverByName(request, SERVER);
+  const get = async () => (await (await request.get(`/api/servers/${s.id}`)).json()) as Dto;
+  const applied = (v: number) => poll(async () => { const d = await get(); return d.specVersion >= v && d.observed?.appliedVersion === d.specVersion && d.observed?.mc?.online ? d : null; }, "the recreated server running", 6 * 60_000);
+  expect((await get()).spec.ports.rcon).toBeUndefined();
+
+  await page.goto(`/servers/${s.id}`);
+  await page.getByRole("tab", { name: "Configuration" }).click();
+  await expect(page.getByTestId("config-form")).toBeVisible();
+  await page.getByRole("tab", { name: "Network" }).click();
+  const toggle = page.getByTestId("rcon-publish");
+  await expect(toggle).not.toBeChecked();
+  await toggle.check();
+  await expect(page.getByPlaceholder("Assigned when you apply")).toBeVisible();
+  await shot(page, "18-network-rcon");
+  await page.getByRole("button", { name: "Review and apply" }).click();
+  await expect(page.getByTestId("spec-diff")).toContainText("Published RCON port");
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+
+  const on = await applied((await get()).specVersion);
+  const port = on.spec.ports.rcon!;
+  expect(Number.isInteger(port)).toBe(true);
+  expect(port).toBeGreaterThanOrEqual(26600); // Settings range
+  expect(port).toBeLessThanOrEqual(26620);
+  expect(port).not.toBe(on.spec.ports.game);
+
+  // General: the address (without a configured Connection address it is just the port).
+  await page.getByRole("tab", { name: "General" }).click();
+  await expect(page.getByTestId("rcon-address")).toHaveText(new RegExp(`^(.+:)?${port}$`));
+  // Dashboard row.
+  await page.goto("/");
+  await expect(page.getByTestId("server-rcon-address").first()).toHaveText(new RegExp(`^RCON (.+:)?${port}$`));
+  await shot(page, "19-dashboard-rcon");
+
+  // Real RCON over the published port.
+  const host = process.env.E2E_RCON_HOST ?? (await defaultGateway());
+  expect(host, "an address of the node's host to reach the published port").toBeTruthy();
+  const out = await poll(() => rconExec(host!, port, on.spec.rconPassword, "list").catch(() => null), "RCON over the published port", 2 * 60_000, 3_000);
+  expect(out).toMatch(/There are 0 of a max of \d+ players online/);
+
+  // Back to the original state: not published.
+  await page.goto(`/servers/${s.id}`);
+  await page.getByRole("tab", { name: "Configuration" }).click();
+  await page.getByRole("tab", { name: "Network" }).click();
+  await page.getByTestId("rcon-publish").uncheck();
+  await page.getByRole("button", { name: "Review and apply" }).click();
+  await expect(page.getByTestId("spec-diff")).toContainText("not published");
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  const off = await applied(on.specVersion + 1);
+  expect(off.spec.ports.rcon).toBeUndefined();
   expect(csp).toEqual([]);
   expect(forbidden).toEqual([]);
 });
