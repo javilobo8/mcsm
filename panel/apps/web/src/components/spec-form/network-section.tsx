@@ -53,10 +53,6 @@ export function duplicateHostPorts(game: number | undefined, extra: readonly Ext
   return [...dups];
 }
 
-/**
- * "Network" section: game port (on the host), extra ports (Geyser, voice, web maps…) and the router (plan-8), which
- * `routerHidden` replaces with a text.
- */
 /** "Publish RCON": switch + port (empty = the panel assigns a free one when applying). */
 function RconPublish({ spec, onChange, onError }: { spec: EditableSpec; onChange: (s: EditableSpec) => void; onError: ReportError }) {
   const rcon = spec.ports.rcon;
@@ -77,7 +73,7 @@ function RconPublish({ spec, onChange, onError }: { spec: EditableSpec; onChange
         <div className="max-w-xs">
           <NumberField id="sf-rcon-port-input" label="RCON port (host)" value={typeof rcon === "number" ? rcon : undefined} min={1} max={65535}
             onError={onError} placeholder="Assigned when you apply"
-            hint="Leave empty to get a free port from the node's range when you apply."
+            hint="Empty = keep the current port or get a free one from the range."
             onChange={(p) => onChange(withRconPort(spec, p))} />
         </div>
       )}
@@ -89,6 +85,10 @@ function RconPublish({ spec, onChange, onError }: { spec: EditableSpec; onChange
   );
 }
 
+/**
+ * "Network" section: game port (on the host), extra ports (Geyser, voice, web maps…) and the router (plan-8), which
+ * `routerHidden` replaces with a text.
+ */
 export function NetworkSection({ spec, onChange, onError, routerHidden }: {
   spec: EditableSpec; onChange: (s: EditableSpec) => void; onError: ReportError; routerHidden?: string;
 }) {

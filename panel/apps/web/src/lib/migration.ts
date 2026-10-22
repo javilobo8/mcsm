@@ -53,7 +53,6 @@ export function portHint(p: MigrationProposalDto | undefined, typed: number | un
     : `Proposed: ${p.port}, the same as now. Enter another to change it.`;
 }
 
-/** Why it cannot be migrated now (null = it can). */
 /** Line about the RCON port on the target, or null when the server does not publish RCON. */
 export function rconProposalText(p: MigrationProposalDto | undefined): string | null {
   if (!p || p.rconPort === null) return null;
@@ -62,6 +61,7 @@ export function rconProposalText(p: MigrationProposalDto | undefined): string | 
     : `RCON port on the target: ${p.rconPort}, the same as now.`;
 }
 
+/** Why it cannot be migrated now (null = it can). */
 export function migrateBlockedReason(o: {
   sourceOnline: boolean | undefined; active: JobDto | undefined; migration: MigrationDto | null | undefined;
   target: TargetOption | undefined; portInvalid: boolean; proposalError: string | null;
