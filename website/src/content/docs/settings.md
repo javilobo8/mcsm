@@ -29,7 +29,7 @@ If the proxy rewrites `Host`, logging in through it gives a 403. Do one of these
 
 ## Game ports
 
-The range the panel picks ports from. It is only used for new servers without a port.
+The range the panel picks ports from. It is used for new servers without a port, for RCON ports set to automatic and for ports reassigned when a server is migrated. The range is the same for all nodes.
 
 ## Connection address
 
@@ -61,9 +61,9 @@ The **Build / loader** field (Paper, Folia, Purpur, Fabric, Quilt, Forge, NeoFor
 | Machine | Open (inbound) | What for |
 |---|---|---|
 | Panel | `8080/tcp` from the LAN | The web UI and the agents on the other machines (HTTP and WebSocket). Don't open it to the Internet. |
-| Each node | Each server's game port (`tcp`; the panel hands them out from 25565 up to 25600), its extra ports (for example Geyser's `19132/udp`) and the router's port if you enable it | Players |
+| Each node | Each server's game port (`tcp`; the panel hands them out from 25565 up to 25600), its extra ports (for example Geyser's `19132/udp`), the router's port if you enable it, and the RCON port of the servers that publish it | Players and RCON clients |
 
-- The agent listens on no port: it only connects **out** to `PANEL_URL` (the panel's 8080). RCON (25575) goes over the `mcsm` Docker network and is not published.
+- The agent listens on no port: it only connects **out** to `PANEL_URL` (the panel's 8080). RCON (25575) goes over the `mcsm` Docker network and is not published, unless a server turns on **Publish RCON** (Configuration → Network): then it gets its own host port. RCON is not encrypted: don't forward it to the Internet unless you accept that.
 - Nodes need Internet access: Docker Hub images and itzg downloads (Paper, mods, modpacks).
 - To play from outside your home, forward the server's port (or mc-router's) on your home router to the node's IP. **Never 8080.**
 

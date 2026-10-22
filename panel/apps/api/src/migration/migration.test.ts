@@ -30,7 +30,8 @@ afterEach(async () => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-const spec = (game: number) => specSchema.parse({ type: "PAPER", version: "1.21.4", memory: "2G", ports: { game }, rconPassword: "abcdefgh" });
+const spec = (game: number, rcon?: number) =>
+  specSchema.parse({ type: "PAPER", version: "1.21.4", memory: "2G", ports: { game, ...(rcon === undefined ? {} : { rcon }) }, rconPassword: "abcdefgh" });
 const NAME = "survival-20261012T040000.000Z-1.tar.zst";
 const stagingFiles = (): string[] => { try { return readdirSync(join(dataDir, "staging")); } catch { return []; } };
 const begin = (serverId: string, body: object) => app.inject({ method: "POST", url: `/api/servers/${serverId}/migration`, headers: { cookie }, payload: body });
@@ -40,12 +41,13 @@ async function finished(jobId: string): Promise<JobDto> {
   return app.jobs.get(jobId)!;
 }
 
-async function setup(opts: { desired?: "running" | "stopped"; busyPorts?: number[]; spec?: Spec } = {}) {
+async function setup(opts: { desired?: "running" | "stopped"; busyPorts?: number[]; busySpecs?: Spec[]; spec?: Spec } = {}) {
   const a = await FakeNode.enroll(app, url, cookie, "node-a");
   const b = await FakeNode.enroll(app, url, cookie, "node-b");
   const s = app.servers.create({ nodeId: a.id, name: "Survival", slug: "survival", spec: opts.spec ?? spec(25565), desiredState: opts.desired ?? "running" });
-  for (const [i, port] of (opts.busyPorts ?? []).entries()) {
-    app.servers.create({ nodeId: b.id, name: `Ocupa ${i}`, slug: `ocupa-${i}`, spec: spec(port), desiredState: "stopped" });
+  const busy = [...(opts.busyPorts ?? []).map((port) => spec(port)), ...(opts.busySpecs ?? [])];
+  for (const [i, sp] of busy.entries()) {
+    app.servers.create({ nodeId: b.id, name: `Ocupa ${i}`, slug: `ocupa-${i}`, spec: sp, desiredState: "stopped" });
   }
   await a.connect({ [s.id]: 1n });
   await b.connect(Object.fromEntries(app.servers.list(b.id).map((r) => [r.id, 1n])));
@@ -145,6 +147,32 @@ describe("migration", () => {
     expect((await power).statusCode).toBe(200);
   });
 
+  it("a published RCON port taken on the target is reassigned: proposal, spec sent and completion message", async () => {
+    const { a, b, s } = await setup({ spec: spec(25565, 25570), busySpecs: [spec(25566, 25570)] });
+    const prop = await app.inject({ method: "GET", url: `/api/servers/${s.id}/migration/proposal?targetNodeId=${b.id}`, headers: { cookie } });
+    expect(prop.json()).toMatchObject({ port: 25565, portChanged: false, rconPort: 25567, rconChanged: true });
+    const payload = randomBytes(1000);
+    const job = (await begin(s.id, { targetNodeId: b.id })).json() as JobDto;
+    await sourceBackup(a, s.id, payload);
+    await sourcePush(a, payload);
+    await targetReceive(b, s.id, payload);
+    const apply = await targetApplyAndStart(b, s.id, 25565);
+    b.ack(apply);
+    b.observed(s.id, { state: "running", health: "healthy", online: true, appliedVersion: 2n });
+    const confirm = await b.next("migrateConfirm");
+    b.ack(confirm);
+    a.ack(await a.next("migrateRetire"));
+    const done = await finished(job.id);
+    expect(done.message).toMatch(/port 25565, RCON port 25567/);
+    expect((JSON.parse(app.servers.get(s.id)!.spec) as Spec).ports.rcon).toBe(25567);
+  });
+
+  it("a proposal without RCON says so (rconPort null)", async () => {
+    const { b, s } = await setup();
+    const prop = await app.inject({ method: "GET", url: `/api/servers/${s.id}/migration/proposal?targetNodeId=${b.id}`, headers: { cookie } });
+    expect(prop.json()).toMatchObject({ rconPort: null, rconChanged: false });
+  });
+
   it("if the target does not start: the target copy is removed and ONLY then does the source start again", async () => {
     const { a, b, s } = await setup();
     const payload = randomBytes(100_000);
@@ -189,7 +217,7 @@ describe("migration", () => {
   it("stopped and with its port taken on the target: new port, checked by starting it and stopped again", async () => {
     const { a, b, s } = await setup({ desired: "stopped", busyPorts: [25565] });
     const proposal = await app.inject({ method: "GET", url: `/api/servers/${s.id}/migration/proposal?targetNodeId=${b.id}`, headers: { cookie } });
-    expect(proposal.json()).toEqual({ targetNodeId: b.id, slug: "survival", port: 25566, currentPort: 25565, portChanged: true });
+    expect(proposal.json()).toEqual({ targetNodeId: b.id, slug: "survival", port: 25566, currentPort: 25565, portChanged: true, rconPort: null, rconChanged: false });
     const payload = randomBytes(50_000);
     const job = (await begin(s.id, { targetNodeId: b.id, deleteSource: true })).json() as JobDto;
     await sourceBackup(a, s.id, payload);

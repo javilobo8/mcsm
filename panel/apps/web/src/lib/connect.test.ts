@@ -31,3 +31,23 @@ describe("server connection address", () => {
     expect(serverAddress(routed("survival.lan", false), { host: "mc.example.com", port: 55567 }, 25570)).toBe("mc.example.com:55567");
   });
 });
+
+import { rconAddress } from "./connect";
+
+describe("rconAddress", () => {
+  const withRcon = (rcon?: number) => ({ spec: { ports: { game: 25566, extra: [], ...(rcon ? { rcon } : {}) } } }) as unknown as Pick<ServerDto, "spec">;
+  it("is null when RCON is not published", () => {
+    expect(rconAddress(withRcon(), { host: "mc.example.com", port: null })).toBeNull();
+  });
+  it("uses the connection address host and ignores its external game port", () => {
+    expect(rconAddress(withRcon(25580), { host: "mc.example.com", port: 55567 })).toBe("mc.example.com:25580");
+  });
+  it("ignores the router hostname", () => {
+    const s = { spec: { ports: { game: 25566, extra: [], rcon: 25580 }, router: { enabled: true, hostname: "survival.example.com" } } } as unknown as Pick<ServerDto, "spec">;
+    expect(rconAddress(s, { host: "mc.example.com", port: null })).toBe("mc.example.com:25580");
+  });
+  it("without a configured host it is just the port", () => {
+    expect(rconAddress(withRcon(25580), { host: "", port: null })).toBe("25580");
+    expect(rconAddress(withRcon(25580), undefined)).toBe("25580");
+  });
+});

@@ -1,6 +1,6 @@
 import { create } from "@bufbuild/protobuf";
 import { DesiredState, ServerSpecSchema, type ServerSpec } from "@mcsm/proto";
-import { usesCurseForge, type ImportedFrom, type Spec } from "@mcsm/shared";
+import { specHostPorts, usesCurseForge, type ImportedFrom, type Spec } from "@mcsm/shared";
 import type { Db } from "../db/db.js";
 import { newId } from "../lib/ids.js";
 import { nowIso } from "../lib/time.js";
@@ -131,8 +131,7 @@ export class ServersRepo {
     const used = new Set<number>();
     for (const r of rows) {
       const s = JSON.parse(r.spec) as Spec;
-      used.add(s.ports.game);
-      for (const e of s.ports.extra) used.add(e.host);
+      for (const p of specHostPorts(s)) used.add(p);
     }
     return used;
   }

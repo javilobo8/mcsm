@@ -42,13 +42,79 @@ describe("proposeImport", () => {
     expect(p.spec).toMatchObject({
       imageTag: "java21", type: "PAPER", version: "1.21.4", memory: "4G", restartPolicy: "unless-stopped",
       env: { MOTD: "Hola", USE_AIKAR_FLAGS: "true" }, resources: { cpus: 2, memLimit: "5G" },
-      ports: { game: 25570, extra: [{ host: 19132, container: 19132, proto: "udp", label: "" }] },
+      ports: { game: 25570, extra: [{ host: 19132, container: 19132, proto: "udp", label: "" }], rcon: 25575 },
     });
     expect(p.spec.env).not.toHaveProperty("RCON_PASSWORD");
     expect(p.spec.env).not.toHaveProperty("EULA");
     expect(p.warnings.join(" ")).toMatch(/Compose/);
     expect(p.warnings.join(" ")).toMatch(/DATA_ROOT/);
-    expect(p.warnings.join(" ")).toMatch(/25575/);
+    expect(p.warnings.join(" ")).not.toMatch(/25575/); // published RCON is kept, no warning any more
+  });
+
+  describe("published RCON (25575/tcp on the host)", () => {
+    const game = { containerPort: 25565, proto: "tcp", hostIp: "", hostPort: 25570 } as const;
+    const rcon = (hostPort: number, proto: "tcp" | "udp" = "tcp", hostIp = "") => ({ containerPort: 25575, proto, hostIp, hostPort });
+    const warnings = (p: { warnings: string[] }) => p.warnings.join(" | ");
+
+    it("becomes ports.rcon with that host port and no warning (an IPv4 + IPv6 pair counts once)", () => {
+      const p = proposeImport(cand({ ports: [game, rcon(25580, "tcp", "0.0.0.0"), rcon(25580, "tcp", "::")] }), ctx());
+      expect(p.spec.ports).toEqual({ game: 25570, extra: [], rcon: 25580 });
+      expect(p.specError).toBeNull();
+      expect(warnings(p)).not.toMatch(/RCON \(25575\)|25575/);
+      expect(warnings(p)).not.toMatch(/will not be published/);
+    });
+    it("is not carried (with a warning) when it listens on loopback only", () => {
+      const p = proposeImport(cand({ ports: [game, rcon(25580, "tcp", "127.0.0.1")] }), ctx());
+      expect(p.spec.ports).not.toHaveProperty("rcon");
+      expect(warnings(p)).toMatch(/only on 127\.0\.0\.1.*will not be published/);
+    });
+    it.each([
+      ["ENABLE_RCON=false", { ENABLE_RCON: "false" }, /RCON disabled.*will not be published/],
+      ["RCON_PORT other than 25575", { RCON_PORT: "25580" }, /RCON_PORT=25580.*will not be published/],
+      ["a short password", { RCON_PASSWORD: "corta" }, /RCON_PASSWORD.*will not be published/],
+    ])("is not carried (with a warning) with %s", (_n, e, re) => {
+      const p = proposeImport(cand({ env: env(e), ports: [game, rcon(25580)] }), ctx());
+      expect(p.spec.ports).not.toHaveProperty("rcon");
+      expect(warnings(p)).toMatch(re);
+    });
+    it("is not carried when RCON_PASSWORD is missing", () => {
+      const { RCON_PASSWORD: _omit, ...rest } = env({});
+      const p = proposeImport(cand({ env: rest, ports: [game, rcon(25580)] }), ctx());
+      expect(p.spec.ports).not.toHaveProperty("rcon");
+      expect(warnings(p)).toMatch(/will not be published/);
+    });
+    it("carried on all interfaces with a good password, warning that the container's own password is kept", () => {
+      const p = proposeImport(cand({ ports: [game, rcon(25580)] }), ctx());
+      expect(p.spec.ports.rcon).toBe(25580);
+      expect(warnings(p)).toMatch(/container's own password/);
+    });
+    it("without the publication there is no ports.rcon", () => {
+      expect(proposeImport(cand({ ports: [game] }), ctx()).spec.ports).not.toHaveProperty("rcon");
+    });
+    it("25575/udp is dropped with a warning", () => {
+      const p = proposeImport(cand({ ports: [game, rcon(25575, "udp")] }), ctx());
+      expect(p.spec.ports).not.toHaveProperty("rcon");
+      expect(warnings(p)).toMatch(/25575\/udp.*not kept/);
+    });
+    it("an ephemeral host port (0) is dropped with a warning", () => {
+      const p = proposeImport(cand({ ports: [game, rcon(0)] }), ctx());
+      expect(p.spec.ports).not.toHaveProperty("rcon");
+      expect(warnings(p)).toMatch(/random host port.*not kept/);
+    });
+    it("several 25575/tcp publications: the first (lowest host port) wins and the rest are warned about", () => {
+      const p = proposeImport(cand({ ports: [game, rcon(25590), rcon(25580)] }), ctx());
+      expect(p.spec.ports.rcon).toBe(25580);
+      expect(warnings(p)).toMatch(/25590.*not kept/);
+    });
+    it("a host port that repeats the game or an extra port is dropped with a warning (the panel allows one publication per port)", () => {
+      const a = proposeImport(cand({ ports: [game, rcon(25570)] }), ctx());
+      expect(a.spec.ports).not.toHaveProperty("rcon");
+      expect(a.specError).toBeNull();
+      expect(warnings(a)).toMatch(/25570.*not kept/);
+      const b = proposeImport(cand({ ports: [game, { containerPort: 8100, proto: "tcp", hostIp: "", hostPort: 8100 }, rcon(8100)] }), ctx());
+      expect(b.spec.ports).not.toHaveProperty("rcon");
+      expect(b.specError).toBeNull();
+    });
   });
 
   it("plan-10: the type's build variable becomes build (same environment); if invalid, it stays in env", () => {

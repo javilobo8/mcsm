@@ -20,6 +20,10 @@ describe("new server wizard", () => {
     expect((r.body.spec as { ports: object }).ports).not.toHaveProperty("game");
     expect(createRequest({ spec }, { nodeId: "n", name: "F", port: 25599, start: true }).body.spec).toMatchObject({ ports: { game: 25599 } });
   });
+  it("from scratch carries a published RCON port through (ports are replaced whole)", () => {
+    const spec = { ...defaultSpecInput(), ports: { extra: [], rcon: "auto" as const } };
+    expect((createRequest({ spec }, { nodeId: "n", name: "F", port: 25599, start: true }).body.spec as { ports: unknown }).ports).toEqual({ game: 25599, extra: [], rcon: "auto" });
+  });
   it("summarizes the spec", () => {
     const t = templateSpecSchema.parse({ type: "MODRINTH", modpack: { platform: "MODRINTH", slugOrUrl: "cobblemon-fabric" }, memory: "6G", whitelist: { enabled: true, players: ["Lobo"] }, mods: { modrinthProjects: ["a", "b"] } });
     expect(summarizeSpec(t)).toEqual(expect.arrayContaining([

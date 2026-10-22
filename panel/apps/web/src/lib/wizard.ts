@@ -13,7 +13,9 @@ export function createRequest(source: { templateId: string } | { spec: EditableS
   if ("templateId" in source) {
     return { url: apiPath`/api/templates/${source.templateId}/servers`, body: { nodeId: t.nodeId, name: t.name.trim(), desiredState, ...(t.port ? { port: t.port } : {}) } };
   }
-  const ports = t.port ? { game: t.port, extra: source.spec.ports.extra } : { extra: source.spec.ports.extra };
+  // PATCH/POST replace `ports` whole: carry `rcon` through or it would be dropped.
+  const { rcon } = source.spec.ports;
+  const ports = { ...(t.port ? { game: t.port } : {}), extra: source.spec.ports.extra, ...(rcon !== undefined ? { rcon } : {}) };
   return { url: "/api/servers", body: { nodeId: t.nodeId, name: t.name.trim(), desiredState, spec: { ...source.spec, ports } } };
 }
 

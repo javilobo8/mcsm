@@ -110,9 +110,14 @@ export class ImportService {
         if (other && dataPathsOverlap(other, p.dataPath)) throw new HttpError(409, `Server “${r.name}” already uses that data folder (${other})`);
       }
     }
+    const game = parsed.data.ports.game ?? p.spec.ports.game;
+    // "auto" (the browser asks for a free RCON port) is resolved like on create; a number is kept; absent = not published.
+    const rcon = parsed.data.ports.rcon === "auto"
+      ? this.app.serversService.allocatePort(nodeId, new Set([game ?? 0, ...parsed.data.ports.extra.map((e) => e.host)]))
+      : parsed.data.ports.rcon;
     const full = specSchema.safeParse({
       ...parsed.data,
-      ports: { game: parsed.data.ports.game ?? p.spec.ports.game, extra: parsed.data.ports.extra },
+      ports: { game, extra: parsed.data.ports.extra, ...(rcon === undefined ? {} : { rcon }) },
       rconPassword: p.rconPassword ?? randomToken(),
       ...(p.dataPath ? { dataPath: p.dataPath } : {}),
     });

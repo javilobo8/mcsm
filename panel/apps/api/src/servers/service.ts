@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { PowerActionType } from "@mcsm/proto";
 import {
-  canonicalJson, dataPathPatchError, formatZodError, mergeSpecPatch, specInputSchema, specPatchNullError, specSizeError, usesCurseForge, specSchema, slugify,
+  canonicalJson, dataPathPatchError, formatZodError, mergeSpecPatch, specInputSchema, specPatchNullError, specSizeError, usesCurseForge, specSchema, specHostPorts, slugify,
   type ServerCreateInput, type Spec, type SpecInput, type SpecPatch, type PowerActionName,
 } from "@mcsm/shared";
 import type { z } from "zod";
@@ -64,10 +64,9 @@ export class ServersService {
     for (const r of this.app.servers.list(nodeId)) {
       if (r.id === selfId) continue;
       const s = JSON.parse(r.spec) as Spec;
-      used.add(s.ports.game);
-      for (const e of s.ports.extra) used.add(e.host);
+      for (const p of specHostPorts(s)) used.add(p);
     }
-    const mine = [spec.ports.game, ...spec.ports.extra.map((e) => e.host)];
+    const mine = specHostPorts(spec);
     for (const p of mine) if (used.has(p)) throw new HttpError(409, `Port ${p} is already used by another server on this node`);
     for (const p of mine) if (reserved.has(p)) throw new HttpError(409, `Port ${p} is reserved by a migration in progress towards this node`);
     if (new Set(mine).size !== mine.length) throw new HttpError(400, "The spec repeats a port");
@@ -77,10 +76,18 @@ export class ServersService {
   }
 
   private completeSpec(nodeId: string, input: SpecInput, previous?: Spec): Spec {
-    const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId, new Set(input.ports.extra.map((e) => e.host)));
+    const extraHosts = input.ports.extra.map((e) => e.host);
+    const explicitRcon = typeof input.ports.rcon === "number" ? [input.ports.rcon] : [];
+    const game = input.ports.game ?? previous?.ports.game ?? this.allocatePort(nodeId, new Set([...extraHosts, ...explicitRcon]));
+    // "auto" is resolved after the game port (which may have just been allocated) so both differ; a server that already
+    // publishes keeps its port. Absent = not published.
+    const kept = previous?.ports.rcon;
+    const rcon = input.ports.rcon !== "auto" ? input.ports.rcon
+      : kept !== undefined && kept !== game && !extraHosts.includes(kept) ? kept
+        : this.allocatePort(nodeId, new Set([game, ...extraHosts]));
     const candidate = {
       ...input,
-      ports: { game, extra: input.ports.extra },
+      ports: rcon === undefined ? { game, extra: input.ports.extra } : { game, extra: input.ports.extra, rcon },
       rconPassword: previous?.rconPassword ?? randomToken(),
     };
     const parsed = specSchema.safeParse(candidate);

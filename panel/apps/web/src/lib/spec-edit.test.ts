@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { defaultSpecInput, templateSpecSchema } from "@mcsm/shared";
 import {
   buildSpecPatch, editableFromTemplate, editableSpec, kvToText, listToText, parseKv, parseList, replaceOtherProperties,
-  setProperty, splitProperties, validateSpec, withType, withVersion, parseLines, validateListItems, typeChangeNotice, type EditableSpec,
+  setProperty, splitProperties, validateSpec, withType, withVersion, parseLines, validateListItems, typeChangeNotice, withRconPublished, withRconPort, rconPortError, type EditableSpec,
 } from "./spec-edit";
 import { PROPERTY_DEFS, typeKind } from "./spec-catalog";
 
@@ -240,5 +240,32 @@ describe("withVersion (plan 10)", () => {
   it("withType clears the build only when the type changes", () => {
     expect(withType(base, "FABRIC").build).toBe("");
     expect(withType(base, "PAPER").build).toBe("178");
+  });
+});
+
+describe("publish RCON", () => {
+  const base = (): EditableSpec => ({ ...defaultSpecInput(), ports: { game: 25565, extra: [{ host: 8100, container: 8100, proto: "tcp", label: "" }] } });
+  it("switching on without a port asks the panel for one; off removes it", () => {
+    const on = withRconPublished(base(), true);
+    expect(on.ports.rcon).toBe("auto");
+    expect(withRconPublished(on, true, 25580).ports.rcon).toBe(25580);
+    const off = withRconPublished(withRconPort(base(), 25580), false);
+    expect("rcon" in off.ports).toBe(false);
+    expect(off.ports.extra).toHaveLength(1);
+  });
+  it("an empty port field means auto", () => {
+    expect(withRconPort(base(), 25581).ports.rcon).toBe(25581);
+    expect(withRconPort(base(), undefined).ports.rcon).toBe("auto");
+  });
+  it("turning it on is a ports patch; unchanged is not", () => {
+    const b = base();
+    expect(buildSpecPatch(b, withRconPublished(b, true))).toEqual({ ports: { ...b.ports, rcon: "auto" } });
+    expect(buildSpecPatch(b, withRconPublished(b, false))).toEqual({});
+  });
+  it("surfaces the schema error for a collision", () => {
+    expect(rconPortError(withRconPort(base(), 25565))).toMatch(/Published RCON port: .*RCON port cannot be the same/);
+    expect(rconPortError(withRconPort(base(), 8100))).toMatch(/cannot be the same/);
+    expect(rconPortError(withRconPort(base(), 25580))).toBeNull();
+    expect(rconPortError(withRconPort(base(), undefined))).toBeNull();
   });
 });

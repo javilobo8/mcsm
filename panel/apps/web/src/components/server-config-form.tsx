@@ -12,6 +12,8 @@ import { SaveTemplateDialog } from "@/components/save-template-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useTabGuard } from "@/components/guarded-tabs";
 import { api, apiPath, ApiError, type ServerDto } from "@/lib/api";
+import { rconAddress } from "@/lib/connect";
+import { useSettings } from "@/hooks/use-settings";
 import { editableSpec, validateSpec, type EditableSpec } from "@/lib/spec-edit";
 import { configLeaveWarning, isStale, planApply, type PendingApply } from "@/lib/config-apply";
 import { templateSaveBlock } from "@/lib/template-edit";
@@ -75,6 +77,9 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
   const err = localErr ?? (save.error instanceof ApiError ? save.error.message : save.error ? "Unexpected error" : null);
   const running = server.desiredState === "running";
 
+  const settings = useSettings();
+  // Shows the APPLIED address (what the server publishes now), not unsaved form edits.
+  const rcon = rconAddress(server, settings.data?.connectAddress);
   const general = (
     <div className="flex max-w-xl flex-col gap-4">
       <Field id="cf-name" label="Name"><Input id="cf-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} /></Field>
@@ -86,6 +91,12 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
           <Button type="button" size="sm" variant="ghost" onClick={() => setShowRcon((s) => !s)} aria-pressed={showRcon}>
             {showRcon ? <EyeOff className="size-4" /> : <Eye className="size-4" />}{showRcon ? "Hide" : "Reveal"}
           </Button>
+        </div>
+      )}
+      {rcon && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>RCON address:</span>
+          <code className="select-all rounded bg-muted px-1.5 py-0.5" data-testid="rcon-address">{rcon}</code>
         </div>
       )}
       <div><SaveTemplateDialog server={server} /></div>

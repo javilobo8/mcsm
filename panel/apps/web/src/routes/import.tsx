@@ -76,7 +76,7 @@ function CandidateCard({ c, onReview }: { c: ImportCandidateDto; onReview: () =>
           <Button size="sm" disabled={c.blockers.length > 0} onClick={onReview}>Review and import</Button>
         </div>
         <div className="text-sm text-muted-foreground">
-          {p.spec.type} {p.spec.version} · {p.spec.memory} · port {p.spec.ports.game ?? "—"} · data <code>{p.dataPath ?? `DATA_ROOT/${p.slug}/data`}</code>
+          {p.spec.type} {p.spec.version} · {p.spec.memory} · port {p.spec.ports.game ?? "—"}{p.spec.ports.rcon !== undefined && p.spec.ports.rcon !== "auto" ? ` · RCON port ${p.spec.ports.rcon}` : ""} · data <code>{p.dataPath ?? `DATA_ROOT/${p.slug}/data`}</code>
         </div>
         {c.blockers.map((b) => <p key={b} className="flex gap-2 text-sm text-bad"><Ban className="mt-0.5 size-4 shrink-0" />{b}</p>)}
         {c.warnings.map((w) => <p key={w} className="flex gap-2 text-sm text-warn"><AlertTriangle className="mt-0.5 size-4 shrink-0" />{w}</p>)}

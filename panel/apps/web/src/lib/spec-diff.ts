@@ -6,6 +6,10 @@ const MANAGED = "managed by the panel";
 // Optional sections: absent = the panel does not manage them; empty is a real change.
 const OPTIONAL_LABELS = new Set(["Operators", "Whitelist", "Mods (section)", "Plugins (section)"]);
 
+const RCON_LABEL = "Published RCON port";
+const RCON_NONE = "not published";
+const RCON_AUTO = "assigned on apply";
+
 const TOP_LABELS: Record<string, string> = {
   type: "Type", version: "Minecraft version", build: "Build / loader", imageTag: "Java (image)", memory: "JVM memory",
   restartPolicy: "Restart policy", modpack: "Modpack", whitelist: "Whitelist", ops: "Operators",
@@ -13,7 +17,7 @@ const TOP_LABELS: Record<string, string> = {
 };
 const NESTED_LABELS: Record<string, string> = {
   "resources.cpus": "CPU limit", "resources.memLimit": "Container RAM limit",
-  "ports.game": "Game port", "ports.extra": "Extra ports",
+  "ports.game": "Game port", "ports.rcon": "Published RCON port", "ports.extra": "Extra ports",
   "mods.modrinthProjects": "Modrinth mods", "mods.curseforgeFiles": "CurseForge mods", "mods.urls": "Mods by URL",
   "plugins.modrinthProjects": "Modrinth plugins", "plugins.spigetResources": "Spiget plugins", "plugins.urls": "Plugins by URL",
 };
@@ -70,7 +74,7 @@ function flatten(spec: Obj): Map<string, string> {
       if (k === "mods" || k === "plugins") out.set(TOP_LABELS[k]!, MANAGED); // plan-9: the section itself (absent ≠ present)
       for (const [sk, sv] of Object.entries(v)) {
         const path = `${k}.${sk}`;
-        out.set(NESTED_LABELS[path] ?? path, path === "ports.extra" ? showPorts(sv) : show(sv));
+        out.set(NESTED_LABELS[path] ?? path, path === "ports.extra" ? showPorts(sv) : path === "ports.rcon" ? (sv === "auto" ? RCON_AUTO : show(sv)) : show(sv));
       }
     } else out.set(TOP_LABELS[k] ?? k, show(v));
   }
@@ -84,7 +88,7 @@ export function diffSpecs(before: Obj, after: Obj): DiffLine[] {
   const labels = [...new Set([...a.keys(), ...b.keys()])];
   const lines: DiffLine[] = [];
   for (const label of labels) {
-    const missing = OPTIONAL_LABELS.has(label) ? UNMANAGED : NONE;
+    const missing = OPTIONAL_LABELS.has(label) ? UNMANAGED : label === RCON_LABEL ? RCON_NONE : NONE;
     const x = a.get(label) ?? missing;
     const y = b.get(label) ?? missing;
     if (x !== y) lines.push({ label, before: x, after: y });

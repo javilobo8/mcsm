@@ -17,9 +17,12 @@ export type ApplyPlan = { ok: true; pending: PendingApply } | { ok: false; error
 export function planApply(baseName: string, baseSpec: EditableSpec, name: string, edited: EditableSpec): ApplyPlan {
   const trimmed = name.trim();
   if (!trimmed) return { ok: false, error: "The name cannot be empty" };
-  // Empty game port when editing = the panel keeps the current one (completeSpec): neither “N → —” nor a ports PATCH.
-  const spec = edited.ports.game === undefined && baseSpec.ports.game !== undefined
-    ? { ...edited, ports: { ...edited.ports, game: baseSpec.ports.game } }
+  // Empty game port (or RCON port left on "auto") when editing = the panel keeps the current one (completeSpec): neither
+  // “N → —” / “N → assigned on apply” nor a ports PATCH.
+  const keepGame = edited.ports.game === undefined && baseSpec.ports.game !== undefined;
+  const keepRcon = edited.ports.rcon === "auto" && typeof baseSpec.ports.rcon === "number";
+  const spec = keepGame || keepRcon
+    ? { ...edited, ports: { ...edited.ports, ...(keepGame ? { game: baseSpec.ports.game } : {}), ...(keepRcon ? { rcon: baseSpec.ports.rcon } : {}) } }
     : edited;
   const patch = buildSpecPatch(baseSpec, spec);
   const changes = Object.keys(patch).length > 0 ? diffSpecs(baseSpec, mergeSpecPatch(baseSpec, patch)) : [];

@@ -144,6 +144,8 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   let game: number | undefined;
   const extra: { host: number; container: number; proto: "tcp" | "udp"; label: string }[] = [];
   const seen = new Set<string>();
+  const rconHosts = new Set<number>(); // host ports that publish 25575/tcp on all interfaces (IPv4 and IPv6 entries count once)
+  const rconLoopback = new Map<number, string>(); // fixed host ports that publish 25575/tcp only on a specific address
   for (const p of c.ports) {
     if (p.containerPort === GAME_PORT && p.proto === "tcp") {
       if (p.hostPort === 0) continue;
@@ -152,7 +154,13 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
       continue;
     }
     if (p.containerPort === RCON_PORT) {
-      warn("It publishes RCON (25575) on the host: on recreation it will no longer be published (the panel uses RCON over the internal network)");
+      // Only 25575/tcp on a fixed host port can be kept (ports.rcon); anything else is dropped.
+      if (p.proto === "tcp" && p.hostPort !== 0) {
+        if (anyIp(p.hostIp)) rconHosts.add(p.hostPort);
+        else rconLoopback.set(p.hostPort, p.hostIp);
+      } else warn(p.proto === "tcp"
+        ? "It publishes RCON (25575/tcp) on a random host port: it is not kept on recreation (publish it on a fixed host port to keep it)"
+        : `It publishes 25575/${p.proto} on the host: it is not kept on recreation (only RCON over TCP is published by the panel)`);
       continue;
     }
     if (p.hostPort === 0 || (p.proto !== "tcp" && p.proto !== "udp")) continue;
@@ -172,6 +180,16 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
     warn(`The publication ${e.host}:${e.container}/${e.proto} repeats host port ${e.host}: the panel only allows one publication per port and this one will not be kept on recreation`);
     return false;
   });
+  for (const [h, ip] of rconLoopback) {
+    if (!rconHosts.has(h)) warn(`It publishes RCON only on ${ip}: it will not be published; turn on Publish RCON in the review if you want it`);
+  }
+  // RCON: the first (lowest) host port is kept as ports.rcon; the rest and a clash with another publication are warned about.
+  let rconHost: number | undefined;
+  for (const h of [...rconHosts].sort((a, b) => a - b)) {
+    if (rconHost !== undefined) warn(`The RCON publication ${h}:25575 is not kept on recreation: the panel publishes one RCON port per server (${rconHost})`);
+    else if (hostPorts.has(h)) warn(`The RCON publication ${h}:25575 repeats host port ${h}: the panel only allows one publication per port and this one is not kept on recreation`);
+    else rconHost = h;
+  }
   if (game === undefined) blockers.push("It does not publish port 25565/tcp on a fixed host port (ports: \"<port>:25565\"): that is how the panel manages the game port");
   const serverPort = take("SERVER_PORT");
   if (serverPort !== undefined && serverPort.trim() !== String(GAME_PORT)) {
@@ -194,6 +212,20 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
   if (!rconOk || rconOff || !rconPortOk) {
     const why = rconOff ? "the container has RCON disabled" : !rconPortOk ? `it uses RCON_PORT=${rconPort}` : "it does not set RCON_PASSWORD (or it has fewer than 8 characters)";
     warn(`The command console (RCON) will not work until the first “Review and apply”: ${why}. On recreation the panel enables RCON with ${rconOk ? "the same password" : "a new password"}`);
+  }
+  if (rconHost !== undefined) {
+    if (rconOff) {
+      warn("It publishes RCON but the container has RCON disabled: it will not be published; turn on Publish RCON in the review if you want it");
+      rconHost = undefined;
+    } else if (!rconPortOk) {
+      warn(`It publishes RCON but uses RCON_PORT=${rconPort}: it will not be published; turn on Publish RCON in the review if you want it`);
+      rconHost = undefined;
+    } else if (!rconOk) {
+      warn("It publishes RCON but does not set a usable RCON_PASSWORD: it will not be published; turn on Publish RCON in the review if you want it (the panel generates a password)");
+      rconHost = undefined;
+    } else {
+      warn("RCON is published with the container's own password: it is kept as is and may be weak (the panel does not change it): check it before relying on the published port");
+    }
   }
   const cfKey = take("CF_API_KEY");
   let curseforgeApiKey: string | null = null;
@@ -382,7 +414,7 @@ export function proposeImport(c: ImportCandidate, ctx: ProposeContext): ImportPr
 
   const raw = {
     imageTag: imageTag(c.image, warn), type, version, build, memory, properties, env: passEnv,
-    resources: { cpus, memLimit }, restartPolicy, ports: { ...(game !== undefined ? { game } : {}), extra: extraPorts },
+    resources: { cpus, memLimit }, restartPolicy, ports: { ...(game !== undefined ? { game } : {}), extra: extraPorts, ...(rconHost !== undefined ? { rcon: rconHost } : {}) },
     ...(modpack ? { modpack } : {}), ...(mods ? { mods } : {}), ...(plugins ? { plugins } : {}),
     ...(whitelist ? { whitelist } : {}), ...(ops ? { ops } : {}),
   };

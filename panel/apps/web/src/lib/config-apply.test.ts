@@ -38,6 +38,13 @@ describe("planApply", () => {
     expect(r.ok && r.pending.spec).toEqual({ ports: { game: 25565, extra: withExtra.ports.extra } });
     expect(r.ok && r.pending.changes.map((c) => c.label)).toEqual(["Extra ports"]);
   });
+  it("clearing the RCON port of a server that already publishes = kept: no diff and no recreation", () => {
+    const published = { ...base, ports: { game: 25565, extra: [], rcon: 25580 } };
+    expect(planApply("A", published, "A", { ...published, ports: { ...published.ports, rcon: "auto" } }))
+      .toEqual({ ok: false, error: "There are no changes to apply" });
+    const r = planApply("A", published, "B", { ...published, ports: { ...published.ports, rcon: "auto" } });
+    expect(r.ok && r.pending.recreate).toBe(false);
+  });
   it("enabling the whitelist with an empty list warns in the diff", () => {
     const r = planApply("A", base, "A", { ...base, whitelist: { enabled: true, players: [] } });
     expect(r.ok && r.pending.changes).toEqual([{ label: "Whitelist", before: "(not managed)", after: expect.stringMatching(/nobody will be able to join except ops/) }]);

@@ -54,7 +54,7 @@ describe("migration and router (Plans 7 and 8)", () => {
   it("the target router's port is not kept: another is proposed", async () => {
     const { b, s } = await nodes();
     routerRow(b.id, { enabled: true, port: 25565 });
-    expect((await proposal(s.id, b.id)).json()).toEqual({ targetNodeId: b.id, slug: "survival", port: 25566, currentPort: 25565, portChanged: true });
+    expect((await proposal(s.id, b.id)).json()).toEqual({ targetNodeId: b.id, slug: "survival", port: 25566, currentPort: 25565, portChanged: true, rconPort: null, rconChanged: false });
     routerRow(b.id, { enabled: false, port: 25565 });
     expect((await proposal(s.id, b.id)).json()).toMatchObject({ port: 25565, portChanged: false });
   });

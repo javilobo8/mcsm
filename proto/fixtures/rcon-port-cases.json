@@ -1,0 +1,13 @@
+[
+  { "name": "absent: RCON not published", "ports": { "game": 25570, "extra": [] }, "ok": true },
+  { "name": "own host port", "ports": { "game": 25570, "extra": [], "rcon": 25571 }, "ok": true },
+  { "name": "next to extras on other ports", "ports": { "game": 25570, "extra": [{ "host": 8100, "container": 8100, "proto": "tcp", "label": "map" }], "rcon": 25580 }, "ok": true },
+  { "name": "lowest port", "ports": { "game": 25570, "extra": [], "rcon": 1 }, "ok": true },
+  { "name": "highest port", "ports": { "game": 25570, "extra": [], "rcon": 65535 }, "ok": true },
+  { "name": "zero", "ports": { "game": 25570, "extra": [], "rcon": 0 }, "ok": false },
+  { "name": "negative", "ports": { "game": 25570, "extra": [], "rcon": -1 }, "ok": false },
+  { "name": "out of range", "ports": { "game": 25570, "extra": [], "rcon": 65536 }, "ok": false },
+  { "name": "same as the game port", "ports": { "game": 25570, "extra": [], "rcon": 25570 }, "ok": false },
+  { "name": "same as an extra tcp host port", "ports": { "game": 25570, "extra": [{ "host": 8100, "container": 8100, "proto": "tcp", "label": "" }], "rcon": 8100 }, "ok": false },
+  { "name": "same as an extra udp host port", "ports": { "game": 25570, "extra": [{ "host": 24454, "container": 24454, "proto": "udp", "label": "voice" }], "rcon": 24454 }, "ok": false }
+]

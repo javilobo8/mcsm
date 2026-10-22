@@ -16,3 +16,14 @@ export function serverAddress(s: Pick<ServerDto, "spec">, c: ConnectAddress | un
   const port = c?.port ?? (router ? routerPort ?? ROUTER_DEFAULT_PORT : s.spec.ports.game);
   return port === MINECRAFT_DEFAULT_PORT ? host : `${host}:${port}`;
 }
+
+/**
+ * Where to reach the published RCON port, or null if the server does not publish it. The host is the configured
+ * connection address host (never the router hostname: mc-router cannot route RCON) and its external port, which belongs
+ * to the game, is ignored. Without a configured host it is just the port.
+ */
+export function rconAddress(s: Pick<ServerDto, "spec">, c: ConnectAddress | undefined): string | null {
+  const port = s.spec.ports.rcon;
+  if (port === undefined) return null;
+  return c?.host ? `${c.host}:${port}` : String(port);
+}

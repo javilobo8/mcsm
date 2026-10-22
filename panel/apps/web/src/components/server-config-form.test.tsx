@@ -34,4 +34,13 @@ describe("ServerConfigForm (server render)", () => {
     expect(blockers.at(-1)).toMatchObject({ disabled: true });
     expect(blockers.at(-1)?.enableBeforeUnload?.()).toBe(false);
   });
+
+  it("shows the RCON address only when the server publishes RCON", () => {
+    const render = (s: ServerDto) => renderToString(<QueryClientProvider client={new QueryClient()}><ServerConfigForm server={s} /></QueryClientProvider>);
+    expect(render(server)).not.toContain("RCON address");
+    const published = { ...server, spec: { ...server.spec, ports: { ...server.spec.ports, rcon: 25580 } } };
+    const html = render(published);
+    expect(html).toContain("RCON address");
+    expect(html).toContain("25580");
+  });
 });
