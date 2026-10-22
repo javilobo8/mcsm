@@ -98,11 +98,31 @@ function specChecks(
   buildCheck(s, ctx);
 }
 
+const RCON_COLLISION_MESSAGE = "The RCON port cannot be the same as the game port or an extra port";
+
+/** `ports.rcon` cannot repeat the game port or the host port of an extra (any protocol). Same rule as the agent. */
+function rconPortCheck(
+  p: { game?: number; extra: { host: number }[]; rcon?: number | "auto" },
+  ctx: z.RefinementCtx,
+) {
+  if (typeof p.rcon !== "number") return;
+  if (p.rcon === p.game || p.extra.some((e) => e.host === p.rcon)) {
+    ctx.addIssue({ code: "custom", path: ["rcon"], message: RCON_COLLISION_MESSAGE });
+  }
+}
+
+/** Host ports a spec occupies: game, extras' hosts and the published RCON one (when present). */
+export function specHostPorts(spec: { ports: { game: number; extra: { host: number }[]; rcon?: number } }): number[] {
+  const { game, extra, rcon } = spec.ports;
+  return rcon === undefined ? [game, ...extra.map((e) => e.host)] : [game, ...extra.map((e) => e.host), rcon];
+}
+
 /** Complete spec, as persisted and sent to the agent. */
 export const specSchema = z
   .object({
     ...baseFields,
-    ports: z.object({ game: port, extra: z.array(portMappingSchema).default([]) }),
+    // rcon: host port that publishes the container's 25575/tcp. Absent = not published.
+    ports: z.object({ game: port, extra: z.array(portMappingSchema).default([]), rcon: port.optional() }).superRefine(rconPortCheck),
     rconPassword: z.string().min(8),
     // plan-6: server specs only (it is not in baseFields: templates do not carry it).
     dataPath: dataPathSchema.optional(),
@@ -114,7 +134,11 @@ export const specSchema = z
 export const specInputSchema = z
   .object({
     ...baseFields,
-    ports: z.object({ game: port.optional(), extra: z.array(portMappingSchema).default([]) }).prefault({}),
+    // rcon: a port, or "auto" so the panel picks a free one (the stored spec only ever holds a number).
+    ports: z
+      .object({ game: port.optional(), extra: z.array(portMappingSchema).default([]), rcon: z.union([port, z.literal("auto")]).optional() })
+      .superRefine(rconPortCheck)
+      .prefault({}),
     // plan-6: a PATCH keeps it when merging with the stored spec (if it were missing, zod would discard it
     // and the server would be recreated over <DATA_ROOT>/<slug>/data, empty).
     dataPath: dataPathSchema.optional(),
