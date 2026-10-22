@@ -47,7 +47,7 @@ The example file lists every variable. Only the ones below need your attention; 
 
 | Variable | What to set |
 |---|---|
-| `MCSM_VERSION` | Pin a version, for example `0.11.0`, so that updating is always a deliberate step. Empty means `latest`. |
+| `MCSM_VERSION` | Pin a version, for example `0.12.0`, so that updating is always a deliberate step. Empty means `latest`. |
 | `PANEL_PUBLIC_URL` | The panel address with the port, as the other nodes and your browser see it, for example `http://192.168.1.10:8080`. Empty means the address you use to open the panel in the browser. |
 | `DATA_ROOT` | Host directory (**absolute** path) for this machine's worlds. |
 | `ENROLL_TOKEN` | Leave empty for now: you fill it in at step 4 of [First start](#first-start). |

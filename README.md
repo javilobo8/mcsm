@@ -83,7 +83,7 @@ volumes:
 
 ```bash
 # Image version: pin it so that updating is always a deliberate step (empty = latest)
-MCSM_VERSION=0.11.0
+MCSM_VERSION=0.12.0
 # Panel address with the port, as the other nodes and your browser see it
 # (empty = the address you use to open the panel in the browser)
 PANEL_PUBLIC_URL=http://192.168.1.10:8080
@@ -120,7 +120,7 @@ docker run -d --name mcsm-agent --restart unless-stopped --stop-timeout 30 \
   -e PANEL_URL=http://192.168.1.10:8080 \
   -e ENROLL_TOKEN=<enrollment-token> \
   -e DATA_ROOT=/srv/minecraft \
-  ghcr.io/javilobo8/mcsm-agent:0.11.0
+  ghcr.io/javilobo8/mcsm-agent:0.12.0
 ```
 
 **With Docker Compose:** in a directory (e.g. `/opt/mcsm-node`), a `docker-compose.yml` identical to `deploy/docker-compose.node.yml` (`curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/javilobo8/mcsm/main/deploy/docker-compose.node.yml`):
@@ -163,7 +163,7 @@ volumes:
 and its `.env`:
 
 ```bash
-MCSM_VERSION=0.11.0
+MCSM_VERSION=0.12.0
 PANEL_URL=http://192.168.1.10:8080
 ENROLL_TOKEN=<enrollment-token>
 DATA_ROOT=/srv/minecraft
