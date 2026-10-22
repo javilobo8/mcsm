@@ -29,7 +29,7 @@ If the proxy rewrites `Host`, logging in through it gives a 403. Do one of these
 
 ## Game ports
 
-The range the panel picks ports from. It is only used for new servers without a port.
+The range the panel picks ports from. It is used for new servers without a port, for RCON ports set to automatic and for ports reassigned when a server is migrated. The range is the same for all nodes.
 
 ## Connection address
 
