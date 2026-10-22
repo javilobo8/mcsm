@@ -1,4 +1,4 @@
-import type { Spec } from "@mcsm/shared";
+import { specHostPorts, type Spec } from "@mcsm/shared";
 
 /** Minimum free margin after writing: the same as the agent's (max(5 %, 256 MiB)). */
 export const SPACE_MARGIN_MIN = 256 * 1024 * 1024;
@@ -12,7 +12,10 @@ export interface ProposalInput {
   /** plan-8: host port of the active router (mc-router) on the target; null or absent without a router. */
   routerPort?: number | null;
 }
-export type Proposal = { ok: true; slug: string; port: number; portChanged: boolean } | { ok: false; error: string };
+/** `rconPort`: the RCON host port on the target (null if the server does not publish it); `rconChanged` if it differs from the source's. */
+export type Proposal =
+  | { ok: true; slug: string; port: number; portChanged: boolean; rconPort: number | null; rconChanged: boolean }
+  | { ok: false; error: string };
 
 /** Free slug among `taken`: the same or with suffix -2, -3… (max. 40 characters), as when creating a server. */
 export function uniqueSlugAmong(base: string, taken: ReadonlySet<string>): string {
@@ -32,8 +35,7 @@ export function uniqueSlugAmong(base: string, taken: ReadonlySet<string>): strin
 export function proposeTarget(i: ProposalInput): Proposal {
   const used = new Set<number>();
   for (const s of i.targetServers) {
-    used.add(s.spec.ports.game);
-    for (const e of s.spec.ports.extra) used.add(e.host);
+    for (const p of specHostPorts(s.spec)) used.add(p);
   }
   const router = i.routerPort ?? null;
   const onRouter = i.spec.ports.extra.find((e) => e.host === router);
@@ -54,11 +56,22 @@ export function proposeTarget(i: ProposalInput): Proposal {
   } else if (!used.has(i.spec.ports.game)) {
     port = i.spec.ports.game;
   } else {
-    for (let p = i.range.from; p <= i.range.to && port === undefined; p++) if (!used.has(p) && !extras.has(p)) port = p;
+    // Skips the server's own RCON port while it is free on the target, so it does not have to move.
+    const rcon = i.spec.ports.rcon;
+    const free = (p: number) => !used.has(p) && !extras.has(p);
+    for (let p = i.range.from; p <= i.range.to && port === undefined; p++) if (free(p) && p !== rcon) port = p;
+    if (port === undefined && rcon !== undefined && free(rcon)) port = rcon;
     if (port === undefined) return { ok: false, error: `No free ports left between ${i.range.from} and ${i.range.to} on the target node` };
   }
+  // RCON: kept if free on the target (and not the game port chosen there); otherwise the first free port of the range.
+  let rconPort: number | null = i.spec.ports.rcon ?? null;
+  if (rconPort !== null && (used.has(rconPort) || rconPort === port)) {
+    rconPort = null;
+    for (let p = i.range.from; p <= i.range.to && rconPort === null; p++) if (!used.has(p) && !extras.has(p) && p !== port) rconPort = p;
+    if (rconPort === null) return { ok: false, error: `No free ports left between ${i.range.from} and ${i.range.to} for the RCON port on the target node` };
+  }
   const slug = uniqueSlugAmong(i.slug, new Set([...i.targetServers.map((s) => s.slug), ...(i.reservedSlugs ?? [])]));
-  return { ok: true, slug, port, portChanged: port !== i.spec.ports.game };
+  return { ok: true, slug, port, portChanged: port !== i.spec.ports.game, rconPort, rconChanged: rconPort !== (i.spec.ports.rcon ?? null) };
 }
 
 /** Name of the backup on the target: the same with the target's slug (the agent requires `<slug>-<ts>-<v>.tar.zst`). */

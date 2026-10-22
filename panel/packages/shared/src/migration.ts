@@ -43,7 +43,13 @@ export interface MigrationDto {
   createdAt: string; updatedAt: string;
 }
 
-export interface MigrationProposalDto { targetNodeId: string; slug: string; port: number; currentPort: number; portChanged: boolean }
+export interface MigrationProposalDto {
+  targetNodeId: string; slug: string; port: number; currentPort: number; portChanged: boolean;
+  /** RCON host port on the target; null if the server does not publish RCON. */
+  rconPort: number | null;
+  /** The RCON port on the target differs from the one on the source (its port was taken there). */
+  rconChanged: boolean;
+}
 
 /** The 7 visible steps of the migration job (spec §7), in order. */
 export const MIGRATION_STEPS = [

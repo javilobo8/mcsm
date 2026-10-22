@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Envelope } from "@mcsm/proto";
 import {
-  formatZodError, MIGRATION_STEPS, migrationLeftovers, migrationProposalQuerySchema, migrationRequestSchema, specSchema, stepMessage,
+  formatZodError, MIGRATION_STEPS, migrationLeftovers, migrationProposalQuerySchema, migrationRequestSchema, specHostPorts, specSchema, stepMessage,
   type MigrationDto, type MigrationProposalDto, type MigrationStep, type Spec,
 } from "@mcsm/shared";
 import { realTimers, type Timers } from "../files/stream.js";
@@ -34,7 +34,8 @@ const PENDING_LABEL: Record<PendingKind, string> = {
 const DEFINITIVE = "not retried";
 
 interface Plan {
-  target: { id: string; name: string }; slug: string; port: number; portChanged: boolean; currentPort: number; spec: Spec;
+  target: { id: string; name: string }; slug: string; port: number; portChanged: boolean; currentPort: number;
+  rconPort: number | null; rconChanged: boolean; spec: Spec;
 }
 
 const silent = (log: (line: string) => void): Reporter => ({ step: () => {}, within: () => {}, message: () => {}, log });
@@ -87,7 +88,10 @@ export class MigrationService {
   proposal(serverId: string, query: unknown): MigrationProposalDto {
     const q = migrationProposalQuerySchema.parse(query);
     const p = this.plan(this.requireServer(serverId), q.targetNodeId, q.port);
-    return { targetNodeId: p.target.id, slug: p.slug, port: p.port, currentPort: p.currentPort, portChanged: p.portChanged };
+    return {
+      targetNodeId: p.target.id, slug: p.slug, port: p.port, currentPort: p.currentPort, portChanged: p.portChanged,
+      rconPort: p.rconPort, rconChanged: p.rconChanged,
+    };
   }
 
   /** Validates and launches the migration. Returns the job (202); progress goes through the `jobs` topic. */
@@ -102,7 +106,7 @@ export class MigrationService {
     const wasRunning = row.desired_state === "running";
     const job = this.app.jobs.create({
       type: "migrate", serverId, nodeId: row.node_id, status: "running", message: stepMessage(1, "preparando"),
-      payload: { targetNodeId: p.target.id, targetNodeName: p.target.name, sourceNodeName: sourceName, slug: p.slug, port: p.port, deleteSource: input.deleteSource, wasRunning },
+      payload: { targetNodeId: p.target.id, targetNodeName: p.target.name, sourceNodeName: sourceName, slug: p.slug, port: p.port, rconPort: p.rconPort, rconChanged: p.rconChanged, deleteSource: input.deleteSource, wasRunning },
     });
     this.app.migrations.insert({
       id: job.id, server_id: serverId, source_node_id: row.node_id, target_node_id: p.target.id, source_slug: row.slug, target_slug: p.slug,
@@ -210,9 +214,9 @@ export class MigrationService {
       routerPort: this.app.routerService.reservedPort(targetNodeId), // plan-8
     });
     if (!p.ok) throw new HttpError(409, p.error);
-    const parsed = specSchema.safeParse({ ...spec, ports: { ...spec.ports, game: p.port } });
+    const parsed = specSchema.safeParse({ ...spec, ports: { ...spec.ports, game: p.port, ...(p.rconPort === null ? {} : { rcon: p.rconPort }) } });
     if (!parsed.success) throw new HttpError(400, formatZodError(parsed.error));
-    return { target: { id: target.id, name: target.name }, slug: p.slug, port: p.port, portChanged: p.portChanged, currentPort: spec.ports.game, spec: parsed.data };
+    return { target: { id: target.id, name: target.name }, slug: p.slug, port: p.port, portChanged: p.portChanged, currentPort: spec.ports.game, rconPort: p.rconPort, rconChanged: p.rconChanged, spec: parsed.data };
   }
 
   private openMessage(m: MigrationRow): string {
@@ -296,7 +300,7 @@ export class MigrationService {
     const user = this.app.routerService.hostnameUser(m.target_node_id, spec, m.server_id);
     if (user) throw new StepError(`Could not confirm: hostname “${spec.router!.hostname}” is already used by “${user.name}” on “${target}”`);
     const port = this.app.routerService.reservedPort(m.target_node_id);
-    if (port !== null && (spec.ports.game === port || spec.ports.extra.some((e) => e.host === port))) {
+    if (port !== null && specHostPorts(spec).includes(port)) {
       throw new StepError(`Could not confirm: port ${port} is now used by the router (mc-router) of “${target}”`);
     }
   }
@@ -346,7 +350,10 @@ export class MigrationService {
     }
     if (this.definitive(m, "retire")) notes.push(`The server was not removed from “${src}”: ${this.errorText(m, "retire")}`);
     if (this.definitive(m, "confirm")) notes.push(`The migration was not confirmed on “${dst}”: ${this.errorText(m, "confirm")}`);
-    return [`Migration completed: “${name}” is on “${dst}”, port ${m.target_port}`, ...notes].join(". ");
+    // The source's RCON port is not kept anywhere after the commit: the job's payload remembers whether it moved.
+    const payload = this.app.jobs.get(m.id)?.payload;
+    const rcon = payload?.rconChanged === true && typeof payload.rconPort === "number" ? `, RCON port ${payload.rconPort} (changed: the old one was taken)` : "";
+    return [`Migration completed: “${name}” is on “${dst}”, port ${m.target_port}${rcon}`, ...notes].join(". ");
   }
 
   /** " (reason)" of the last failure of that pending item, or "". */
