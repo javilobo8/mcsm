@@ -122,11 +122,13 @@ func TestDoneWithErrorAndInvalidUTF8(t *testing.T) {
 }
 
 func TestFailInterrupted(t *testing.T) {
-	tr, st, _, _ := setup(t)
+	tr, st, _, c := setup(t)
 	tr.Begin("stuck", "srv", TypeBackup) // never finishes: the agent "restarts"
 	j, _, _ := tr.Begin("finished", "srv", TypeBackup)
 	j.Done(nil, "ok")
-	tr2 := New(st, func(*mcsmv1.Envelope) error { return nil }, time.Now)
+	// The same clock as the first tracker: with time.Now the "finished" job became older than KeepFor
+	// (and was pruned) once the real date passed the fixture's by more than KeepFor.
+	tr2 := New(st, func(*mcsmv1.Envelope) error { return nil }, c.now)
 	if err := tr2.FailInterrupted(); err != nil {
 		t.Fatal(err)
 	}
