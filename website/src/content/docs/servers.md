@@ -85,12 +85,12 @@ Commands travel over RCON on the internal Docker network, and the console hides 
 
 ### Publishing RCON
 
-By default a server's RCON is only reachable from the agent, over the internal Docker network. To use another RCON client (from your LAN, or from the Internet if you forward the port), turn on **Publish RCON** in **Configuration → Network**. The panel assigns a free port from the node's range, like the game port, and you can change it. Applying the change recreates the container.
+By default a server's RCON is only reachable from the agent, over the internal Docker network. To use another RCON client (from your LAN, or from the Internet if you forward the port), turn on **Publish RCON** in **Configuration → Network**. The panel assigns a free port from the panel's port range, like the game port, and you can change it. Applying the change recreates the container.
 
 The dashboard shows `RCON <host>:<port>` under the address of every server that publishes it, and the General section shows the RCON address next to the password. The host is the one in **Settings → Connection address**.
 
 - Each server needs its own port: mc-router cannot route RCON, because the protocol carries no hostname. A server behind the router still publishes RCON on its own port.
-- RCON is not encrypted: the password and the commands travel in clear text. The panel generates a long random password, but anyone on the path of the connection can read it. Prefer to keep it on the LAN.
+- RCON is not encrypted: the password and the commands travel in clear text. The panel generates a long random password (an imported server keeps the container's own RCON password, which can be weak), and anyone on the path of the connection can read it. Prefer to keep it on the LAN.
 - A server asleep under the router's autoscale does not answer RCON, and an RCON connection does not wake it.
 - Templates do not carry the RCON port. When a server migrates to a node where its RCON port is taken, it gets another free one and the migration tells you which.
 

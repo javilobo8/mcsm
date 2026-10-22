@@ -29,7 +29,7 @@ The copy travels unencrypted over the LAN, `server.properties` (with the RCON pa
 
 ## Published RCON
 
-A server with **Publish RCON** accepts RCON connections on its own host port. RCON has no encryption: the password and every command travel in clear text, and whoever holds the password has full control of the server (operators, `stop`, commands from plugins). The panel's password is long and random, so guessing it is not realistic; reading it off the network is. Publish it only where you need it, and prefer the LAN or a VPN to forwarding it to the Internet.
+A server with **Publish RCON** accepts RCON connections on its own host port. RCON has no encryption: the password and every command travel in clear text, and whoever holds the password has full control of the server (operators, `stop`, commands from plugins). The panel's password is long and random, so guessing it is not realistic (a server imported with RCON published keeps the container's own password, which can be weak: change it); reading it off the network is. Publish it only where you need it, and prefer the LAN or a VPN to forwarding it to the Internet.
 
 ## The router and the Docker socket
 

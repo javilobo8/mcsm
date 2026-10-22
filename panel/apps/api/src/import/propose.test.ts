@@ -61,6 +61,32 @@ describe("proposeImport", () => {
       expect(p.spec.ports).toEqual({ game: 25570, extra: [], rcon: 25580 });
       expect(p.specError).toBeNull();
       expect(warnings(p)).not.toMatch(/RCON \(25575\)|25575/);
+      expect(warnings(p)).not.toMatch(/will not be published/);
+    });
+    it("is not carried (with a warning) when it listens on loopback only", () => {
+      const p = proposeImport(cand({ ports: [game, rcon(25580, "tcp", "127.0.0.1")] }), ctx());
+      expect(p.spec.ports).not.toHaveProperty("rcon");
+      expect(warnings(p)).toMatch(/only on 127\.0\.0\.1.*will not be published/);
+    });
+    it.each([
+      ["ENABLE_RCON=false", { ENABLE_RCON: "false" }, /RCON disabled.*will not be published/],
+      ["RCON_PORT other than 25575", { RCON_PORT: "25580" }, /RCON_PORT=25580.*will not be published/],
+      ["a short password", { RCON_PASSWORD: "corta" }, /RCON_PASSWORD.*will not be published/],
+    ])("is not carried (with a warning) with %s", (_n, e, re) => {
+      const p = proposeImport(cand({ env: env(e), ports: [game, rcon(25580)] }), ctx());
+      expect(p.spec.ports).not.toHaveProperty("rcon");
+      expect(warnings(p)).toMatch(re);
+    });
+    it("is not carried when RCON_PASSWORD is missing", () => {
+      const { RCON_PASSWORD: _omit, ...rest } = env({});
+      const p = proposeImport(cand({ env: rest, ports: [game, rcon(25580)] }), ctx());
+      expect(p.spec.ports).not.toHaveProperty("rcon");
+      expect(warnings(p)).toMatch(/will not be published/);
+    });
+    it("carried on all interfaces with a good password, warning that the container's own password is kept", () => {
+      const p = proposeImport(cand({ ports: [game, rcon(25580)] }), ctx());
+      expect(p.spec.ports.rcon).toBe(25580);
+      expect(warnings(p)).toMatch(/container's own password/);
     });
     it("without the publication there is no ports.rcon", () => {
       expect(proposeImport(cand({ ports: [game] }), ctx()).spec.ports).not.toHaveProperty("rcon");
