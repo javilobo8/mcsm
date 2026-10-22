@@ -1,4 +1,4 @@
-import type { MigrationDto, MigrationPhase, Spec } from "@mcsm/shared";
+import { specHostPorts, type MigrationDto, type MigrationPhase, type Spec } from "@mcsm/shared";
 import type { Db } from "../db/db.js";
 import { nowIso } from "../lib/time.js";
 import type { ObservedDto } from "../servers/repo.js";
@@ -56,7 +56,7 @@ export function toMigrationDto(r: MigrationRow): MigrationDto {
 }
 
 /** Host ports of a spec: the game port and the extras. */
-const specPorts = (spec: Spec): number[] => [spec.ports.game, ...spec.ports.extra.map((e) => e.host)];
+const specPorts = (spec: Spec): number[] => specHostPorts(spec);
 
 export class MigrationsRepo {
   constructor(private db: Db) {}

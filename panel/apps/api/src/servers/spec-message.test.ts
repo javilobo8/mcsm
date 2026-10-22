@@ -26,4 +26,10 @@ describe("toServerSpecMessage", () => {
     expect(sent(toServerSpecMessage(row({ type: "PAPER" }), null))).not.toHaveProperty("adopt");
     expect(sent(toServerSpecMessage(row({ type: "PAPER" }, { imported_from: null }), "K3y"))).not.toHaveProperty("adopt");
   });
+  it("ports.rcon reaches the agent unchanged and is absent (not null or 0) when not published", () => {
+    const withRcon = row({ type: "PAPER", ports: { game: 25565, extra: [], rcon: 25570 } });
+    expect((sent(toServerSpecMessage(withRcon, "K3y")).ports as Record<string, unknown>).rcon).toBe(25570);
+    const without = sent(toServerSpecMessage(row({ type: "PAPER", ports: { game: 25565, extra: [] } }), "K3y"));
+    expect(without.ports).toEqual({ game: 25565, extra: [] });
+  });
 });
