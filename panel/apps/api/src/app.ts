@@ -30,6 +30,9 @@ import { securityHeaders } from "./lib/security.js";
 import { settingsRoutes } from "./settings/routes.js";
 import { VersionCatalog } from "./versions/catalog.js";
 import { versionRoutes } from "./versions/routes.js";
+import { ContentCatalog } from "./content/catalog.js";
+import { ContentMetaRepo } from "./content/repo.js";
+import { contentRoutes } from "./content/routes.js";
 import { importRoutes } from "./import/routes.js";
 import { migrationGuard } from "./migration/guard.js";
 import { migrationRoutes } from "./migration/routes.js";
@@ -41,6 +44,8 @@ export interface AppOptions {
   config?: Partial<Config>;
   /** plan-10: version catalog (tests inject one with a fake fetch; they never touch the network). */
   versions?: VersionCatalog;
+  /** plan-11: content catalog (tests inject one with a fake fetch; they never touch the network). */
+  content?: ContentCatalog;
 }
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -97,6 +102,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     onError: (url, err) => app.log.warn({ url, err }, "could not query a version source"),
   }));
   await app.register(versionRoutes);
+  // ── plan-11 ──
+  app.decorate("content", opts.content ?? new ContentCatalog({
+    repo: new ContentMetaRepo(opts.db),
+    curseforgeKey: () => app.curseforge.get(),
+    onError: (url, err) => app.log.warn({ url, err }, "could not query a content source"),
+  }));
+  await app.register(contentRoutes);
+  app.addHook("onReady", async () => { app.content.purge(); });
   if (cfg.webDist) {
     await app.register(fastifyStatic, { root: cfg.webDist, wildcard: false });
     // The notFoundHandler does not go through the session guard (there is no routed route): it must only serve

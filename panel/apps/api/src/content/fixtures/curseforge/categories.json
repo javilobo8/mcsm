@@ -1,0 +1,5 @@
+{ "data": [
+  { "id": 6, "name": "Mods", "slug": "mc-mods", "classId": null, "isClass": true },
+  { "id": 421, "name": "API and Library", "slug": "library-api", "classId": 6, "isClass": false },
+  { "id": 412, "name": "Technology", "slug": "technology", "classId": 6 }
+] }

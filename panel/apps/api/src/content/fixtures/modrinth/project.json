@@ -1,0 +1,9 @@
+{
+  "id": "AANobbMI", "slug": "sodium", "project_type": "mod", "team": "4reLOAKe", "title": "Sodium", "description": "Rendering engine",
+  "body": "# Sodium\n\n<script>alert(1)</script>\n\nFast. ![shot](https://cdn.modrinth.com/data/AANobbMI/images/a.png)",
+  "categories": ["optimization"], "downloads": 1000, "icon_url": "https://cdn.modrinth.com/data/AANobbMI/icon.png",
+  "server_side": "optional", "client_side": "required",
+  "source_url": "https://github.com/CaffeineMC/sodium", "issues_url": "https://github.com/CaffeineMC/sodium/issues",
+  "wiki_url": null, "discord_url": "javascript:alert(1)",
+  "gallery": [{ "url": "https://cdn.modrinth.com/data/AANobbMI/images/g.png", "featured": true }, { "url": "https://evil.example/g.png", "featured": false }]
+}

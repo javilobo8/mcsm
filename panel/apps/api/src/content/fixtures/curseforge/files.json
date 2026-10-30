@@ -1,0 +1,7 @@
+{ "data": [
+  { "id": 5101, "modId": 238222, "displayName": "jei-1.21.1-neoforge-19.0.0.1", "fileName": "jei.jar", "releaseType": 1, "fileDate": "2024-08-01T10:00:00.12Z",
+    "downloadUrl": "https://edge.forgecdn.net/files/5101/1/jei.jar", "gameVersions": ["1.21.1", "NeoForge", "Server", "Client"],
+    "dependencies": [ { "modId": 1001, "relationType": 3 }, { "modId": 1002, "relationType": 2 }, { "modId": 1003, "relationType": 5 }, { "modId": 1004, "relationType": 1 }, { "modId": 1005, "relationType": 4 }, { "modId": 1006, "relationType": 6 } ] },
+  { "id": 5102, "modId": 238222, "displayName": "jei-1.21.1-neoforge-19.1.0.0", "fileName": "jei2.jar", "releaseType": 2, "fileDate": "2024-09-01T10:00:00Z",
+    "downloadUrl": null, "gameVersions": ["1.21.1", "24w14a", "Forge", "NeoForge"], "dependencies": [] }
+], "pagination": { "index": 0, "pageSize": 50, "resultCount": 2, "totalCount": 2 } }
