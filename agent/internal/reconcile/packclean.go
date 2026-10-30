@@ -64,8 +64,12 @@ func (r *Reconciler) cleanPack(ctx context.Context, serverID string, parsed spec
 	leave := r.dataWrite(serverID)
 	defer leave()
 	opt := packclean.Options{Log: r.log}
-	if ln := parsed.Properties["level-name"]; ln != "" {
-		opt.LevelNames = []string{ln}
+	// The world folder may come from the property or from env LEVEL (which wins); packclean also reads the one
+	// in /data/server.properties.
+	for _, ln := range []string{parsed.Properties["level-name"], parsed.Env["LEVEL"]} {
+		if ln != "" {
+			opt.LevelNames = append(opt.LevelNames, ln)
+		}
 	}
 	for _, p := range platforms {
 		if err := ctx.Err(); err != nil {

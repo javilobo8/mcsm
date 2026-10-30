@@ -18,7 +18,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"mcsm/agent/internal/spec"
 )
@@ -35,6 +37,7 @@ const (
 const (
 	maxManifestBytes   = 8 << 20
 	maxManifestEntries = 50_000
+	maxPropertiesBytes = 1 << 20
 	// maxWarnings bounds the per-entry warnings of a hostile or broken manifest.
 	maxWarnings = 10
 )
@@ -49,7 +52,8 @@ var protectedTop = map[string]bool{
 	modrinthProjectsManifest: true, curseforgeFilesManifest: true,
 }
 
-// Options: LevelNames are the world folders (level-name) besides "world" and the pack's levelName.
+// Options: LevelNames are the world folders (level-name property, env LEVEL) besides "world", the level-name of
+// /data/server.properties and the pack's levelName; only their first path element counts.
 // Log receives the warnings about entries not removed (nil = slog.Default()).
 type Options struct {
 	LevelNames []string
@@ -109,14 +113,19 @@ func Clean(dataDir, platform string, opt Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	// The world folders, with their dimensions (Bukkit keeps them next to it: <name>_nether, <name>_the_end).
-	names := append([]string{"world"}, opt.LevelNames...)
+	// The world folders, with their dimensions (Bukkit keeps them next to it: <name>_nether, <name>_the_end):
+	// "world", the ones given (level-name property, env LEVEL), server.properties on disk and the CF pack's.
+	disk, err := diskLevelName(root)
+	if err != nil {
+		return Result{}, err
+	}
+	names := append([]string{"world", disk}, opt.LevelNames...)
 	if pack.LevelName != nil {
 		names = append(names, *pack.LevelName)
 	}
 	levels := map[string]bool{}
 	for _, n := range names {
-		if n != "" {
+		if n = firstElement(n); n != "" {
 			levels[n], levels[n+"_nether"], levels[n+"_the_end"] = true, true, true
 		}
 	}
@@ -243,26 +252,136 @@ func protectedFiles(root *os.Root) (map[string]bool, error) {
 
 // readManifest reads a manifest at the top of /data. ok=false if it does not exist.
 func readManifest(root *os.Root, name string) (m manifest, ok bool, err error) {
-	f, err := root.Open(name)
-	if errors.Is(err, fs.ErrNotExist) {
-		return m, false, nil
-	}
-	if err != nil {
+	b, ok, err := readSmall(root, name, maxManifestBytes)
+	if err != nil || !ok {
 		return m, false, err
-	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxManifestBytes+1))
-	if err != nil {
-		return m, false, err
-	}
-	if len(b) > maxManifestBytes {
-		return m, false, errTooLarge
 	}
 	if err := json.Unmarshal(b, &m); err != nil {
-		return m, false, fmt.Errorf("not valid JSON: %w", err)
+		return m, false, fmt.Errorf("%s is not valid JSON: %w", name, err)
 	}
 	if len(m.Files) > maxManifestEntries {
 		return m, false, errTooLarge
 	}
 	return m, true, nil
+}
+
+// readSmall reads a regular file at the top of /data, up to max bytes (more → errTooLarge). ok=false if it does
+// not exist. Opened with O_NONBLOCK: the container may have replaced it with a FIFO, whose open would block the
+// agent forever with the server's lock held; anything but a regular file is refused.
+func readSmall(root *os.Root, name string, max int64) (b []byte, ok bool, err error) {
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, false, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, false, fmt.Errorf("%s is not a regular file", name)
+	}
+	b, err = io.ReadAll(io.LimitReader(f, max+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(b)) > max {
+		return nil, false, errTooLarge
+	}
+	return b, true, nil
+}
+
+// diskLevelName is level-name in /data/server.properties ("" if absent): it may have been edited on disk
+// (Files tab), and without LEVEL itzg keeps it.
+func diskLevelName(root *os.Root) (string, error) {
+	b, ok, err := readSmall(root, "server.properties", maxPropertiesBytes)
+	if errors.Is(err, errTooLarge) {
+		return "", errors.New("server.properties is too large")
+	}
+	if err != nil || !ok {
+		return "", err
+	}
+	name := ""
+	for _, line := range strings.Split(string(b), "\n") {
+		if k, v, ok := propertyLine(line); ok && k == "level-name" {
+			name = v // the last one wins, as in java.util.Properties
+		}
+	}
+	return name, nil
+}
+
+// propertyLine parses one line of a .properties file (without continuation lines, which Minecraft never writes).
+func propertyLine(line string) (key, value string, ok bool) {
+	line = strings.TrimLeft(strings.TrimRight(line, "\r"), " \t\f")
+	if line == "" || line[0] == '#' || line[0] == '!' {
+		return "", "", false
+	}
+	i := 0
+	for i < len(line) {
+		c := line[i]
+		if c == '\\' {
+			i += 2
+			continue
+		}
+		if c == '=' || c == ':' || c == ' ' || c == '\t' || c == '\f' {
+			break
+		}
+		i++
+	}
+	key, rest := line[:min(i, len(line))], line[min(i, len(line)):]
+	rest = strings.TrimLeft(rest, " \t\f")
+	if rest != "" && (rest[0] == '=' || rest[0] == ':') {
+		rest = strings.TrimLeft(rest[1:], " \t\f")
+	}
+	return unescapeProperty(key), unescapeProperty(rest), true
+}
+
+func unescapeProperty(s string) string {
+	if !strings.Contains(s, "\\") {
+		return s
+	}
+	var out strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' || i+1 == len(s) {
+			out.WriteByte(s[i])
+			continue
+		}
+		i++
+		switch s[i] {
+		case 't':
+			out.WriteByte('\t')
+		case 'n':
+			out.WriteByte('\n')
+		case 'r':
+			out.WriteByte('\r')
+		case 'f':
+			out.WriteByte('\f')
+		case 'u':
+			if i+4 < len(s) {
+				if r, err := strconv.ParseUint(s[i+1:i+5], 16, 16); err == nil {
+					out.WriteRune(rune(r))
+					i += 4
+					continue
+				}
+			}
+			out.WriteByte('u')
+		default:
+			out.WriteByte(s[i])
+		}
+	}
+	return out.String()
+}
+
+// firstElement is the folder of /data a level name points to: LEVEL from env is not validated like the
+// property ("./w/sub" → "w"). "" if there is none.
+func firstElement(name string) string {
+	for _, part := range strings.Split(filepath.Clean(name), string(filepath.Separator)) {
+		if part != "" && part != "." {
+			return part
+		}
+	}
+	return ""
 }

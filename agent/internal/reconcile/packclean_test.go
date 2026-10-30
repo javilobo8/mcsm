@@ -335,3 +335,29 @@ func TestPackCleanupWithoutDataFolder(t *testing.T) {
 		t.Fatalf("marker = %v", got)
 	}
 }
+
+// The world named through env.LEVEL (which wins over the property) is protected too.
+func TestPackCleanupProtectsEnvLevel(t *testing.T) {
+	r, _, _, _, root := setup(t)
+	data := startPack(t, r, root)
+	for _, f := range []string{"envworld/region/r.mca"} {
+		p := filepath.Join(data, f)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(f), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, _ := json.Marshal(map[string]any{"files": []string{"mods/a.jar", "envworld/region/r.mca"}})
+	if err := os.WriteFile(filepath.Join(data, ".modrinth-modpack-manifest.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	withEnv := strings.Replace(fabricJSON, `"rconPassword"`, `"env":{"LEVEL":"envworld"},"rconPassword"`, 1)
+	if err := r.Apply(context.Background(), specMsg("a", "alpha", 2, withEnv)); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(t, filepath.Join(data, "mods", "a.jar")) || !fileExists(t, filepath.Join(data, "envworld", "region", "r.mca")) {
+		t.Fatal("the mod must go and the env.LEVEL world stay")
+	}
+}

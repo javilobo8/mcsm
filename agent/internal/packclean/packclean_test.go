@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"mcsm/agent/internal/spec"
 )
@@ -338,5 +340,103 @@ func TestCleanMissingDataDirIsNoop(t *testing.T) {
 	res, err := Clean(filepath.Join(t.TempDir(), "nope"), spec.PlatformModrinth, opts())
 	if err != nil || res != (Result{}) {
 		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+}
+
+// cleanWithDeadline runs Clean and fails the test instead of hanging forever if it blocks.
+func cleanWithDeadline(t *testing.T, dir, platform string, opt Options) (Result, error) {
+	t.Helper()
+	type out struct {
+		res Result
+		err error
+	}
+	ch := make(chan out, 1)
+	go func() {
+		res, err := Clean(dir, platform, opt)
+		ch <- out{res, err}
+	}()
+	select {
+	case o := <-ch:
+		return o.res, o.err
+	case <-time.After(5 * time.Second):
+		t.Fatal("Clean blocked")
+		return Result{}, nil
+	}
+}
+
+// A container can replace a manifest with a FIFO: opening it must not block the agent (it holds the
+// server's lock), and a FIFO is not a manifest.
+func TestCleanRefusesFIFOManifests(t *testing.T) {
+	for _, name := range []string{".modrinth-modpack-manifest.json", ".modrinth-manifest.json", ".curseforge-files-manifest.json", "server.properties"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			tree(t, dir, "mods/a.jar")
+			if name != ".modrinth-modpack-manifest.json" {
+				writeManifest(t, dir, ".modrinth-modpack-manifest.json", map[string]any{"files": []string{"mods/a.jar"}})
+			}
+			if err := syscall.Mkfifo(filepath.Join(dir, name), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := cleanWithDeadline(t, dir, spec.PlatformModrinth, opts())
+			if err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("err = %v, want an error naming %s", err, name)
+			}
+			if !exists(t, filepath.Join(dir, "mods", "a.jar")) {
+				t.Fatal("nothing must be removed")
+			}
+		})
+	}
+}
+
+// The world may be named on disk (server.properties edited from the Files tab): it is protected too.
+func TestCleanProtectsLevelFromServerProperties(t *testing.T) {
+	dir := t.TempDir()
+	listed := []string{"diskworld/region/r.0.0.mca", "diskworld_nether/x", "my world/level.dat", "mods/a.jar"}
+	tree(t, dir, listed...)
+	props := "#Minecraft server properties\nmotd=hi\n  level-name = diskworld\n"
+	if err := os.WriteFile(filepath.Join(dir, "server.properties"), []byte(props), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeManifest(t, dir, ".modrinth-modpack-manifest.json", map[string]any{"files": listed})
+	res, err := Clean(dir, spec.PlatformModrinth, opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range listed[:2] {
+		if !exists(t, filepath.Join(dir, p)) {
+			t.Errorf("%s was removed", p)
+		}
+	}
+	if exists(t, filepath.Join(dir, "mods", "a.jar")) {
+		t.Fatal("the mod must go")
+	}
+	if res.Removed != 2 || res.Kept != 2 { // "my world" is not the world here
+		t.Fatalf("result = %+v", res)
+	}
+	// Escaped value (Java properties): "my\ world".
+	tree(t, dir, "my world/level.dat")
+	if err := os.WriteFile(filepath.Join(dir, "server.properties"), []byte("level-name=my\\ world\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeManifest(t, dir, ".modrinth-modpack-manifest.json", map[string]any{"files": []string{"my world/level.dat"}})
+	if _, err := Clean(dir, spec.PlatformModrinth, opts()); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(t, filepath.Join(dir, "my world", "level.dat")) {
+		t.Fatal("an escaped level-name must be protected")
+	}
+}
+
+// LevelNames from env.LEVEL are not validated like the property: only the first path element counts.
+func TestCleanLevelNamesUseFirstElement(t *testing.T) {
+	dir := t.TempDir()
+	tree(t, dir, "envworld/region/r.mca", "mods/a.jar")
+	writeManifest(t, dir, ".modrinth-modpack-manifest.json", map[string]any{"files": []string{"envworld/region/r.mca", "mods/a.jar"}})
+	res, err := Clean(dir, spec.PlatformModrinth, Options{LevelNames: []string{"./envworld/sub/"}, Log: quiet})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists(t, filepath.Join(dir, "envworld", "region", "r.mca")) || res != (Result{Removed: 1, Kept: 1}) {
+		t.Fatalf("result = %+v", res)
 	}
 }
