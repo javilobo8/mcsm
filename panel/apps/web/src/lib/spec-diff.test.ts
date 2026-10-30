@@ -66,4 +66,14 @@ describe("diffSpecs", () => {
     expect(diffSpecs({ ports: { ...base.ports, rcon: 25580 } }, base)).toEqual([{ label: "Published RCON port", before: "25580", after: "not published" }]);
     expect(diffSpecs({ ports: { ...base.ports, rcon: 25580 } }, { ports: { ...base.ports, rcon: 25581 } })).toEqual([{ label: "Published RCON port", before: "25580", after: "25581" }]);
   });
+
+  it("diff labels datapacks", () => {
+    const base = { type: "PAPER", version: "1.21.1" };
+    expect(diffSpecs(base, { ...base, datapacks: { modrinthProjects: ["x"] } })).toContainEqual({ label: "Modrinth datapacks", before: "—", after: "x" });
+    expect(diffSpecs(base, { ...base, datapacks: { modrinthProjects: [] } })).toContainEqual({ label: "Datapacks (section)", before: "(not managed)", after: "managed by the panel" });
+  });
+  it("labels CurseForge plugins", () => {
+    const base = { type: "PAPER", plugins: { modrinthProjects: [], spigetResources: [], urls: [] } };
+    expect(diffSpecs(base, { ...base, plugins: { ...base.plugins, curseforgeFiles: ["1:2"] } })).toEqual([{ label: "CurseForge plugins", before: "—", after: "1:2" }]);
+  });
 });

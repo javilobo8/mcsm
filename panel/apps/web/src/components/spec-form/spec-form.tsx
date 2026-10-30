@@ -25,7 +25,7 @@ const TABS = [
 type TabValue = (typeof TABS)[number]["value"];
 
 const FIELD_TABS: readonly [RegExp, TabValue][] = [
-  [/^sf-(type|version|java|mp-|mods-|pl-)/, "version"],
+  [/^sf-(type|version|java|mp-|mods-|pl-|dp-|content-)/, "version"],
   [/^sf-(prop-|props-)/, "properties"],
   [/^sf-(whitelist|ops)/, "players"],
   [/^sf-(port|extra-|rcon-|proto-|router-)/, "network"],

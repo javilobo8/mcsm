@@ -14,6 +14,7 @@ export const FORM_KEYS = [
   "modpack", "mods", "plugins", "whitelist", "ops",
   "router", // plan-8
   "build", // plan-10
+  "datapacks", // plan-11
 ] as const;
 
 /** One entry per line; also accepts commas (pasting "lithium,sodium"). */
@@ -139,7 +140,7 @@ export function typeChangeNotice(spec: EditableSpec, type: string): string | nul
 }
 
 /** OPTIONAL sections: the only ones for which the PATCH accepts `null` (remove). The rest would reset to their default. */
-export const OPTIONAL_KEYS: ReadonlySet<string> = new Set(["modpack", "mods", "plugins", "whitelist", "ops", "router"]);
+export const OPTIONAL_KEYS: ReadonlySet<string> = new Set(["modpack", "mods", "plugins", "datapacks", "whitelist", "ops", "router"]);
 
 /**
  * Minimal PATCH (first-level merge, see mergeSpecPatch in @mcsm/shared): only the FORM_KEYS

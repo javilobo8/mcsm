@@ -4,7 +4,7 @@ const NONE = "—";
 const UNMANAGED = "(not managed)";
 const MANAGED = "managed by the panel";
 // Optional sections: absent = the panel does not manage them; empty is a real change.
-const OPTIONAL_LABELS = new Set(["Operators", "Whitelist", "Mods (section)", "Plugins (section)"]);
+const OPTIONAL_LABELS = new Set(["Operators", "Whitelist", "Mods (section)", "Plugins (section)", "Datapacks (section)"]);
 
 const RCON_LABEL = "Published RCON port";
 const RCON_NONE = "not published";
@@ -13,13 +13,14 @@ const RCON_AUTO = "assigned on apply";
 const TOP_LABELS: Record<string, string> = {
   type: "Type", version: "Minecraft version", build: "Build / loader", imageTag: "Java (image)", memory: "JVM memory",
   restartPolicy: "Restart policy", modpack: "Modpack", whitelist: "Whitelist", ops: "Operators",
-  router: "Router (mc-router)", mods: "Mods (section)", plugins: "Plugins (section)",
+  router: "Router (mc-router)", mods: "Mods (section)", plugins: "Plugins (section)", datapacks: "Datapacks (section)",
 };
 const NESTED_LABELS: Record<string, string> = {
   "resources.cpus": "CPU limit", "resources.memLimit": "Container RAM limit",
   "ports.game": "Game port", "ports.rcon": "Published RCON port", "ports.extra": "Extra ports",
   "mods.modrinthProjects": "Modrinth mods", "mods.curseforgeFiles": "CurseForge mods", "mods.urls": "Mods by URL",
   "plugins.modrinthProjects": "Modrinth plugins", "plugins.spigetResources": "Spiget plugins", "plugins.urls": "Plugins by URL",
+  "plugins.curseforgeFiles": "CurseForge plugins", "datapacks.modrinthProjects": "Modrinth datapacks",
 };
 
 type Obj = Record<string, unknown>;
@@ -70,8 +71,8 @@ function flatten(spec: Obj): Map<string, string> {
     else if (k === "ops") out.set(TOP_LABELS.ops!, Array.isArray(v) && v.length === 0 ? "empty — all will be revoked" : show(v));
     else if (k === "whitelist") out.set(TOP_LABELS.whitelist!, showWhitelist(v));
     else if (k === "router") out.set(TOP_LABELS.router!, showRouter(v));
-    else if ((k === "resources" || k === "ports" || k === "mods" || k === "plugins") && isObj(v)) {
-      if (k === "mods" || k === "plugins") out.set(TOP_LABELS[k]!, MANAGED); // plan-9: the section itself (absent ≠ present)
+    else if ((k === "resources" || k === "ports" || k === "mods" || k === "plugins" || k === "datapacks") && isObj(v)) {
+      if (k === "mods" || k === "plugins" || k === "datapacks") out.set(TOP_LABELS[k]!, MANAGED); // plan-9: the section itself (absent ≠ present)
       for (const [sk, sv] of Object.entries(v)) {
         const path = `${k}.${sk}`;
         out.set(NESTED_LABELS[path] ?? path, path === "ports.extra" ? showPorts(sv) : path === "ports.rcon" ? (sv === "auto" ? RCON_AUTO : show(sv)) : show(sv));
