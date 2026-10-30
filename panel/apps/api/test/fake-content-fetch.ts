@@ -8,9 +8,10 @@ type Handler = (init: ContentInit) => Promise<Response>;
 export function fakeContentFetch() {
   const calls: ContentCall[] = [];
   const routes = new Map<string, Handler[]>();
+  const matchers: { match: (u: URL, init: ContentInit) => boolean; handler: Handler }[] = [];
   const fetch: ContentFetch = (url, init) => {
     calls.push({ url, ...init });
-    const next = routes.get(url)?.shift();
+    const next = routes.get(url)?.shift() ?? matchers.find((m) => m.match(new URL(url), init))?.handler;
     return next ? next(init) : Promise.reject(new TypeError(`no network for ${url}`));
   };
   /** Queues one response for `url`: a JSON value (serialised), a raw string/bytes, or a handler. */
@@ -23,6 +24,11 @@ export function fakeContentFetch() {
     }
     routes.set(url, q);
   };
+  /** Answers every request that `match` accepts (after the queued ones), always with the same JSON value. */
+  const replyWhen = (match: (u: URL, init: ContentInit) => boolean, body: unknown, status = 200, headers: Record<string, string> = {}) => {
+    const payload = typeof body === "string" ? body : JSON.stringify(body);
+    matchers.push({ match, handler: () => Promise.resolve(new Response(payload, { status, headers })) });
+  };
   /** Queues a response that stays pending until `release` is called. */
   const hold = (url: string) => {
     let release!: (r: Response) => void;
@@ -30,5 +36,5 @@ export function fakeContentFetch() {
     reply(url, () => new Promise<Response>((res, rej) => { release = res; fail = rej; }));
     return { release: (r: Response) => release(r), fail: (e: unknown) => fail(e) };
   };
-  return { fetch, calls, reply, hold };
+  return { fetch, calls, reply, replyWhen, hold };
 }

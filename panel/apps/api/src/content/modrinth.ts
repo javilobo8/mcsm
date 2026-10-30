@@ -1,0 +1,385 @@
+import {
+  MODRINTH_ID_RE, type ContentCategoryDto, type ContentDependencyDto, type ContentKind, type ContentProjectDto,
+  type ContentSearchDto, type ContentVersionDto, type PackInfoDto, type ParsedEntry,
+} from "@mcsm/shared";
+import { z } from "zod";
+import { HttpError } from "../lib/http.js";
+import { UpstreamError } from "../versions/sources.js";
+import {
+  PACK_MAX_BYTES, PACK_TIMEOUT_MS, PACK_TOO_LARGE, PACK_UNREADABLE, SEARCH_LIMIT, chunks, isoDate, newestFirst, proxiedImage,
+  type ContentAdapter, type ProjectMeta, type SearchInput, type VersionFilter,
+} from "./adapter.js";
+import { DOWNLOAD_HOSTS, TOO_LARGE, type UpstreamClient } from "./http.js";
+import { loaderOf, readMrpackIndex } from "./pack.js";
+import type { ContentMetaRepo } from "./repo.js";
+import { descriptionHtml } from "./sanitize.js";
+
+const API = "https://api.modrinth.com/v2";
+
+const SEARCH_TTL = 300_000;
+const CATEGORIES_TTL = 24 * 3_600_000;
+const PROJECT_TTL = 3_600_000;
+const VERSIONS_TTL = 15 * 60_000;
+
+export const MODRINTH_RATE_LIMITED = "Modrinth is rate limiting the panel: try again in a minute";
+export const MODRINTH_FAILED = "Could not query Modrinth";
+
+// ── Upstream documents (only what is used; zod drops the rest) ──
+
+const date = z.string().refine((s) => isoDate(s) !== null, "invalid date");
+
+const hitSchema = z.object({
+  project_id: z.string(),
+  slug: z.string().nullish(),
+  title: z.string(),
+  description: z.string().nullish(),
+  author: z.string().nullish(),
+  downloads: z.number(),
+  categories: z.array(z.string()).nullish(),
+  icon_url: z.string().nullish(),
+  server_side: z.string().nullish(),
+});
+const searchSchema = z.object({ hits: z.array(hitSchema), offset: z.number(), limit: z.number(), total_hits: z.number() });
+
+const tagsSchema = z.array(z.object({ name: z.string(), project_type: z.string(), header: z.string() }));
+
+const projectSchema = z.object({
+  id: z.string(),
+  slug: z.string().nullish(),
+  project_type: z.string().nullish(),
+  team: z.string().nullish(),
+  title: z.string(),
+  description: z.string().nullish(),
+  body: z.string().nullish(),
+  categories: z.array(z.string()).nullish(),
+  downloads: z.number(),
+  icon_url: z.string().nullish(),
+  server_side: z.string().nullish(),
+  source_url: z.string().nullish(),
+  issues_url: z.string().nullish(),
+  wiki_url: z.string().nullish(),
+  discord_url: z.string().nullish(),
+  gallery: z.array(z.object({ url: z.string() })).nullish(),
+});
+type ProjectDoc = z.infer<typeof projectSchema>;
+
+const membersSchema = z.array(z.object({ team_id: z.string().nullish(), user: z.object({ username: z.string() }), role: z.string().nullish() }));
+type MembersDoc = z.infer<typeof membersSchema>;
+
+const versionSchema = z.object({
+  id: z.string(),
+  project_id: z.string(),
+  version_number: z.string(),
+  version_type: z.enum(["release", "beta", "alpha"]),
+  date_published: date,
+  game_versions: z.array(z.string()),
+  loaders: z.array(z.string()),
+  dependencies: z.array(z.object({
+    project_id: z.string().nullish(),
+    version_id: z.string().nullish(),
+    dependency_type: z.enum(["required", "optional", "incompatible", "embedded"]),
+  })).nullish(),
+  files: z.array(z.object({ url: z.string(), primary: z.boolean().nullish() })).nullish(),
+});
+type VersionDoc = z.infer<typeof versionSchema>;
+
+const versionFilesSchema = z.record(z.string(), z.object({ project_id: z.string() }));
+
+const SORT_INDEX = { relevance: "relevance", downloads: "downloads", newest: "newest", updated: "updated" } as const;
+const PAGE_TYPES = new Set(["mod", "modpack", "plugin", "datapack", "resourcepack", "shader"]);
+const PACK_LOADERS = new Set<string>(["fabric", "forge", "neoforge", "quilt"]);
+/** A project slug, id or version number usable as one path segment (never `.`/`..`). */
+const SEGMENT_RE = /^(?!\.+$)[A-Za-z0-9_.+-]{1,128}$/;
+
+const enc = encodeURIComponent;
+const json = (v: unknown) => JSON.stringify(v);
+const modrinthId = (s: string | null | undefined): string | null => (s && MODRINTH_ID_RE.test(s) ? s : null);
+const label = (name: string) => {
+  const s = name.replaceAll("-", " ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+const safeLink = (url: string | null | undefined): string | null => {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+  } catch {
+    return null;
+  }
+};
+
+export class ModrinthAdapter implements ContentAdapter {
+  readonly platform = "modrinth" as const;
+
+  constructor(private readonly http: UpstreamClient, private readonly repo: ContentMetaRepo) {}
+
+  async search(q: SearchInput): Promise<ContentSearchDto> {
+    const facets: string[][] = [[`project_type:${q.kind}`]];
+    if (q.loaders.length > 0) facets.push(q.loaders.map((l) => `categories:${l}`));
+    if (q.gameVersion !== null) facets.push([`versions:${q.gameVersion}`]);
+    facets.push(["server_side!=unsupported"]);
+    if (q.category !== null) facets.push([`categories:${q.category}`]);
+    const params = new URLSearchParams({
+      query: q.q, facets: json(facets), index: SORT_INDEX[q.sort], offset: String(q.offset), limit: String(SEARCH_LIMIT),
+    });
+    const r = await this.get({ url: `${API}/search?${params}`, ttlMs: SEARCH_TTL }, searchSchema);
+    const hits = r.data.hits.flatMap((h) => {
+      const projectId = modrinthId(h.project_id);
+      // The facet already excludes them; a hit that slips through is dropped anyway.
+      if (!projectId || h.server_side === "unsupported") return [];
+      return [{
+        platform: "modrinth" as const, projectId, slug: h.slug ?? projectId, name: h.title, author: h.author ?? "",
+        summary: h.description ?? "", iconUrl: proxiedImage(h.icon_url), downloads: h.downloads, categories: h.categories ?? [],
+      }];
+    });
+    return { hits, total: r.data.total_hits, offset: r.data.offset, limit: r.data.limit, stale: r.stale };
+  }
+
+  async categories(kind: ContentKind): Promise<ContentCategoryDto[]> {
+    const r = await this.get({ url: `${API}/tag/category`, ttlMs: CATEGORIES_TTL }, tagsSchema);
+    const type = kind === "modpack" ? "modpack" : "mod";
+    return r.data.filter((t) => t.header === "categories" && t.project_type === type).map((t) => ({ id: t.name, label: label(t.name) }));
+  }
+
+  async project(projectId: string): Promise<ContentProjectDto> {
+    const doc = await this.projectDoc(projectId);
+    const id = modrinthId(doc.id);
+    if (!id) throw new HttpError(502, MODRINTH_FAILED);
+    let author = "";
+    try {
+      author = ownerOf((await this.http.json({ url: `${API}/project/${enc(id)}/members`, ttlMs: PROJECT_TTL }, membersSchema)).data);
+    } catch { /* the author is cosmetic: the project still shows */ }
+    const meta = metaOf(doc, id, author);
+    this.repo.put("modrinth", "project", id, meta);
+    const links = ([["Source", doc.source_url], ["Issues", doc.issues_url], ["Wiki", doc.wiki_url], ["Discord", doc.discord_url]] as const)
+      .flatMap(([l, u]) => { const url = safeLink(u); return url ? [{ label: l, url }] : []; });
+    const type = doc.project_type && PAGE_TYPES.has(doc.project_type) ? doc.project_type : "project";
+    return {
+      platform: "modrinth", projectId: id, slug: meta.slug, name: doc.title, author, summary: doc.description ?? "",
+      iconUrl: meta.iconUrl, downloads: doc.downloads, categories: doc.categories ?? [],
+      descriptionHtml: descriptionHtml({ markdown: doc.body ?? "" }),
+      gallery: (doc.gallery ?? []).flatMap((g) => { const u = proxiedImage(g.url); return u ? [u] : []; }),
+      links, pageUrl: `https://modrinth.com/${type}/${enc(meta.slug)}`, clientOnly: meta.clientOnly, distributable: true,
+    };
+  }
+
+  async projects(ids: string[]): Promise<ProjectMeta[]> {
+    const wanted = [...new Set(ids.filter((id) => SEGMENT_RE.test(id)))];
+    const docs: ProjectDoc[] = [];
+    for (const part of chunks(wanted)) {
+      docs.push(...(await this.get({ url: `${API}/projects?${new URLSearchParams({ ids: json(part) })}`, ttlMs: PROJECT_TTL }, z.array(projectSchema))).data);
+    }
+    const owners = await this.owners(docs.flatMap((d) => (d.team && MODRINTH_ID_RE.test(d.team) ? [d.team] : [])));
+    return docs.flatMap((d) => {
+      const id = modrinthId(d.id);
+      if (!id) return [];
+      const meta = metaOf(d, id, (d.team && owners.get(d.team)) ?? "");
+      this.repo.put("modrinth", "project", id, meta);
+      return [meta];
+    });
+  }
+
+  async versions(projectId: string, f: VersionFilter): Promise<{ versions: ContentVersionDto[]; stale: boolean }> {
+    const loaders = f.kind === "datapack" ? ["datapack"] : f.loaders;
+    const params = new URLSearchParams();
+    if (loaders.length > 0) params.set("loaders", json(loaders));
+    if (f.gameVersion !== null) params.set("game_versions", json([f.gameVersion]));
+    params.set("include_changelog", "false");
+    const r = await this.get(
+      { url: `${API}/project/${enc(this.segment(projectId))}/version?${params}`, ttlMs: VERSIONS_TTL },
+      z.array(versionSchema),
+      "Project not found on Modrinth",
+    );
+    return { versions: newestFirst(this.store(r.data)), stale: r.stale };
+  }
+
+  async versionsByIds(ids: string[]): Promise<ContentVersionDto[]> {
+    const wanted = [...new Set(ids.filter((id) => MODRINTH_ID_RE.test(id)))];
+    const out: ContentVersionDto[] = [];
+    for (const part of chunks(wanted)) {
+      const r = await this.get({ url: `${API}/versions?${new URLSearchParams({ ids: json(part) })}`, ttlMs: VERSIONS_TTL }, z.array(versionSchema));
+      out.push(...this.store(r.data));
+    }
+    return out;
+  }
+
+  async resolveRef(e: ParsedEntry, _kind: ContentKind): Promise<{ projectId: string; versionId: string | null } | null> {
+    if (!SEGMENT_RE.test(e.projectRef)) return null;
+    let projectId = this.storedRef(e.projectRef);
+    if (!projectId) {
+      const doc = await this.orNull(() => this.projectDoc(e.projectRef));
+      projectId = modrinthId(doc?.id);
+      if (!projectId) return null;
+      this.repo.put("modrinth", "ref", e.projectRef, projectId);
+    }
+    if (e.versionRef === null || !SEGMENT_RE.test(e.versionRef)) return { projectId, versionId: null };
+    const refKey = `${projectId}:${e.versionRef}`;
+    let versionId = this.storedRef(refKey);
+    if (!versionId) {
+      const pid = projectId;
+      const doc = await this.orNull(async () =>
+        (await this.get({ url: `${API}/project/${enc(pid)}/version/${enc(e.versionRef!)}`, ttlMs: VERSIONS_TTL }, versionSchema, "Version not found on Modrinth")).data);
+      const v = doc && doc.project_id === projectId ? this.store([doc])[0] : undefined;
+      if (!v) return { projectId, versionId: null };
+      versionId = v.versionId;
+      this.repo.put("modrinth", "ref", refKey, versionId);
+    }
+    return { projectId, versionId };
+  }
+
+  async pack(projectId: string, versionId: string): Promise<PackInfoDto> {
+    const notFound = "Version not found on Modrinth";
+    if (!MODRINTH_ID_RE.test(projectId) || !MODRINTH_ID_RE.test(versionId)) throw new HttpError(404, notFound);
+    const stored = this.repo.get("modrinth", "pack", versionId)?.data as PackInfoDto | undefined;
+    if (stored && stored.projectId === projectId) return stored;
+
+    const v = (await this.get({ url: `${API}/version/${enc(versionId)}`, ttlMs: VERSIONS_TTL }, versionSchema, notFound)).data;
+    if (v.project_id !== projectId) throw new HttpError(404, notFound);
+    const p = await this.projectDoc(projectId);
+    const base = {
+      platform: "modrinth" as const, projectId, slug: p.slug ?? projectId, versionId, name: p.title,
+      versionLabel: v.version_number, iconUrl: proxiedImage(p.icon_url),
+    };
+    const unknown = (reason: string): PackInfoDto => {
+      const info: PackInfoDto = {
+        ...base,
+        minecraftVersion: v.game_versions.length === 1 ? v.game_versions[0]! : null,
+        loader: v.loaders.length === 1 && PACK_LOADERS.has(v.loaders[0]!) ? (v.loaders[0] as PackInfoDto["loader"]) : null,
+        loaderVersion: null, contents: [], contentsKnown: false, reason,
+      };
+      this.repo.put("modrinth", "pack", versionId, info);
+      return info;
+    };
+
+    const file = (v.files ?? []).find((f) => f.primary) ?? v.files?.[0];
+    if (!file) return unknown(PACK_UNREADABLE);
+    let zip: Buffer;
+    try {
+      zip = (await this.http.bytes(file.url, { hosts: DOWNLOAD_HOSTS, maxBytes: PACK_MAX_BYTES, timeoutMs: PACK_TIMEOUT_MS, maxRedirects: 3 })).data;
+    } catch (e) {
+      if (e instanceof UpstreamError && e.message === TOO_LARGE) return unknown(PACK_TOO_LARGE);
+      if (isRefusedUrl(e)) return unknown(PACK_UNREADABLE);
+      return this.fail(e); // transient: not stored
+    }
+    let index;
+    try {
+      index = readMrpackIndex(zip);
+    } catch {
+      return unknown(PACK_UNREADABLE);
+    }
+    const hashes = [...new Set(index.files.filter((f) => f.server !== "unsupported").map((f) => f.sha1))];
+    const byHash = hashes.length === 0 ? {} : (await this.get({
+      url: `${API}/version_files`, method: "POST", body: { hashes, algorithm: "sha1" },
+      cacheKey: `modrinth version_files ${versionId}`, ttlMs: PROJECT_TTL,
+    }, versionFilesSchema)).data;
+    const contents = [...new Set(hashes.flatMap((h) => {
+      const id = modrinthId(byHash[h]?.project_id);
+      return id && id !== projectId ? [id] : [];
+    }))].map((id) => ({ platform: "modrinth" as const, projectId: id }));
+    const { loader, version } = loaderOf(index.dependencies);
+    const info: PackInfoDto = {
+      ...base, minecraftVersion: index.dependencies.minecraft ?? null, loader, loaderVersion: version,
+      contents, contentsKnown: true, reason: null,
+    };
+    this.repo.put("modrinth", "pack", versionId, info);
+    return info;
+  }
+
+  // ── helpers ──
+
+  private projectDoc(ref: string): Promise<ProjectDoc> {
+    return this.get({ url: `${API}/project/${enc(this.segment(ref))}`, ttlMs: PROJECT_TTL }, projectSchema, "Project not found on Modrinth")
+      .then((r) => r.data);
+  }
+
+  /** Owner username per team id (best effort: a failure leaves the authors empty). */
+  private async owners(teams: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    for (const part of chunks([...new Set(teams)])) {
+      try {
+        const r = await this.http.json({ url: `${API}/teams?${new URLSearchParams({ ids: json(part) })}`, ttlMs: PROJECT_TTL }, z.array(membersSchema));
+        for (const members of r.data) {
+          const team = members[0]?.team_id;
+          if (team) out.set(team, ownerOf(members));
+        }
+      } catch { /* cosmetic */ }
+    }
+    return out;
+  }
+
+  /** Maps and stores versions (each version seen goes to the metadata cache). */
+  private store(docs: VersionDoc[]): ContentVersionDto[] {
+    return docs.flatMap((d) => {
+      const v = versionOf(d);
+      if (v) this.repo.put("modrinth", "version", v.versionId, v);
+      return v ? [v] : [];
+    });
+  }
+
+  private storedRef(key: string): string | null {
+    const data = this.repo.get("modrinth", "ref", key)?.data;
+    return typeof data === "string" ? data : null;
+  }
+
+  private segment(s: string): string {
+    if (!SEGMENT_RE.test(s)) throw new HttpError(400, "Invalid project id");
+    return s;
+  }
+
+  /** null when the source says 404; any other failure is thrown. */
+  private async orNull<T>(fn: () => Promise<T>): Promise<T | null> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof HttpError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  private async get<T>(req: Parameters<UpstreamClient["json"]>[0], schema: z.ZodType<T>, notFound?: string): Promise<{ data: T; stale: boolean }> {
+    try {
+      return await this.http.json(req, schema);
+    } catch (e) {
+      return this.fail(e, notFound);
+    }
+  }
+
+  private fail(e: unknown, notFound?: string): never {
+    if (e instanceof HttpError) throw e;
+    if (e instanceof UpstreamError) {
+      if (e.status === 429) throw new HttpError(502, MODRINTH_RATE_LIMITED);
+      if (e.status === 404 && notFound) throw new HttpError(404, notFound);
+      throw new HttpError(502, MODRINTH_FAILED);
+    }
+    throw e;
+  }
+}
+
+function isRefusedUrl(e: unknown): boolean {
+  return e instanceof UpstreamError && ["origin not allowed", "redirect not allowed", "too many redirects"].includes(e.message);
+}
+
+function ownerOf(members: MembersDoc): string {
+  return (members.find((m) => m.role === "Owner") ?? members[0])?.user.username ?? "";
+}
+
+function metaOf(d: ProjectDoc, id: string, author: string): ProjectMeta {
+  return {
+    projectId: id, slug: d.slug ?? id, name: d.title, author, iconUrl: proxiedImage(d.icon_url),
+    clientOnly: d.server_side === "unsupported", distributable: true,
+  };
+}
+
+function versionOf(d: VersionDoc): ContentVersionDto | null {
+  const versionId = modrinthId(d.id);
+  const projectId = modrinthId(d.project_id);
+  const publishedAt = isoDate(d.date_published);
+  if (!versionId || !projectId || !publishedAt) return null;
+  const dependencies: ContentDependencyDto[] = (d.dependencies ?? []).map((x) => ({
+    projectId: modrinthId(x.project_id), versionId: modrinthId(x.version_id), type: x.dependency_type,
+  }));
+  return {
+    platform: "modrinth", projectId, versionId, label: d.version_number, type: d.version_type, publishedAt,
+    gameVersions: d.game_versions, loaders: d.loaders, dependencies, installable: true, reason: null,
+  };
+}
