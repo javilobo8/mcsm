@@ -390,6 +390,40 @@ describe("ModrinthAdapter.pack", () => {
   it("a version of another project is a 404", async () => {
     const t = setup();
     t.reply(`${API}/version/FoPack01`, fixture("pack-version"));
+    t.replyWhen(isPath(`${API}/projects`), [fixture("project")]); // AANobbMI is Sodium, not the pack
+    t.replyWhen(isPath(`${API}/teams`), []);
     await expect(t.adapter.pack("AANobbMI", "FoPack01")).rejects.toMatchObject({ status: 404 });
+  });
+
+  /** /v2/projects knows the pack by its id and its slug. */
+  const packBySlug = (t: ReturnType<typeof setup>) => {
+    t.replyWhen(isPath(`${API}/projects`), (u: URL) => (JSON.parse(u.searchParams.get("ids")!) as string[])
+      .some((r) => r === "1KVo5zza" || r.toLowerCase() === "fabulously-optimized") ? [fixture("pack-project")] : []);
+    t.replyWhen(isPath(`${API}/teams`), []);
+  };
+
+  it("takes the project by slug (as pre-browser specs store it) and answers with its id", async () => {
+    const t = packSetup();
+    packBySlug(t);
+    t.reply(MRPACK, zipSync({ "modrinth.index.json": strToU8(JSON.stringify(index)) }));
+    t.reply(`${API}/version_files`, {});
+    const p = await t.adapter.pack("fabulously-optimized", "FoPack01");
+    expect(p).toMatchObject({ projectId: "1KVo5zza", slug: "fabulously-optimized", minecraftVersion: "1.21.1", loader: "fabric" });
+    expect(t.repo.get("modrinth", "ref", "fabulously-optimized")?.data).toBe("1KVo5zza");
+    // Stored, the slug is answered without the network; so is a slug that looks like an id.
+    const n = t.calls.length;
+    expect(await t.adapter.pack("fabulously-optimized", "FoPack01")).toEqual(p);
+    expect(await t.adapter.pack("1KVo5zza", "FoPack01")).toEqual(p);
+    expect(t.calls).toHaveLength(n);
+  });
+
+  it("a slug that names another project is a 404; a source that cannot say is a 502", async () => {
+    const t = packSetup();
+    packBySlug(t);
+    await expect(t.adapter.pack("sodium", "FoPack01")).rejects.toMatchObject({ status: 404, message: "Version not found on Modrinth" });
+    const t2 = setup();
+    t2.reply(`${API}/version/FoPack01`, fixture("pack-version"));
+    await expect(t2.adapter.pack("fabulously-optimized", "FoPack01")).rejects.toMatchObject({ status: 502, message: "Could not query Modrinth" });
+    await expect(t2.adapter.pack("../x", "FoPack01")).rejects.toMatchObject({ status: 404 });
   });
 });

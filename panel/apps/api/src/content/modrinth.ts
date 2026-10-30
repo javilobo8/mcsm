@@ -311,14 +311,21 @@ export class ModrinthAdapter implements ContentAdapter {
     return v.versionId;
   }
 
-  async pack(projectId: string, versionId: string): Promise<PackInfoDto> {
+  /**
+   * `projectRef` is the project id or its slug: specs written before the browser store a Modrinth pack by slug (or
+   * URL, which the web reduces to the slug). The answer always carries the id.
+   */
+  async pack(projectRef: string, versionId: string): Promise<PackInfoDto> {
     const notFound = "Version not found on Modrinth";
-    if (!MODRINTH_ID_RE.test(projectId) || !MODRINTH_ID_RE.test(versionId)) throw new HttpError(404, notFound);
+    if (!SEGMENT_RE.test(projectRef) || !MODRINTH_ID_RE.test(versionId)) throw new HttpError(404, notFound);
+    // Does `projectRef` name `id`? An id compares as is; anything else (also a slug that looks like an id) is resolved.
+    const names = async (id: string) => id === projectRef || (await this.projectIdOf(projectRef)) === id;
     const stored = this.repo.get("modrinth", "pack", versionId)?.data as PackInfoDto | undefined;
-    if (stored && stored.projectId === projectId) return stored;
+    if (stored && (await names(stored.projectId))) return stored;
 
     const v = (await this.get({ url: `${API}/version/${enc(versionId)}`, ttlMs: VERSIONS_TTL }, versionSchema, notFound)).data;
-    if (v.project_id !== projectId) throw new HttpError(404, notFound);
+    const projectId = modrinthId(v.project_id);
+    if (!projectId || !(await names(projectId))) throw new HttpError(404, notFound);
     const p = (await this.projectDoc(projectId)).data;
     const base = {
       platform: "modrinth" as const, projectId, slug: p.slug ?? projectId, versionId, name: p.title,
@@ -370,6 +377,13 @@ export class ModrinthAdapter implements ContentAdapter {
   }
 
   // ── helpers ──
+
+  /** The id a project slug (or id) names, through the stored refs and the batched lookup; null when unknown. */
+  private async projectIdOf(ref: string): Promise<string | null> {
+    const [r] = await this.resolveRefs([{ raw: ref, projectRef: ref, versionRef: null, pinned: false }], "modpack");
+    if (r === REF_UNAVAILABLE) throw new HttpError(502, MODRINTH_FAILED);
+    return r?.projectId ?? null;
+  }
 
   private projectDoc(ref: string): Promise<JsonResult<ProjectDoc>> {
     return this.get({ url: `${API}/project/${enc(this.segment(ref))}`, ttlMs: PROJECT_TTL }, projectSchema, "Project not found on Modrinth");
