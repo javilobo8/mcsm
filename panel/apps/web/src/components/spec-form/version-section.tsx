@@ -1,4 +1,4 @@
-import { MODRINTH_LOADERS, usesCurseForge } from "@mcsm/shared";
+import { usesCurseForge } from "@mcsm/shared";
 import { useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { JAVA_TAGS, SERVER_TYPES, typeKind } from "@/lib/spec-catalog";
@@ -7,25 +7,12 @@ import { blurVersionAction, hasVersionList, specChanged } from "@/lib/versions";
 import { browseTarget } from "@/lib/content-target";
 import { useInstalledPack } from "@/hooks/use-content";
 import { ContentSection, ContentTextFields } from "@/components/content/content-section";
-import { Field, OptionalSelect, RequiredSelect, type ReportError } from "./fields";
+import { Field, RequiredSelect, type ReportError } from "./fields";
+import { MODPACK_HELP, ModpackFields } from "./modpack-fields";
+import { PackCard } from "@/components/content/pack-card";
 import { CurseForgeKeyNotice } from "./curseforge-key";
 import { BuildPicker } from "./build-picker";
 import { VersionPicker } from "./version-picker";
-
-const MODPACK_HELP: Record<string, { slug: string; slugHint: string; version: string; versionHint: string }> = {
-  MODRINTH: {
-    slug: "Modrinth modpack", slugHint: "Slug, id or URL from modrinth.com (MODRINTH_MODPACK).",
-    version: "Modpack version (optional)", versionHint: "Version id or number (MODRINTH_VERSION). Empty = the latest compatible with the Minecraft version.",
-  },
-  AUTO_CURSEFORGE: {
-    slug: "CurseForge modpack", slugHint: "Slug (CF_SLUG) or URL of the page or of a file (CF_PAGE_URL).",
-    version: "File id (optional)", versionHint: "File number to pin the version (CF_FILE_ID). Empty = the latest.",
-  },
-  FTBA: {
-    slug: "FTB modpack id", slugHint: "Modpack number (FTB_MODPACK_ID).",
-    version: "Version id (optional)", versionHint: "Version number (FTB_MODPACK_VERSION_ID). Empty = the latest.",
-  },
-};
 
 const JAVA_HINT = "java25 for 26.x; java21 for 1.20.5–1.21.x; java17 for 1.17–1.20.4; java8 for older ones. It adjusts itself when the version changes.";
 
@@ -94,24 +81,11 @@ export function VersionSection({ spec, onChange, onError, contentUi = "text" }: 
         <p className="text-xs text-warn">itzg no longer downloads Spigot automatically: add BUILD_FROM_SOURCE=true to the environment variables (Advanced) or use Paper.</p>
       )}
 
-      {mp && help && (
+      {/* Browser mode: Modrinth and CurseForge packs get the pack card (in BrowserContent); FTB keeps the manual fields. */}
+      {mp && help && (contentUi === "text" || mp.platform === "FTBA") && (
         <fieldset className="grid grid-cols-1 gap-3 rounded-md border border-border p-3 sm:grid-cols-3">
           <legend className="px-1 text-sm font-medium">Modpack</legend>
-          <Field id="sf-mp-slug" label={help.slug} hint={help.slugHint}>
-            <Input id="sf-mp-slug" value={mp.slugOrUrl} onChange={(e) => onChange({ ...spec, modpack: { ...mp, slugOrUrl: e.target.value } })}
-              onBlur={(e) => { if (e.target.value !== e.target.value.trim()) onChange({ ...spec, modpack: { ...mp, slugOrUrl: e.target.value.trim() } }); }} />
-          </Field>
-          <Field id="sf-mp-version" label={help.version} hint={help.versionHint}>
-            <Input id="sf-mp-version" value={mp.versionId} onChange={(e) => onChange({ ...spec, modpack: { ...mp, versionId: e.target.value } })}
-              onBlur={(e) => { if (e.target.value !== e.target.value.trim()) onChange({ ...spec, modpack: { ...mp, versionId: e.target.value.trim() } }); }} />
-          </Field>
-          {mp.platform === "MODRINTH" && (
-            <Field id="sf-mp-loader" label="Loader (optional)" hint="Only if the modpack publishes versions for several loaders.">
-              <OptionalSelect id="sf-mp-loader" value={mp.loader || undefined}
-                options={MODRINTH_LOADERS.filter((l) => l !== "").map((l) => ({ value: l, label: l }))}
-                onChange={(l) => onChange({ ...spec, modpack: { ...mp, loader: (l ?? "") as typeof mp.loader } })} defaultLabel="(any)" />
-            </Field>
-          )}
+          <ModpackFields spec={spec} onChange={onChange} />
         </fieldset>
       )}
 
@@ -158,6 +132,7 @@ function BrowserContent({ spec, onChange, onError, showMods, showPlugins }: {
   const common = { spec, onChange, onError, pack };
   return (
     <>
+      {spec.modpack && spec.modpack.platform !== "FTBA" && <PackCard spec={spec} onChange={onChange} />}
       {showMods && <ContentSection {...common} lists={["mods.modrinthProjects", "mods.curseforgeFiles"]} title="Mods" kind="mod" target={target("mod")} />}
       {showPlugins && <ContentSection {...common} lists={["plugins.modrinthProjects", "plugins.curseforgeFiles"]} title="Plugins" kind="plugin" target={target("plugin")} />}
       <ContentSection {...common} lists={["datapacks.modrinthProjects"]} title="Datapacks" kind="datapack" target={target("datapack")} />

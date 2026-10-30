@@ -109,3 +109,20 @@ describe("VersionSection: content browser (plan 11)", () => {
     expect(html).toContain("Datapacks");
   });
 });
+
+describe("VersionSection: modpack card (plan 11)", () => {
+  it("browser mode shows the pack card for a Modrinth pack", () => {
+    const html = renderUi({ ...withType(defaultSpecInput(), "MODRINTH"), modpack: { platform: "MODRINTH", slugOrUrl: "P0000001", versionId: "V0000002", loader: "fabric" } });
+    for (const t of ["Change version", "Switch modpack", "Uninstall", "Edit as text"]) expect(html).toContain(t);
+    expect(html).not.toContain('id="sf-mp-slug"');
+  });
+  it("FTB keeps the manual fields", () => {
+    const html = renderUi({ ...withType(defaultSpecInput(), "FTBA"), modpack: { platform: "FTBA", slugOrUrl: "23", versionId: "", loader: "" } });
+    expect(html).toContain("FTB modpack id");
+    expect(html).not.toContain("Switch modpack");
+  });
+  it("an empty pack (type just changed) asks to choose one", () => {
+    const html = renderUi(withType(defaultSpecInput(), "AUTO_CURSEFORGE"));
+    expect(html).toContain("Choose a modpack");
+  });
+});
