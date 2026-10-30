@@ -274,4 +274,18 @@ UPDATE migrations SET pending_error = replace(pending_error, '; no se reintenta:
   WHERE pending_error LIKE '%; no se reintenta: %';
 `,
   },
+  {
+    // Content browser (plan 11): cached project/version/pack metadata and slug → id references, per platform.
+    name: "090_content_meta",
+    sql: `
+CREATE TABLE content_meta (
+  platform TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  id TEXT NOT NULL,
+  data TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (platform, kind, id)
+);
+`,
+  },
 ];
