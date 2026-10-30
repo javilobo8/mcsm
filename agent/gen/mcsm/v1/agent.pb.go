@@ -5176,6 +5176,8 @@ func (x *RouterObserved) GetSpec() *RouterSpec {
 //	drift              the container did not match the already applied spec and has been recreated
 //	save_on_pending    autosave may have been left disabled (save-on failed); the agent retries
 //	save_on_resumed    save-on works again
+//	pack_cleanup          the agent deleted the files of a modpack that was uninstalled or replaced
+//	pack_cleanup_skipped  those files could not be deleted (data folder outside DATA_ROOT)
 type Event struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Level         EventLevel             `protobuf:"varint,1,opt,name=level,proto3,enum=mcsm.v1.EventLevel" json:"level,omitempty"`

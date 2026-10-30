@@ -44,6 +44,8 @@ type Reconciler struct {
 	events   EventSink            // plan-9: events (drift); nil = none (SetEventSink)
 	// plan-9: Power accepted a manual start or restart (SetOnManualStart); nil = nothing.
 	onManualStart func(serverID string)
+	// plan-11: registers the writes to a server's data folder (SetDataWriteGuard); nil = none.
+	dataWriteGuard func(serverID string) (leave func())
 
 	mu      sync.Mutex
 	locks   map[string]*sync.Mutex
@@ -183,7 +185,8 @@ func (r *Reconciler) Apply(ctx context.Context, sp *mcsmv1.ServerSpec) error {
 		r.log.Info("out-of-order spec ignored", "server", sp.Slug, "version", sp.Version, "stored", stored.Version)
 		return nil
 	}
-	if err := r.st.PutSpec(sp); err != nil { // clears the id's tombstone, if there is one
+	// plan-11: an uninstalled or replaced modpack leaves its files; the cleanup is marked with the spec.
+	if err := r.st.PutSpecMarkingPackCleanup(sp, packCleanupPlatform(stored.GetSpecJson(), sp.SpecJson)); err != nil { // clears the id's tombstone, if there is one
 		return err
 	}
 	if stored == nil || stored.Version != sp.Version {
@@ -203,7 +206,8 @@ func (r *Reconciler) StoreForce(sp *mcsmv1.ServerSpec) error {
 	if err != nil {
 		return err
 	}
-	if err := r.st.PutSpec(sp); err != nil { // clears the id's tombstone, if there is one
+	// plan-11: as in Apply.
+	if err := r.st.PutSpecMarkingPackCleanup(sp, packCleanupPlatform(stored.GetSpecJson(), sp.SpecJson)); err != nil { // clears the id's tombstone, if there is one
 		return err
 	}
 	if stored == nil || stored.Version != sp.Version {
@@ -333,6 +337,11 @@ func (r *Reconciler) reconcileLocked(ctx context.Context, serverID string) (err 
 	if existing == nil {
 		// plan-6: an adoption whose container is gone (or has just been replaced) is left over.
 		if err := r.st.DeleteAdoption(serverID); err != nil {
+			return err
+		}
+		// plan-11: without a container (the old one, if any, is already removed), the files of an uninstalled
+		// or replaced modpack are deleted before creating the new one.
+		if err := r.cleanPack(ctx, serverID, parsed, build.DataDir); err != nil {
 			return err
 		}
 		// plan-6: with dataPath the folder is the host's and the agent does not see it (it only mounts DATA_ROOT). It goes

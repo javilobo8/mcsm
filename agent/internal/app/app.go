@@ -128,6 +128,8 @@ func New(cfg Config, st *store.Store, eng docker.Engine, log *slog.Logger) *App 
 	// plan-9: starting by hand starts the crash count from zero, only if Power accepts the action (not if it replies
 	// busy) and before the Docker action: an error exit while starting is not added to the earlier ones.
 	a.rec.SetOnManualStart(a.crashes.Reset)
+	// plan-11: deleting the previous modpack's files is a write to data: a restore waits for it (fileWrites).
+	a.rec.SetDataWriteGuard(a.fileWrites.enter)
 	return a
 }
 

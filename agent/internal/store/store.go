@@ -86,12 +86,15 @@ func (s *Store) PutSpec(sp *mcsmv1.ServerSpec) error {
 	if err != nil {
 		return err
 	}
-	return s.db.Update(func(tx *bbolt.Tx) error {
-		if err := tx.Bucket(bSpecs).Put([]byte(sp.ServerId), raw); err != nil {
-			return err
-		}
-		return deleteTombstone(tx, sp.ServerId) // a spec and a tombstone for the same id do not coexist
-	})
+	return s.db.Update(func(tx *bbolt.Tx) error { return putSpec(tx, sp.ServerId, raw) })
+}
+
+// putSpec stores a marshalled spec inside a write transaction.
+func putSpec(tx *bbolt.Tx, id string, raw []byte) error {
+	if err := tx.Bucket(bSpecs).Put([]byte(id), raw); err != nil {
+		return err
+	}
+	return deleteTombstone(tx, id) // a spec and a tombstone for the same id do not coexist
 }
 
 func (s *Store) GetSpec(id string) (*mcsmv1.ServerSpec, error) {
@@ -138,7 +141,10 @@ func (s *Store) DeleteSpec(id string) error {
 		if err := deleteCrashLatch(tx, id); err != nil {
 			return err
 		}
-		return deleteSaveOn(tx, id)
+		if err := deleteSaveOn(tx, id); err != nil {
+			return err
+		}
+		return deletePackCleanup(tx, id) // plan-11
 	})
 }
 

@@ -16,6 +16,8 @@ export const EVENT_KIND_LABEL: Readonly<Record<string, string>> = {
   drift: "Container recreated",
   save_on_pending: "Autosave disabled",
   save_on_resumed: "Autosave re-enabled",
+  pack_cleanup: "Modpack files removed",
+  pack_cleanup_skipped: "Modpack files not removed",
   token_rotated: "Node token rotated",
 };
 
