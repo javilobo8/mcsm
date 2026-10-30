@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { specSchema, specInputSchema } from "./spec.js";
+import { serverPatchSchema, specInputSchema, specPatchNullError, specSchema } from "./spec.js";
 import { CURSEFORGE_API_KEY_RE, envSectionConflicts, usesCurseForge } from "./spec-content.js";
 
 const fixture = (name: string) => JSON.parse(readFileSync(new URL(`../../../../proto/fixtures/${name}`, import.meta.url), "utf8"));
@@ -66,4 +66,17 @@ describe("spec with content", () => {
     expect(usesCurseForge({ modpack: { platform: "AUTO_CURSEFORGE" } })).toBe(true);
     expect(usesCurseForge({ modpack: { platform: "MODRINTH" } })).toBe(false);
   });
+});
+
+describe("datapacks and CurseForge plugins", () => {
+  it("old specs keep no plugins.curseforgeFiles key", () => {
+    const s = specInputSchema.parse({ ...base, plugins: { modrinthProjects: [], spigetResources: [], urls: [] } });
+    expect(Object.hasOwn(s.plugins!, "curseforgeFiles")).toBe(false);
+  });
+  it("CurseForge plugins need the API key", () => expect(usesCurseForge({ plugins: { curseforgeFiles: ["1:2"] } })).toBe(true));
+  it("datapacks: null deletes the section in a PATCH", () => expect(specPatchNullError({ datapacks: null })).toBeNull());
+  it("datapacks list is capped at 1000", () => {
+    expect(specInputSchema.safeParse({ ...base, datapacks: { modrinthProjects: Array.from({ length: 1001 }, (_, i) => `p${i}`) } }).success).toBe(false);
+  });
+  it("serverPatchSchema accepts backupFirst", () => expect(serverPatchSchema.parse({ spec: {}, backupFirst: true }).backupFirst).toBe(true));
 });

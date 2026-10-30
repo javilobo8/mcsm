@@ -576,5 +576,87 @@
     "level-name": "world..old"
    }
   }
+ },
+ {
+  "name": "datapacks on Paper",
+  "ok": true,
+  "merge": {
+   "datapacks": {
+    "modrinthProjects": [
+     "terralith",
+     "8oi3bsk5:urbokcOc"
+    ]
+   }
+  }
+ },
+ {
+  "name": "datapacks entry already prefixed",
+  "ok": true,
+  "merge": {
+   "datapacks": {
+    "modrinthProjects": [
+     "datapack:terralith"
+    ]
+   }
+  }
+ },
+ {
+  "name": "datapacks present and empty",
+  "ok": true,
+  "merge": {
+   "datapacks": {
+    "modrinthProjects": []
+   }
+  }
+ },
+ {
+  "name": "datapacks entry with a space",
+  "ok": false,
+  "merge": {
+   "datapacks": {
+    "modrinthProjects": [
+     "terra lith"
+    ]
+   }
+  }
+ },
+ {
+  "name": "datapacks entry with a comma",
+  "ok": false,
+  "merge": {
+   "datapacks": {
+    "modrinthProjects": [
+     "a,b"
+    ]
+   }
+  }
+ },
+ {
+  "name": "CurseForge plugins on Paper",
+  "ok": true,
+  "merge": {
+   "plugins": {
+    "modrinthProjects": [],
+    "spigetResources": [],
+    "urls": [],
+    "curseforgeFiles": [
+     "31043:5547789"
+    ]
+   }
+  }
+ },
+ {
+  "name": "CurseForge plugin with a comma",
+  "ok": false,
+  "merge": {
+   "plugins": {
+    "modrinthProjects": [],
+    "spigetResources": [],
+    "urls": [],
+    "curseforgeFiles": [
+     "31043,1"
+    ]
+   }
+  }
  }
 ]
