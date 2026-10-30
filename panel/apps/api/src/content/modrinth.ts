@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   MODRINTH_ID_RE, type ContentCategoryDto, type ContentDependencyDto, type ContentKind, type ContentProjectDto,
   type ContentSearchDto, type ContentVersionDto, type PackInfoDto, type ParsedEntry,
@@ -7,9 +8,9 @@ import { HttpError } from "../lib/http.js";
 import { UpstreamError } from "../versions/sources.js";
 import {
   PACK_MAX_BYTES, PACK_TIMEOUT_MS, PACK_TOO_LARGE, PACK_UNREADABLE, SEARCH_LIMIT, chunks, isoDate, newestFirst, proxiedImage,
-  type ContentAdapter, type ProjectMeta, type SearchInput, type VersionFilter,
+  ALLOWED_CHANNELS, type ContentAdapter, type ContentRef, type ProjectMeta, type SearchInput, type VersionFilter,
 } from "./adapter.js";
-import { DOWNLOAD_HOSTS, TOO_LARGE, type UpstreamClient } from "./http.js";
+import { DOWNLOAD_HOSTS, RATE_BUDGET_EXHAUSTED, TOO_LARGE, type UpstreamClient } from "./http.js";
 import { loaderOf, readMrpackIndex } from "./pack.js";
 import type { ContentMetaRepo } from "./repo.js";
 import { descriptionHtml } from "./sanitize.js";
@@ -23,6 +24,7 @@ const VERSIONS_TTL = 15 * 60_000;
 
 export const MODRINTH_RATE_LIMITED = "Modrinth is rate limiting the panel: try again in a minute";
 export const MODRINTH_FAILED = "Could not query Modrinth";
+export const MODRINTH_BUDGET_SPENT = "Modrinth rate limit reached, try again in a minute";
 
 // ── Upstream documents (only what is used; zod drops the rest) ──
 
@@ -79,7 +81,9 @@ const versionSchema = z.object({
     version_id: z.string().nullish(),
     dependency_type: z.enum(["required", "optional", "incompatible", "embedded"]),
   })).nullish(),
-  files: z.array(z.object({ url: z.string(), primary: z.boolean().nullish() })).nullish(),
+  files: z.array(z.object({
+    url: z.string(), primary: z.boolean().nullish(), hashes: z.object({ sha1: z.string().nullish() }).nullish(),
+  })).nullish(),
 });
 type VersionDoc = z.infer<typeof versionSchema>;
 
@@ -90,6 +94,7 @@ const PAGE_TYPES = new Set(["mod", "modpack", "plugin", "datapack", "resourcepac
 const PACK_LOADERS = new Set<string>(["fabric", "forge", "neoforge", "quilt"]);
 /** A project slug, id or version number usable as one path segment (never `.`/`..`). */
 const SEGMENT_RE = /^(?!\.+$)[A-Za-z0-9_.+-]{1,128}$/;
+const SHA1_RE = /^[0-9a-f]{40}$/;
 
 const enc = encodeURIComponent;
 const json = (v: unknown) => JSON.stringify(v);
@@ -203,28 +208,96 @@ export class ModrinthAdapter implements ContentAdapter {
     return out;
   }
 
-  async resolveRef(e: ParsedEntry, _kind: ContentKind): Promise<{ projectId: string; versionId: string | null } | null> {
-    if (!SEGMENT_RE.test(e.projectRef)) return null;
-    let projectId = this.storedRef(e.projectRef);
-    if (!projectId) {
-      const doc = await this.orNull(() => this.projectDoc(e.projectRef));
-      projectId = modrinthId(doc?.id);
-      if (!projectId) return null;
-      this.repo.put("modrinth", "ref", e.projectRef, projectId);
+  async resolveRefs(es: ParsedEntry[], _kind: ContentKind): Promise<(ContentRef | null)[]> {
+    // Project refs (slugs or ids): the metadata cache first, then /v2/projects?ids= in batches (it accepts slugs).
+    const ids = new Map<string, string>();
+    const unknown = new Set<string>();
+    for (const e of es) {
+      if (!SEGMENT_RE.test(e.projectRef)) continue;
+      const stored = this.storedRef(e.projectRef);
+      if (stored) ids.set(e.projectRef, stored);
+      else unknown.add(e.projectRef);
     }
-    if (e.versionRef === null || !SEGMENT_RE.test(e.versionRef)) return { projectId, versionId: null };
-    const refKey = `${projectId}:${e.versionRef}`;
-    let versionId = this.storedRef(refKey);
-    if (!versionId) {
-      const pid = projectId;
-      const doc = await this.orNull(async () =>
-        (await this.get({ url: `${API}/project/${enc(pid)}/version/${enc(e.versionRef!)}`, ttlMs: VERSIONS_TTL }, versionSchema, "Version not found on Modrinth")).data);
-      const v = doc && doc.project_id === projectId ? this.store([doc])[0] : undefined;
-      if (!v) return { projectId, versionId: null };
-      versionId = v.versionId;
-      this.repo.put("modrinth", "ref", refKey, versionId);
+    if (unknown.size > 0) {
+      let metas: ProjectMeta[] = [];
+      try {
+        metas = await this.projects([...unknown]);
+      } catch { /* the source failed: these entries stay unresolved */ }
+      for (const ref of unknown) {
+        const lower = ref.toLowerCase();
+        const m = metas.find((x) => x.projectId === ref || x.slug.toLowerCase() === lower);
+        if (!m) continue;
+        ids.set(ref, m.projectId);
+        this.repo.put("modrinth", "ref", ref, m.projectId);
+      }
     }
-    return { projectId, versionId };
+    const out: (ContentRef | null)[] = [];
+    for (const e of es) {
+      const projectId = ids.get(e.projectRef);
+      if (!projectId) { out.push(null); continue; }
+      if (e.versionRef === null || !SEGMENT_RE.test(e.versionRef)) { out.push({ projectId, versionId: null }); continue; }
+      // A version id is checked against its project by the lookup; a version number needs the project (one request, cached).
+      if (MODRINTH_ID_RE.test(e.versionRef)) { out.push({ projectId, versionId: e.versionRef }); continue; }
+      try {
+        out.push({ projectId, versionId: await this.versionNumber(projectId, e.versionRef) });
+      } catch {
+        out.push(null);
+      }
+    }
+    return out;
+  }
+
+  async latestFor(current: ContentVersionDto[], f: VersionFilter): Promise<Map<string, ContentVersionDto | null>> {
+    const out = new Map<string, ContentVersionDto | null>();
+    const loaders = f.kind === "datapack" ? ["datapack"] : f.loaders;
+    if (f.gameVersion === null || loaders.length === 0) return out; // the endpoint needs both: nothing can be checked
+    const ids = [...new Set(current.map((v) => v.versionId))];
+    let files = this.repo.getMany("modrinth", "file", ids);
+    const missing = ids.filter((id) => !files.has(id));
+    if (missing.length > 0) {
+      try {
+        await this.versionsByIds(missing); // stores the hashes it finds
+      } catch { /* left out below: not checked */ }
+      files = this.repo.getMany("modrinth", "file", ids);
+    }
+    const sha1Of = (id: string) => { const d = files.get(id)?.data; return typeof d === "string" ? d : null; };
+    for (const channel of ["release", "beta", "alpha"] as const) {
+      const group = current.filter((v) => v.type === channel && sha1Of(v.versionId) !== null);
+      const hashes = [...new Set(group.map((v) => sha1Of(v.versionId)!))];
+      for (const part of chunks(hashes)) {
+        const body = { hashes: part, algorithm: "sha1", loaders, game_versions: [f.gameVersion], version_types: [...ALLOWED_CHANNELS[channel]] };
+        let byHash: Record<string, VersionDoc>;
+        try {
+          byHash = (await this.get({
+            url: `${API}/version_files/update`, method: "POST", body,
+            cacheKey: `modrinth update ${createHash("sha1").update(JSON.stringify(body)).digest("hex")}`, ttlMs: VERSIONS_TTL,
+          }, z.record(z.string(), versionSchema))).data;
+        } catch {
+          continue; // not checked
+        }
+        const inPart = new Set(part);
+        for (const v of group) {
+          const h = sha1Of(v.versionId)!;
+          if (!inPart.has(h)) continue;
+          const doc = byHash[h];
+          out.set(v.versionId, doc ? this.store([doc])[0] ?? null : null);
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Version id of a version number of the project (null when the source does not know it); cached as a ref. */
+  private async versionNumber(projectId: string, number: string): Promise<string | null> {
+    const refKey = `${projectId}:${number}`;
+    const stored = this.storedRef(refKey);
+    if (stored) return stored;
+    const doc = await this.orNull(async () =>
+      (await this.get({ url: `${API}/project/${enc(projectId)}/version/${enc(number)}`, ttlMs: VERSIONS_TTL }, versionSchema, "Version not found on Modrinth")).data);
+    const v = doc && doc.project_id === projectId ? this.store([doc])[0] : undefined;
+    if (!v) return null;
+    this.repo.put("modrinth", "ref", refKey, v.versionId);
+    return v.versionId;
   }
 
   async pack(projectId: string, versionId: string): Promise<PackInfoDto> {
@@ -311,8 +384,12 @@ export class ModrinthAdapter implements ContentAdapter {
   private store(docs: VersionDoc[]): ContentVersionDto[] {
     return docs.flatMap((d) => {
       const v = versionOf(d);
-      if (v) this.repo.put("modrinth", "version", v.versionId, v);
-      return v ? [v] : [];
+      if (!v) return [];
+      this.repo.put("modrinth", "version", v.versionId, v);
+      const file = (d.files ?? []).find((x) => x.primary) ?? d.files?.[0];
+      const sha1 = file?.hashes?.sha1?.toLowerCase();
+      if (sha1 && SHA1_RE.test(sha1)) this.repo.put("modrinth", "file", v.versionId, sha1);
+      return [v];
     });
   }
 
@@ -348,6 +425,7 @@ export class ModrinthAdapter implements ContentAdapter {
     if (e instanceof HttpError) throw e;
     if (e instanceof UpstreamError) {
       if (e.status === 429) throw new HttpError(502, MODRINTH_RATE_LIMITED);
+      if (e.message === RATE_BUDGET_EXHAUSTED) throw new HttpError(502, MODRINTH_BUDGET_SPENT);
       if (e.status === 404 && notFound) throw new HttpError(404, notFound);
       throw new HttpError(502, MODRINTH_FAILED);
     }

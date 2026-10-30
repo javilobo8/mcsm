@@ -102,7 +102,7 @@ describe("/api/content", () => {
   it("updates answers per entry", async () => {
     const res = await post("/api/content/updates", { list: "mods.modrinthProjects", target: { gameVersion: "1.21.1", loaders: [] }, entries: ["AANobbMI:SodVer01"] });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ updates: [{ entry: "AANobbMI:SodVer01", projectId: null, currentVersionId: null, compatible: true, latest: null }] });
+    expect(res.json()).toEqual({ updates: [{ entry: "AANobbMI:SodVer01", projectId: null, currentVersionId: null, compatible: true, checked: false, latest: null }] });
   });
 
   it("never returns the CurseForge key", async () => {

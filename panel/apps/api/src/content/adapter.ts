@@ -6,6 +6,7 @@ import { IMAGE_HOSTS, allowedUrl } from "./http.js";
 
 export interface SearchInput { kind: ContentKind; q: string; gameVersion: string | null; loaders: string[]; category: string | null; sort: ContentSort; offset: number }
 export interface VersionFilter { kind: ContentKind; gameVersion: string | null; loaders: string[] }
+export interface ContentRef { projectId: string; versionId: string | null }
 export interface ProjectMeta { projectId: string; slug: string; name: string; author: string; iconUrl: string | null; clientOnly: boolean; distributable: boolean }
 
 /** One content platform (Modrinth, CurseForge). Every failure comes out as an HttpError with an English message. */
@@ -17,7 +18,13 @@ export interface ContentAdapter {
   projects(ids: string[]): Promise<ProjectMeta[]>;
   versions(projectId: string, f: VersionFilter): Promise<{ versions: ContentVersionDto[]; stale: boolean }>;
   versionsByIds(ids: string[]): Promise<ContentVersionDto[]>;
-  resolveRef(e: ParsedEntry, kind: ContentKind): Promise<{ projectId: string; versionId: string | null } | null>;
+  /** Raw entries → ids, in order, batched where the source allows it; null = unknown or the source failed. */
+  resolveRefs(es: ParsedEntry[], kind: ContentKind): Promise<(ContentRef | null)[]>;
+  /**
+   * Newest version each current version may move to on the filter's target, honouring its channel (pickLatest's rule),
+   * batched. Key = current versionId; null = the source knows none; a key left out = it could not be checked.
+   */
+  latestFor(current: ContentVersionDto[], f: VersionFilter): Promise<Map<string, ContentVersionDto | null>>;
   pack(projectId: string, versionId: string): Promise<PackInfoDto>;
 }
 
@@ -25,6 +32,10 @@ export const SEARCH_LIMIT = 20;
 export const PACK_MAX_BYTES = 64 * 1024 * 1024;
 export const PACK_TIMEOUT_MS = 60_000;
 export const VERSIONS_MAX = 200;
+/** pickLatest's channel rule as the channels a version may move to. */
+export const ALLOWED_CHANNELS = {
+  release: ["release"], beta: ["release", "beta"], alpha: ["release", "beta", "alpha"],
+} as const satisfies Record<string, readonly ("release" | "beta" | "alpha")[]>;
 /** Ids per batch request (both platforms take at most 100). */
 export const BATCH_SIZE = 100;
 

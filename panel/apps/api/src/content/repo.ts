@@ -1,8 +1,11 @@
 import type { ContentPlatform } from "@mcsm/shared";
 import type { Db } from "../db/db.js";
 
-/** What the metadata cache holds: project meta, versions, pack contents and slug → id references. */
-export type MetaKind = "project" | "version" | "pack" | "ref";
+/**
+ * What the metadata cache holds: project meta, versions, pack contents, slug → id references and, per Modrinth version,
+ * the sha1 of its primary file (`file`, for the batched update check).
+ */
+export type MetaKind = "project" | "version" | "pack" | "ref" | "file";
 
 export interface MetaRow { data: unknown; fetchedAt: string }
 

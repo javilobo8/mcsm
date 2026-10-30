@@ -172,17 +172,18 @@ describe("CurseForgeAdapter", () => {
     const t = setup();
     t.reply(`${API}/mods/search?gameId=432&classId=5&slug=worldguard`, { data: [{ ...(fixture("mod") as { data: object }).data, id: 31054, slug: "worldguard" }], pagination: { index: 0, pageSize: 50, resultCount: 1, totalCount: 1 } });
     const e = { raw: "worldguard:5719698", projectRef: "worldguard", versionRef: "5719698", pinned: false };
-    expect(await t.adapter.resolveRef(e, "plugin")).toEqual({ projectId: "31054", versionId: "5719698" });
-    expect(await t.adapter.resolveRef(e, "plugin")).toEqual({ projectId: "31054", versionId: "5719698" });
+    expect(await t.adapter.resolveRefs([e, e], "plugin")).toEqual([{ projectId: "31054", versionId: "5719698" }, { projectId: "31054", versionId: "5719698" }]);
     expect(t.calls).toHaveLength(1);
-    expect(await t.adapter.resolveRef({ raw: "31054", projectRef: "31054", versionRef: null, pinned: false }, "plugin")).toEqual({ projectId: "31054", versionId: null });
+    expect(await t.adapter.resolveRefs([{ raw: "31054", projectRef: "31054", versionRef: null, pinned: false }, e], "plugin"))
+      .toEqual([{ projectId: "31054", versionId: null }, { projectId: "31054", versionId: "5719698" }]);
     expect(t.calls).toHaveLength(1);
   });
 
   it("an unknown slug is null", async () => {
     const t = setup();
     t.reply(`${API}/mods/search?gameId=432&classId=6&slug=nope`, { data: [{ ...(fixture("mod") as { data: object }).data, slug: "nope-2" }], pagination: { index: 0, pageSize: 50, resultCount: 1, totalCount: 1 } });
-    expect(await t.adapter.resolveRef({ raw: "nope", projectRef: "nope", versionRef: null, pinned: false }, "mod")).toBeNull();
+    expect(await t.adapter.resolveRefs([{ raw: "nope", projectRef: "nope", versionRef: null, pinned: false }, { raw: "down", projectRef: "down", versionRef: null, pinned: false }], "mod"))
+      .toEqual([null, null]);
   });
 
   it("reads a pack manifest from the file's download url", async () => {
@@ -214,5 +215,51 @@ describe("CurseForgeAdapter", () => {
       contentsKnown: false, reason: NOT_DISTRIBUTABLE, contents: [], minecraftVersion: "1.20.1", loader: "forge", loaderVersion: null,
     });
     expect(t.calls).toHaveLength(2);
+  });
+
+  describe("latestFor", () => {
+    const cur = (projectId: string, versionId: string, type: "release" | "beta" | "alpha") => ({
+      platform: "curseforge" as const, projectId, versionId, label: versionId, type, publishedAt: "2024-01-01T00:00:00.000Z",
+      gameVersions: ["1.21.1"], loaders: ["neoforge"], dependencies: [], installable: true, reason: null,
+    });
+    const idx = (fileId: number, releaseType: 1 | 2 | 3, modLoader: number | null, gameVersion = "1.21.1") =>
+      ({ gameVersion, fileId, filename: `f${fileId}.jar`, releaseType, gameVersionTypeId: 1, modLoader });
+    const mod = (id: number, indexes: object[]) => ({ ...(fixture("mod") as { data: object }).data, id, latestFilesIndexes: indexes });
+    const file = (id: number, modId: number, releaseType = 1) => ({
+      id, modId, displayName: `file ${id}`, releaseType, fileDate: `2024-0${(id % 9) + 1}-01T00:00:00Z`, downloadUrl: "https://edge.forgecdn.net/x",
+      gameVersions: ["1.21.1", "NeoForge"], dependencies: [],
+    });
+
+    it("picks from latestFilesIndexes by game version, loader and channel, then reads the chosen files in one batch", async () => {
+      const t = setup();
+      t.reply(`${API}/mods`, { data: [
+        mod(100, [idx(7, 1, 6), idx(9, 2, 6), idx(8, 1, 1), idx(12, 1, 6, "1.20.1"), idx(6, 1, 6)]),
+        mod(200, [idx(30, 3, 6), idx(20, 1, 0)]),
+        mod(300, [idx(40, 1, 1)]),
+      ] });
+      t.reply(`${API}/mods/files`, { data: [file(7, 100), file(9, 100, 2), file(20, 200)] });
+      const r = await t.adapter.latestFor(
+        [cur("100", "5", "release"), cur("100", "4", "beta"), cur("200", "15", "release"), cur("300", "35", "release"), cur("400", "45", "release")],
+        { kind: "mod", gameVersion: "1.21.1", loaders: ["neoforge"] },
+      );
+      expect(JSON.parse(t.calls[0]!.body!)).toEqual({ modIds: [100, 200, 300, 400], filterPcOnly: true });
+      expect(JSON.parse(t.calls[1]!.body!)).toEqual({ fileIds: [7, 9, 20] });
+      expect(t.calls.every((c) => c.headers["x-api-key"] === "cf-key")).toBe(true);
+      expect(r.get("5")?.versionId).toBe("7"); // release only: 7 (9 is a beta, 8 is Forge, 12 another version)
+      expect(r.get("4")?.versionId).toBe("9"); // a beta may move to a newer beta
+      expect(r.get("15")?.versionId).toBe("20"); // modLoader 0 = any
+      expect(r.get("35")).toBeNull(); // only a Forge file
+      expect(r.has("45")).toBe(false); // mod 400 not returned: not checked
+    });
+
+    it("plugins ignore the loader [F1]; a failing batch is not checked", async () => {
+      const t = setup();
+      t.reply(`${API}/mods`, { data: [mod(31054, [idx(5719698, 1, null)])] });
+      t.reply(`${API}/mods/files`, { data: [file(5719698, 31054)] });
+      const r = await t.adapter.latestFor([cur("31054", "5000000", "release")], { kind: "plugin", gameVersion: "1.21.1", loaders: ["paper"] });
+      expect(r.get("5000000")?.versionId).toBe("5719698");
+      const t2 = setup();
+      expect((await t2.adapter.latestFor([cur("31054", "5000000", "release")], { kind: "plugin", gameVersion: "1.21.1", loaders: [] })).size).toBe(0);
+    });
   });
 });

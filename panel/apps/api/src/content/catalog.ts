@@ -62,12 +62,20 @@ export class ContentCatalog {
       const idx = items.flatMap((it, i) => (CONTENT_LISTS[it.list].platform === platform ? [i] : []));
       if (idx.length === 0) continue;
       const adapter = this.adapters[platform];
-      const refs = await Promise.all(idx.map(async (i): Promise<Ref> => {
-        const { list, entry } = items[i]!;
-        const parsed = parseContentEntry(platform, entry);
-        if (parsed.pinned) return { projectId: parsed.projectRef, versionId: parsed.versionRef };
-        return quiet(adapter.resolveRef(parsed, CONTENT_LISTS[list].kind));
-      }));
+      // Pinned entries carry their ids; raw ones are resolved in batches per kind (a failure leaves them unresolved).
+      const refs: Ref[] = idx.map((i) => {
+        const parsed = parseContentEntry(platform, items[i]!.entry);
+        return parsed.pinned ? { projectId: parsed.projectRef, versionId: parsed.versionRef } : null;
+      });
+      for (const kind of new Set(idx.map((i) => CONTENT_LISTS[items[i]!.list].kind))) {
+        const raw = idx.flatMap((i, k) => {
+          const parsed = parseContentEntry(platform, items[i]!.entry);
+          return !parsed.pinned && CONTENT_LISTS[items[i]!.list].kind === kind ? [{ k, parsed }] : [];
+        });
+        if (raw.length === 0) continue;
+        const resolved = (await quiet(adapter.resolveRefs(raw.map((r) => r.parsed), kind))) ?? [];
+        raw.forEach((r, j) => { refs[r.k] = resolved[j] ?? null; });
+      }
       const versions = await this.versionsFor(platform, refs.flatMap((r) => (r?.versionId ? [r.versionId] : [])));
       const metas = await this.metasFor(platform, refs.flatMap((r) => (r ? [r.projectId] : [])));
       idx.forEach((i, k) => {
@@ -114,26 +122,33 @@ export class ContentCatalog {
     return resolveSelection({ list: req.list, selections: req.selections, present, inPack, target: req.target }, deps);
   }
 
-  /** Per entry: whether its pinned version fits the target and the newest version it may move to. */
+  /**
+   * Per entry: whether its pinned version fits the target and the newest version it may move to, from one batched
+   * request per ≤ 100 entries. An entry the source could not be asked about comes back `checked: false` (its `latest`
+   * is unknown, not "up to date"). An unpinned entry follows the newest compatible version on its own: nothing to check.
+   */
   async updates(req: UpdatesRequest): Promise<UpdateDto[]> {
     const { platform, kind } = CONTENT_LISTS[req.list];
-    const adapter = this.adapters[platform];
     const metas = await this.lookup(req.entries.map((entry) => ({ list: req.list, entry })));
-    const projects = [...new Set(metas.flatMap((m) => (m.resolved && m.projectId ? [m.projectId] : [])))];
-    const lists = new Map(await Promise.all(projects.map(async (pid) => {
-      const r = await quiet(adapter.versions(pid, { kind, gameVersion: req.target.gameVersion, loaders: req.target.loaders }));
-      return [pid, (r?.versions ?? []).filter((v) => v.installable && compatibleWith(v, req.target))] as const;
-    })));
+    const pinned = [...new Set(metas.flatMap((m) => (m.resolved && m.versionId ? [m.versionId] : [])))];
+    const currents = await this.versionsFor(platform, pinned);
+    const latest = (await quiet(this.adapters[platform].latestFor(
+      pinned.flatMap((id) => { const v = currents.get(id); return v ? [v] : []; }),
+      { kind, gameVersion: req.target.gameVersion, loaders: req.target.loaders },
+    ))) ?? new Map<string, ContentVersionDto | null>();
     return metas.map((m): UpdateDto => {
-      if (!m.resolved || !m.projectId) return { entry: m.raw, projectId: null, currentVersionId: null, compatible: true, latest: null };
-      const compatible = m.versionId === null || compatibleWith(m, req.target);
-      const candidates = lists.get(m.projectId) ?? [];
-      const pick = pickLatest(candidates, m.versionType);
-      const current = candidates.find((v) => v.versionId === m.versionId);
-      const newer = pick && pick.versionId !== m.versionId && (!current || pick.publishedAt > current.publishedAt);
+      const base = { entry: m.raw, projectId: m.projectId, currentVersionId: m.versionId };
+      if (!m.resolved || !m.projectId) return { ...base, projectId: null, currentVersionId: null, compatible: true, checked: false, latest: null };
+      if (m.versionId === null) return { ...base, compatible: true, checked: true, latest: null };
+      const compatible = compatibleWith(m, req.target);
+      if (!latest.has(m.versionId)) return { ...base, compatible, checked: false, latest: null };
+      const v = latest.get(m.versionId) ?? null;
+      const current = currents.get(m.versionId);
+      const offer = v !== null && v.versionId !== m.versionId && v.installable && compatibleWith(v, req.target)
+        && (!compatible || !current || v.publishedAt > current.publishedAt);
       return {
-        entry: m.raw, projectId: m.projectId, currentVersionId: m.versionId, compatible,
-        latest: newer ? { versionId: pick.versionId, label: pick.label, type: pick.type, entry: formatContentEntry(platform, m.projectId, pick.versionId) } : null,
+        ...base, compatible, checked: true,
+        latest: offer ? { versionId: v.versionId, label: v.label, type: v.type, entry: formatContentEntry(platform, m.projectId, v.versionId) } : null,
       };
     });
   }

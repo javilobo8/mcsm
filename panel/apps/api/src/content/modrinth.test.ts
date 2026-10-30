@@ -13,10 +13,10 @@ const API = "https://api.modrinth.com/v2";
 const fixture = (name: string): object => JSON.parse(readFileSync(new URL(`./fixtures/modrinth/${name}.json`, import.meta.url), "utf8")) as object;
 const proxied = (u: string) => `/api/content/image?url=${encodeURIComponent(u)}`;
 
-function setup() {
+function setup(rateBudgets?: Record<string, number>) {
   const f = fakeContentFetch();
   const now = () => Date.parse("2026-10-30T10:00:00Z");
-  const http = new UpstreamClient({ fetch: f.fetch, now, timers: new ManualTimers() });
+  const http = new UpstreamClient({ fetch: f.fetch, now, timers: new ManualTimers(), rateBudgets });
   const repo = new ContentMetaRepo(openDb(":memory:"), now);
   return { ...f, repo, adapter: new ModrinthAdapter(http, repo) };
 }
@@ -181,32 +181,112 @@ describe("ModrinthAdapter.projects", () => {
   });
 });
 
-describe("ModrinthAdapter.resolveRef", () => {
-  it("resolves a slug entry to the project id and caches the ref", async () => {
+describe("ModrinthAdapter.resolveRefs", () => {
+  const raw = (r: string) => {
+    const i = r.indexOf(":");
+    return { raw: r, projectRef: i < 0 ? r : r.slice(0, i), versionRef: i < 0 ? null : r.slice(i + 1), pinned: false };
+  };
+  /** /v2/projects answers every requested id or slug it knows (a slug "ghost" is unknown). */
+  const projectsBySlug = (t: ReturnType<typeof setup>) => {
+    t.replyWhen(isPath(`${API}/projects`), (u: URL) => (JSON.parse(u.searchParams.get("ids")!) as string[])
+      .filter((ref) => ref !== "ghost")
+      .map((ref) => ({ ...(fixture("project") as object), id: `P${ref.replace(/\D/g, "").padStart(7, "0")}`, slug: ref })));
+    t.replyWhen(isPath(`${API}/teams`), []);
+  };
+
+  it("resolves slugs in batches of 100 and caches the refs", async () => {
     const t = setup();
-    t.reply(`${API}/project/sodium`, fixture("project"));
-    const e = { raw: "sodium", projectRef: "sodium", versionRef: null, pinned: false };
-    expect(await t.adapter.resolveRef(e, "mod")).toEqual({ projectId: "AANobbMI", versionId: null });
-    expect(await t.adapter.resolveRef(e, "mod")).toEqual({ projectId: "AANobbMI", versionId: null });
-    expect(t.calls.map((c) => c.url)).toEqual([`${API}/project/sodium`]);
-    expect(t.repo.get("modrinth", "ref", "sodium")?.data).toBe("AANobbMI");
+    projectsBySlug(t);
+    const slugs = Array.from({ length: 150 }, (_, i) => `mod-${String(i).padStart(3, "0")}`);
+    const r = await t.adapter.resolveRefs([...slugs.map(raw), raw("ghost")], "mod");
+    expect(r[0]).toEqual({ projectId: "P0000000", versionId: null });
+    expect(r[149]).toEqual({ projectId: "P0000149", versionId: null });
+    expect(r.at(-1)).toBeNull();
+    const projectCalls = t.calls.filter((c) => new URL(c.url).pathname === "/v2/projects");
+    expect(projectCalls.map((c) => (JSON.parse(new URL(c.url).searchParams.get("ids")!) as string[]).length)).toEqual([100, 51]);
+    expect(t.repo.get("modrinth", "ref", "mod-149")?.data).toBe(r[149]!.projectId);
+    const n = t.calls.length;
+    expect(await t.adapter.resolveRefs([raw("mod-001")], "mod")).toEqual([r[1]]);
+    expect(t.calls).toHaveLength(n);
   });
 
-  it("resolves a version number through the project", async () => {
+  it("keeps a version id, looks up a version number once, and caches both refs", async () => {
     const t = setup();
-    t.reply(`${API}/project/sodium`, fixture("project"));
+    t.repo.put("modrinth", "ref", "sodium", "AANobbMI");
     t.reply(`${API}/project/AANobbMI/version/0.5.5`, (fixture("versions") as object[])[2]!);
-    const e = { raw: "sodium:0.5.5", projectRef: "sodium", versionRef: "0.5.5", pinned: false };
-    expect(await t.adapter.resolveRef(e, "mod")).toEqual({ projectId: "AANobbMI", versionId: "midRel01" });
-    expect(t.repo.get("modrinth", "version", "midRel01")).not.toBeNull();
+    const r = await t.adapter.resolveRefs([raw("sodium:0.5.5"), raw("sodium:midRel01"), raw("datapack-only")], "mod");
+    expect(r.slice(0, 2)).toEqual([{ projectId: "AANobbMI", versionId: "midRel01" }, { projectId: "AANobbMI", versionId: "midRel01" }]);
+    expect(r[2]).toBeNull();
+    expect(t.calls.map((c) => path(c.url))).toEqual([`${API}/projects`, `${API}/project/AANobbMI/version/0.5.5`]);
+    expect(t.repo.get("modrinth", "ref", "AANobbMI:0.5.5")?.data).toBe("midRel01");
   });
 
-  it("an unknown project is null; a dotted segment never reaches a URL", async () => {
+  it("a failing source leaves the entries unresolved; a dotted segment never reaches a URL", async () => {
     const t = setup();
-    t.reply(`${API}/project/nope`, "", 404);
-    expect(await t.adapter.resolveRef({ raw: "nope", projectRef: "nope", versionRef: null, pinned: false }, "mod")).toBeNull();
-    expect(await t.adapter.resolveRef({ raw: "..", projectRef: "..", versionRef: null, pinned: false }, "mod")).toBeNull();
-    expect(t.calls).toHaveLength(1);
+    expect(await t.adapter.resolveRefs([raw("sodium"), raw("..")], "mod")).toEqual([null, null]);
+    expect(t.calls.map((c) => JSON.parse(new URL(c.url).searchParams.get("ids")!))).toEqual([["sodium"]]);
+  });
+});
+
+describe("ModrinthAdapter.latestFor", () => {
+  const cur = (versionId: string, type: "release" | "beta" | "alpha") => ({
+    platform: "modrinth" as const, projectId: "AANobbMI", versionId, label: versionId, type, publishedAt: "2024-01-01T00:00:00.000Z",
+    gameVersions: ["1.21.1"], loaders: ["fabric"], dependencies: [], installable: true, reason: null,
+  });
+  const newer = (id: string, type = "release") => ({ ...(fixture("versions") as object[])[0] as object, id, version_type: type, date_published: "2024-06-01T00:00:00Z" });
+
+  it("stores the primary file's sha1 of each version seen", async () => {
+    const t = setup();
+    t.replyWhen(isPath(`${API}/project/AANobbMI/version`), fixture("versions"));
+    await t.adapter.versions("AANobbMI", { kind: "mod", gameVersion: null, loaders: [] });
+    expect(t.repo.get("modrinth", "file", "midRel01")?.data).toBe("a".repeat(40));
+    expect(t.repo.get("modrinth", "file", "oldRel01")).toBeNull();
+  });
+
+  it("asks version_files/update once per channel with the target, and maps each current version", async () => {
+    const t = setup();
+    t.repo.put("modrinth", "file", "relVer01", "1".repeat(40));
+    t.repo.put("modrinth", "file", "relVer02", "2".repeat(40));
+    t.repo.put("modrinth", "file", "betVer01", "3".repeat(40));
+    t.replyWhen(isPath(`${API}/version_files/update`), (_u: URL, init: { body?: string }) => {
+      const body = JSON.parse(init.body!) as { hashes: string[]; version_types: string[] };
+      return body.version_types.length === 1 ? { ["1".repeat(40)]: newer("relVer09") } : { ["3".repeat(40)]: newer("betVer09", "beta") };
+    });
+    const r = await t.adapter.latestFor([cur("relVer01", "release"), cur("relVer02", "release"), cur("betVer01", "beta")], { kind: "mod", gameVersion: "1.21.1", loaders: ["fabric", "quilt"] });
+    const posts = t.calls.filter((c) => c.url === `${API}/version_files/update`);
+    expect(posts.map((c) => [c.method, JSON.parse(c.body!)])).toEqual([
+      ["POST", { hashes: ["1".repeat(40), "2".repeat(40)], algorithm: "sha1", loaders: ["fabric", "quilt"], game_versions: ["1.21.1"], version_types: ["release"] }],
+      ["POST", { hashes: ["3".repeat(40)], algorithm: "sha1", loaders: ["fabric", "quilt"], game_versions: ["1.21.1"], version_types: ["release", "beta"] }],
+    ]);
+    expect(r.get("relVer01")?.versionId).toBe("relVer09");
+    expect(r.get("betVer01")).toMatchObject({ versionId: "betVer09", type: "beta" });
+    expect(r.has("relVer02")).toBe(true);
+    expect(r.get("relVer02")).toBeNull(); // the source knows no newer compatible version
+    expect(t.repo.get("modrinth", "version", "relVer09")).not.toBeNull();
+  });
+
+  it("fetches the missing hashes in one batch; what cannot be checked is left out", async () => {
+    const t = setup();
+    t.replyWhen(isPath(`${API}/versions`), [(fixture("versions") as object[])[2]]); // midRel01 only, with its files
+    t.replyWhen(isPath(`${API}/version_files/update`), "down", 503);
+    const r = await t.adapter.latestFor([cur("midRel01", "release"), cur("gone0001", "release")], { kind: "datapack", gameVersion: "1.21.1", loaders: ["paper"] });
+    expect(JSON.parse(new URL(t.calls[0]!.url).searchParams.get("ids")!)).toEqual(["midRel01", "gone0001"]);
+    expect(JSON.parse(t.calls[1]!.body!)).toMatchObject({ hashes: ["a".repeat(40)], loaders: ["datapack"] });
+    expect(r.size).toBe(0);
+  });
+
+  it("without a game version or loaders it cannot ask", async () => {
+    const t = setup();
+    expect((await t.adapter.latestFor([cur("relVer01", "release")], { kind: "mod", gameVersion: "1.21.1", loaders: [] })).size).toBe(0);
+    expect(t.calls).toEqual([]);
+  });
+
+  it("an exhausted request budget is a 502 with its own message", async () => {
+    const t = setup({ "api.modrinth.com": 1 });
+    t.replyWhen(isPath(`${API}/search`), fixture("search"));
+    const q = { kind: "mod" as const, q: "", gameVersion: null, loaders: [], category: null, sort: "relevance" as const, offset: 0 };
+    await t.adapter.search(q);
+    await expect(t.adapter.search({ ...q, q: "x" })).rejects.toMatchObject({ status: 502, message: "Modrinth rate limit reached, try again in a minute" });
   });
 });
 

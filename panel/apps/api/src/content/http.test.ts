@@ -3,17 +3,17 @@ import { z } from "zod";
 import { ManualTimers } from "../../test/manual-timers.js";
 import { fakeContentFetch } from "../../test/fake-content-fetch.js";
 import { UpstreamError } from "../versions/sources.js";
-import { API_TIMEOUT_MS, CONTENT_USER_AGENT, DOWNLOAD_HOSTS, JSON_MAX_BYTES, MAX_PER_HOST, UpstreamClient } from "./http.js";
+import { API_TIMEOUT_MS, CONTENT_USER_AGENT, DOWNLOAD_HOSTS, JSON_MAX_BYTES, MAX_PER_HOST, MODRINTH_REQUESTS_PER_MINUTE, RATE_BUDGET_EXHAUSTED, RATE_BUDGET_MAX_WAIT_MS, UpstreamClient } from "./http.js";
 
 const URL1 = "https://api.modrinth.com/v2/project/AABBCCDD";
 const doc = z.object({ id: z.string() });
 
-function setup() {
+function setup(rateBudgets?: Record<string, number>) {
   let now = Date.parse("2026-10-30T10:00:00Z");
   const f = fakeContentFetch();
   const timers = new ManualTimers();
   const errors: string[] = [];
-  const client = new UpstreamClient({ fetch: f.fetch, now: () => now, timers, onError: (url) => errors.push(url) });
+  const client = new UpstreamClient({ fetch: f.fetch, now: () => now, timers, onError: (url) => errors.push(url), rateBudgets });
   return { client, ...f, timers, errors, advance: (ms: number) => { now += ms; } };
 }
 
@@ -118,7 +118,8 @@ describe("UpstreamClient.json", () => {
     const t = setup();
     t.reply(URL1, (init) => new Promise<Response>((_, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))));
     const p = t.client.json({ url: URL1, ttlMs: 1 }, doc);
-    await vi.waitFor(() => expect(t.timers.pending).toBe(1));
+    await vi.waitFor(() => expect(t.calls).toHaveLength(1));
+    expect(t.timers.pending).toBe(1);
     t.timers.advance(API_TIMEOUT_MS);
     await expect(p).rejects.toMatchObject({ name: "UpstreamError", message: "deadline exceeded" });
   });
@@ -137,6 +138,55 @@ describe("UpstreamClient.json", () => {
     expect(t.calls.at(-1)!.url).toBe(`${URL1}/${MAX_PER_HOST}`);
     held.slice(1).forEach((h, i) => h.release(new Response(JSON.stringify({ id: String(i) }))));
     await Promise.all(ps);
+  });
+});
+
+describe("UpstreamClient rate budget", () => {
+  const get = (t: ReturnType<typeof setup>, i: number) => t.client.json({ url: `${URL1}/${i}`, ttlMs: 1 }, doc);
+
+  it("spends at most 240 requests a minute on api.modrinth.com by default", async () => {
+    const t = setup();
+    t.replyWhen((u) => u.host === "api.modrinth.com", { id: "x" });
+    expect(MODRINTH_REQUESTS_PER_MINUTE).toBe(240);
+    await Promise.all(Array.from({ length: MODRINTH_REQUESTS_PER_MINUTE }, (_, i) => get(t, i)));
+    const late = get(t, 999);
+    await vi.waitFor(() => expect(t.timers.pending).toBe(1)); // waiting for a token, not fetching
+    expect(t.calls).toHaveLength(MODRINTH_REQUESTS_PER_MINUTE);
+    // Other hosts are not budgeted.
+    t.reply("https://api.curseforge.com/v1/x", { id: "cf" });
+    await t.client.json({ url: "https://api.curseforge.com/v1/x", ttlMs: 1 }, doc);
+    t.advance(250);
+    t.timers.advance(250); // 60 000 / 240 ms: one token back
+    await late;
+    expect(t.calls).toHaveLength(MODRINTH_REQUESTS_PER_MINUTE + 2);
+  });
+
+  it("queues in order and fails a request whose wait would exceed the bound", async () => {
+    const t = setup({ "api.modrinth.com": 2 }); // one token every 30 s
+    t.replyWhen((u) => u.host === "api.modrinth.com", { id: "x" });
+    await get(t, 1);
+    await get(t, 2);
+    expect(RATE_BUDGET_MAX_WAIT_MS).toBeLessThan(30_000);
+    await expect(get(t, 3)).rejects.toMatchObject({ name: "UpstreamError", status: null, message: RATE_BUDGET_EXHAUSTED });
+    expect(t.calls).toHaveLength(2);
+    t.advance(30_000);
+    await get(t, 4); // the refused request gave its token back
+    expect(t.calls).toHaveLength(3);
+  });
+
+  it("a budget of 60 a minute paces a burst one second apart", async () => {
+    const t = setup({ "api.modrinth.com": 60 });
+    t.replyWhen((u) => u.host === "api.modrinth.com", { id: "x" });
+    await Promise.all(Array.from({ length: 60 }, (_, i) => get(t, i)));
+    const a = get(t, 100);
+    const b = get(t, 101);
+    await vi.waitFor(() => expect(t.timers.pending).toBe(2));
+    t.advance(1_000); t.timers.advance(1_000);
+    await a;
+    expect(t.calls).toHaveLength(61);
+    t.advance(1_000); t.timers.advance(1_000);
+    await b;
+    expect(t.calls).toHaveLength(62);
   });
 });
 
@@ -197,7 +247,8 @@ describe("UpstreamClient.bytes", () => {
     const a = "https://cdn.modrinth.com/a";
     t.reply(a, (init) => new Promise<Response>((_, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))));
     const p = t.client.bytes(a, { ...opts, timeoutMs: 5 });
-    await vi.waitFor(() => expect(t.timers.pending).toBe(1));
+    await vi.waitFor(() => expect(t.calls).toHaveLength(1));
+    expect(t.timers.pending).toBe(1);
     t.timers.advance(5);
     await expect(p).rejects.toMatchObject({ message: "deadline exceeded" });
   });

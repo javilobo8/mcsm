@@ -6,5 +6,6 @@
       { "project_id": null, "version_id": "IrisVer1", "dependency_type": "optional" },
       { "project_id": "../../x", "version_id": null, "dependency_type": "incompatible" }
     ], "files": [] },
-  { "id": "midRel01", "project_id": "AANobbMI", "version_number": "0.5.5", "version_type": "release", "date_published": "2024-02-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": [{ "project_id": "P7dR8mSH", "version_id": "FabApi01", "dependency_type": "embedded" }], "files": [] }
+  { "id": "midRel01", "project_id": "AANobbMI", "version_number": "0.5.5", "version_type": "release", "date_published": "2024-02-01T00:00:00Z", "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": [{ "project_id": "P7dR8mSH", "version_id": "FabApi01", "dependency_type": "embedded" }],
+    "files": [{ "url": "https://cdn.modrinth.com/x/extra.jar", "primary": false, "hashes": { "sha1": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" } }, { "url": "https://cdn.modrinth.com/x/main.jar", "primary": true, "hashes": { "sha1": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "sha512": "x" } }] }
 ]

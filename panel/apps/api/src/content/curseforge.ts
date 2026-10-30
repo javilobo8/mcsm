@@ -1,5 +1,5 @@
 import {
-  CF_CLASS_ID, CF_GAME_ID, CF_ID_RE, curseforgeLoaderFor, type ContentCategoryDto, type ContentDependencyDto, type ContentKind,
+  CF_CLASS_ID, CF_GAME_ID, CF_ID_RE, curseforgeLoaderFor, pickLatest, type ContentCategoryDto, type ContentDependencyDto, type ContentKind,
   type ContentProjectDto, type ContentSearchDto, type ContentVersionDto, type PackInfoDto, type ParsedEntry,
 } from "@mcsm/shared";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { HttpError } from "../lib/http.js";
 import { UpstreamError } from "../versions/sources.js";
 import {
   PACK_MAX_BYTES, PACK_TIMEOUT_MS, PACK_TOO_LARGE, PACK_UNREADABLE, SEARCH_LIMIT, chunks, isoDate, newestFirst, proxiedImage,
-  type ContentAdapter, type ProjectMeta, type SearchInput, type VersionFilter,
+  type ContentAdapter, type ContentRef, type ProjectMeta, type SearchInput, type VersionFilter,
 } from "./adapter.js";
 import { DOWNLOAD_HOSTS, TOO_LARGE, type JsonRequest, type UpstreamClient } from "./http.js";
 import { readCurseForgeManifest } from "./pack.js";
@@ -51,6 +51,12 @@ const modSchema = z.object({
   logo: z.object({ thumbnailUrl: z.string().nullish() }).nullish(),
   screenshots: z.array(z.object({ url: z.string() })).nullish(),
   allowModDistribution: z.boolean().nullish(),
+  latestFilesIndexes: z.array(z.object({
+    gameVersion: z.string(),
+    fileId: z.number().int().positive(),
+    releaseType: z.union([z.literal(1), z.literal(2), z.literal(3)]),
+    modLoader: z.number().int().nullish(),
+  })).nullish(),
 });
 type ModDoc = z.infer<typeof modSchema>;
 
@@ -149,14 +155,9 @@ export class CurseForgeAdapter implements ContentAdapter {
 
   async projects(ids: string[]): Promise<ProjectMeta[]> {
     this.headers();
-    const wanted = [...new Set(ids.filter((id) => CF_ID_RE.test(id)))];
     const out: ProjectMeta[] = [];
-    for (const part of chunks(wanted)) {
-      const r = await this.get({
-        url: `${API}/mods`, method: "POST", body: { modIds: part.map(Number), filterPcOnly: true },
-        cacheKey: `curseforge mods ${part.join(",")}`, ttlMs: PROJECT_TTL,
-      }, modsDoc);
-      for (const m of r.data.data) {
+    for (const part of chunks([...new Set(ids.filter((id) => CF_ID_RE.test(id)))])) {
+      for (const m of await this.modsBatch(part)) {
         const id = cfId(m.id);
         if (!id) continue;
         const meta = metaOf(m, id);
@@ -193,8 +194,59 @@ export class CurseForgeAdapter implements ContentAdapter {
     return out;
   }
 
-  async resolveRef(e: ParsedEntry, kind: ContentKind): Promise<{ projectId: string; versionId: string | null } | null> {
+  /** Numeric refs need no request; a slug is looked up through search (CurseForge has no batch slug lookup), cached as a ref. */
+  async resolveRefs(es: ParsedEntry[], kind: ContentKind): Promise<(ContentRef | null)[]> {
+    const out: (ContentRef | null)[] = [];
+    for (const e of es) {
+      try {
+        out.push(await this.resolveOne(e, kind));
+      } catch {
+        out.push(null); // no key or the source failed: unresolved
+      }
+    }
+    return out;
+  }
+
+  async latestFor(current: ContentVersionDto[], f: VersionFilter): Promise<Map<string, ContentVersionDto | null>> {
     this.headers();
+    const out = new Map<string, ContentVersionDto | null>();
+    if (f.gameVersion === null) return out;
+    const loader = f.kind === "mod" ? curseforgeLoaderFor(f.loaders) : null;
+    // Newest file per (game version, loader, channel) of each mod, from the batched mod documents.
+    const chosen = new Map<string, string | null>(); // current versionId → chosen fileId
+    for (const part of chunks([...new Set(current.map((v) => v.projectId).filter((id) => CF_ID_RE.test(id)))])) {
+      let mods: ModDoc[];
+      try {
+        mods = await this.modsBatch(part);
+      } catch {
+        continue; // not checked
+      }
+      for (const m of mods) {
+        const pid = cfId(m.id);
+        const files = (m.latestFilesIndexes ?? [])
+          .filter((ix) => ix.gameVersion === f.gameVersion && (loader === null || !ix.modLoader || ix.modLoader === loader))
+          // File ids grow with time: zero-padded, they order like publishedAt for pickLatest.
+          .map((ix) => ({ fileId: String(ix.fileId), type: RELEASE_TYPE[ix.releaseType], publishedAt: String(ix.fileId).padStart(16, "0") }));
+        for (const v of current) {
+          if (v.projectId === pid) chosen.set(v.versionId, pickLatest(files, v.type)?.fileId ?? null);
+        }
+      }
+    }
+    const wanted = [...new Set([...chosen.values()].filter((x): x is string => x !== null))];
+    let found = new Map<string, ContentVersionDto>();
+    if (wanted.length > 0) {
+      try {
+        found = new Map((await this.versionsByIds(wanted)).map((v) => [v.versionId, v]));
+      } catch { /* the chosen files stay unknown: not checked */ }
+    }
+    for (const [currentId, fileId] of chosen) {
+      if (fileId === null) out.set(currentId, null);
+      else if (found.has(fileId)) out.set(currentId, found.get(fileId)!);
+    }
+    return out;
+  }
+
+  private async resolveOne(e: ParsedEntry, kind: ContentKind): Promise<ContentRef | null> {
     if (kind === "datapack") return null;
     const versionId = e.versionRef !== null && CF_ID_RE.test(e.versionRef) ? e.versionRef : null;
     if (CF_ID_RE.test(e.projectRef)) return { projectId: e.projectRef, versionId };
@@ -209,6 +261,14 @@ export class CurseForgeAdapter implements ContentAdapter {
     if (!projectId) return null;
     this.repo.put("curseforge", "ref", refKey, projectId);
     return { projectId, versionId };
+  }
+
+  /** POST /v1/mods for ≤ 100 ids (cached per id set). */
+  private async modsBatch(ids: string[]): Promise<ModDoc[]> {
+    return (await this.get({
+      url: `${API}/mods`, method: "POST", body: { modIds: ids.map(Number), filterPcOnly: true },
+      cacheKey: `curseforge mods ${ids.join(",")}`, ttlMs: PROJECT_TTL,
+    }, modsDoc)).data.data;
   }
 
   async pack(projectId: string, versionId: string): Promise<PackInfoDto> {

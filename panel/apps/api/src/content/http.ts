@@ -28,12 +28,21 @@ export const MAX_PER_HOST = 8;
 
 export const TOO_LARGE = "response too large";
 
+/** Modrinth allows 300 requests a minute per IP: the panel keeps a margin for the browser-driven bursts. */
+export const MODRINTH_REQUESTS_PER_MINUTE = 240;
+/** Longest wait for a token of the budget; a request that would wait longer fails instead of hanging the page. */
+export const RATE_BUDGET_MAX_WAIT_MS = 15_000;
+export const RATE_BUDGET_EXHAUSTED = "rate budget exhausted";
+export const DEFAULT_RATE_BUDGETS: Readonly<Record<string, number>> = { "api.modrinth.com": MODRINTH_REQUESTS_PER_MINUTE };
+
 export interface UpstreamClientOptions {
   fetch?: ContentFetch;
   now?: () => number;
   timers?: Timers;
   /** Failure of a source (also when a stored copy is served): for the log. Gets the URL only, never headers. */
   onError?: (url: string, err: unknown) => void;
+  /** Requests per minute per host (token bucket); hosts not listed are not budgeted. */
+  rateBudgets?: Readonly<Record<string, number>>;
 }
 
 export interface JsonRequest {
@@ -92,10 +101,41 @@ class HostLimiter {
   }
 }
 
+/**
+ * Token bucket of `perMinute` requests (full at start). A request takes a token, possibly ahead of time: the balance may go
+ * negative and each request waits until its own token is covered, so waiters are served in arrival order without a queue.
+ */
+class RateBudget {
+  private tokens: number;
+  private last: number;
+  private readonly perMs: number;
+
+  constructor(private readonly perMinute: number, private readonly now: () => number, private readonly timers: Timers) {
+    this.tokens = perMinute;
+    this.last = now();
+    this.perMs = perMinute / 60_000;
+  }
+
+  async take(): Promise<void> {
+    const t = this.now();
+    this.tokens = Math.min(this.perMinute, this.tokens + (t - this.last) * this.perMs);
+    this.last = t;
+    this.tokens -= 1;
+    if (this.tokens >= 0) return;
+    const wait = Math.ceil(-this.tokens / this.perMs);
+    if (wait > RATE_BUDGET_MAX_WAIT_MS) {
+      this.tokens += 1;
+      throw new UpstreamError(null, RATE_BUDGET_EXHAUSTED);
+    }
+    await new Promise<void>((resolve) => { this.timers.set(resolve, wait); });
+  }
+}
+
 export class UpstreamClient {
   private readonly cache = new Map<string, Entry>(); // insertion order: least to most recently used
   private readonly inflight = new Map<string, Promise<unknown>>();
   private readonly limiter = new HostLimiter();
+  private readonly budgets = new Map<string, RateBudget>();
   private readonly fetch: ContentFetch;
   private readonly now: () => number;
   private readonly timers: Timers;
@@ -106,6 +146,9 @@ export class UpstreamClient {
     this.now = opts.now ?? Date.now;
     this.timers = opts.timers ?? realTimers;
     this.onError = opts.onError;
+    for (const [host, perMinute] of Object.entries(opts.rateBudgets ?? DEFAULT_RATE_BUDGETS)) {
+      this.budgets.set(host, new RateBudget(perMinute, this.now, this.timers));
+    }
   }
 
   async json<T>(req: JsonRequest, schema: z.ZodType<T>): Promise<{ data: T; stale: boolean }> {
@@ -135,6 +178,7 @@ export class UpstreamClient {
     const cancel = this.timers.set(() => ctrl.abort(), opts.timeoutMs);
     try {
       for (let hops = 0; ; hops++) {
+        await this.budgets.get(current.host)?.take();
         const release = await this.limiter.acquire(current.host);
         try {
           const res = await this.fetch(current.href, {
@@ -197,6 +241,7 @@ export class UpstreamClient {
     const headers: Record<string, string> = { ...req.headers, "user-agent": CONTENT_USER_AGENT, accept: "application/json" };
     if (method === "POST") headers["content-type"] = "application/json";
     const ctrl = new AbortController();
+    await this.budgets.get(url.host)?.take();
     const release = await this.limiter.acquire(url.host);
     const cancel = this.timers.set(() => ctrl.abort(), API_TIMEOUT_MS);
     try {
