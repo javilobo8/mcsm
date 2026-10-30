@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput } from "@mcsm/shared";
-import { configLeaveWarning, isStale, planApply } from "./config-apply";
+import { meta } from "./content-fixtures.test-util";
+import { backupFirstOutcome, backupReason, COMPAT_UNAVAILABLE, configLeaveWarning, contentFindings, isStale, patchBody, planApply, type PendingApply } from "./config-apply";
 
 const base = { ...defaultSpecInput(), ports: { game: 25565, extra: [] } };
 
@@ -73,5 +74,60 @@ describe("configLeaveWarning", () => {
   });
   it("without changes there is nothing to protect", () => {
     expect(configLeaveWarning(false)).toBeNull();
+  });
+});
+
+describe("back up first (plan 11)", () => {
+  const pending: PendingApply = { spec: { mods: { modrinthProjects: [], curseforgeFiles: [], urls: [] } }, changes: [], recreate: true };
+  it("adds backupFirst only when asked", () => {
+    expect(patchBody(pending, false)).toEqual({ spec: pending.spec });
+    expect(patchBody(pending, true)).toEqual({ spec: pending.spec, backupFirst: true });
+    expect(patchBody({ ...pending, name: "B" }, false)).toEqual({ name: "B", spec: pending.spec });
+  });
+  it("never asks for a backup when only the name changes", () => {
+    expect(patchBody({ name: "B", changes: [], recreate: false }, true)).toEqual({ name: "B" });
+  });
+  it("follows the chained job", () => {
+    expect(backupFirstOutcome(undefined)).toEqual({ state: "waiting" });
+    expect(backupFirstOutcome({ status: "queued", message: "" })).toEqual({ state: "waiting" });
+    expect(backupFirstOutcome({ status: "running", message: "Waiting for the backup before applying the change" })).toEqual({ state: "waiting" });
+    expect(backupFirstOutcome({ status: "ok", message: "Backup done; change applied (v3)" })).toEqual({ state: "applied" });
+    expect(backupFirstOutcome({ status: "failed", message: "The backup failed: the change was not applied" })).toEqual({ state: "failed", message: "The backup failed: the change was not applied" });
+  });
+  it("a cancelled or silent failure still explains that nothing was applied", () => {
+    expect(backupFirstOutcome({ status: "cancelled", message: "" })).toEqual({ state: "failed", message: "The backup did not finish: the change was not applied" });
+    expect(backupFirstOutcome({ status: "failed", message: "" })).toEqual({ state: "failed", message: "The backup did not finish: the change was not applied" });
+  });
+  it("says the compatibility check could not run without blocking", () => {
+    expect(COMPAT_UNAVAILABLE).toBe("The compatibility check could not run (content sources unreachable or no CurseForge key). You can still apply.");
+  });
+});
+
+describe("contentFindings", () => {
+  it("checks each kind against its own target and flags floating versions", () => {
+    const spec = {
+      ...base, type: "PAPER", version: "1.21.4",
+      plugins: { modrinthProjects: ["LUCKPERM:v0000001"], spigetResources: [], urls: [] },
+      datapacks: { modrinthProjects: ["TERRALIT:v0000001"] },
+    };
+    const metas = [
+      meta({ raw: "LUCKPERM:v0000001", list: "plugins.modrinthProjects", name: "LuckPerms", gameVersions: ["1.21.4"], loaders: ["paper"] }),
+      meta({ raw: "TERRALIT:v0000001", list: "datapacks.modrinthProjects", name: "Terralith", gameVersions: ["1.21.1"], loaders: ["datapack"] }),
+    ];
+    expect(contentFindings(spec, metas, null)).toEqual([{ list: "datapacks.modrinthProjects", entry: "TERRALIT:v0000001", name: "Terralith", problem: "incompatible" }]);
+    expect(contentFindings({ ...spec, version: "LATEST" }, metas, null).map((f) => f.problem)).toEqual(["floating", "floating"]);
+  });
+});
+
+describe("backupReason", () => {
+  const withMods = { ...base, mods: { modrinthProjects: ["AANobbMI:Yp8wLY1P", "gvQqBUqZ:Lh3m2kR1"], curseforgeFiles: [], urls: [] } };
+  it("explains why a backup is offered", () => {
+    expect(backupReason(withMods, { ...withMods, mods: undefined }, "none")).toBe("It removes 2 content entries from a server with a world.");
+    expect(backupReason(withMods, { ...withMods, mods: { ...withMods.mods, modrinthProjects: ["gvQqBUqZ:Lh3m2kR1"] } }, "none")).toBe("It removes 1 content entry from a server with a world.");
+    expect(backupReason(base, base, "uninstall")).toBe("It uninstalls the modpack.");
+    expect(backupReason(base, base, "switch")).toBe("It switches to another modpack.");
+    expect(backupReason(base, base, "downgrade")).toBe("It moves the modpack to an older version.");
+    expect(backupReason(base, base, "unknown")).toBe("It changes the modpack's version.");
+    expect(backupReason(base, base, "upgrade")).toBeNull();
   });
 });

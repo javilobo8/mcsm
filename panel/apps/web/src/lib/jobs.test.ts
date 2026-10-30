@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
-import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, jobsFilterFor, JOB_FILTER_OPTIONS, formatFinishTime, jobServerName, openRowId, retainJobsLive, upsertJob, withOpenRow, type JobsLiveSource } from "./jobs";
+import { applyJobEvent, capLog, MAX_JOB_LOG, backupsKey, bindJobsLive, jobKey, jobsKey, jobTriggerLabel, jobTypeLabel, jobsFilterFor, JOB_FILTER_OPTIONS, formatFinishTime, jobServerName, openRowId, retainJobsLive, upsertJob, withOpenRow, type JobsLiveSource } from "./jobs";
 import { topicOf } from "./ws";
 import type { JobDetailDto, JobDto, ServerMessage } from "./api";
 
@@ -204,5 +204,11 @@ describe("open row of the jobs list", () => {
     expect(withOpenRow([c, a], null, b)).toEqual([c, a]);
     expect(withOpenRow([c, a], "b", undefined)).toEqual([c, a]);
     expect(withOpenRow([c, a], "b", a)).toEqual([c, a]);
+  });
+});
+
+describe("job type labels (plan 11)", () => {
+  it("names the panel's backup-then-apply job", () => {
+    expect(jobTypeLabel("spec_apply")).toBe("Apply after backup");
   });
 });

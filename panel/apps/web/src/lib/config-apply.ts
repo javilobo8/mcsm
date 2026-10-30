@@ -1,5 +1,8 @@
-import type { SpecPatch } from "@mcsm/shared";
-import { mergeSpecPatch } from "@mcsm/shared";
+import { CONTENT_LISTS, mergeSpecPatch, type ContentEntryMetaDto, type PackInfoDto, type SpecPatch } from "@mcsm/shared";
+import type { JobDto } from "./api";
+import { compatFindings, removedEntries, type CompatFinding } from "./content-compat";
+import type { PackChange } from "./content-pack";
+import { browseTarget } from "./content-target";
 import { buildSpecPatch, type EditableSpec } from "./spec-edit";
 import { diffSpecs, type DiffLine } from "./spec-diff";
 import type { GuardText } from "./tab-guard";
@@ -54,4 +57,42 @@ const CONFIG_LEAVE_WARNING: GuardText = {
  */
 export function configLeaveWarning(dirty: boolean): GuardText | null {
   return dirty ? CONFIG_LEAVE_WARNING : null;
+}
+
+// ── plan-11: content compatibility and "Back up first" in the Save confirmation ──
+
+export const COMPAT_UNAVAILABLE = "The compatibility check could not run (content sources unreachable or no CurseForge key). You can still apply.";
+
+/** Pinned content that will not fit the edited server: each kind checked against its own target (version + loaders). */
+export function contentFindings(spec: EditableSpec, metas: readonly ContentEntryMetaDto[], pack: PackInfoDto | null): CompatFinding[] {
+  return (["mod", "plugin", "datapack"] as const).flatMap((kind) => {
+    const t = browseTarget(spec, kind, pack);
+    return compatFindings(spec, metas.filter((m) => CONTENT_LISTS[m.list].kind === kind), t.ok ? t.target : null);
+  });
+}
+
+/** PATCH body of the confirmation. `backupFirst` only travels with a spec change (a rename alone never backs up). */
+export function patchBody(p: PendingApply, backupFirst: boolean): { name?: string; spec?: SpecPatch; backupFirst?: true } {
+  return { ...(p.name ? { name: p.name } : {}), ...(p.spec ? { spec: p.spec } : {}), ...(backupFirst && p.spec ? { backupFirst: true as const } : {}) };
+}
+
+const BACKUP_NOT_FINISHED = "The backup did not finish: the change was not applied";
+
+/** State of the panel's "backup, then apply" job: the change exists on the server only once the job is ok. */
+export function backupFirstOutcome(job: Pick<JobDto, "status" | "message"> | undefined): { state: "waiting" } | { state: "applied" } | { state: "failed"; message: string } {
+  if (!job || job.status === "queued" || job.status === "running") return { state: "waiting" };
+  if (job.status === "ok") return { state: "applied" };
+  return { state: "failed", message: job.message || BACKUP_NOT_FINISHED };
+}
+
+const PACK_REASON: Partial<Record<PackChange, string>> = {
+  uninstall: "It uninstalls the modpack.", switch: "It switches to another modpack.",
+  downgrade: "It moves the modpack to an older version.", unknown: "It changes the modpack's version.",
+};
+
+/** Why the confirmation offers "Back up first" (null when nothing risky happens to content). */
+export function backupReason(base: EditableSpec, edited: EditableSpec, pack: PackChange): string | null {
+  const n = removedEntries(base, edited).length;
+  const parts = [PACK_REASON[pack], n > 0 ? `It removes ${n} content ${n === 1 ? "entry" : "entries"} from a server with a world.` : undefined].filter(Boolean);
+  return parts.length ? parts.join(" ") : null;
 }
