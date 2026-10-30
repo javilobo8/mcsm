@@ -7,7 +7,7 @@ import { HttpError } from "../lib/http.js";
 import { UpstreamError } from "../versions/sources.js";
 import {
   PACK_MAX_BYTES, PACK_TIMEOUT_MS, PACK_TOO_LARGE, PACK_UNREADABLE, SEARCH_LIMIT, chunks, isoDate, newestFirst, proxiedImage,
-  type ContentAdapter, type ContentRef, type ProjectMeta, type SearchInput, type VersionFilter,
+  REF_UNAVAILABLE, type ContentAdapter, type ContentRef, type RefResult, type ProjectMeta, type SearchInput, type VersionFilter,
 } from "./adapter.js";
 import { DOWNLOAD_HOSTS, TOO_LARGE, type JsonRequest, type UpstreamClient } from "./http.js";
 import { readCurseForgeManifest } from "./pack.js";
@@ -195,13 +195,13 @@ export class CurseForgeAdapter implements ContentAdapter {
   }
 
   /** Numeric refs need no request; a slug is looked up through search (CurseForge has no batch slug lookup), cached as a ref. */
-  async resolveRefs(es: ParsedEntry[], kind: ContentKind): Promise<(ContentRef | null)[]> {
-    const out: (ContentRef | null)[] = [];
+  async resolveRefs(es: ParsedEntry[], kind: ContentKind): Promise<RefResult[]> {
+    const out: RefResult[] = [];
     for (const e of es) {
       try {
         out.push(await this.resolveOne(e, kind));
       } catch {
-        out.push(null); // no key or the source failed: unresolved
+        out.push(REF_UNAVAILABLE); // no key or the source failed: not unknown
       }
     }
     return out;

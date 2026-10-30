@@ -8,7 +8,7 @@ import { HttpError } from "../lib/http.js";
 import { UpstreamError } from "../versions/sources.js";
 import {
   PACK_MAX_BYTES, PACK_TIMEOUT_MS, PACK_TOO_LARGE, PACK_UNREADABLE, SEARCH_LIMIT, chunks, isoDate, newestFirst, proxiedImage,
-  ALLOWED_CHANNELS, type ContentAdapter, type ContentRef, type ProjectMeta, type SearchInput, type VersionFilter,
+  ALLOWED_CHANNELS, REF_UNAVAILABLE, type ContentAdapter, type ContentRef, type RefResult, type ProjectMeta, type SearchInput, type VersionFilter,
 } from "./adapter.js";
 import { DOWNLOAD_HOSTS, RATE_BUDGET_EXHAUSTED, TOO_LARGE, type UpstreamClient } from "./http.js";
 import { loaderOf, readMrpackIndex } from "./pack.js";
@@ -208,10 +208,11 @@ export class ModrinthAdapter implements ContentAdapter {
     return out;
   }
 
-  async resolveRefs(es: ParsedEntry[], _kind: ContentKind): Promise<(ContentRef | null)[]> {
+  async resolveRefs(es: ParsedEntry[], _kind: ContentKind): Promise<RefResult[]> {
     // Project refs (slugs or ids): the metadata cache first, then /v2/projects?ids= in batches (it accepts slugs).
     const ids = new Map<string, string>();
     const unknown = new Set<string>();
+    let down = false;
     for (const e of es) {
       if (!SEGMENT_RE.test(e.projectRef)) continue;
       const stored = this.storedRef(e.projectRef);
@@ -222,7 +223,9 @@ export class ModrinthAdapter implements ContentAdapter {
       let metas: ProjectMeta[] = [];
       try {
         metas = await this.projects([...unknown]);
-      } catch { /* the source failed: these entries stay unresolved */ }
+      } catch {
+        down = true; // the source failed: these entries are unavailable, not unknown
+      }
       for (const ref of unknown) {
         const lower = ref.toLowerCase();
         const m = metas.find((x) => x.projectId === ref || x.slug.toLowerCase() === lower);
@@ -231,17 +234,17 @@ export class ModrinthAdapter implements ContentAdapter {
         this.repo.put("modrinth", "ref", ref, m.projectId);
       }
     }
-    const out: (ContentRef | null)[] = [];
+    const out: RefResult[] = [];
     for (const e of es) {
       const projectId = ids.get(e.projectRef);
-      if (!projectId) { out.push(null); continue; }
+      if (!projectId) { out.push(down && unknown.has(e.projectRef) ? REF_UNAVAILABLE : null); continue; }
       if (e.versionRef === null || !SEGMENT_RE.test(e.versionRef)) { out.push({ projectId, versionId: null }); continue; }
       // A version id is checked against its project by the lookup; a version number needs the project (one request, cached).
       if (MODRINTH_ID_RE.test(e.versionRef)) { out.push({ projectId, versionId: e.versionRef }); continue; }
       try {
         out.push({ projectId, versionId: await this.versionNumber(projectId, e.versionRef) });
       } catch {
-        out.push(null);
+        out.push(REF_UNAVAILABLE); // versionNumber answers null for a 404: anything thrown is the source failing
       }
     }
     return out;

@@ -13,6 +13,8 @@ export interface ResolveDeps {
   latest(projectId: string): Promise<ContentVersionDto | null>;
   /** Falls back to the id. */
   name(projectId: string): Promise<string>;
+  /** The project only runs on clients (Modrinth `server_side: unsupported`); false when unknown. */
+  clientOnly(projectId: string): Promise<boolean>;
 }
 
 export interface ResolveInput {
@@ -86,7 +88,12 @@ export async function resolveSelection(input: ResolveInput, deps: ResolveDeps): 
         if (c) addOnce(c.requiredBy, dependant);
         else if (input.present.has(pid)) continue;
         else if (input.inPack.has(pid)) { if (!inPack.has(pid)) inPack.set(pid, await name(pid)); }
-        else if (!failed.has(pid)) {
+        else if (failed.has(pid)) continue;
+        else if (await deps.clientOnly(pid)) {
+          // Never installed from the browser (spec anti-goal): reported, never added.
+          failed.add(pid);
+          unresolved.push(`${await name(pid)} is client-only and can't run on a server`);
+        } else {
           let next: ContentVersionDto | null = null;
           if (dep.versionId) {
             const pinned = await deps.version(dep.versionId);

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ManualTimers } from "../../test/manual-timers.js";
 import { fakeContentFetch } from "../../test/fake-content-fetch.js";
 import { openDb } from "../db/db.js";
-import type { SearchInput } from "./adapter.js";
+import { REF_UNAVAILABLE, type SearchInput } from "./adapter.js";
 import { CURSEFORGE_KEY_REJECTED, CurseForgeAdapter, NO_KEY_MESSAGE, NOT_DISTRIBUTABLE } from "./curseforge.js";
 import { UpstreamClient } from "./http.js";
 import { ContentMetaRepo } from "./repo.js";
@@ -179,11 +179,11 @@ describe("CurseForgeAdapter", () => {
     expect(t.calls).toHaveLength(1);
   });
 
-  it("an unknown slug is null", async () => {
+  it("an unknown slug is null; a slug the source could not be asked about is unavailable", async () => {
     const t = setup();
     t.reply(`${API}/mods/search?gameId=432&classId=6&slug=nope`, { data: [{ ...(fixture("mod") as { data: object }).data, slug: "nope-2" }], pagination: { index: 0, pageSize: 50, resultCount: 1, totalCount: 1 } });
     expect(await t.adapter.resolveRefs([{ raw: "nope", projectRef: "nope", versionRef: null, pinned: false }, { raw: "down", projectRef: "down", versionRef: null, pinned: false }], "mod"))
-      .toEqual([null, null]);
+      .toEqual([null, REF_UNAVAILABLE]);
   });
 
   it("reads a pack manifest from the file's download url", async () => {

@@ -4,7 +4,7 @@ import {
 } from "@mcsm/shared";
 import type { Timers } from "../files/stream.js";
 import { HttpError } from "../lib/http.js";
-import type { ContentAdapter, ProjectMeta } from "./adapter.js";
+import { REF_UNAVAILABLE, type ContentAdapter, type ProjectMeta } from "./adapter.js";
 import { CurseForgeAdapter, NO_KEY_MESSAGE } from "./curseforge.js";
 import { UpstreamClient, type ContentFetch } from "./http.js";
 import { ImageProxy } from "./image.js";
@@ -55,13 +55,25 @@ export class ContentCatalog {
     return this.adapters[p];
   }
 
-  /** Metadata of spec entries, in order. Never throws for one entry: what cannot be resolved comes back `resolved: false`. */
+  /**
+   * Metadata of spec entries, in order. Never throws for one entry: what cannot be resolved comes back `resolved: false`,
+   * with `unavailable` saying whether the platform could not be asked ("source") or CurseForge has no key ("no_key";
+   * answered from the cache only, without touching the network) — null when the platform really does not know it.
+   */
   async lookup(items: LookupRequest["entries"]): Promise<ContentEntryMetaDto[]> {
     const out: ContentEntryMetaDto[] = items.map((i) => unresolved(i.list, i.entry));
     for (const platform of ["modrinth", "curseforge"] as const) {
       const idx = items.flatMap((it, i) => (CONTENT_LISTS[it.list].platform === platform ? [i] : []));
       if (idx.length === 0) continue;
       const adapter = this.adapters[platform];
+      const offline = platform === "curseforge" && !this.curseforgeKey();
+      let failed = false;
+      const ask = async <T>(p: () => Promise<T>): Promise<T | null> => {
+        if (offline) return null;
+        const r = await quiet(p());
+        if (r === null) failed = true;
+        return r;
+      };
       // Pinned entries carry their ids; raw ones are resolved in batches per kind (a failure leaves them unresolved).
       const refs: Ref[] = idx.map((i) => {
         const parsed = parseContentEntry(platform, items[i]!.entry);
@@ -73,11 +85,18 @@ export class ContentCatalog {
           return !parsed.pinned && CONTENT_LISTS[items[i]!.list].kind === kind ? [{ k, parsed }] : [];
         });
         if (raw.length === 0) continue;
-        const resolved = (await quiet(adapter.resolveRefs(raw.map((r) => r.parsed), kind))) ?? [];
-        raw.forEach((r, j) => { refs[r.k] = resolved[j] ?? null; });
+        const resolved = (await ask(() => adapter.resolveRefs(raw.map((r) => r.parsed), kind))) ?? [];
+        raw.forEach((r, j) => {
+          const ref = resolved[j] ?? null;
+          if (ref === REF_UNAVAILABLE) failed = true;
+          refs[r.k] = ref === REF_UNAVAILABLE ? null : ref;
+        });
       }
-      const versions = await this.versionsFor(platform, refs.flatMap((r) => (r?.versionId ? [r.versionId] : [])));
-      const metas = await this.metasFor(platform, refs.flatMap((r) => (r ? [r.projectId] : [])));
+      const versions = await this.versionsFor(platform, refs.flatMap((r) => (r?.versionId ? [r.versionId] : [])), ask);
+      const metas = await this.metasFor(platform, refs.flatMap((r) => (r ? [r.projectId] : [])), ask);
+      // Coarse on purpose: after any failure on this platform an unresolved entry is "not checked", never "not found".
+      const unavailable = offline ? "no_key" : failed ? "source" : null;
+      for (const i of idx) out[i] = { ...out[i]!, unavailable };
       idx.forEach((i, k) => {
         const ref = refs[k];
         if (!ref) return;
@@ -88,6 +107,7 @@ export class ContentCatalog {
           ...out[i]!, resolved: true, projectId: ref.projectId, versionId: ref.versionId, slug: meta.slug, name: meta.name,
           author: meta.author, iconUrl: meta.iconUrl, versionLabel: version?.label ?? null, versionType: version?.type ?? null,
           gameVersions: version?.gameVersions ?? [], loaders: version?.loaders ?? [], dependencies: version?.dependencies ?? [],
+          unavailable: null,
         };
       });
     }
@@ -118,6 +138,7 @@ export class ContentCatalog {
         return r ? pickLatest(r.versions.filter((v) => v.installable && compatibleWith(v, req.target)), null) : null;
       },
       name: async (pid) => (await this.metasFor(platform, [pid])).get(pid)?.name ?? pid,
+      clientOnly: async (pid) => (await this.metasFor(platform, [pid])).get(pid)?.clientOnly ?? false,
     };
     return resolveSelection({ list: req.list, selections: req.selections, present, inPack, target: req.target }, deps);
   }
@@ -161,20 +182,20 @@ export class ContentCatalog {
     return this.repo.purgeOlderThan(new Date(this.now() - META_MAX_AGE_MS).toISOString());
   }
 
-  /** Versions from the repo, then the source for the missing ones (a failure leaves them missing). */
-  private async versionsFor(platform: ContentPlatform, ids: string[]): Promise<Map<string, ContentVersionDto>> {
+  /** Versions from the repo, then the source for the missing ones (a failure leaves them missing; `ask` may record it). */
+  private async versionsFor(platform: ContentPlatform, ids: string[], ask: Ask = quietAsk): Promise<Map<string, ContentVersionDto>> {
     const out = new Map<string, ContentVersionDto>();
     for (const [id, row] of this.repo.getMany(platform, "version", ids)) out.set(id, row.data as ContentVersionDto);
     const missing = [...new Set(ids.filter((id) => !out.has(id)))];
-    if (missing.length > 0) for (const v of (await quiet(this.adapters[platform].versionsByIds(missing))) ?? []) out.set(v.versionId, v);
+    if (missing.length > 0) for (const v of (await ask(() => this.adapters[platform].versionsByIds(missing))) ?? []) out.set(v.versionId, v);
     return out;
   }
 
-  private async metasFor(platform: ContentPlatform, ids: string[]): Promise<Map<string, ProjectMeta>> {
+  private async metasFor(platform: ContentPlatform, ids: string[], ask: Ask = quietAsk): Promise<Map<string, ProjectMeta>> {
     const out = new Map<string, ProjectMeta>();
     for (const [id, row] of this.repo.getMany(platform, "project", ids)) out.set(id, row.data as ProjectMeta);
     const missing = [...new Set(ids.filter((id) => !out.has(id)))];
-    if (missing.length > 0) for (const m of (await quiet(this.adapters[platform].projects(missing))) ?? []) out.set(m.projectId, m);
+    if (missing.length > 0) for (const m of (await ask(() => this.adapters[platform].projects(missing))) ?? []) out.set(m.projectId, m);
     return out;
   }
 }
@@ -182,9 +203,12 @@ export class ContentCatalog {
 function unresolved(list: ContentEntryMetaDto["list"], raw: string): ContentEntryMetaDto {
   return {
     list, raw, resolved: false, projectId: null, versionId: null, slug: null, name: null, author: null, iconUrl: null,
-    versionLabel: null, versionType: null, gameVersions: [], loaders: [], dependencies: [],
+    versionLabel: null, versionType: null, gameVersions: [], loaders: [], dependencies: [], unavailable: null,
   };
 }
+
+type Ask = <T>(p: () => Promise<T>) => Promise<T | null>;
+const quietAsk: Ask = (p) => quiet(p());
 
 /** The value, or null when the source fails (the adapters already turned the failure into an English HttpError). */
 async function quiet<T>(p: Promise<T>): Promise<T | null> {

@@ -16,7 +16,7 @@ function v(projectId: string, versionId: string, deps: Dep[] = [], over: Partial
 }
 
 /** In-memory ResolveDeps over a list of versions; records each call. */
-function fakeDeps(versions: ContentVersionDto[]) {
+function fakeDeps(versions: ContentVersionDto[], clientOnly: string[] = []) {
   const calls: string[] = [];
   const deps: ResolveDeps = {
     version: async (id) => { calls.push(`version ${id}`); return versions.find((x) => x.versionId === id) ?? null; },
@@ -25,6 +25,7 @@ function fakeDeps(versions: ContentVersionDto[]) {
       return pickLatest(versions.filter((x) => x.projectId === pid && compatibleWith(x, TARGET)), null);
     },
     name: async (pid) => NAMES[pid] ?? pid,
+    clientOnly: async (pid) => clientOnly.includes(pid),
   };
   return { deps, calls };
 }
@@ -128,6 +129,13 @@ describe("resolveSelection", () => {
     expect(rows(await resolveSelection(input({ selections: [["A", "a1"]] }), deps))).toEqual([["A", "a1", true, []], ["B", "b2", false, ["Alpha"]]]);
   });
 
+  it("never adds a client-only required dependency", async () => {
+    // A requires B (client-only) and C; C requires B too: B is reported once and never added.
+    const { deps } = fakeDeps([v("A", "a1", [["required", "B"], ["required", "C"]]), v("B", "b1"), v("C", "c1", [["required", "B"]])], ["B"]);
+    const r = await resolveSelection(input({ selections: [["A", "a1"]] }), deps);
+    expect(rows(r)).toEqual([["A", "a1", true, []], ["C", "c1", false, ["Alpha"]]]);
+    expect(r.unresolved).toEqual(["Beta is client-only and can't run on a server"]);
+  });
   it("terminates on dependency cycles", async () => {
     const { deps } = fakeDeps([v("A", "a1", [["required", "B"]]), v("B", "b1", [["required", "A"]])]);
     const r = await resolveSelection(input({ selections: [["A", "a1"]] }), deps);

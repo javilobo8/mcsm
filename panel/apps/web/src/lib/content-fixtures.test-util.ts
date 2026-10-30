@@ -6,7 +6,7 @@ export function meta(o: Partial<ContentEntryMetaDto> & { raw: string }): Content
   return {
     list: "mods.modrinthProjects" as ContentListKey, resolved: true, projectId: projectId ?? null, versionId: versionId ?? null,
     slug: null, name: null, author: null, iconUrl: null, versionLabel: null, versionType: "release",
-    gameVersions: ["1.21.1"], loaders: ["fabric"], dependencies: [], ...o,
+    gameVersions: ["1.21.1"], loaders: ["fabric"], dependencies: [], unavailable: null, ...o,
   };
 }
 

@@ -50,12 +50,12 @@ describe("ContentCatalog.lookup", () => {
     expect(r[0]).toEqual({
       list: "mods.modrinthProjects", raw: "AANobbMI:SodVer01", resolved: true, projectId: "AANobbMI", versionId: "SodVer01",
       slug: "sodium", name: "Sodium", author: "someone", iconUrl: null, versionLabel: "0.6.0", versionType: "release",
-      gameVersions: ["1.21.1"], loaders: ["fabric"], dependencies: [{ projectId: "P7dR8mSH", versionId: null, type: "required" }],
+      gameVersions: ["1.21.1"], loaders: ["fabric"], dependencies: [{ projectId: "P7dR8mSH", versionId: null, type: "required" }], unavailable: null,
     });
     expect(r[1]).toMatchObject({ raw: "fabric-api", resolved: true, projectId: "P7dR8mSH", versionId: null, name: "Fabric API", versionLabel: null });
     expect(r[2]).toEqual({
       list: "mods.modrinthProjects", raw: "nope", resolved: false, projectId: null, versionId: null, slug: null, name: null, author: null,
-      iconUrl: null, versionLabel: null, versionType: null, gameVersions: [], loaders: [], dependencies: [],
+      iconUrl: null, versionLabel: null, versionType: null, gameVersions: [], loaders: [], dependencies: [], unavailable: null,
     });
     expect(t.calls.every((c) => !c.url.includes("SodVer01") && !c.url.includes("AANobbMI"))).toBe(true);
 
@@ -89,8 +89,8 @@ describe("ContentCatalog.lookup", () => {
       { list: "mods.curseforgeFiles", entry: "238222:5101" },
       { list: "mods.curseforgeFiles", entry: "jei" },
     ]);
-    expect(r.map((e) => [e.raw, e.resolved, e.name])).toEqual([
-      ["AANobbMI:SodVer01", true, "Sodium"], ["AANobbMI:OtherVer", false, null], ["238222:5101", true, "JEI"], ["jei", false, null],
+    expect(r.map((e) => [e.raw, e.resolved, e.name, e.unavailable])).toEqual([
+      ["AANobbMI:SodVer01", true, "Sodium", null], ["AANobbMI:OtherVer", false, null, "source"], ["238222:5101", true, "JEI", null], ["jei", false, null, "source"],
     ]);
   });
 
@@ -99,8 +99,23 @@ describe("ContentCatalog.lookup", () => {
     t.repo.put("curseforge", "version", "5101", { ...ver("238222", "5101"), platform: "curseforge" });
     t.repo.put("curseforge", "project", "238222", meta("238222", "JEI"));
     const r = await t.catalog.lookup([{ list: "mods.curseforgeFiles", entry: "238222:5101" }, { list: "mods.curseforgeFiles", entry: "1:2" }]);
-    expect(r.map((e) => e.resolved)).toEqual([true, false]);
+    expect(r.map((e) => [e.resolved, e.unavailable])).toEqual([[true, null], [false, "no_key"]]);
     expect(t.calls).toEqual([]);
+  });
+
+  it("a source that rate limits is unavailable, not a missing project", async () => {
+    const t = setup();
+    t.replyWhen(() => true, { error: "slow down" }, 429);
+    const r = await t.catalog.lookup([{ list: "mods.modrinthProjects", entry: "sodium" }, { list: "mods.modrinthProjects", entry: "AANobbMI:SodVer01" }]);
+    expect(r.map((e) => [e.resolved, e.unavailable])).toEqual([[false, "source"], [false, "source"]]);
+  });
+
+  it("an entry the source does not know is not found (unavailable null)", async () => {
+    const t = setup();
+    t.replyWhen(isPath(`${API}/projects`), []);
+    t.replyWhen(isPath(`${API}/versions`), []);
+    const r = await t.catalog.lookup([{ list: "mods.modrinthProjects", entry: "nope" }, { list: "mods.modrinthProjects", entry: "ZZZZZZZZ:YYYYYYYY" }]);
+    expect(r.map((e) => [e.resolved, e.unavailable])).toEqual([[false, null], [false, null]]);
   });
 });
 
@@ -203,6 +218,19 @@ describe("ContentCatalog.resolve", () => {
     expect(r.inPack).toEqual([{ projectId: "CCCCCCCC", name: "Gamma" }]);
   });
 
+  it("reports a client-only Modrinth dependency instead of adding it", async () => {
+    const t = setup();
+    t.repo.put("modrinth", "version", "AlphVer1", ver("AAAAAAAA", "AlphVer1", { dependencies: [{ projectId: "EEEEEEEE", versionId: null, type: "required" }] }));
+    t.repo.put("modrinth", "project", "AAAAAAAA", meta("AAAAAAAA", "Alpha"));
+    t.repo.put("modrinth", "project", "EEEEEEEE", { ...meta("EEEEEEEE", "Minimap"), clientOnly: true });
+    const r = await t.catalog.resolve({
+      list: "mods.modrinthProjects", target: { gameVersion: "1.21.1", loaders: ["fabric"] },
+      selections: [{ projectId: "AAAAAAAA", versionId: "AlphVer1" }], present: [], pack: null,
+    });
+    expect(r.add.map((e) => e.projectId)).toEqual(["AAAAAAAA"]);
+    expect(r.unresolved).toEqual(["Minimap is client-only and can't run on a server"]);
+    expect(t.calls).toEqual([]);
+  });
   it("CurseForge without a key answers 409", async () => {
     const t = setup({ key: null });
     await expect(t.catalog.resolve({

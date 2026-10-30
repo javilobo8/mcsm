@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ManualTimers } from "../../test/manual-timers.js";
 import { fakeContentFetch } from "../../test/fake-content-fetch.js";
 import { openDb } from "../db/db.js";
-import { PACK_MAX_BYTES } from "./adapter.js";
+import { PACK_MAX_BYTES, REF_UNAVAILABLE, type ContentRef } from "./adapter.js";
 import { CONTENT_USER_AGENT, UpstreamClient } from "./http.js";
 import { ModrinthAdapter } from "./modrinth.js";
 import { ContentMetaRepo } from "./repo.js";
@@ -204,7 +204,7 @@ describe("ModrinthAdapter.resolveRefs", () => {
     expect(r.at(-1)).toBeNull();
     const projectCalls = t.calls.filter((c) => new URL(c.url).pathname === "/v2/projects");
     expect(projectCalls.map((c) => (JSON.parse(new URL(c.url).searchParams.get("ids")!) as string[]).length)).toEqual([100, 51]);
-    expect(t.repo.get("modrinth", "ref", "mod-149")?.data).toBe(r[149]!.projectId);
+    expect(t.repo.get("modrinth", "ref", "mod-149")?.data).toBe((r[149] as ContentRef).projectId);
     const n = t.calls.length;
     expect(await t.adapter.resolveRefs([raw("mod-001")], "mod")).toEqual([r[1]]);
     expect(t.calls).toHaveLength(n);
@@ -213,6 +213,7 @@ describe("ModrinthAdapter.resolveRefs", () => {
   it("keeps a version id, looks up a version number once, and caches both refs", async () => {
     const t = setup();
     t.repo.put("modrinth", "ref", "sodium", "AANobbMI");
+    t.replyWhen((u) => u.pathname === "/v2/projects", []); // "datapack-only" is unknown
     t.reply(`${API}/project/AANobbMI/version/0.5.5`, (fixture("versions") as object[])[2]!);
     const r = await t.adapter.resolveRefs([raw("sodium:0.5.5"), raw("sodium:midRel01"), raw("datapack-only")], "mod");
     expect(r.slice(0, 2)).toEqual([{ projectId: "AANobbMI", versionId: "midRel01" }, { projectId: "AANobbMI", versionId: "midRel01" }]);
@@ -221,9 +222,9 @@ describe("ModrinthAdapter.resolveRefs", () => {
     expect(t.repo.get("modrinth", "ref", "AANobbMI:0.5.5")?.data).toBe("midRel01");
   });
 
-  it("a failing source leaves the entries unresolved; a dotted segment never reaches a URL", async () => {
+  it("a failing source marks the entries unavailable; a dotted segment never reaches a URL", async () => {
     const t = setup();
-    expect(await t.adapter.resolveRefs([raw("sodium"), raw("..")], "mod")).toEqual([null, null]);
+    expect(await t.adapter.resolveRefs([raw("sodium"), raw("..")], "mod")).toEqual([REF_UNAVAILABLE, null]);
     expect(t.calls.map((c) => JSON.parse(new URL(c.url).searchParams.get("ids")!))).toEqual([["sodium"]]);
   });
 });
