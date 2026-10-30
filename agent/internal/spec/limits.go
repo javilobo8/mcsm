@@ -33,7 +33,11 @@ func (s Spec) validateLimits() error {
 	}
 	if s.Plugins != nil {
 		lists = append(lists, sizedList{"plugins.modrinthProjects", len(s.Plugins.ModrinthProjects)},
-			sizedList{"plugins.spigetResources", len(s.Plugins.SpigetResources)}, sizedList{"plugins.urls", len(s.Plugins.URLs)})
+			sizedList{"plugins.spigetResources", len(s.Plugins.SpigetResources)}, sizedList{"plugins.urls", len(s.Plugins.URLs)},
+			sizedList{"plugins.curseforgeFiles", len(s.Plugins.CurseforgeFiles)})
+	}
+	if s.Datapacks != nil {
+		lists = append(lists, sizedList{"datapacks.modrinthProjects", len(s.Datapacks.ModrinthProjects)})
 	}
 	if s.Whitelist != nil {
 		lists = append(lists, sizedList{"whitelist.players", len(s.Whitelist.Players)})
