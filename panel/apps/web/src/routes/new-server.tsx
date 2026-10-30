@@ -22,7 +22,7 @@ import { useTemplates } from "@/hooks/use-templates";
 import { useInstalledPack } from "@/hooks/use-content";
 
 type Step = 1 | 2 | 3;
-const STEPS: { n: Step; label: string }[] = [{ n: 1, label: "Template or from scratch" }, { n: 2, label: "Node and name" }, { n: 3, label: "Review" }];
+const STEPS: { n: Step; label: string }[] = [{ n: 1, label: "Starting point" }, { n: 2, label: "Node and name" }, { n: 3, label: "Review" }];
 
 /** New server wizard in 3 steps (spec §8). `?template=<id>` opens it at step 2 with that template chosen. */
 export function NewServerPage() {
@@ -90,7 +90,7 @@ export function NewServerPage() {
 
   return (
     <div className={PAGE}>
-      <PageHeader title="New server" description="Start from a template or from scratch, pick the node it runs on, and review before creating it." />
+      <PageHeader title="New server" description="Start from a template, a modpack or from scratch, pick the node it runs on, and review before creating it." />
       <ol className="flex max-w-4xl flex-wrap items-center gap-x-3 gap-y-2 text-sm" aria-label="Steps">
         {STEPS.map((s, i) => (
           <li key={s.n} aria-current={s.n === step ? "step" : undefined} className="flex items-center gap-3">
