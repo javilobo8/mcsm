@@ -21,7 +21,7 @@ describe("UpstreamClient.json", () => {
   it("caches a GET for its ttl and refetches after it", async () => {
     const t = setup();
     t.reply(URL1, { id: "a" });
-    expect(await t.client.json({ url: URL1, ttlMs: 60_000 }, doc)).toEqual({ data: { id: "a" }, stale: false });
+    expect(await t.client.json({ url: URL1, ttlMs: 60_000 }, doc)).toEqual({ data: { id: "a" }, stale: false, fresh: true });
     expect(t.calls[0]).toMatchObject({ method: "GET", redirect: "manual" });
     expect(t.calls[0]!.headers).toMatchObject({ "user-agent": CONTENT_USER_AGENT, accept: "application/json" });
     expect(t.calls[0]!.headers["content-type"]).toBeUndefined();
@@ -60,13 +60,24 @@ describe("UpstreamClient.json", () => {
     expect(t.calls).toHaveLength(1);
   });
 
+  it("only the caller whose request downloaded the document gets fresh: true", async () => {
+    const t = setup();
+    const h = t.hold(URL1);
+    const p1 = t.client.json({ url: URL1, ttlMs: 60_000 }, doc);
+    const p2 = t.client.json({ url: URL1, ttlMs: 60_000 }, doc);
+    await vi.waitFor(() => expect(t.calls).toHaveLength(1));
+    h.release(new Response(JSON.stringify({ id: "a" })));
+    expect([(await p1).fresh, (await p2).fresh]).toEqual([true, false]);
+    expect((await t.client.json({ url: URL1, ttlMs: 60_000 }, doc)).fresh).toBe(false); // memory hit
+  });
+
   it("serves the stored copy with stale: true when the source fails", async () => {
     const t = setup();
     t.reply(URL1, { id: "a" });
     await t.client.json({ url: URL1, ttlMs: 60_000 }, doc);
     t.advance(60_001);
     t.reply(URL1, () => Promise.reject(new TypeError("down")));
-    expect(await t.client.json({ url: URL1, ttlMs: 60_000 }, doc)).toEqual({ data: { id: "a" }, stale: true });
+    expect(await t.client.json({ url: URL1, ttlMs: 60_000 }, doc)).toEqual({ data: { id: "a" }, stale: true, fresh: false });
     expect(t.errors).toEqual([URL1]);
 
     const t2 = setup();
@@ -80,7 +91,7 @@ describe("UpstreamClient.json", () => {
     await t.client.json({ url: URL1, ttlMs: 60_000 }, doc);
     t.advance(60_001);
     t.reply(URL1, { oops: 1 });
-    expect(await t.client.json({ url: URL1, ttlMs: 60_000 }, doc)).toEqual({ data: { id: "a" }, stale: true });
+    expect(await t.client.json({ url: URL1, ttlMs: 60_000 }, doc)).toEqual({ data: { id: "a" }, stale: true, fresh: false });
     t.reply(URL1, { id: "c" });
     expect((await t.client.json({ url: URL1, ttlMs: 60_000 }, doc)).data).toEqual({ id: "c" });
 

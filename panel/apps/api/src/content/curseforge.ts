@@ -9,9 +9,9 @@ import {
   PACK_MAX_BYTES, PACK_TIMEOUT_MS, PACK_TOO_LARGE, PACK_UNREADABLE, SEARCH_LIMIT, chunks, isoDate, newestFirst, proxiedImage,
   REF_UNAVAILABLE, type ContentAdapter, type ContentRef, type RefResult, type ProjectMeta, type SearchInput, type VersionFilter,
 } from "./adapter.js";
-import { DOWNLOAD_HOSTS, TOO_LARGE, type JsonRequest, type UpstreamClient } from "./http.js";
+import { DOWNLOAD_HOSTS, TOO_LARGE, type JsonRequest, type JsonResult, type UpstreamClient } from "./http.js";
 import { readCurseForgeManifest } from "./pack.js";
-import type { ContentMetaRepo } from "./repo.js";
+import type { ContentMetaRepo, MetaPut } from "./repo.js";
 import { descriptionHtml } from "./sanitize.js";
 
 const API = "https://api.curseforge.com/v1";
@@ -156,15 +156,18 @@ export class CurseForgeAdapter implements ContentAdapter {
   async projects(ids: string[]): Promise<ProjectMeta[]> {
     this.headers();
     const out: ProjectMeta[] = [];
+    const rows: MetaPut[] = [];
     for (const part of chunks([...new Set(ids.filter((id) => CF_ID_RE.test(id)))])) {
-      for (const m of await this.modsBatch(part)) {
+      const r = await this.modsBatch(part);
+      for (const m of r.data) {
         const id = cfId(m.id);
         if (!id) continue;
         const meta = metaOf(m, id);
-        this.repo.put("curseforge", "project", id, meta);
+        if (r.fresh) rows.push({ kind: "project", id, data: meta });
         out.push(meta);
       }
     }
+    this.repo.putMany("curseforge", rows); // one transaction; a copy from the memory cache was stored when downloaded
     return out;
   }
 
@@ -177,7 +180,7 @@ export class CurseForgeAdapter implements ContentAdapter {
     params.set("index", "0");
     params.set("pageSize", String(FILES_PAGE));
     const r = await this.get({ url: `${API}/mods/${id}/files?${params}`, ttlMs: VERSIONS_TTL }, filesDoc, "Project not found on CurseForge");
-    return { versions: newestFirst(this.store(r.data.data)), stale: r.stale };
+    return { versions: this.versionsOf({ data: r.data.data, fresh: r.fresh }, newestFirst), stale: r.stale };
   }
 
   async versionsByIds(ids: string[]): Promise<ContentVersionDto[]> {
@@ -189,7 +192,7 @@ export class CurseForgeAdapter implements ContentAdapter {
         url: `${API}/mods/files`, method: "POST", body: { fileIds: part.map(Number) },
         cacheKey: `curseforge files ${part.join(",")}`, ttlMs: VERSIONS_TTL,
       }, filesDoc);
-      out.push(...this.store(r.data.data));
+      out.push(...this.versionsOf({ data: r.data.data, fresh: r.fresh }));
     }
     return out;
   }
@@ -217,7 +220,7 @@ export class CurseForgeAdapter implements ContentAdapter {
     for (const part of chunks([...new Set(current.map((v) => v.projectId).filter((id) => CF_ID_RE.test(id)))])) {
       let mods: ModDoc[];
       try {
-        mods = await this.modsBatch(part);
+        mods = (await this.modsBatch(part)).data;
       } catch {
         continue; // not checked
       }
@@ -264,11 +267,12 @@ export class CurseForgeAdapter implements ContentAdapter {
   }
 
   /** POST /v1/mods for ≤ 100 ids (cached per id set). */
-  private async modsBatch(ids: string[]): Promise<ModDoc[]> {
-    return (await this.get({
+  private async modsBatch(ids: string[]): Promise<{ data: ModDoc[]; fresh: boolean }> {
+    const r = await this.get({
       url: `${API}/mods`, method: "POST", body: { modIds: ids.map(Number), filterPcOnly: true },
       cacheKey: `curseforge mods ${ids.join(",")}`, ttlMs: PROJECT_TTL,
-    }, modsDoc)).data.data;
+    }, modsDoc);
+    return { data: r.data.data, fresh: r.fresh };
   }
 
   async pack(projectId: string, versionId: string): Promise<PackInfoDto> {
@@ -338,12 +342,14 @@ export class CurseForgeAdapter implements ContentAdapter {
     return (await this.get({ url: `${API}/mods/${id}`, ttlMs: PROJECT_TTL }, modDoc, "Project not found on CurseForge")).data.data;
   }
 
-  private store(files: FileDoc[]): ContentVersionDto[] {
-    return files.flatMap((f) => {
-      const v = versionOf(f);
-      if (v) this.repo.put("curseforge", "version", v.versionId, v);
-      return v ? [v] : [];
-    });
+  /** Maps files and keeps what `keep` returns; a document just downloaded (`fresh`) stores what is kept in one transaction. */
+  private versionsOf(
+    r: { data: FileDoc[]; fresh: boolean },
+    keep: (vs: ContentVersionDto[]) => ContentVersionDto[] = (vs) => vs,
+  ): ContentVersionDto[] {
+    const vs = keep(r.data.flatMap((f) => { const v = versionOf(f); return v ? [v] : []; }));
+    if (r.fresh) this.repo.putMany("curseforge", vs.map((v) => ({ kind: "version" as const, id: v.versionId, data: v })));
+    return vs;
   }
 
   private id(projectId: string): string {
@@ -359,7 +365,7 @@ export class CurseForgeAdapter implements ContentAdapter {
     return { "x-api-key": key };
   }
 
-  private async get<T>(req: Omit<JsonRequest, "headers">, schema: z.ZodType<T>, notFound?: string): Promise<{ data: T; stale: boolean }> {
+  private async get<T>(req: Omit<JsonRequest, "headers">, schema: z.ZodType<T>, notFound?: string): Promise<JsonResult<T>> {
     const headers = this.headers();
     try {
       return await this.http.json({ ...req, headers }, schema);

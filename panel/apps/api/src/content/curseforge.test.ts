@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ManualTimers } from "../../test/manual-timers.js";
 import { fakeContentFetch } from "../../test/fake-content-fetch.js";
 import { openDb } from "../db/db.js";
@@ -122,6 +122,21 @@ describe("CurseForgeAdapter", () => {
       ["5101", ["1.21.1"], ["neoforge"], "release", "jei-1.21.1-neoforge-19.0.0.1"],
     ]);
     expect(r.versions[1]!.publishedAt).toBe("2024-08-01T10:00:00.120Z");
+  });
+
+  it("stores versions and projects in one write each, and nothing on a cache hit", async () => {
+    const t = setup();
+    t.replyWhen(isPath(`${API}/mods/238222/files`), fixture("files"));
+    t.replyWhen(isPath(`${API}/mods`), { data: [(fixture("mod") as { data: object }).data] });
+    const put = vi.spyOn(t.repo, "put");
+    const putMany = vi.spyOn(t.repo, "putMany");
+    for (let i = 0; i < 2; i++) {
+      await t.adapter.versions("238222", { kind: "mod", gameVersion: null, loaders: [] });
+      await t.adapter.projects(["238222"]);
+    }
+    expect(t.calls).toHaveLength(2);
+    expect([put.mock.calls.length, putMany.mock.calls.filter(([, rows]) => rows.length > 0).length]).toEqual([0, 2]);
+    expect(t.repo.get("curseforge", "version", "5101")).not.toBeNull();
   });
 
   it("plugin files carry no modLoaderType [F1]", async () => {

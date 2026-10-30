@@ -1,4 +1,5 @@
 import type { ContentPlatform } from "@mcsm/shared";
+import type { StatementSync } from "node:sqlite";
 import type { Db } from "../db/db.js";
 
 /**
@@ -8,6 +9,7 @@ import type { Db } from "../db/db.js";
 export type MetaKind = "project" | "version" | "pack" | "ref" | "file";
 
 export interface MetaRow { data: unknown; fetchedAt: string }
+export interface MetaPut { kind: MetaKind; id: string; data: unknown }
 
 /** Ids per `IN (…)` statement (SQLite's default limit on variables is far above it). */
 const CHUNK = 500;
@@ -17,7 +19,12 @@ const CHUNK = 500;
  * when the sources are down, and avoids asking twice for what does not change (a version, a pack's contents).
  */
 export class ContentMetaRepo {
-  constructor(private readonly db: Db, private readonly now: () => number = Date.now) {}
+  private readonly upsert: StatementSync;
+
+  constructor(private readonly db: Db, private readonly now: () => number = Date.now) {
+    this.upsert = db.prepare(`INSERT INTO content_meta (platform, kind, id, data, fetched_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(platform, kind, id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`);
+  }
 
   get(platform: ContentPlatform, kind: MetaKind, id: string): MetaRow | null {
     const row = this.db.prepare("SELECT data, fetched_at FROM content_meta WHERE platform = ? AND kind = ? AND id = ?")
@@ -40,9 +47,24 @@ export class ContentMetaRepo {
   }
 
   put(platform: ContentPlatform, kind: MetaKind, id: string, data: unknown): void {
-    this.db.prepare(`INSERT INTO content_meta (platform, kind, id, data, fetched_at) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(platform, kind, id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at`)
-      .run(platform, kind, id, JSON.stringify(data), new Date(this.now()).toISOString());
+    this.upsert.run(platform, kind, id, JSON.stringify(data), new Date(this.now()).toISOString());
+  }
+
+  /**
+   * Every row in one transaction (one fsync instead of one per row: with WAL + synchronous=FULL each commit costs
+   * ~20 ms on a disk, and the writes block the event loop). All or nothing.
+   */
+  putMany(platform: ContentPlatform, rows: readonly MetaPut[]): void {
+    if (rows.length === 0) return;
+    const at = new Date(this.now()).toISOString();
+    this.db.exec("BEGIN");
+    try {
+      for (const r of rows) this.upsert.run(platform, r.kind, r.id, JSON.stringify(r.data), at);
+      this.db.exec("COMMIT");
+    } catch (e) {
+      this.db.exec("ROLLBACK");
+      throw e;
+    }
   }
 
   /** Deletes rows fetched before `iso`; returns how many. */

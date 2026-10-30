@@ -59,6 +59,8 @@ export interface BytesOptions { hosts: ReadonlySet<string>; maxBytes: number; ti
 
 interface Entry { doc: unknown; expiresAt: number }
 
+export interface JsonResult<T> { data: T; stale: boolean; fresh: boolean }
+
 /** The URL if it is HTTPS to one of `hosts`, else null. */
 export function allowedUrl(url: string, hosts: ReadonlySet<string>): URL | null {
   try {
@@ -151,23 +153,28 @@ export class UpstreamClient {
     }
   }
 
-  async json<T>(req: JsonRequest, schema: z.ZodType<T>): Promise<{ data: T; stale: boolean }> {
+  /**
+   * `fresh` is true only for the caller whose request downloaded the document (not for a memory hit, a stale copy or a
+   * caller that joined another's download): whoever persists what it maps does it once per download.
+   */
+  async json<T>(req: JsonRequest, schema: z.ZodType<T>): Promise<JsonResult<T>> {
     const method = req.method ?? "GET";
     if (method === "POST" && req.cacheKey === undefined) throw new Error("a POST needs a cacheKey");
     const key = `${method} ${req.cacheKey ?? req.url}`;
     const hit = this.cache.get(key);
     if (hit && hit.expiresAt > this.now()) {
       this.touch(key, hit);
-      return { data: hit.doc as T, stale: false };
+      return { data: hit.doc as T, stale: false, fresh: false };
     }
     try {
-      return { data: (await this.shared(key, req, schema)) as T, stale: false };
+      const r = this.shared(key, req, schema);
+      return { data: (await r.doc) as T, stale: false, fresh: r.started };
     } catch (e) {
       this.onError?.(req.url, e);
       const old = this.cache.get(key);
       if (!old) throw e;
       this.touch(key, old);
-      return { data: old.doc as T, stale: true };
+      return { data: old.doc as T, stale: true, fresh: false };
     }
   }
 
@@ -210,18 +217,18 @@ export class UpstreamClient {
     }
   }
 
-  private shared(key: string, req: JsonRequest, schema: z.ZodType): Promise<unknown> {
-    let p = this.inflight.get(key);
-    if (!p) {
-      p = this.download(req, schema)
-        .then((doc) => {
-          this.touch(key, { doc, expiresAt: this.now() + req.ttlMs });
-          return doc;
-        })
-        .finally(() => this.inflight.delete(key));
-      this.inflight.set(key, p);
-    }
-    return p;
+  /** The download of `key` in flight, started by this call or joined (`started: false`). */
+  private shared(key: string, req: JsonRequest, schema: z.ZodType): { doc: Promise<unknown>; started: boolean } {
+    const joined = this.inflight.get(key);
+    if (joined) return { doc: joined, started: false };
+    const p = this.download(req, schema)
+      .then((doc) => {
+        this.touch(key, { doc, expiresAt: this.now() + req.ttlMs });
+        return doc;
+      })
+      .finally(() => this.inflight.delete(key));
+    this.inflight.set(key, p);
+    return { doc: p, started: true };
   }
 
   private touch(key: string, entry: Entry): void {

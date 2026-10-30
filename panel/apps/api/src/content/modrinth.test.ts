@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { strToU8, zipSync } from "fflate";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ManualTimers } from "../../test/manual-timers.js";
 import { fakeContentFetch } from "../../test/fake-content-fetch.js";
 import { openDb } from "../db/db.js";
@@ -20,6 +20,12 @@ function setup(rateBudgets?: Record<string, number>) {
   const repo = new ContentMetaRepo(openDb(":memory:"), now);
   return { ...f, repo, adapter: new ModrinthAdapter(http, repo) };
 }
+/** Counts the repo's writes: one `put` or non-empty `putMany` is one transaction. */
+const writes = (repo: ContentMetaRepo) => {
+  const put = vi.spyOn(repo, "put");
+  const putMany = vi.spyOn(repo, "putMany");
+  return () => ({ put: put.mock.calls.length, putMany: putMany.mock.calls.filter(([, rows]) => rows.length > 0).length });
+};
 const path = (u: string) => { const x = new URL(u); return x.origin + x.pathname; };
 const isPath = (p: string) => (u: URL) => u.origin + u.pathname === p;
 
@@ -152,6 +158,24 @@ describe("ModrinthAdapter.versions", () => {
     expect(JSON.parse(new URL(t.calls[0]!.url).searchParams.get("loaders")!)).toEqual(["datapack"]);
   });
 
+  it("stores only the versions it returns, in one write, and nothing on a cache hit", async () => {
+    const t = setup();
+    const base = (fixture("versions") as object[])[0] as object;
+    const docs = Array.from({ length: 201 }, (_, i) => ({
+      ...base, id: `v${String(i).padStart(7, "0")}`, date_published: new Date(Date.UTC(2024, 0, 1) + i * 60_000).toISOString(),
+    }));
+    t.replyWhen(isPath(`${API}/project/AANobbMI/version`), docs);
+    const n = writes(t.repo);
+    const r = await t.adapter.versions("AANobbMI", { kind: "mod", gameVersion: null, loaders: [] });
+    expect(r.versions).toHaveLength(200);
+    expect(n()).toEqual({ put: 0, putMany: 1 });
+    expect(t.repo.get("modrinth", "version", "v0000200")).not.toBeNull();
+    expect(t.repo.get("modrinth", "version", "v0000000")).toBeNull(); // the oldest, past the cap
+    await t.adapter.versions("AANobbMI", { kind: "mod", gameVersion: null, loaders: [] });
+    expect(t.calls).toHaveLength(1);
+    expect(n()).toEqual({ put: 0, putMany: 1 });
+  });
+
   it("batches versionsByIds in groups of 100", async () => {
     const t = setup();
     const ids = Array.from({ length: 150 }, (_, i) => `v${String(i).padStart(7, "0")}`);
@@ -179,6 +203,17 @@ describe("ModrinthAdapter.projects", () => {
     ]);
     expect(t.repo.get("modrinth", "project", "AANobbMI")?.data).toMatchObject({ name: "Sodium" });
   });
+
+  it("stores a batch in one write and nothing on a cache hit", async () => {
+    const t = setup();
+    t.replyWhen(isPath(`${API}/projects`), [fixture("project"), fixture("pack-project")]);
+    t.replyWhen(isPath(`${API}/teams`), [fixture("members")]);
+    const n = writes(t.repo);
+    await t.adapter.projects(["AANobbMI", "1KVo5zza"]);
+    expect(n()).toEqual({ put: 0, putMany: 1 });
+    await t.adapter.projects(["AANobbMI", "1KVo5zza"]);
+    expect(n()).toEqual({ put: 0, putMany: 1 });
+  });
 });
 
 describe("ModrinthAdapter.resolveRefs", () => {
@@ -198,6 +233,7 @@ describe("ModrinthAdapter.resolveRefs", () => {
     const t = setup();
     projectsBySlug(t);
     const slugs = Array.from({ length: 150 }, (_, i) => `mod-${String(i).padStart(3, "0")}`);
+    const w = writes(t.repo);
     const r = await t.adapter.resolveRefs([...slugs.map(raw), raw("ghost")], "mod");
     expect(r[0]).toEqual({ projectId: "P0000000", versionId: null });
     expect(r[149]).toEqual({ projectId: "P0000149", versionId: null });
@@ -205,6 +241,7 @@ describe("ModrinthAdapter.resolveRefs", () => {
     const projectCalls = t.calls.filter((c) => new URL(c.url).pathname === "/v2/projects");
     expect(projectCalls.map((c) => (JSON.parse(new URL(c.url).searchParams.get("ids")!) as string[]).length)).toEqual([100, 51]);
     expect(t.repo.get("modrinth", "ref", "mod-149")?.data).toBe((r[149] as ContentRef).projectId);
+    expect(w()).toEqual({ put: 0, putMany: 2 }); // both batches of projects, then every ref
     const n = t.calls.length;
     expect(await t.adapter.resolveRefs([raw("mod-001")], "mod")).toEqual([r[1]]);
     expect(t.calls).toHaveLength(n);

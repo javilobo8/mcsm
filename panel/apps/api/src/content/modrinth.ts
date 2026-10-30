@@ -10,9 +10,9 @@ import {
   PACK_MAX_BYTES, PACK_TIMEOUT_MS, PACK_TOO_LARGE, PACK_UNREADABLE, SEARCH_LIMIT, chunks, isoDate, newestFirst, proxiedImage,
   ALLOWED_CHANNELS, REF_UNAVAILABLE, type ContentAdapter, type ContentRef, type RefResult, type ProjectMeta, type SearchInput, type VersionFilter,
 } from "./adapter.js";
-import { DOWNLOAD_HOSTS, RATE_BUDGET_EXHAUSTED, TOO_LARGE, type UpstreamClient } from "./http.js";
+import { DOWNLOAD_HOSTS, RATE_BUDGET_EXHAUSTED, TOO_LARGE, type JsonResult, type UpstreamClient } from "./http.js";
 import { loaderOf, readMrpackIndex } from "./pack.js";
-import type { ContentMetaRepo } from "./repo.js";
+import type { ContentMetaRepo, MetaPut } from "./repo.js";
 import { descriptionHtml } from "./sanitize.js";
 
 const API = "https://api.modrinth.com/v2";
@@ -147,7 +147,7 @@ export class ModrinthAdapter implements ContentAdapter {
   }
 
   async project(projectId: string): Promise<ContentProjectDto> {
-    const doc = await this.projectDoc(projectId);
+    const { data: doc, fresh } = await this.projectDoc(projectId);
     const id = modrinthId(doc.id);
     if (!id) throw new HttpError(502, MODRINTH_FAILED);
     let author = "";
@@ -155,7 +155,7 @@ export class ModrinthAdapter implements ContentAdapter {
       author = ownerOf((await this.http.json({ url: `${API}/project/${enc(id)}/members`, ttlMs: PROJECT_TTL }, membersSchema)).data);
     } catch { /* the author is cosmetic: the project still shows */ }
     const meta = metaOf(doc, id, author);
-    this.repo.put("modrinth", "project", id, meta);
+    if (fresh) this.repo.put("modrinth", "project", id, meta);
     const links = ([["Source", doc.source_url], ["Issues", doc.issues_url], ["Wiki", doc.wiki_url], ["Discord", doc.discord_url]] as const)
       .flatMap(([l, u]) => { const url = safeLink(u); return url ? [{ label: l, url }] : []; });
     const type = doc.project_type && PAGE_TYPES.has(doc.project_type) ? doc.project_type : "project";
@@ -170,18 +170,22 @@ export class ModrinthAdapter implements ContentAdapter {
 
   async projects(ids: string[]): Promise<ProjectMeta[]> {
     const wanted = [...new Set(ids.filter((id) => SEGMENT_RE.test(id)))];
-    const docs: ProjectDoc[] = [];
+    const docs: { d: ProjectDoc; fresh: boolean }[] = [];
     for (const part of chunks(wanted)) {
-      docs.push(...(await this.get({ url: `${API}/projects?${new URLSearchParams({ ids: json(part) })}`, ttlMs: PROJECT_TTL }, z.array(projectSchema))).data);
+      const r = await this.get({ url: `${API}/projects?${new URLSearchParams({ ids: json(part) })}`, ttlMs: PROJECT_TTL }, z.array(projectSchema));
+      docs.push(...r.data.map((d) => ({ d, fresh: r.fresh })));
     }
-    const owners = await this.owners(docs.flatMap((d) => (d.team && MODRINTH_ID_RE.test(d.team) ? [d.team] : [])));
-    return docs.flatMap((d) => {
+    const owners = await this.owners(docs.flatMap(({ d }) => (d.team && MODRINTH_ID_RE.test(d.team) ? [d.team] : [])));
+    const rows: MetaPut[] = [];
+    const out = docs.flatMap(({ d, fresh }) => {
       const id = modrinthId(d.id);
       if (!id) return [];
       const meta = metaOf(d, id, (d.team && owners.get(d.team)) ?? "");
-      this.repo.put("modrinth", "project", id, meta);
+      if (fresh) rows.push({ kind: "project", id, data: meta });
       return [meta];
     });
+    this.repo.putMany("modrinth", rows);
+    return out;
   }
 
   async versions(projectId: string, f: VersionFilter): Promise<{ versions: ContentVersionDto[]; stale: boolean }> {
@@ -195,7 +199,7 @@ export class ModrinthAdapter implements ContentAdapter {
       z.array(versionSchema),
       "Project not found on Modrinth",
     );
-    return { versions: newestFirst(this.store(r.data)), stale: r.stale };
+    return { versions: this.versionsOf(r, newestFirst), stale: r.stale };
   }
 
   async versionsByIds(ids: string[]): Promise<ContentVersionDto[]> {
@@ -203,7 +207,7 @@ export class ModrinthAdapter implements ContentAdapter {
     const out: ContentVersionDto[] = [];
     for (const part of chunks(wanted)) {
       const r = await this.get({ url: `${API}/versions?${new URLSearchParams({ ids: json(part) })}`, ttlMs: VERSIONS_TTL }, z.array(versionSchema));
-      out.push(...this.store(r.data));
+      out.push(...this.versionsOf(r));
     }
     return out;
   }
@@ -226,13 +230,15 @@ export class ModrinthAdapter implements ContentAdapter {
       } catch {
         down = true; // the source failed: these entries are unavailable, not unknown
       }
+      const refs: MetaPut[] = [];
       for (const ref of unknown) {
         const lower = ref.toLowerCase();
         const m = metas.find((x) => x.projectId === ref || x.slug.toLowerCase() === lower);
         if (!m) continue;
         ids.set(ref, m.projectId);
-        this.repo.put("modrinth", "ref", ref, m.projectId);
+        refs.push({ kind: "ref", id: ref, data: m.projectId });
       }
+      this.repo.putMany("modrinth", refs);
     }
     const out: RefResult[] = [];
     for (const e of es) {
@@ -269,21 +275,23 @@ export class ModrinthAdapter implements ContentAdapter {
       const hashes = [...new Set(group.map((v) => sha1Of(v.versionId)!))];
       for (const part of chunks(hashes)) {
         const body = { hashes: part, algorithm: "sha1", loaders, game_versions: [f.gameVersion], version_types: [...ALLOWED_CHANNELS[channel]] };
-        let byHash: Record<string, VersionDoc>;
+        let r: JsonResult<Record<string, VersionDoc>>;
         try {
-          byHash = (await this.get({
+          r = await this.get({
             url: `${API}/version_files/update`, method: "POST", body,
             cacheKey: `modrinth update ${createHash("sha1").update(JSON.stringify(body)).digest("hex")}`, ttlMs: VERSIONS_TTL,
-          }, z.record(z.string(), versionSchema))).data;
+          }, z.record(z.string(), versionSchema));
         } catch {
           continue; // not checked
         }
+        const byHash = r.data;
+        const mapped = new Map(this.versionsOf({ data: Object.values(byHash), fresh: r.fresh }).map((v) => [v.versionId, v]));
         const inPart = new Set(part);
         for (const v of group) {
           const h = sha1Of(v.versionId)!;
           if (!inPart.has(h)) continue;
           const doc = byHash[h];
-          out.set(v.versionId, doc ? this.store([doc])[0] ?? null : null);
+          out.set(v.versionId, doc ? mapped.get(doc.id) ?? null : null);
         }
       }
     }
@@ -295,9 +303,9 @@ export class ModrinthAdapter implements ContentAdapter {
     const refKey = `${projectId}:${number}`;
     const stored = this.storedRef(refKey);
     if (stored) return stored;
-    const doc = await this.orNull(async () =>
-      (await this.get({ url: `${API}/project/${enc(projectId)}/version/${enc(number)}`, ttlMs: VERSIONS_TTL }, versionSchema, "Version not found on Modrinth")).data);
-    const v = doc && doc.project_id === projectId ? this.store([doc])[0] : undefined;
+    const r = await this.orNull(() =>
+      this.get({ url: `${API}/project/${enc(projectId)}/version/${enc(number)}`, ttlMs: VERSIONS_TTL }, versionSchema, "Version not found on Modrinth"));
+    const v = r && r.data.project_id === projectId ? this.versionsOf({ data: [r.data], fresh: r.fresh })[0] : undefined;
     if (!v) return null;
     this.repo.put("modrinth", "ref", refKey, v.versionId);
     return v.versionId;
@@ -311,7 +319,7 @@ export class ModrinthAdapter implements ContentAdapter {
 
     const v = (await this.get({ url: `${API}/version/${enc(versionId)}`, ttlMs: VERSIONS_TTL }, versionSchema, notFound)).data;
     if (v.project_id !== projectId) throw new HttpError(404, notFound);
-    const p = await this.projectDoc(projectId);
+    const p = (await this.projectDoc(projectId)).data;
     const base = {
       platform: "modrinth" as const, projectId, slug: p.slug ?? projectId, versionId, name: p.title,
       versionLabel: v.version_number, iconUrl: proxiedImage(p.icon_url),
@@ -363,9 +371,8 @@ export class ModrinthAdapter implements ContentAdapter {
 
   // ── helpers ──
 
-  private projectDoc(ref: string): Promise<ProjectDoc> {
-    return this.get({ url: `${API}/project/${enc(this.segment(ref))}`, ttlMs: PROJECT_TTL }, projectSchema, "Project not found on Modrinth")
-      .then((r) => r.data);
+  private projectDoc(ref: string): Promise<JsonResult<ProjectDoc>> {
+    return this.get({ url: `${API}/project/${enc(this.segment(ref))}`, ttlMs: PROJECT_TTL }, projectSchema, "Project not found on Modrinth");
   }
 
   /** Owner username per team id (best effort: a failure leaves the authors empty). */
@@ -383,17 +390,30 @@ export class ModrinthAdapter implements ContentAdapter {
     return out;
   }
 
-  /** Maps and stores versions (each version seen goes to the metadata cache). */
-  private store(docs: VersionDoc[]): ContentVersionDto[] {
-    return docs.flatMap((d) => {
+  /**
+   * Maps versions and keeps the ones `keep` returns. A document just downloaded (`fresh`) stores what is kept, with each
+   * one's primary-file sha1, in one transaction; a copy from the memory cache was stored when it was downloaded.
+   */
+  private versionsOf(
+    r: { data: VersionDoc[]; fresh: boolean },
+    keep: (vs: ContentVersionDto[]) => ContentVersionDto[] = (vs) => vs,
+  ): ContentVersionDto[] {
+    const sha1s = new Map<string, string>();
+    const vs = keep(r.data.flatMap((d) => {
       const v = versionOf(d);
       if (!v) return [];
-      this.repo.put("modrinth", "version", v.versionId, v);
       const file = (d.files ?? []).find((x) => x.primary) ?? d.files?.[0];
       const sha1 = file?.hashes?.sha1?.toLowerCase();
-      if (sha1 && SHA1_RE.test(sha1)) this.repo.put("modrinth", "file", v.versionId, sha1);
+      if (sha1 && SHA1_RE.test(sha1)) sha1s.set(v.versionId, sha1);
       return [v];
-    });
+    }));
+    if (r.fresh) {
+      this.repo.putMany("modrinth", vs.flatMap((v): MetaPut[] => {
+        const sha1 = sha1s.get(v.versionId);
+        return [{ kind: "version", id: v.versionId, data: v }, ...(sha1 ? [{ kind: "file" as const, id: v.versionId, data: sha1 }] : [])];
+      }));
+    }
+    return vs;
   }
 
   private storedRef(key: string): string | null {
@@ -416,7 +436,7 @@ export class ModrinthAdapter implements ContentAdapter {
     }
   }
 
-  private async get<T>(req: Parameters<UpstreamClient["json"]>[0], schema: z.ZodType<T>, notFound?: string): Promise<{ data: T; stale: boolean }> {
+  private async get<T>(req: Parameters<UpstreamClient["json"]>[0], schema: z.ZodType<T>, notFound?: string): Promise<JsonResult<T>> {
     try {
       return await this.http.json(req, schema);
     } catch (e) {

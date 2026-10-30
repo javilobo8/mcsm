@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { openDb } from "../db/db.js";
+import { openDb, type Db } from "../db/db.js";
 import { ContentMetaRepo } from "./repo.js";
+
+/** The db, counting `exec`/`prepare` calls (to see transactions and statement preparation). */
+function counted(db: Db) {
+  const execs: string[] = [];
+  let prepares = 0;
+  const proxy = new Proxy(db, {
+    get(target, prop) {
+      if (prop === "exec") return (sql: string) => { execs.push(sql); return target.exec(sql); };
+      if (prop === "prepare") return (sql: string) => { prepares++; return target.prepare(sql); };
+      const v = Reflect.get(target, prop, target) as unknown;
+      return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+    },
+  });
+  return { db: proxy, execs, prepares: () => prepares };
+}
 
 function setup() {
   let now = "2026-10-30T10:00:00.000Z";
@@ -40,6 +55,28 @@ describe("ContentMetaRepo", () => {
     t.at("2026-10-31T10:00:00.000Z");
     t.repo.put("modrinth", "ref", "sodium", "BBBBBBBB");
     expect(t.repo.get("modrinth", "ref", "sodium")).toEqual({ data: "BBBBBBBB", fetchedAt: "2026-10-31T10:00:00.000Z" });
+  });
+
+  it("putMany writes every row in one transaction with the cached statement", () => {
+    const c = counted(openDb(":memory:"));
+    const repo = new ContentMetaRepo(c.db, () => Date.parse("2026-10-30T10:00:00.000Z"));
+    const before = c.prepares();
+    const rows = Array.from({ length: 1000 }, (_, i) => ({ kind: i % 2 ? "file" as const : "version" as const, id: `v${i}`, data: i }));
+    repo.putMany("modrinth", rows);
+    expect(c.execs).toEqual(["BEGIN", "COMMIT"]);
+    expect(c.prepares()).toBe(before);
+    expect(repo.getMany("modrinth", "version", ["v0", "v998"]).size).toBe(2);
+    expect(repo.get("modrinth", "file", "v999")).toEqual({ data: 999, fetchedAt: "2026-10-30T10:00:00.000Z" });
+    repo.putMany("modrinth", []);
+    expect(c.execs).toEqual(["BEGIN", "COMMIT"]);
+  });
+
+  it("putMany writes nothing when one row fails", () => {
+    const t = setup();
+    expect(() => t.repo.putMany("modrinth", [{ kind: "version", id: "a", data: 1 }, { kind: "version", id: "b", data: 1n }])).toThrow();
+    expect(t.repo.get("modrinth", "version", "a")).toBeNull();
+    t.repo.put("modrinth", "version", "c", 3); // the connection is usable again (no transaction left open)
+    expect(t.repo.get("modrinth", "version", "c")?.data).toBe(3);
   });
 
   it("purgeOlderThan deletes older rows and returns the count", () => {
