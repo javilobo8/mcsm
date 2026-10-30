@@ -1,0 +1,72 @@
+{
+  "BYfVnHa7": {
+    "versions": [
+      {
+        "platform": "modrinth",
+        "projectId": "BYfVnHa7",
+        "versionId": "Tc8Lz2Xw",
+        "label": "Fabulously Optimized 6.2.0",
+        "type": "release",
+        "publishedAt": "2026-09-30T10:00:00Z",
+        "gameVersions": [
+          "1.21.1"
+        ],
+        "loaders": [],
+        "dependencies": [],
+        "installable": true,
+        "reason": null
+      },
+      {
+        "platform": "modrinth",
+        "projectId": "BYfVnHa7",
+        "versionId": "Jk4Qm9Rv",
+        "label": "Fabulously Optimized 6.1.0",
+        "type": "release",
+        "publishedAt": "2026-08-15T10:00:00Z",
+        "gameVersions": [
+          "1.21.1"
+        ],
+        "loaders": [],
+        "dependencies": [],
+        "installable": true,
+        "reason": null
+      }
+    ],
+    "stale": false
+  },
+  "Q8NRvf0R": {
+    "versions": [
+      {
+        "platform": "modrinth",
+        "projectId": "Q8NRvf0R",
+        "versionId": "Wd3Hn7Ys",
+        "label": "v26 for 1.21.1",
+        "type": "release",
+        "publishedAt": "2026-09-01T10:00:00Z",
+        "gameVersions": [
+          "1.21.1"
+        ],
+        "loaders": [],
+        "dependencies": [],
+        "installable": true,
+        "reason": null
+      },
+      {
+        "platform": "modrinth",
+        "projectId": "Q8NRvf0R",
+        "versionId": "Lp6Zt1Bc",
+        "label": "v25 for 1.21.1",
+        "type": "release",
+        "publishedAt": "2026-07-20T10:00:00Z",
+        "gameVersions": [
+          "1.21.1"
+        ],
+        "loaders": [],
+        "dependencies": [],
+        "installable": true,
+        "reason": null
+      }
+    ],
+    "stale": false
+  }
+}

@@ -1,0 +1,73 @@
+{
+  "hits": [
+    {
+      "platform": "modrinth",
+      "projectId": "AANobbMI",
+      "slug": "sodium",
+      "name": "Sodium",
+      "author": "jellysquid3",
+      "summary": "The fastest and most compatible rendering optimization mod for Minecraft. Now available for both NeoForge and Fabric!",
+      "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FAANobbMI%2Ficon.png",
+      "downloads": 98234112,
+      "categories": [
+        "optimization"
+      ]
+    },
+    {
+      "platform": "modrinth",
+      "projectId": "gvQqBUqZ",
+      "slug": "lithium",
+      "name": "Lithium",
+      "author": "jellysquid3",
+      "summary": "No-compromises game logic optimization mod: improves the performance of the game server and the client alike.",
+      "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FgvQqBUqZ%2Ficon.png",
+      "downloads": 63812045,
+      "categories": [
+        "optimization"
+      ]
+    },
+    {
+      "platform": "modrinth",
+      "projectId": "P7dR8mSH",
+      "slug": "fabric-api",
+      "name": "Fabric API",
+      "author": "modmuss50",
+      "summary": "Lightweight and modular API providing common hooks and intercompatibility measures utilized by mods using the Fabric toolchain.",
+      "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FP7dR8mSH%2Ficon.png",
+      "downloads": 121904333,
+      "categories": [
+        "library"
+      ]
+    },
+    {
+      "platform": "modrinth",
+      "projectId": "uXXizFIs",
+      "slug": "ferrite-core",
+      "name": "FerriteCore",
+      "author": "malte0811",
+      "summary": "Memory usage optimizations.",
+      "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FuXXizFIs%2Ficon.png",
+      "downloads": 31844210,
+      "categories": [
+        "optimization"
+      ]
+    },
+    {
+      "platform": "modrinth",
+      "projectId": "mOgUt4GM",
+      "slug": "modmenu",
+      "name": "Mod Menu",
+      "author": "Prospector",
+      "summary": "Adds a mod menu to view the list of mods you have installed.",
+      "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FmOgUt4GM%2Ficon.png",
+      "downloads": 54420017,
+      "categories": [
+        "utility"
+      ]
+    }
+  ],
+  "total": 5,
+  "offset": 0,
+  "limit": 20,
+  "stale": false
+}

@@ -1,0 +1,28 @@
+{
+  "AANobbMI:Pb3OQ6HN": {
+    "projectId": "AANobbMI",
+    "currentVersionId": "Pb3OQ6HN",
+    "compatible": true,
+    "checked": true,
+    "latest": {
+      "versionId": "Nn5AxNpJ",
+      "label": "mc1.21.1-0.6.1-fabric",
+      "type": "release",
+      "entry": "AANobbMI:Nn5AxNpJ"
+    }
+  },
+  "P7dR8mSH:Ya5r1c1M": {
+    "projectId": "P7dR8mSH",
+    "currentVersionId": "Ya5r1c1M",
+    "compatible": true,
+    "checked": true,
+    "latest": null
+  },
+  "P7dR8mSH:Zk2r9cQ4": {
+    "projectId": "P7dR8mSH",
+    "currentVersionId": "Zk2r9cQ4",
+    "compatible": true,
+    "checked": false,
+    "latest": null
+  }
+}

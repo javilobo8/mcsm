@@ -1,0 +1,37 @@
+{
+  "BYfVnHa7": {
+    "platform": "modrinth",
+    "projectId": "BYfVnHa7",
+    "slug": "fabulously-optimized",
+    "versionId": "Jk4Qm9Rv",
+    "name": "Fabulously Optimized",
+    "versionLabel": "Fabulously Optimized 6.1.0",
+    "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FBYfVnHa7%2Ficon.png",
+    "minecraftVersion": "1.21.1",
+    "loader": "fabric",
+    "loaderVersion": "0.16.9",
+    "contents": [
+      {
+        "platform": "modrinth",
+        "projectId": "gvQqBUqZ"
+      }
+    ],
+    "contentsKnown": true,
+    "reason": null
+  },
+  "Q8NRvf0R": {
+    "platform": "modrinth",
+    "projectId": "Q8NRvf0R",
+    "slug": "better-mc-fabric",
+    "versionId": "Wd3Hn7Ys",
+    "name": "Better MC [FABRIC]",
+    "versionLabel": "v26 for 1.21.1",
+    "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FQ8NRvf0R%2Ficon.png",
+    "minecraftVersion": "1.21.1",
+    "loader": "fabric",
+    "loaderVersion": "0.16.9",
+    "contents": [],
+    "contentsKnown": true,
+    "reason": null
+  }
+}

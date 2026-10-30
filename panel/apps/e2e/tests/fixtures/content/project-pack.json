@@ -1,0 +1,50 @@
+{
+  "BYfVnHa7": {
+    "platform": "modrinth",
+    "projectId": "BYfVnHa7",
+    "slug": "fabulously-optimized",
+    "name": "Fabulously Optimized",
+    "author": "robotkoer",
+    "summary": "Beautiful graphics, performance, and many other graphical and quality of life improvements.",
+    "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FBYfVnHa7%2Ficon.png",
+    "downloads": 7712044,
+    "categories": [
+      "optimization"
+    ],
+    "descriptionHtml": "<h2>Fabulously Optimized</h2><p>A modpack built around performance and quality of life, with a carefully curated list of Fabric mods.</p>",
+    "gallery": [],
+    "links": [
+      {
+        "label": "Wiki",
+        "url": "https://github.com/Fabulously-Optimized/fabulously-optimized/wiki"
+      }
+    ],
+    "pageUrl": "https://modrinth.com/modpack/fabulously-optimized",
+    "clientOnly": false,
+    "distributable": true
+  },
+  "Q8NRvf0R": {
+    "platform": "modrinth",
+    "projectId": "Q8NRvf0R",
+    "slug": "better-mc-fabric",
+    "name": "Better MC [FABRIC]",
+    "author": "LunaPixelStudios",
+    "summary": "Better Minecraft is a vanilla-plus modpack that adds new biomes, structures, dungeons and quality of life.",
+    "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FQ8NRvf0R%2Ficon.png",
+    "downloads": 3055118,
+    "categories": [
+      "adventure"
+    ],
+    "descriptionHtml": "<p>A vanilla-plus modpack: new biomes, structures and dungeons, with quality of life improvements, built on Fabric.</p>",
+    "gallery": [],
+    "links": [
+      {
+        "label": "Discord",
+        "url": "https://discord.gg/example"
+      }
+    ],
+    "pageUrl": "https://modrinth.com/modpack/better-mc-fabric",
+    "clientOnly": false,
+    "distributable": true
+  }
+}
