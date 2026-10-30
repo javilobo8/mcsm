@@ -1,0 +1,8 @@
+{
+  "id": "FoPack01", "project_id": "1KVo5zza", "version_number": "5.0.1", "version_type": "release", "date_published": "2024-05-01T00:00:00Z",
+  "game_versions": ["1.21.1"], "loaders": ["fabric"], "dependencies": [],
+  "files": [
+    { "url": "https://cdn.modrinth.com/data/1KVo5zza/versions/FoPack01/extra.zip", "primary": false, "filename": "extra.zip" },
+    { "url": "https://cdn.modrinth.com/data/1KVo5zza/versions/FoPack01/fo.mrpack", "primary": true, "filename": "fo.mrpack" }
+  ]
+}

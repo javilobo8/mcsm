@@ -133,7 +133,8 @@ export interface ContentVersionDto { platform: ContentPlatform; projectId: strin
 export interface ContentEntryMetaDto { list: ContentListKey; raw: string; resolved: boolean; projectId: string | null; versionId: string | null; slug: string | null; name: string | null; author: string | null; iconUrl: string | null; versionLabel: string | null; versionType: "release" | "beta" | "alpha" | null; gameVersions: string[]; loaders: string[]; dependencies: ContentDependencyDto[] }
 export interface ResolvedEntry { list: ContentListKey; projectId: string; versionId: string; entry: string; name: string; selected: boolean; requiredBy: string[] }
 export interface ResolveResultDto { add: ResolvedEntry[]; optional: { projectId: string; name: string; requiredBy: string[] }[]; inPack: { projectId: string; name: string }[]; conflicts: string[]; unresolved: string[] }
-export interface UpdateDto { entry: string; projectId: string | null; currentVersionId: string | null; compatible: boolean; latest: { versionId: string; label: string; type: "release" | "beta" | "alpha"; entry: string } | null }
+/** `checked: false` = the source could not be asked for this entry: `latest` is then null and means "unknown", never "up to date". */
+export interface UpdateDto { entry: string; projectId: string | null; currentVersionId: string | null; compatible: boolean; checked: boolean; latest: { versionId: string; label: string; type: "release" | "beta" | "alpha"; entry: string } | null }
 export interface PackInfoDto { platform: ContentPlatform; projectId: string; slug: string; versionId: string; name: string; versionLabel: string; iconUrl: string | null; minecraftVersion: string | null; loader: "fabric" | "forge" | "neoforge" | "quilt" | null; loaderVersion: string | null; contents: { platform: ContentPlatform; projectId: string }[]; contentsKnown: boolean; reason: string | null }
 
 // ── Request schemas ──

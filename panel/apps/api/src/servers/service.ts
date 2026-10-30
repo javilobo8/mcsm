@@ -137,10 +137,12 @@ export class ServersService {
     return toServerDto(row, { includeSecrets: true });
   }
 
-  /** `input.spec` is a first-level merge over the stored spec: absent = leave alone, `null` = delete the section, `[]` = present and empty. */
-  async patch(id: string, input: { name?: string; spec?: SpecPatch }) {
+  /**
+   * Everything `patch` checks before writing: the merged, completed spec when it changes (null when it does not), with
+   * ports and router hostname checked. Throws the usual 400/404/409. Used by "Back up first" to validate up front.
+   */
+  prepare(id: string, input: { name?: string; spec?: SpecPatch }): { row: ServerRow; spec: Spec | null } {
     const row = this.requireServer(id);
-    let updated = row;
     let spec: Spec | null = null;
     if (input.spec) {
       const nullErr = specPatchNullError(input.spec);
@@ -158,6 +160,15 @@ export class ServersService {
     if (spec) {
       this.checkPorts(row.node_id, spec, row.id);
       this.app.routerService.checkHostname(row.node_id, spec, row.id); // plan-8
+    }
+    return { row, spec };
+  }
+
+  /** `input.spec` is a first-level merge over the stored spec: absent = leave alone, `null` = delete the section, `[]` = present and empty. */
+  async patch(id: string, input: { name?: string; spec?: SpecPatch }) {
+    const { row, spec } = this.prepare(id, input);
+    let updated = row;
+    if (spec) {
       updated = this.app.servers.updateSpec(id, spec, input.name);
       void this.push(updated);
     } else if (input.name && input.name !== row.name) {

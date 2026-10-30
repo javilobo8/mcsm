@@ -1,0 +1,6 @@
+{ "data": {
+  "id": 715572, "gameId": 432, "name": "All the Mods 9", "slug": "all-the-mods-9", "summary": "Kitchen sink",
+  "links": { "websiteUrl": "https://www.curseforge.com/minecraft/modpacks/all-the-mods-9" }, "downloadCount": 10, "classId": 4471,
+  "categories": [], "authors": [{ "name": "ATMTeam" }], "logo": { "thumbnailUrl": "https://media.forgecdn.net/avatars/thumbnails/1/2/atm.png" },
+  "screenshots": [], "allowModDistribution": true
+} }

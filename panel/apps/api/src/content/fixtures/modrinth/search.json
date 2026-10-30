@@ -1,0 +1,8 @@
+{
+  "hits": [
+    { "project_id": "AANobbMI", "project_type": "mod", "slug": "sodium", "author": "jellysquid3", "title": "Sodium", "description": "Rendering engine", "categories": ["fabric", "optimization"], "downloads": 1000, "icon_url": "https://cdn.modrinth.com/data/AANobbMI/icon.png", "server_side": "optional", "client_side": "required" },
+    { "project_id": "w7ThoJFB", "project_type": "mod", "slug": "zoomify", "author": "isxander", "title": "Zoomify", "description": "Zoom", "categories": ["fabric"], "downloads": 50, "icon_url": "https://evil.example/icon.png", "server_side": "unsupported", "client_side": "required" },
+    { "project_id": "P7dR8mSH", "project_type": "mod", "slug": "fabric-api", "author": "modmuss50", "title": "Fabric API", "description": "Hooks", "categories": ["fabric", "library"], "downloads": 900, "icon_url": null, "server_side": "required", "client_side": "optional" }
+  ],
+  "offset": 20, "limit": 20, "total_hits": 123
+}

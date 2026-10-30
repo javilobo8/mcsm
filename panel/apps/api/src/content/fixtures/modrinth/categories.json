@@ -1,0 +1,7 @@
+[
+  { "icon": "<svg onload=\"x\"></svg>", "name": "world-generation", "project_type": "mod", "header": "categories" },
+  { "icon": "<svg></svg>", "name": "optimization", "project_type": "mod", "header": "categories" },
+  { "icon": "<svg></svg>", "name": "fabric", "project_type": "mod", "header": "loaders" },
+  { "icon": "<svg></svg>", "name": "kitchen-sink", "project_type": "modpack", "header": "categories" },
+  { "icon": "<svg></svg>", "name": "realistic", "project_type": "resourcepack", "header": "categories" }
+]

@@ -4,11 +4,15 @@ import { z } from "zod";
 import { powerActionSchema, serverCreateSchema, serverPatchSchema } from "@mcsm/shared";
 import { HttpError, ServersService } from "./service.js";
 import { toServerDto } from "./repo.js";
+import { BackupFirst } from "./backup-first.js";
 
 /** Decorates the service at the root and registers the encapsulated routes. Errors are translated by the global handler (lib/http.ts). */
 export const serverRoutes = fp(async function serverRoutes(root: FastifyInstance) {
   const svc = new ServersService(root);
   root.decorate("serversService", svc);
+  const backupFirst = new BackupFirst(root); // plan-11
+  root.decorate("backupFirst", backupFirst);
+  backupFirst.start();
   await root.register(serverRoutesInner);
 });
 
@@ -28,7 +32,15 @@ async function serverRoutesInner(app: FastifyInstance) {
     return reply.code(201).send(dto);
   });
 
-  app.patch<{ Params: { id: string } }>("/api/servers/:id", async (req) => svc.patch(req.params.id, serverPatchSchema.parse(req.body)));
+  app.patch<{ Params: { id: string } }>("/api/servers/:id", async (req, reply) => {
+    const { backupFirst, ...input } = serverPatchSchema.parse(req.body);
+    if (backupFirst) {
+      // plan-11: back up, then apply (202 with the apply job); a patch without a spec change is a normal PATCH.
+      const accepted = await app.backupFirst.request(req.params.id, input);
+      if (accepted) return reply.code(202).send(accepted);
+    }
+    return svc.patch(req.params.id, input);
+  });
 
   app.delete<{ Params: { id: string }; Querystring: { deleteData?: string } }>("/api/servers/:id", async (req, reply) => {
     await svc.remove(req.params.id, req.query.deleteData === "true");
