@@ -52,10 +52,11 @@ export function sectionOfField(field: string): string {
  * `onError` receives the AGGREGATED error map of all sections every time it changes: whoever uses it
  * must block saving/applying while it is not empty. The form itself summarizes how many and where.
  * `routerHidden` (plan-8): replaces the router section of the Network tab with that text (import).
+ * `contentUi` (plan-11): "browser" shows the content lists with the content browser; the template editor keeps "text".
  */
-export function SpecForm({ value, onChange, onError, mode, general, routerHidden }: {
+export function SpecForm({ value, onChange, onError, mode, general, routerHidden, contentUi }: {
   value: EditableSpec; onChange: (s: EditableSpec) => void; onError: (errors: SpecFormErrors) => void; mode: "server" | "template"; general: React.ReactNode;
-  routerHidden?: string;
+  routerHidden?: string; contentUi?: "text" | "browser";
 }) {
   const [errors, setErrors] = useState<SpecFormErrors>({});
   const [tab, setTab] = useState<TabValue>("general");
@@ -103,7 +104,7 @@ export function SpecForm({ value, onChange, onError, mode, general, routerHidden
       </TabsList>
       {/* forceMount: the fields keep their local text; unmounting them when switching tabs would lose it. */}
       <TabsContent forceMount value="general" className="data-[state=inactive]:hidden">{general}</TabsContent>
-      <TabsContent forceMount value="version" className="data-[state=inactive]:hidden"><VersionSection spec={value} onChange={onChange} onError={report} /></TabsContent>
+      <TabsContent forceMount value="version" className="data-[state=inactive]:hidden"><VersionSection spec={value} onChange={onChange} onError={report} contentUi={contentUi} /></TabsContent>
       <TabsContent forceMount value="properties" className="data-[state=inactive]:hidden"><PropertiesSection {...props} /></TabsContent>
       <TabsContent forceMount value="players" className="data-[state=inactive]:hidden"><PlayersSection spec={value} onChange={onChange} onError={report} /></TabsContent>
       {mode === "server" && <TabsContent forceMount value="network" className="data-[state=inactive]:hidden"><NetworkSection {...props} routerHidden={routerHidden} /></TabsContent>}

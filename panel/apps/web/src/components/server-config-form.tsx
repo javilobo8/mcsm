@@ -105,7 +105,7 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
 
   return (
     <form onSubmit={submit} className="flex max-w-5xl flex-col gap-6" data-testid="config-form">
-      <SpecForm key={formKey} value={spec} onChange={setSpec} onError={setErrors} mode="server" general={general} />
+      <SpecForm key={formKey} value={spec} onChange={setSpec} onError={setErrors} mode="server" general={general} contentUi="browser" />
       {stale && dirty && (
         <p role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-torch/40 bg-torch/[0.07] p-2 text-sm text-warn">
           The configuration changed on the server (v{server.specVersion}) and you have unsaved changes.

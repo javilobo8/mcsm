@@ -1,9 +1,14 @@
-import { keepPreviousData, useQuery, type QueryClient } from "@tanstack/react-query";
-import type {
-  ContentCategoryDto, ContentEntryMetaDto, ContentKind, ContentListKey, ContentPlatform, ContentProjectDto, ContentSearchDto,
-  ContentSearchQuery, ContentVersionDto, PackInfoDto, ResolveRequest, ResolveResultDto, UpdateDto, UpdatesRequest,
+import { keepPreviousData, useQueries, useQuery, type QueryClient } from "@tanstack/react-query";
+import {
+  CONTENT_LISTS, MODRINTH_ID_RE, parseContentEntry, pickLatest,
+  type ContentCategoryDto, type ContentEntryMetaDto, type ContentKind, type ContentListKey, type ContentPlatform, type ContentProjectDto, type ContentSearchDto,
+  type ContentSearchQuery, type ContentVersionDto, type PackInfoDto, type ResolveRequest, type ResolveResultDto, type UpdateDto, type UpdatesRequest,
+  type ContentLoader, type ContentTarget,
 } from "@mcsm/shared";
 import { api, apiPath } from "@/lib/api";
+import { listOf } from "@/lib/content-lists";
+import { packRefOf } from "@/lib/content-pack";
+import type { EditableSpec } from "@/lib/spec-edit";
 
 /**
  * Content browser data (route table of plan 11). The panel caches upstream answers itself; here it is enough not to
@@ -100,4 +105,54 @@ interface KeyStatus { configured: boolean; valid?: boolean }
 /** Is a CurseForge key saved? Same query as `CurseForgeKeyNotice` (saving a key there updates this too). */
 export function useCurseForgeConfigured(): boolean | undefined {
   return useQuery({ queryKey: ["settings", "curseforge"], queryFn: () => api.get<KeyStatus>("/api/settings/curseforge") }).data?.configured;
+}
+
+export type ListUpdate = UpdateDto & { list: ContentListKey };
+
+/**
+ * Newer compatible versions of the pinned entries of `lists`, asked once per mount (no polling: an explicit refresh is
+ * reopening the tab). Unpinned entries are not asked: itzg already installs their newest compatible version.
+ */
+export function useContentUpdates(spec: EditableSpec, lists: readonly ContentListKey[], target: ContentTarget | null, enabled: boolean) {
+  const results = useQueries({
+    queries: lists.map((list) => {
+      const { platform } = CONTENT_LISTS[list];
+      const entries = listOf(spec, list).filter((e) => parseContentEntry(platform, e).pinned);
+      return {
+        queryKey: ["content", "updates", list, target, entries],
+        queryFn: () => checkUpdates({ list, target: { gameVersion: target!.gameVersion, loaders: target!.loaders as ContentLoader[] }, entries })
+          .then((us): ListUpdate[] => us.map((u) => ({ ...u, list }))),
+        enabled: enabled && target !== null && entries.length > 0,
+        refetchOnWindowFocus: false, ...opts,
+      };
+    }),
+  });
+  return {
+    updates: results.flatMap((r) => r.data ?? []),
+    isFetching: results.some((r) => r.isFetching),
+    error: results.find((r) => r.isError)?.error ?? null,
+  };
+}
+
+/**
+ * The spec's pack as the panel knows it: project (a CurseForge slug is found by searching), its versions (newest
+ * first) and the details of the pinned version (a Modrinth version number typed by hand is matched by label; an
+ * empty version means the newest release, as itzg does).
+ */
+export function useInstalledPack(modpack: EditableSpec["modpack"]) {
+  const ref = packRefOf(modpack);
+  const bySlug = ref?.platform === "curseforge" && ref.projectId === null ? ref.slug : null;
+  const search = useContentSearch("curseforge", bySlug ? { kind: "modpack", q: bySlug, loaders: [], sort: "relevance", offset: 0 } : null);
+  const projectId = ref?.projectId ?? search.data?.hits.find((h) => h.slug === bySlug)?.projectId ?? null;
+  const versions = useContentVersions(ref?.platform ?? "modrinth", ref && projectId ? projectId : null, { kind: "modpack", loaders: [] });
+  const all = versions.data?.versions;
+  let versionId: string | null = null;
+  if (ref) {
+    const match = all?.find((v) => v.versionId === ref.versionId || v.label === ref.versionId);
+    if (match) versionId = match.versionId;
+    else if (ref.versionId === "") versionId = all ? (pickLatest(all, null)?.versionId ?? null) : null;
+    else if (ref.platform === "curseforge" || MODRINTH_ID_RE.test(ref.versionId)) versionId = ref.versionId;
+  }
+  const info = usePackInfo(ref && projectId && versionId ? { platform: ref.platform, projectId, versionId } : null);
+  return { ref, projectId, versionId, versions, info, slugNotFound: bySlug !== null && search.isSuccess && projectId === null, searchError: search.error };
 }

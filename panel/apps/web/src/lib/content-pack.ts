@@ -1,4 +1,4 @@
-import { BUILD_RE, type ContentVersionDto, type PackInfoDto } from "@mcsm/shared";
+import { BUILD_RE, CF_ID_RE, type ContentPlatform, type ContentVersionDto, type PackInfoDto } from "@mcsm/shared";
 import { withType, withVersion, type EditableSpec } from "./spec-edit";
 
 /** Modpack lifecycle in the form (install, change version, switch, uninstall). Pure: the Save confirmation applies it. */
@@ -44,4 +44,27 @@ export function withPackUninstalled(spec: EditableSpec, info: PackInfoDto | null
   const next = withVersion(withType(spec, info.loader.toUpperCase()), info.minecraftVersion).spec;
   const build = info.loaderVersion && BUILD_RE.test(info.loaderVersion) ? info.loaderVersion : "";
   return { ok: true, spec: build || next.build !== undefined ? { ...next, build } : next };
+}
+
+export interface PackRef { platform: ContentPlatform; projectId: string | null; slug: string | null; versionId: string }
+
+const SLUG_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+
+/** Last path segment after `/modpack(s)/` in a project page URL ("…/modpacks/all-the-mods-10/files/1" → slug). */
+function slugFromUrl(v: string): string | null {
+  const m = /^https?:\/\/[^/]+\/(?:minecraft\/)?modpacks?\/([^/?#]+)/.exec(v);
+  return m && SLUG_RE.test(m[1]!) ? m[1]! : null;
+}
+
+/**
+ * How to ask the panel about the spec's pack. Modrinth takes an id or a slug as the project; CurseForge only a numeric
+ * id, so a CurseForge slug is found by searching. FTB, an empty pack or something unrecognisable → null (manual card).
+ */
+export function packRefOf(mp: Modpack): PackRef | null {
+  if (!mp || mp.platform === "FTBA" || mp.slugOrUrl === "") return null;
+  const v = mp.slugOrUrl;
+  const slug = SLUG_RE.test(v) ? v : slugFromUrl(v);
+  if (mp.platform === "MODRINTH") return slug ? { platform: "modrinth", projectId: slug, slug: null, versionId: mp.versionId } : null;
+  if (CF_ID_RE.test(v)) return { platform: "curseforge", projectId: v, slug: null, versionId: mp.versionId };
+  return slug ? { platform: "curseforge", projectId: null, slug, versionId: mp.versionId } : null;
 }

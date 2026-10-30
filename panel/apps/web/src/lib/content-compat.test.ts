@@ -42,16 +42,16 @@ describe("compatFindings", () => {
 describe("applyUpdates", () => {
   it("applyUpdates replaces entries and names those without a compatible version", () => {
     const r = applyUpdates(spec, [
-      { list: "mods.modrinthProjects", entry: "AANobbMI:Yp8wLY1P", projectId: "AANobbMI", currentVersionId: "Yp8wLY1P", compatible: false, latest: { versionId: "NEWVER01", label: "0.6.6", type: "release", entry: "AANobbMI:NEWVER01" } },
-      { list: "mods.modrinthProjects", entry: "P7dR8mSH:Q2bcdefg", projectId: "P7dR8mSH", currentVersionId: "Q2bcdefg", compatible: false, latest: null },
-      { list: "mods.modrinthProjects", entry: "lithium", projectId: "gvQqBUqZ", currentVersionId: null, compatible: true, latest: null },
+      { list: "mods.modrinthProjects", entry: "AANobbMI:Yp8wLY1P", projectId: "AANobbMI", currentVersionId: "Yp8wLY1P", compatible: false, checked: true, latest: { versionId: "NEWVER01", label: "0.6.6", type: "release", entry: "AANobbMI:NEWVER01" } },
+      { list: "mods.modrinthProjects", entry: "P7dR8mSH:Q2bcdefg", projectId: "P7dR8mSH", currentVersionId: "Q2bcdefg", compatible: false, checked: true, latest: null },
+      { list: "mods.modrinthProjects", entry: "lithium", projectId: "gvQqBUqZ", currentVersionId: null, compatible: true, checked: true, latest: null },
     ]);
     expect(listOf(r.spec, "mods.modrinthProjects")).toEqual(["AANobbMI:NEWVER01", "lithium", "P7dR8mSH:Q2bcdefg"]);
     expect(r.withoutVersion).toEqual(["P7dR8mSH:Q2bcdefg"]);
   });
   it("an entry whose check failed is unknown, not without a version", () => {
     const r = applyUpdates(spec, [
-      { list: "mods.modrinthProjects", entry: "P7dR8mSH:Q2bcdefg", projectId: "P7dR8mSH", currentVersionId: "Q2bcdefg", compatible: false, latest: null, checked: false } as never,
+      { list: "mods.modrinthProjects", entry: "P7dR8mSH:Q2bcdefg", projectId: "P7dR8mSH", currentVersionId: "Q2bcdefg", compatible: false, latest: null, checked: false },
     ]);
     expect(r).toEqual({ spec, withoutVersion: [] });
   });

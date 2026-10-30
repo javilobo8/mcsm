@@ -35,19 +35,13 @@ export function compatFindings(spec: EditableSpec, metas: readonly ContentEntryM
     .map((m) => ({ list: m.list, entry: m.raw, name: m.name ?? m.raw, problem: floating ? "floating" : "incompatible" }));
 }
 
-/**
- * Did the panel manage to check this entry? `checked: false` (upstream failure) makes `latest: null` mean "unknown",
- * never "up to date". A missing field (older API) counts as checked.
- */
-export const updateChecked = (u: UpdateDto): boolean => (u as UpdateDto & { checked?: boolean }).checked !== false;
-
-/** Moves entries to their newest compatible version; returns the raws that have none. */
+/** Moves entries to their newest compatible version; returns the raws that have none (a failed check is unknown, not "none"). */
 export function applyUpdates(spec: EditableSpec, updates: readonly (UpdateDto & { list: ContentListKey })[]): { spec: EditableSpec; withoutVersion: string[] } {
   let next = spec;
   const withoutVersion: string[] = [];
   for (const u of updates) {
     if (u.latest && u.latest.entry !== u.entry) next = replaceEntry(next, u.list, u.entry, u.latest.entry);
-    else if (!u.latest && !u.compatible && updateChecked(u)) withoutVersion.push(u.entry);
+    else if (!u.latest && !u.compatible && u.checked) withoutVersion.push(u.entry);
   }
   return { spec: next, withoutVersion };
 }

@@ -116,7 +116,7 @@ export function NewServerPage() {
               {templates.isError && <p role="alert" className="text-xs text-bad">Could not load the templates: {templates.error.message}</p>}
               {source === SCRATCH && (
                 <div className="flex flex-col gap-4 border-t border-border pt-4">
-                  <VersionSection spec={spec} onChange={setSpec} onError={onError} />
+                  <VersionSection spec={spec} onChange={setSpec} onError={onError} contentUi="browser" />
                   <div className="max-w-xs">
                     <ValidatedInput id="sf-memory" label="JVM memory" hint="E.g. 4G or 512M." value={spec.memory} onError={onError}
                       validate={validateMemory} onChange={(memory) => setSpec({ ...spec, memory })} />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput, type ContentVersionDto, type PackInfoDto } from "@mcsm/shared";
-import { packChange, packSlugOrUrl, withPackInstalled, withPackUninstalled } from "./content-pack";
+import { packChange, packRefOf, packSlugOrUrl, withPackInstalled, withPackUninstalled } from "./content-pack";
 import { buildSpecPatch, type EditableSpec } from "./spec-edit";
 
 const info: PackInfoDto = {
@@ -79,5 +79,24 @@ describe("packSlugOrUrl", () => {
   it("Modrinth uses the project id and CurseForge the slug", () => {
     expect(packSlugOrUrl(info)).toBe("P0000001");
     expect(packSlugOrUrl(cfInfo)).toBe("all-the-mods-10");
+  });
+});
+
+describe("packRefOf", () => {
+  it("Modrinth packs are looked up by id or slug, URLs by their last segment", () => {
+    expect(packRefOf(mp("P0000001", "V0000002"))).toEqual({ platform: "modrinth", projectId: "P0000001", slug: null, versionId: "V0000002" });
+    expect(packRefOf(mp("https://modrinth.com/modpack/cobblemon-fabric", ""))).toEqual({ platform: "modrinth", projectId: "cobblemon-fabric", slug: null, versionId: "" });
+  });
+  it("CurseForge packs by numeric id, or by slug (the id is found by searching)", () => {
+    expect(packRefOf(mp("925200", "6000001", "AUTO_CURSEFORGE"))).toEqual({ platform: "curseforge", projectId: "925200", slug: null, versionId: "6000001" });
+    expect(packRefOf(mp("all-the-mods-10", "", "AUTO_CURSEFORGE"))).toEqual({ platform: "curseforge", projectId: null, slug: "all-the-mods-10", versionId: "" });
+    expect(packRefOf(mp("https://www.curseforge.com/minecraft/modpacks/all-the-mods-10/files/6000001", "", "AUTO_CURSEFORGE")))
+      .toEqual({ platform: "curseforge", projectId: null, slug: "all-the-mods-10", versionId: "" });
+  });
+  it("nothing to look up for FTB, an empty pack or no pack", () => {
+    expect(packRefOf(undefined)).toBeNull();
+    expect(packRefOf({ platform: "FTBA", slugOrUrl: "23", versionId: "", loader: "" })).toBeNull();
+    expect(packRefOf(mp("", ""))).toBeNull();
+    expect(packRefOf(mp("not a slug!", ""))).toBeNull();
   });
 });

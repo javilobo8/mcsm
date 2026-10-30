@@ -21,11 +21,16 @@ export function listOf(spec: EditableSpec, key: ContentListKey): string[] {
   return s?.[field] ?? [];
 }
 
+/** Sets one field of a content section (also `urls`/`spigetResources`), creating the section with its defaults when absent. */
+export function withSectionField(spec: EditableSpec, section: keyof Sections, field: string, items: string[]): EditableSpec {
+  const current = (spec[section] as Record<string, string[]> | undefined) ?? emptySection(section);
+  return { ...spec, [section]: { ...current, [field]: items } };
+}
+
 /** Sets one list, creating its section with the defaults when absent. */
 export function withList(spec: EditableSpec, key: ContentListKey, items: string[]): EditableSpec {
   const { section, field } = CONTENT_LISTS[key];
-  const current = (spec[section] as Record<string, string[]> | undefined) ?? emptySection(section);
-  return { ...spec, [section]: { ...current, [field]: items } };
+  return withSectionField(spec, section, field, items);
 }
 
 /** Every entry of `platform`, with its list (what the resolver receives as "present"). */

@@ -77,3 +77,35 @@ describe("VersionSection: version and build picker (plan 10)", () => {
     expect(render({ ...defaultSpecInput(), type: "FABRIC", version: "LATEST" })).toContain("Choose a specific Minecraft version to pin the build");
   });
 });
+
+const renderUi = (spec: EditableSpec, qc = new QueryClient()) =>
+  renderToString(<QueryClientProvider client={qc}><VersionSection spec={spec} onChange={() => {}} contentUi="browser" /></QueryClientProvider>);
+
+describe("VersionSection: content browser (plan 11)", () => {
+  it("browser mode shows Browse and the installed list instead of textareas", () => {
+    const html = renderUi({ ...defaultSpecInput(), type: "FABRIC", version: "1.21.1", mods: { modrinthProjects: ["AANobbMI:Yp8wLY1P"], curseforgeFiles: [], urls: [] } });
+    expect(html).toContain("Browse");
+    expect(html).toContain("Edit as text");
+    expect(html).not.toContain("sf-mods-modrinth");
+    expect(html).toContain("AANobbMI:Yp8wLY1P"); // shown as typed until the lookup answers
+  });
+  it("datapacks are offered on Paper", () => expect(renderUi({ ...defaultSpecInput(), type: "PAPER", version: "1.21.1" })).toContain("Datapacks"));
+  it("text mode keeps today's textareas and adds the datapacks one when the section exists", () => {
+    const paper = { ...defaultSpecInput(), type: "PAPER", version: "1.21.1" };
+    expect(render(paper)).not.toContain("sf-dp-modrinth");
+    const html = render({ ...paper, datapacks: { modrinthProjects: ["terralith"] } });
+    expect(html).toContain("sf-dp-modrinth");
+    expect(html).toContain("Modrinth datapacks (MODRINTH_PROJECTS with datapack:)");
+    expect(html).toContain("terralith");
+    expect(html).not.toContain("Browse");
+  });
+  it("text mode shows the CurseForge plugins list only when the spec has it", () => {
+    const paper = { ...defaultSpecInput(), type: "PAPER", version: "1.21.1" };
+    expect(render({ ...paper, plugins: { modrinthProjects: [], spigetResources: [], urls: [], curseforgeFiles: ["1:2"] } })).toContain("sf-pl-cf");
+  });
+  it("installed entries keep the list for an unknown type without browsing", () => {
+    const html = renderUi({ ...defaultSpecInput(), type: "MOHIST", version: "1.20.1", mods: { modrinthProjects: ["lithium"], curseforgeFiles: [], urls: [] } });
+    expect(html).toContain("lithium");
+    expect(html).toContain("Datapacks");
+  });
+});
