@@ -202,7 +202,7 @@ function BrowserHeader({ title, context, tabs, state, act }: { title: string; co
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Tabs value={tabValue(state.tab)} onValueChange={(v) => act({ type: "tab", tab: tabs.find((t) => tabValue(t) === v)! })}>
-          <TabsList variant="pill" className="w-auto flex-wrap gap-y-1" aria-label="Source and kind">
+          <TabsList variant="pill" className="w-auto max-w-full overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:gap-y-1" aria-label="Source and kind">
             {platforms.map((p, i) => (
               <Fragment key={p}>
                 <span aria-hidden="true" className={cn("px-1.5 text-xs font-medium text-muted-foreground", i > 0 && "ml-2 border-l border-cobble pl-3")}>{platformLabel(p)}</span>
@@ -505,13 +505,14 @@ function Detail({ platform, kind, projectId, list, selected, filter, installed, 
             <ul className="flex flex-col gap-1 text-sm">
               {deps.map((d) => {
                 const id = d.projectId!;
-                const state = d.type === "incompatible" ? (installed.has(id) || inPack.has(id) ? "installed: they cannot be used together" : "")
+                const present = installed.has(id) || inPack.has(id);
+                const note = d.type === "incompatible" ? `incompatible${present ? ": already installed, they cannot be used together" : ""}`
                   : d.type === "optional" ? "optional, not added"
-                    : installed.has(id) ? "already on the server" : inPack.has(id) ? "in the modpack" : "added with it";
+                    : `required · ${installed.has(id) ? "already on the server" : inPack.has(id) ? "in the modpack" : "added with it"}`;
                 return (
                   <li key={`${d.type}:${id}`} className="flex flex-wrap items-baseline gap-x-2">
                     <span className={cn("font-medium", d.type === "incompatible" ? "text-bad" : "text-bone")}>{nameOf(id)}</span>
-                    <span className="text-xs text-muted-foreground">{d.type === "incompatible" ? "incompatible" : d.type}{state ? ` · ${state}` : ""}</span>
+                    <span className="text-xs text-muted-foreground">{note}</span>
                   </li>
                 );
               })}
@@ -557,7 +558,7 @@ function BrowserFooter({ selected, act, review, busy, error, mode, spec, onPrepa
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-sm">
           {selected.length === 0 ? (
-            <span className="text-muted-foreground">Select {mode === "new-server" ? "a modpack" : "projects"} to add {mode === "new-server" ? "it" : "them"} to the server.</span>
+            <span className="hidden text-muted-foreground sm:inline">Select {mode === "new-server" ? "a modpack" : "projects"} to add {mode === "new-server" ? "it" : "them"} to the server.</span>
           ) : (
             <>
               <span className="mr-1 text-muted-foreground tabular-nums">{selected.length} selected</span>
@@ -609,7 +610,7 @@ function ContentReview({ review }: { review: Extract<Review, { kind: "content" }
       {add.length > 0 && (
         <div>
           <p className="mb-1 font-medium text-bone">{addSummary(review.result)}</p>
-          <ul className="grid grid-cols-1 gap-x-6 gap-y-0.5 sm:grid-cols-2">
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-x-6 gap-y-0.5">
             {add.map((e) => (
               <li key={e.projectId} className="flex items-baseline gap-2">
                 <span className={cn("led", e.selected ? "text-ok" : "text-info")} aria-hidden="true" />
