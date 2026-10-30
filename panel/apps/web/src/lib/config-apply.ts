@@ -1,6 +1,6 @@
 import { CONTENT_LISTS, mergeSpecPatch, type ContentEntryMetaDto, type PackInfoDto, type SpecPatch } from "@mcsm/shared";
 import type { JobDto } from "./api";
-import { compatFindings, removedEntries, type CompatFinding } from "./content-compat";
+import { compatFindings, removedEntries, type CompatFinding, type UncheckedEntry } from "./content-compat";
 import type { PackChange } from "./content-pack";
 import { browseTarget } from "./content-target";
 import { buildSpecPatch, type EditableSpec } from "./spec-edit";
@@ -95,4 +95,25 @@ export function backupReason(base: EditableSpec, edited: EditableSpec, pack: Pac
   const n = removedEntries(base, edited).length;
   const parts = [PACK_REASON[pack], n > 0 ? `It removes ${n} content ${n === 1 ? "entry" : "entries"} from a server with a world.` : undefined].filter(Boolean);
   return parts.length ? parts.join(" ") : null;
+}
+
+const UNAVAILABLE_WHY = { source: "content sources unreachable", no_key: "no CurseForge key" } as const;
+
+/**
+ * What the confirmation says when (part of) the check could not run: the whole lookup failed, or some pinned entries
+ * could not be checked (named, with why). Null when everything was checked. Save stays enabled either way.
+ */
+export function compatUnavailableNote(unchecked: readonly UncheckedEntry[], lookupFailed: boolean): string | null {
+  if (lookupFailed) return COMPAT_UNAVAILABLE;
+  if (unchecked.length === 0) return null;
+  const reasons = [...new Set(unchecked.map((u) => u.reason))].sort((a, b) => (a === "source" ? -1 : b === "source" ? 1 : 0));
+  const why = reasons.map((r) => UNAVAILABLE_WHY[r]).join(" or ");
+  return `The compatibility check could not run for ${unchecked.map((u) => u.entry).join(", ")} (${why}). You can still apply.`;
+}
+
+/** The chained job's outcome as a notice for the form (outside the dialog, until dismissed); null while it runs. */
+export function backupFirstNotice(outcome: ReturnType<typeof backupFirstOutcome>, specVersion: number | null): { tone: "ok" | "bad"; text: string } | null {
+  if (outcome.state === "waiting") return null;
+  if (outcome.state === "applied") return { tone: "ok", text: `Backed up and saved${specVersion !== null ? ` (v${specVersion})` : ""}. The agent will recreate the container if needed.` };
+  return { tone: "bad", text: `${outcome.message.replace(/\.$/, "")}. Your changes are still in the form: review them and apply again.` };
 }

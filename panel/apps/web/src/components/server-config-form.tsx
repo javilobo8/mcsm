@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, X } from "lucide-react";
 import { CONTENT_LISTS, CONTENT_LIST_KEYS, canonicalJson, type BackupFirstAccepted, type ContentListKey, type ContentLoader } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,9 +19,10 @@ import { rconAddress } from "@/lib/connect";
 import { useSettings } from "@/hooks/use-settings";
 import { editableSpec, validateSpec, type EditableSpec } from "@/lib/spec-edit";
 import {
-  backupFirstOutcome, backupReason, COMPAT_UNAVAILABLE, configLeaveWarning, contentFindings, isStale, patchBody, planApply, type PendingApply,
+  backupFirstNotice, backupFirstOutcome, backupReason, compatUnavailableNote, configLeaveWarning, contentFindings, isStale, patchBody, planApply,
+  type PendingApply,
 } from "@/lib/config-apply";
-import { applyUpdates, backupOffer, type CompatFinding } from "@/lib/content-compat";
+import { applyUpdates, backupOffer, uncheckedEntries, type CompatFinding } from "@/lib/content-compat";
 import { listOf } from "@/lib/content-lists";
 import { packChange } from "@/lib/content-pack";
 import { browseTarget } from "@/lib/content-target";
@@ -47,10 +48,13 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
   // plan-11: "Back up first" (checked by default when offered), the panel's chained job, and the compatibility check.
   const [backupFirst, setBackupFirst] = useState(true);
   const [jobId, setJobId] = useState<string | null>(null);
+  // The chained job's failure inside this confirmation, and its outcome in the form (kept until dismissed: the dialog
+  // may be closed while the backup runs).
   const [jobFailed, setJobFailed] = useState<string | null>(null);
+  const [jobNotice, setJobNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const [compatNote, setCompatNote] = useState<string | null>(null);
+  const [compatError, setCompatError] = useState<string | null>(null);
   const [compatBusy, setCompatBusy] = useState(false);
-  const [backedUp, setBackedUp] = useState<number | null>(null);
 
   const dirty = name !== base.name || canonicalJson(spec) !== canonicalJson(base.spec);
   const stale = isStale(server.specVersion, base.version);
@@ -77,6 +81,8 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
   const basePack = useInstalledPack(base.spec.modpack);
   const lookup = useContentLookup(confirming ? CONTENT_LIST_KEYS.flatMap((list) => listOf(spec, list).map((entry) => ({ list, entry }))) : []);
   const findings = confirming && lookup.data ? contentFindings(spec, lookup.data, editedPack.info.data ?? null) : [];
+  // Pinned entries the platform could not be asked about (down, rate limited, no CurseForge key) are "not checked".
+  const unavailableNote = confirming ? compatUnavailableNote(lookup.data ? uncheckedEntries(spec, lookup.data) : [], lookup.isError) : null;
   const pack = packChange(base.spec.modpack, spec.modpack, basePack.versions.data?.versions);
   const mayOffer = confirming && pending.spec !== undefined && backupOffer({ base: base.spec, edited: spec, packChange: pack, hasWorld: null });
   const hasWorld = useWorldExists(server.id, base.spec.properties["level-name"] ?? "world", mayOffer);
@@ -87,7 +93,7 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
     mutationFn: (p: PendingApply) => api.patch<ServerDto | BackupFirstAccepted>(apiPath`/api/servers/${server.id}`, patchBody(p, offer && backupFirst)),
     onSuccess: (res) => {
       // 202: the panel backs up first and applies the change only if the backup succeeds (it owns the change from now on).
-      if ("jobId" in res) { setJobFailed(null); setJobId(res.jobId); return; }
+      if ("jobId" in res) { setJobFailed(null); setJobNotice(null); setJobId(res.jobId); return; }
       setPending(null);
       resetTo(res);
       qc.setQueryData(["server", server.id], res);
@@ -100,14 +106,15 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
     setJobId(null);
     const dto = await api.get<ServerDto>(apiPath`/api/servers/${server.id}`).catch(() => null);
     setPending(null);
-    if (dto) { resetTo(dto); qc.setQueryData(["server", server.id], dto); setBackedUp(dto.specVersion); }
+    if (dto) { resetTo(dto); qc.setQueryData(["server", server.id], dto); }
+    setJobNotice(backupFirstNotice({ state: "applied" }, dto?.specVersion ?? null));
     void qc.invalidateQueries({ queryKey: ["servers"] });
   };
 
   // "Update to compatible versions": newest compatible version of each flagged entry for the edited server, then
   // back to the form so the admin sees (and reviews) the result.
   const updateCompatible = async (list: readonly CompatFinding[]) => {
-    setCompatBusy(true); setCompatNote(null);
+    setCompatBusy(true); setCompatNote(null); setCompatError(null);
     try {
       const updates: ListUpdate[] = [];
       for (const key of [...new Set(list.map((f) => f.list))] as ContentListKey[]) {
@@ -122,7 +129,8 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
       setCompatNote(names.length ? `No compatible version: ${names.join(", ")}` : null);
       setPending(null);
     } catch (e) {
-      setCompatNote(e instanceof Error ? e.message : "Unexpected error");
+      // The dialog stays open: the error goes where the admin is looking.
+      setCompatError(`Could not update: ${e instanceof Error ? e.message : "unexpected error"}`);
     } finally {
       setCompatBusy(false);
     }
@@ -136,7 +144,7 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
     if (invalid) return setLocalErr(invalid);
     const plan = planApply(base.name, base.spec, name, spec);
     if (!plan.ok) return setLocalErr(plan.error);
-    setBackupFirst(true); setJobFailed(null); setCompatNote(null); setBackedUp(null);
+    setBackupFirst(true); setJobFailed(null); setCompatNote(null); setCompatError(null);
     setPending(plan.pending);
   };
 
@@ -181,9 +189,18 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
       {err && <p role="alert" className="text-sm text-bad">{err}</p>}
       {compatNote && <p role="status" className="text-sm text-warn">{compatNote}</p>}
       {waiting && pending === null && <p role="status" className="text-sm text-muted-foreground">Backing up before applying the change: the panel applies it when the backup succeeds.</p>}
-      {jobId && <BackupFirstTracker jobId={jobId} onApplied={() => void onBackupApplied()} onFailed={(m) => { setJobId(null); setJobFailed(m); }} />}
+      {jobId && (
+        <BackupFirstTracker jobId={jobId} onApplied={() => void onBackupApplied()}
+          onFailed={(m) => { setJobId(null); setJobFailed(m); setJobNotice(backupFirstNotice({ state: "failed", message: m }, null)); }} />
+      )}
       {save.isSuccess && "specVersion" in save.data && <p role="status" className="text-sm text-ok">Saved (v{save.data.specVersion}). The agent will recreate the container if needed.</p>}
-      {backedUp !== null && <p role="status" className="text-sm text-ok">Backed up and saved (v{backedUp}). The agent will recreate the container if needed.</p>}
+      {jobNotice && (
+        <div role={jobNotice.tone === "bad" ? "alert" : "status"} data-testid="backup-first-outcome"
+          className={`flex items-start gap-2 rounded-md border p-2 text-sm ${jobNotice.tone === "bad" ? "border-redstone/40 bg-redstone/10 text-bad" : "border-grass/35 bg-grass/10 text-ok"}`}>
+          <span className="flex-1">{jobNotice.text}</span>
+          <Button type="button" size="icon-xs" variant="ghost" aria-label="Dismiss" onClick={() => setJobNotice(null)}><X /></Button>
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={save.isPending || waiting || blocked !== null} aria-describedby={blocked ? "cf-apply-why" : undefined}>Review and apply</Button>
         {dirty && <Button type="button" variant="ghost" onClick={() => resetTo(server)}>Discard changes</Button>}
@@ -210,8 +227,9 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
             ))}
           </ul>
           {pending?.spec && lookup.isFetching && !lookup.data && <p className="text-xs text-muted-foreground" aria-live="polite">Checking that the content fits this server…</p>}
-          {pending?.spec && lookup.isError && <p className="text-xs text-muted-foreground" data-testid="compat-unavailable">{COMPAT_UNAVAILABLE}</p>}
+          {pending?.spec && unavailableNote && <p className="text-xs text-warn" data-testid="compat-unavailable">{unavailableNote}</p>}
           {findings.length > 0 && <CompatBlock findings={findings} version={spec.version} busy={compatBusy || waiting} onUpdate={(f) => void updateCompatible(f)} />}
+          {compatError && <p role="alert" className="text-sm text-bad">{compatError}</p>}
           {offer && (
             <div className="flex items-start gap-3 rounded-md border border-cobble bg-bedrock-2/60 p-3" data-testid="backup-first">
               <Checkbox id="cf-backup-first" className="mt-0.5" checked={backupFirst} disabled={waiting || save.isPending} onCheckedChange={(v) => setBackupFirst(v === true)} />

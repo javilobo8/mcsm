@@ -1,8 +1,9 @@
+import { Link } from "@tanstack/react-router";
 import { ArrowUpCircle, LoaderCircle, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { platformLabel } from "@/lib/content-browser";
-import type { InstalledRow } from "@/lib/content-installed";
+import { unresolvedNote, type InstalledRow } from "@/lib/content-installed";
 import { cn } from "@/lib/utils";
 import { ContentImage } from "./content-image";
 
@@ -28,11 +29,7 @@ export function InstalledList({ rows, loading, lookupFailed, busy, onUpdate, onR
               {[r.versionLabel, r.pinned ? "pinned" : r.resolved ? "latest" : "as typed", r.dependencyOf.length > 0 ? `Dependency of ${r.dependencyOf.join(", ")}` : null]
                 .filter(Boolean).join(" · ")}
             </p>
-            {!r.resolved && (
-              loading ? <p className="text-xs text-muted-foreground">Loading details…</p>
-                : lookupFailed ? <p className="text-xs text-muted-foreground">Details are not available right now: shown as typed</p>
-                  : <p className="text-xs text-warn">Not found on {platformLabel(r.platform)}: shown as typed</p>
-            )}
+            <UnresolvedNote row={r} loading={loading} lookupFailed={lookupFailed} />
             {!r.checked && <p className="text-xs text-muted-foreground">Couldn't check for updates</p>}
           </div>
           {r.update && (
@@ -49,3 +46,19 @@ export function InstalledList({ rows, loading, lookupFailed, busy, onUpdate, onR
     </ul>
   );
 }
+
+function UnresolvedNote({ row, loading, lookupFailed }: { row: InstalledRow; loading: boolean; lookupFailed: boolean }) {
+  switch (unresolvedNote(row, { loading, lookupFailed })) {
+    case "loading": return <p className="text-xs text-muted-foreground">Loading details…</p>;
+    case "unavailable": return <p className="text-xs text-muted-foreground">Details are not available right now: shown as typed</p>;
+    case "no_key":
+      return (
+        <p className="text-xs text-muted-foreground">
+          <Link to="/settings" className="text-grass-bright underline-offset-2 hover:underline">Save a CurseForge API key in Settings</Link> to see its details.
+        </p>
+      );
+    case "not_found": return <p className="text-xs text-warn">Not found on {platformLabel(row.platform)}: shown as typed</p>;
+    default: return null;
+  }
+}
+

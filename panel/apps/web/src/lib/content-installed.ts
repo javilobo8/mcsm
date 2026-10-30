@@ -1,6 +1,6 @@
 import {
   CONTENT_LISTS, CONTENT_LIST_KEYS, parseContentEntry,
-  type ContentEntryMetaDto, type ContentListKey, type ContentPlatform, type UpdateDto,
+  type ContentEntryMetaDto, type ContentUnavailable, type ContentListKey, type ContentPlatform, type UpdateDto,
 } from "@mcsm/shared";
 import { dependentsOf } from "./content-deps";
 import { listOf } from "./content-lists";
@@ -23,6 +23,8 @@ export interface InstalledRow {
   checked: boolean;
   /** false: the panel does not know this entry (or has not looked it up yet): shown as typed. */
   resolved: boolean;
+  /** Unresolved because the platform could not be asked ("source") or CurseForge has no key ("no_key"); null = not found. */
+  unavailable: ContentUnavailable | null;
 }
 
 const group = (r: InstalledRow) => (!r.resolved ? 2 : r.dependencyOf.length > 0 ? 1 : 0);
@@ -47,8 +49,20 @@ export function installedRows(spec: EditableSpec, metas: readonly ContentEntryMe
         update: u?.latest ?? null,
         checked: u?.checked ?? true,
         resolved,
+        unavailable: resolved ? null : (m?.unavailable ?? null),
       });
     }
   }
   return rows.sort((a, b) => group(a) - group(b) || (group(a) === 2 ? 0 : a.name.localeCompare(b.name, "en", { sensitivity: "base" })));
+}
+
+/**
+ * Which note an unresolved row shows. "Not found" only when the platform answered and does not know the entry; a failed
+ * lookup or an unreachable platform is "unavailable", CurseForge without a key "no_key", and no answer yet "loading".
+ */
+export function unresolvedNote(row: Pick<InstalledRow, "resolved" | "unavailable">, o: { loading: boolean; lookupFailed: boolean }): "loading" | "unavailable" | "no_key" | "not_found" | null {
+  if (row.resolved) return null;
+  if (o.lookupFailed || row.unavailable === "source") return "unavailable";
+  if (row.unavailable === "no_key") return "no_key";
+  return o.loading ? "loading" : "not_found";
 }

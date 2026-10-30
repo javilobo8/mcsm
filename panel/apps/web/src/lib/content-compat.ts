@@ -1,6 +1,6 @@
 import {
   CONTENT_LISTS, CONTENT_LIST_KEYS, isFloatingVersion, parseContentEntry,
-  type ContentEntryMetaDto, type ContentListKey, type ContentTarget, type UpdateDto,
+  type ContentEntryMetaDto, type ContentListKey, type ContentTarget, type ContentUnavailable, type UpdateDto,
 } from "@mcsm/shared";
 import { listOf, replaceEntry } from "./content-lists";
 import { isPackType } from "./content-target";
@@ -33,6 +33,18 @@ export function compatFindings(spec: EditableSpec, metas: readonly ContentEntryM
     .filter((m) => m.resolved && pinned(m) && listOf(spec, m.list).includes(m.raw))
     .filter((m) => floating || !fits(m, target!))
     .map((m) => ({ list: m.list, entry: m.raw, name: m.name ?? m.raw, problem: floating ? "floating" : "incompatible" }));
+}
+
+export type UncheckedEntry = { list: ContentListKey; entry: string; reason: ContentUnavailable };
+
+/**
+ * Pinned entries (still in the spec) the check could not judge: the platform could not be asked or CurseForge has no key.
+ * They are "not checked", never "fine". Unpinned entries follow itzg's own compatibility check; not-found ones are not listed.
+ */
+export function uncheckedEntries(spec: EditableSpec, metas: readonly ContentEntryMetaDto[]): UncheckedEntry[] {
+  return metas
+    .filter((m) => !m.resolved && m.unavailable !== null && pinned(m) && listOf(spec, m.list).includes(m.raw))
+    .map((m) => ({ list: m.list, entry: m.raw, reason: m.unavailable! }));
 }
 
 /** Moves entries to their newest compatible version; returns the raws that have none (a failed check is unknown, not "none"). */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput } from "@mcsm/shared";
-import { applyUpdates, backupOffer, compatFindings, removedEntries } from "./content-compat";
+import { applyUpdates, backupOffer, compatFindings, removedEntries, uncheckedEntries } from "./content-compat";
 import { listOf } from "./content-lists";
 import type { EditableSpec } from "./spec-edit";
 import { meta } from "./content-fixtures.test-util";
@@ -76,5 +76,24 @@ describe("removedEntries and backupOffer", () => {
   it("pack changes that can break a world offer a backup; install and upgrade do not", () => {
     for (const p of ["downgrade", "switch", "uninstall", "unknown"] as const) expect(backupOffer({ base: spec, edited: spec, packChange: p, hasWorld: null })).toBe(true);
     for (const p of ["install", "upgrade"] as const) expect(backupOffer({ base: spec, edited: spec, packChange: p, hasWorld: true })).toBe(false);
+  });
+});
+
+describe("uncheckedEntries", () => {
+  it("pinned entries the platform could not be asked about are not checked; not-found and raw ones are not listed", () => {
+    const s = { ...spec, mods: { ...spec.mods!, curseforgeFiles: ["238222:5101366", "jei"] } };
+    const metas = [
+      { ...sodium, resolved: false, unavailable: "source" as const },
+      meta({ raw: "238222:5101366", list: "mods.curseforgeFiles", resolved: false, projectId: null, versionId: null, unavailable: "no_key" }),
+      meta({ raw: "jei", list: "mods.curseforgeFiles", resolved: false, projectId: null, versionId: null, unavailable: "no_key" }),
+      { ...fabricApi, resolved: false, unavailable: null },
+    ];
+    expect(uncheckedEntries(s, metas)).toEqual([
+      { list: "mods.modrinthProjects", entry: "AANobbMI:Yp8wLY1P", reason: "source" },
+      { list: "mods.curseforgeFiles", entry: "238222:5101366", reason: "no_key" },
+    ]);
+  });
+  it("ignores answers for entries no longer in the spec", () => {
+    expect(uncheckedEntries({ ...spec, mods: undefined }, [{ ...sodium, resolved: false, unavailable: "source" }])).toEqual([]);
   });
 });

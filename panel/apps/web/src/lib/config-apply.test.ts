@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput } from "@mcsm/shared";
 import { meta } from "./content-fixtures.test-util";
-import { backupFirstOutcome, backupReason, COMPAT_UNAVAILABLE, configLeaveWarning, contentFindings, isStale, patchBody, planApply, type PendingApply } from "./config-apply";
+import { backupFirstNotice, backupFirstOutcome, backupReason, compatUnavailableNote, COMPAT_UNAVAILABLE, configLeaveWarning, contentFindings, isStale, patchBody, planApply, type PendingApply } from "./config-apply";
 
 const base = { ...defaultSpecInput(), ports: { game: 25565, extra: [] } };
 
@@ -129,5 +129,29 @@ describe("backupReason", () => {
     expect(backupReason(base, base, "downgrade")).toBe("It moves the modpack to an older version.");
     expect(backupReason(base, base, "unknown")).toBe("It changes the modpack's version.");
     expect(backupReason(base, base, "upgrade")).toBeNull();
+  });
+});
+
+describe("compatUnavailableNote", () => {
+  it("names the entries that could not be checked and why; nothing when everything was checked", () => {
+    expect(compatUnavailableNote([], false)).toBeNull();
+    expect(compatUnavailableNote([], true)).toBe(COMPAT_UNAVAILABLE);
+    expect(compatUnavailableNote([{ list: "mods.curseforgeFiles", entry: "238222:5101366", reason: "no_key" }], false))
+      .toBe("The compatibility check could not run for 238222:5101366 (no CurseForge key). You can still apply.");
+    expect(compatUnavailableNote([
+      { list: "mods.modrinthProjects", entry: "AANobbMI:Yp8wLY1P", reason: "source" },
+      { list: "mods.curseforgeFiles", entry: "1:2", reason: "no_key" },
+    ], false)).toBe("The compatibility check could not run for AANobbMI:Yp8wLY1P, 1:2 (content sources unreachable or no CurseForge key). You can still apply.");
+    expect(compatUnavailableNote([{ list: "mods.modrinthProjects", entry: "AANobbMI:Yp8wLY1P", reason: "source" }], true)).toBe(COMPAT_UNAVAILABLE);
+  });
+});
+
+describe("backupFirstNotice", () => {
+  it("tells the outcome of the chained job outside the dialog, in its tone", () => {
+    expect(backupFirstNotice({ state: "waiting" }, null)).toBeNull();
+    expect(backupFirstNotice({ state: "applied" }, 8)).toEqual({ tone: "ok", text: "Backed up and saved (v8). The agent will recreate the container if needed." });
+    expect(backupFirstNotice({ state: "applied" }, null)).toEqual({ tone: "ok", text: "Backed up and saved. The agent will recreate the container if needed." });
+    expect(backupFirstNotice({ state: "failed", message: "The backup failed: the change was not applied" }, null))
+      .toEqual({ tone: "bad", text: "The backup failed: the change was not applied. Your changes are still in the form: review them and apply again." });
   });
 });
