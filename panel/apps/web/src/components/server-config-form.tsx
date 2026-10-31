@@ -95,7 +95,7 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
     onSuccess: (res) => {
       // 202: the panel backs up first and applies the change only if the backup succeeds (it owns the change from now on).
       if ("jobId" in res) { setJobFailed(null); setJobNotice(null); setJobId(res.jobId); return; }
-      setPending(null);
+      setPending(null); setJobNotice(null); // a plain save: an earlier back-up-first outcome no longer describes the form
       resetTo(res);
       qc.setQueryData(["server", server.id], res);
       void qc.invalidateQueries({ queryKey: ["servers"] });
@@ -139,7 +139,7 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
 
   const blocked = templateSaveBlock(name, errors);
   const submit = (e: React.FormEvent) => {
-    e.preventDefault(); setLocalErr(null); save.reset();
+    e.preventDefault(); setLocalErr(null); save.reset(); setJobNotice(null);
     if (blocked) return setLocalErr(blocked);
     const invalid = validateSpec(spec, "server");
     if (invalid) return setLocalErr(invalid);
