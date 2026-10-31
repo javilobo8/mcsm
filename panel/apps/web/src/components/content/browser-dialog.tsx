@@ -24,7 +24,7 @@ import {
 import { addSummary, applyResolved, crossPlatformWarnings } from "@/lib/content-deps";
 import { presentFor } from "@/lib/content-lists";
 import { withPackInstalled } from "@/lib/content-pack";
-import { browserTabs, browseTarget, CURSEFORGE_PLUGINS, type BrowserTab } from "@/lib/content-target";
+import { browserTabs, browseTarget, canSearch, CURSEFORGE_PLUGINS, type BrowserTab } from "@/lib/content-target";
 import { typeLabel } from "@/lib/spec-catalog";
 import { withVersion, type EditableSpec } from "@/lib/spec-edit";
 import { cn } from "@/lib/utils";
@@ -95,6 +95,7 @@ function Browser({ spec, pack, packError = null, mode, initialTab, onApply, onOp
   const target = bt.ok ? bt.target : null;
   const cfConfigured = useCurseForgeConfigured();
   const cfMissing = platform === "curseforge" && cfConfigured === false;
+  const searchable = canSearch(bt, cfMissing);
   const list = kind === "modpack" ? null : listFor(platform, kind);
   const installed = useMemo(() => installedRefs(spec, platform), [spec, platform]);
   const inPack = useMemo(() => packContents(pack, platform), [pack, platform]);
@@ -158,11 +159,11 @@ function Browser({ spec, pack, packError = null, mode, initialTab, onApply, onOp
 
   return (
     <>
-      <BrowserHeader title={mode === "new-server" ? "Start from a modpack" : "Browse content"} context={context} tabs={tabs} state={s} act={act} />
+      <BrowserHeader title={mode === "new-server" ? "Start from a modpack" : "Browse content"} context={context} tabs={tabs} state={s} act={act} searchable={searchable} />
       <div className="flex min-h-0 flex-1">
-        <Filters state={s} act={act} target={target} cfMissing={cfMissing} className="hidden w-56 shrink-0 border-r border-cobble lg:flex" />
+        {searchable && <Filters state={s} act={act} target={target} cfMissing={cfMissing} className="hidden w-56 shrink-0 border-r border-cobble lg:flex" />}
         <section aria-label="Results" className={cn("min-w-0 flex-1 flex-col", s.detail ? "hidden lg:flex" : "flex")}>
-          <Filters state={s} act={act} target={target} cfMissing={cfMissing} compact className="flex border-b border-cobble lg:hidden" />
+          {searchable && <Filters state={s} act={act} target={target} cfMissing={cfMissing} compact className="flex border-b border-cobble lg:hidden" />}
           {cfMissing ? (
             <Blocked icon={<PackageSearch />} title="CurseForge needs an API key">
               <p>The panel queries CurseForge with your key; it never reaches the browser.</p>
@@ -174,22 +175,26 @@ function Browser({ spec, pack, packError = null, mode, initialTab, onApply, onOp
             <ResultList key={JSON.stringify({ ...searchQuery(s, target), offset: 0 })} state={s} act={act} target={target!} installed={installed} inPack={inPack} clientOnly={clientOnly} />
           )}
         </section>
-        <section aria-label="Details" className={cn("min-w-0 flex-col border-cobble lg:w-[26rem] lg:shrink-0 lg:border-l xl:w-[30rem]", s.detail ? "flex flex-1 lg:flex-none" : "hidden lg:flex")}>
-          {s.detail ? (
-            <Detail key={`${platform}:${s.detail}`} platform={platform} kind={kind} projectId={s.detail} list={list} selected={s.selected.get(s.detail) ?? null}
-              filter={versionFilter} installed={installed} inPack={inPack} act={act} onClientOnly={markClientOnly} />
-          ) : (
-            <Blocked icon={<PackageSearch />} title="Nothing open">Choose a project to see its description, versions and dependencies.</Blocked>
-          )}
-        </section>
+        {(searchable || s.detail) && (
+          <section aria-label="Details" className={cn("min-w-0 flex-col border-cobble lg:w-[26rem] lg:shrink-0 lg:border-l xl:w-[30rem]", s.detail ? "flex flex-1 lg:flex-none" : "hidden lg:flex")}>
+            {s.detail ? (
+              <Detail key={`${platform}:${s.detail}`} platform={platform} kind={kind} projectId={s.detail} list={list} selected={s.selected.get(s.detail) ?? null}
+                filter={versionFilter} installed={installed} inPack={inPack} act={act} onClientOnly={markClientOnly} />
+            ) : (
+              <Blocked icon={<PackageSearch />} title="Nothing open">Choose a project to see its description, versions and dependencies.</Blocked>
+            )}
+          </section>
+        )}
       </div>
-      <BrowserFooter selected={selected} act={act} review={review} busy={busy} error={error} mode={mode} spec={spec}
+      <BrowserFooter selected={selected} act={act} review={review} busy={busy} error={error} mode={mode} spec={spec} searchable={searchable}
         onPrepare={() => void prepare()} onConfirm={confirm} onBack={() => setReview(null)} onCancel={() => onOpenChange(false)} />
     </>
   );
 }
 
-function BrowserHeader({ title, context, tabs, state, act }: { title: string; context: string; tabs: BrowserTab[]; state: BrowserState; act: (a: BrowserAction) => void }) {
+function BrowserHeader({ title, context, tabs, state, act, searchable }: {
+  title: string; context: string; tabs: BrowserTab[]; state: BrowserState; act: (a: BrowserAction) => void; searchable: boolean;
+}) {
   const [text, setText] = useState(state.q);
   // Debounce: search 300 ms after the last keystroke (Enter searches at once).
   useEffect(() => {
@@ -219,7 +224,7 @@ function BrowserHeader({ title, context, tabs, state, act }: { title: string; co
         </Tabs>
         <form role="search" className="relative w-full sm:ml-auto sm:w-80" onSubmit={dialogSubmit(() => act({ type: "query", q: text }))}>
           <Search aria-hidden="true" className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" value={text} onChange={(e) => setText(e.target.value)} maxLength={100} className="pl-8"
+          <Input type="search" value={text} onChange={(e) => setText(e.target.value)} maxLength={100} className="pl-8" disabled={!searchable}
             placeholder={`Search ${kindLabel(state.tab.kind).toLowerCase()} on ${platformLabel(state.tab.platform)}`} aria-label="Search" />
         </form>
       </div>
@@ -546,9 +551,9 @@ function Detail({ platform, kind, projectId, list, selected, filter, installed, 
   );
 }
 
-function BrowserFooter({ selected, act, review, busy, error, mode, spec, onPrepare, onConfirm, onBack, onCancel }: {
+function BrowserFooter({ selected, act, review, busy, error, mode, spec, searchable, onPrepare, onConfirm, onBack, onCancel }: {
   selected: Selected[]; act: (a: BrowserAction) => void; review: Review | null; busy: boolean; error: string | null; mode: "server" | "new-server";
-  spec: EditableSpec; onPrepare: () => void; onConfirm: () => void; onBack: () => void; onCancel: () => void;
+  spec: EditableSpec; searchable: boolean; onPrepare: () => void; onConfirm: () => void; onBack: () => void; onCancel: () => void;
 }) {
   const blocked = review?.kind === "content" && (review.result.conflicts.length > 0 || review.result.add.length === 0);
   return (
@@ -561,7 +566,7 @@ function BrowserFooter({ selected, act, review, busy, error, mode, spec, onPrepa
       )}
       <div className="flex flex-wrap items-center gap-3 px-4 py-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-sm">
-          {selected.length === 0 ? (
+          {!searchable ? null : selected.length === 0 ? (
             <span className="hidden text-muted-foreground sm:inline">Select {mode === "new-server" ? "a modpack" : "projects"} to add {mode === "new-server" ? "it" : "them"} to the server.</span>
           ) : (
             <>
@@ -588,11 +593,13 @@ function BrowserFooter({ selected, act, review, busy, error, mode, spec, onPrepa
             </>
           ) : (
             <>
-              <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-              <Button type="button" disabled={selected.length === 0 || busy} onClick={onPrepare} data-testid="content-add">
-                {busy && <LoaderCircle className="animate-spin" />}
-                {busy ? "Checking dependencies…" : mode === "new-server" ? "Continue" : "Add to server"}
-              </Button>
+              <Button type="button" variant="ghost" onClick={onCancel}>{searchable ? "Cancel" : "Close"}</Button>
+              {searchable && (
+                <Button type="button" disabled={selected.length === 0 || busy} onClick={onPrepare} data-testid="content-add">
+                  {busy && <LoaderCircle className="animate-spin" />}
+                  {busy ? "Checking dependencies…" : mode === "new-server" ? "Continue" : "Add to server"}
+                </Button>
+              )}
             </>
           )}
         </div>

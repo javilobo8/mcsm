@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput, type PackInfoDto } from "@mcsm/shared";
-import { browserTabs, browseTarget, FLOATING_REASON, PACK_UNKNOWN_REASON } from "./content-target";
+import { browserTabs, browseTarget, canSearch, FLOATING_REASON, PACK_UNKNOWN_REASON } from "./content-target";
 import type { EditableSpec } from "./spec-edit";
 
 const spec = (type: string, version: string): EditableSpec => ({ ...defaultSpecInput(), type, version });
@@ -59,5 +59,16 @@ describe("browseTarget", () => {
     expect(browseTarget(mp, "datapack", { ...pack, loader: null })).toEqual({ ok: true, target: { gameVersion: "1.21.1", loaders: ["datapack"] } });
     expect(browseTarget(mp, "datapack", { ...pack, minecraftVersion: null })).toEqual({ ok: false, reason: PACK_UNKNOWN_REASON });
     expect(PACK_UNKNOWN_REASON).toBe("The modpack does not say which loader and Minecraft version it runs: the browser cannot tell what fits");
+  });
+});
+
+describe("canSearch", () => {
+  it("only a browsable tab shows the filters, the search box and Add; a blocked one shows its notice alone", () => {
+    const ok = browseTarget(spec("FABRIC", "1.21.1"), "mod", null);
+    expect(canSearch(ok, false)).toBe(true);
+    expect(canSearch(ok, true)).toBe(false); // CurseForge without a key
+    expect(canSearch(browseTarget(spec("FABRIC", "LATEST"), "mod", null), false)).toBe(false); // pending "Pin Minecraft version"
+    expect(canSearch(browseTarget(spec("FABRIC", "SNAPSHOT"), "datapack", null), false)).toBe(false);
+    expect(canSearch(browseTarget(spec("FABRIC", "LATEST"), "modpack", null), false)).toBe(true);
   });
 });

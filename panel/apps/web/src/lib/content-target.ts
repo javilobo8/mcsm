@@ -51,3 +51,11 @@ export function browseTarget(spec: EditableSpec, kind: ContentKind, pack: PackIn
   if (!VERSION_QUERY_RE.test(spec.version)) return { ok: false, reason: NO_VERSION_REASON };
   return { ok: true, target: { gameVersion: spec.version, loaders: modrinthLoadersFor(spec.type, kind) } };
 }
+
+/**
+ * Whether the browser shows its search controls (filters, search box, details, Add): not while browsing is blocked
+ * (a floating version to pin, the pack's details, no CurseForge key), where only the notice and its action make sense.
+ */
+export function canSearch(bt: BrowseTarget, cfMissing: boolean): boolean {
+  return bt.ok && !cfMissing;
+}
