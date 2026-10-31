@@ -180,6 +180,22 @@ describe("PATCH /api/servers/:id with backupFirst", () => {
     agent!.close();
   });
 
+  it("logs an unexpected failure to apply, and one to record the outcome, instead of crashing the panel", async () => {
+    const { s, agent } = await setup();
+    const { jobId, req } = await backupFirst(agent!, s.id, { spec: { mods: null } });
+    const cause = new Error("disk I/O error");
+    vi.spyOn(app.serversService, "patch").mockRejectedValue(cause);
+    const finish = app.jobs.finish.bind(app.jobs);
+    const stuck = new Error("SQLITE_BUSY");
+    vi.spyOn(app.jobs, "finish").mockImplementation((id, ...rest) => { if (id === jobId) throw stuck; return finish(id, ...rest); });
+    const logged = vi.spyOn(app.log, "error");
+    agent!.send(progress(req, JobStatus.OK));
+    await vi.waitFor(() => expect(logged).toHaveBeenCalledWith({ err: stuck, serverId: s.id }, "back up first: settle failed"));
+    expect(logged).toHaveBeenCalledWith({ err: cause, serverId: s.id }, "back up first: could not apply the change");
+    expect(server(s.id).specVersion).toBe(1);
+    agent!.close();
+  });
+
   it("a migration that starts meanwhile cancels the apply", async () => {
     const { s, nodeId, agent } = await setup();
     const b = await enrollNode("b");

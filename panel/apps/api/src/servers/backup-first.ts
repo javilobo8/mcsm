@@ -37,7 +37,7 @@ export class BackupFirst {
       const own = this.byJob.get(dto.id);
       if (own) { this.forget(own); return; } // the apply job ended (by us, or interrupted by a restart)
       const p = this.byBackup.get(dto.id);
-      if (p) void this.settle(p, dto.status);
+      if (p) this.settleLogged(p, dto.status);
     });
   }
 
@@ -66,8 +66,13 @@ export class BackupFirst {
     this.byBackup.set(backup.id, p);
     // The backup may have ended before createNow returned (its final event was not ours to see yet).
     const now = this.app.jobs.get(backup.id);
-    if (now && FINAL_STATES.has(now.status)) void this.settle(p, now.status);
+    if (now && FINAL_STATES.has(now.status)) this.settleLogged(p, now.status);
     return { jobId: job.id };
+  }
+
+  /** Runs `settle` from an event: a failure to record the outcome (SQLite) is logged, never an unhandled rejection. */
+  private settleLogged(p: Pending, backupStatus: JobDto["status"]): void {
+    this.settle(p, backupStatus).catch((err: unknown) => this.app.log.error({ err, serverId: p.serverId }, "back up first: settle failed"));
   }
 
   private async settle(p: Pending, backupStatus: JobDto["status"]): Promise<void> {
@@ -86,6 +91,7 @@ export class BackupFirst {
       const dto = await this.app.serversService.patch(p.serverId, p.input);
       this.app.jobs.finish(jobId, "ok", `Backup done; change applied (v${dto.specVersion})`);
     } catch (e) {
+      if (!(e instanceof HttpError)) this.app.log.error({ err: e, serverId: p.serverId }, "back up first: could not apply the change");
       fail(e instanceof HttpError ? e.message : "Could not apply the change");
     } finally {
       this.forget(p);
