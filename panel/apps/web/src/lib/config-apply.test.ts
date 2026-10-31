@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput } from "@mcsm/shared";
 import { meta } from "./content-fixtures.test-util";
-import { backupFirstNotice, backupFirstOutcome, backupReason, compatUnavailableNote, COMPAT_UNAVAILABLE, configLeaveWarning, contentFindings, isStale, patchBody, planApply, type PendingApply } from "./config-apply";
+import { backupFirstNotice, backupFirstOutcome, backupReason, compatLookup, compatUnavailableNote, COMPAT_UNAVAILABLE, configLeaveWarning, contentFindings, isStale, patchBody, planApply, type PendingApply } from "./config-apply";
 
 const base = { ...defaultSpecInput(), ports: { game: 25565, extra: [] } };
 
@@ -153,5 +153,19 @@ describe("backupFirstNotice", () => {
     expect(backupFirstNotice({ state: "applied" }, null)).toEqual({ tone: "ok", text: "Backed up and saved. The agent will recreate the container if needed." });
     expect(backupFirstNotice({ state: "failed", message: "The backup failed: the change was not applied" }, null))
       .toEqual({ tone: "bad", text: "The backup failed: the change was not applied. Your changes are still in the form: review them and apply again." });
+  });
+});
+
+describe("compatLookup", () => {
+  const metas = [meta({ raw: "AANobbMI:Yp8wLY1P" })];
+  it("checks while the lookup of these entries loads, even with a previous answer shown as placeholder", () => {
+    expect(compatLookup({ data: undefined, isPlaceholderData: false, isFetching: true })).toEqual({ checking: true, metas: null });
+    // Second opening with other entries: the placeholder is the answer for the previous ones.
+    expect(compatLookup({ data: metas, isPlaceholderData: true, isFetching: true })).toEqual({ checking: true, metas: null });
+  });
+  it("uses the answer once it is for these entries", () => {
+    expect(compatLookup({ data: metas, isPlaceholderData: false, isFetching: false })).toEqual({ checking: false, metas });
+    expect(compatLookup({ data: metas, isPlaceholderData: false, isFetching: true })).toEqual({ checking: false, metas }); // a refetch
+    expect(compatLookup({ data: undefined, isPlaceholderData: false, isFetching: false })).toEqual({ checking: false, metas: null });
   });
 });

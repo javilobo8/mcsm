@@ -111,6 +111,16 @@ export function compatUnavailableNote(unchecked: readonly UncheckedEntry[], look
   return `The compatibility check could not run for ${unchecked.map((u) => u.entry).join(", ")} (${why}). You can still apply.`;
 }
 
+/**
+ * What the confirmation can say from the content lookup: `checking` while the answer for these entries loads, and the
+ * answer itself only once it is for them. A placeholder (keepPreviousData) is the answer for the entries of a
+ * previous opening: it would hide "Checking…" and leave out the new entries.
+ */
+export function compatLookup<T>(q: { data: T[] | undefined; isPlaceholderData: boolean; isFetching: boolean }): { checking: boolean; metas: T[] | null } {
+  const metas = q.isPlaceholderData ? null : (q.data ?? null);
+  return { checking: q.isFetching && metas === null, metas };
+}
+
 /** The chained job's outcome as a notice for the form (outside the dialog, until dismissed); null while it runs. */
 export function backupFirstNotice(outcome: ReturnType<typeof backupFirstOutcome>, specVersion: number | null): { tone: "ok" | "bad"; text: string } | null {
   if (outcome.state === "waiting") return null;

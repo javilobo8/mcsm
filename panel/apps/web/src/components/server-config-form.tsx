@@ -19,7 +19,7 @@ import { rconAddress } from "@/lib/connect";
 import { useSettings } from "@/hooks/use-settings";
 import { editableSpec, validateSpec, type EditableSpec } from "@/lib/spec-edit";
 import {
-  backupFirstNotice, backupFirstOutcome, backupReason, compatUnavailableNote, configLeaveWarning, contentFindings, isStale, patchBody, planApply,
+  backupFirstNotice, backupFirstOutcome, backupReason, compatLookup, compatUnavailableNote, configLeaveWarning, contentFindings, isStale, patchBody, planApply,
   type PendingApply,
 } from "@/lib/config-apply";
 import { applyUpdates, backupOffer, uncheckedEntries, type CompatFinding } from "@/lib/content-compat";
@@ -80,9 +80,10 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
   const editedPack = useInstalledPack(spec.modpack);
   const basePack = useInstalledPack(base.spec.modpack);
   const lookup = useContentLookup(confirming ? CONTENT_LIST_KEYS.flatMap((list) => listOf(spec, list).map((entry) => ({ list, entry }))) : []);
-  const findings = confirming && lookup.data ? contentFindings(spec, lookup.data, editedPack.info.data ?? null) : [];
+  const compat = compatLookup(lookup);
+  const findings = confirming && compat.metas ? contentFindings(spec, compat.metas, editedPack.info.data ?? null) : [];
   // Pinned entries the platform could not be asked about (down, rate limited, no CurseForge key) are "not checked".
-  const unavailableNote = confirming ? compatUnavailableNote(lookup.data ? uncheckedEntries(spec, lookup.data) : [], lookup.isError) : null;
+  const unavailableNote = confirming ? compatUnavailableNote(compat.metas ? uncheckedEntries(spec, compat.metas) : [], lookup.isError) : null;
   const pack = packChange(base.spec.modpack, spec.modpack, basePack.versions.data?.versions);
   const mayOffer = confirming && pending.spec !== undefined && backupOffer({ base: base.spec, edited: spec, packChange: pack, hasWorld: null });
   const hasWorld = useWorldExists(server.id, base.spec.properties["level-name"] ?? "world", mayOffer);
@@ -226,7 +227,7 @@ export function ServerConfigForm({ server }: { server: ServerDto }) {
               </li>
             ))}
           </ul>
-          {pending?.spec && lookup.isFetching && !lookup.data && <p className="text-xs text-muted-foreground" aria-live="polite">Checking that the content fits this server…</p>}
+          {pending?.spec && compat.checking && <p className="text-xs text-muted-foreground" aria-live="polite">Checking that the content fits this server…</p>}
           {pending?.spec && unavailableNote && <p className="text-xs text-warn" data-testid="compat-unavailable">{unavailableNote}</p>}
           {findings.length > 0 && <CompatBlock findings={findings} version={spec.version} busy={compatBusy || waiting} onUpdate={(f) => void updateCompatible(f)} />}
           {compatError && <p role="alert" className="text-sm text-bad">{compatError}</p>}
