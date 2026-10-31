@@ -16,6 +16,7 @@ export const TRIGGER_LABEL: Record<BackupTriggerName, string> = {
 };
 const JOB_TYPE_LABEL: Record<string, string> = {
   backup: "Backup", restore: "Restore", migrate: "Migration", migrate_in: "Receiving migration",
+  spec_apply: "Apply after backup", // plan-11
 };
 const MAX_LIST = 200;
 

@@ -1,0 +1,58 @@
+{
+  "AANobbMI": {
+    "resolved": true,
+    "projectId": "AANobbMI",
+    "slug": "sodium",
+    "name": "Sodium",
+    "author": "jellysquid3",
+    "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FAANobbMI%2Ficon.png",
+    "versionLabel": "mc1.21.1-0.6.0-fabric",
+    "versionType": "release",
+    "gameVersions": [
+      "1.21.1"
+    ],
+    "loaders": [
+      "fabric"
+    ],
+    "dependencies": [
+      {
+        "projectId": "P7dR8mSH",
+        "versionId": null,
+        "type": "required"
+      }
+    ],
+    "unavailable": null
+  },
+  "P7dR8mSH": {
+    "resolved": true,
+    "projectId": "P7dR8mSH",
+    "slug": "fabric-api",
+    "name": "Fabric API",
+    "author": "modmuss50",
+    "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FP7dR8mSH%2Ficon.png",
+    "versionLabel": "0.115.0+1.21.1",
+    "versionType": "release",
+    "gameVersions": [
+      "1.21.1"
+    ],
+    "loaders": [
+      "fabric"
+    ],
+    "dependencies": [],
+    "unavailable": null
+  },
+  "lithium": {
+    "resolved": false,
+    "projectId": null,
+    "slug": null,
+    "name": null,
+    "author": null,
+    "iconUrl": null,
+    "versionLabel": null,
+    "versionType": null,
+    "gameVersions": [],
+    "loaders": [],
+    "dependencies": [],
+    "unavailable": "source"
+  }
+}

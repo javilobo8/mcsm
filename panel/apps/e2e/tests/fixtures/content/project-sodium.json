@@ -1,0 +1,28 @@
+{
+  "platform": "modrinth",
+  "projectId": "AANobbMI",
+  "slug": "sodium",
+  "name": "Sodium",
+  "author": "jellysquid3",
+  "summary": "The fastest and most compatible rendering optimization mod for Minecraft. Now available for both NeoForge and Fabric!",
+  "iconUrl": "/api/content/image?url=https%3A%2F%2Fcdn.modrinth.com%2Fdata%2FAANobbMI%2Ficon.png",
+  "downloads": 98234112,
+  "categories": [
+    "optimization"
+  ],
+  "descriptionHtml": "<h2>Sodium</h2><p>Sodium is a powerful rendering engine for Minecraft which improves frame rates and reduces micro-stutter, while fixing many graphical issues.</p><ul><li>Up to 3x faster chunk rendering</li><li>Reduced memory usage</li><li>Compatible with most Fabric mods</li></ul><p>On a dedicated server it simply stays out of the way: the mod only loads on the client side of an integrated server.</p>",
+  "gallery": [],
+  "links": [
+    {
+      "label": "Source",
+      "url": "https://github.com/CaffeineMC/sodium"
+    },
+    {
+      "label": "Issues",
+      "url": "https://github.com/CaffeineMC/sodium/issues"
+    }
+  ],
+  "pageUrl": "https://modrinth.com/mod/sodium",
+  "clientOnly": false,
+  "distributable": true
+}

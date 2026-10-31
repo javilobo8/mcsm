@@ -64,6 +64,8 @@ describe("SpecForm (server render, no DOM)", () => {
 
   it("each field is assigned to its tab", () => {
     expect(sectionOfField("sf-mods-urls")).toBe("Version and mods");
+    expect(sectionOfField("sf-dp-modrinth")).toBe("Version and mods");
+    expect(sectionOfField("sf-content-mods")).toBe("Version and mods");
     expect(sectionOfField("sf-prop-motd")).toBe("Properties");
     expect(sectionOfField("sf-props-other")).toBe("Properties");
     expect(sectionOfField("sf-ops")).toBe("Players");

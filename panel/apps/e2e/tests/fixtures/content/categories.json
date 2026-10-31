@@ -1,0 +1,20 @@
+{
+  "categories": [
+    {
+      "id": "optimization",
+      "label": "Optimization"
+    },
+    {
+      "id": "library",
+      "label": "Library"
+    },
+    {
+      "id": "utility",
+      "label": "Utility"
+    },
+    {
+      "id": "adventure",
+      "label": "Adventure"
+    }
+  ]
+}

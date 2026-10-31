@@ -10,7 +10,7 @@ Everything about a single Minecraft server lives on its page: open **Servers** i
 ## Create a server
 
 1. Click **New server** in the sidebar (or the button on the Servers page).
-2. **Template or from scratch.** Pick a template, or **From scratch** to choose the type, version and mods yourself. Everything else can be adjusted later in Configuration.
+2. **Starting point.** Pick a template, **From scratch** to choose the type, version and mods yourself, or **Start from a modpack** to browse Modrinth and CurseForge packs (the server type, Minecraft version and loader come from the pack). Everything else can be adjusted later in Configuration.
 3. **Node and name.** Choose the node, give the server a name (up to 60 characters), optionally a game port, and decide whether it should **Start on creation**. An empty port means "automatic".
 4. **Review.** Check the summary and create the server.
 
@@ -40,13 +40,38 @@ The version and build lists come from the official sources over HTTPS and are ca
 
 The **Build / loader** field pins the build or loader version for Paper, Folia, Purpur, Fabric, Quilt, Forge and NeoForge. Empty means the latest at startup. A value needs a type that has builds and a concrete version, and only stable builds of Paper and Folia are offered.
 
-Depending on the type, the same section lets you add:
+Depending on the type, the same section lists the server's **Mods**, **Plugins** and **Datapacks** and, on a modpack type, a **Modpack** card. Each list has a **Browse** button and an **Edit as text** button; the hand-typed lists (`.jar` URLs, Spiget resources) stay in Edit as text. Nothing you do there reaches the server until you save: every action edits the form, and **Review and apply** applies it.
 
-- **Mods:** Modrinth projects, CurseForge files and `.jar` URLs.
-- **Plugins:** Modrinth projects, Spiget resources and `.jar` URLs.
-- **Modpacks:** the pack slug or URL, its version and an optional loader.
+CurseForge modpacks and files need an API key, which you save in [Settings](/docs/settings#curseforge-api-key). Without it the CurseForge tabs show a notice that links to Settings. FTB modpacks are not browsable: they keep their manual fields (numeric pack id and version).
 
-CurseForge modpacks and files need an API key, which you save in [Settings](/docs/settings#curseforge-api-key).
+### Browsing Modrinth and CurseForge
+
+**Browse** opens a window with a tab per source and kind: Modrinth and CurseForge **Mods** on Fabric, Forge, NeoForge and Quilt; **Plugins** on Paper, Purpur, Folia and Spigot; **Datapacks** (Modrinth) on every type; and **Modpacks**. Results are filtered to what runs on this server (its Minecraft version and loader), and you can sort and filter by category.
+
+- Click a result to read its description, gallery and dependencies on the right; pick a version there (the newest release is the default) and select it. Tick several projects to add them in one go.
+- Modrinth projects that do not run on servers are hidden or disabled. CurseForge does not say whether a mod runs on servers, so it shows everything compatible and warns that client-only mods can stop the server from starting.
+- **Add to server** resolves the dependencies first and shows what will be added, for example *Add 1 project + 1 dependency*. Required dependencies are added with it, optional ones are listed and not added, and a project declared incompatible with something already installed blocks the add.
+- Everything added is **pinned** to an exact version (`<project id>:<version id>`), so a restart never upgrades a mod by itself.
+- Browsing needs a concrete Minecraft version. With `LATEST` or `SNAPSHOT`, the window explains why and offers **Pin Minecraft version to** the current release.
+
+### Installed content
+
+The list shows each entry's icon, name, source, version, whether it is *pinned* or follows the *latest* version, and *Dependency of ...* when another entry needs it.
+
+- **Update to ...** moves an entry to the newest compatible version (a release; beta and alpha entries may move to newer betas or alphas), adding any new dependencies it needs. **Update all** does it for every entry with an update. The check runs when you open the tab and only covers pinned entries.
+- Removing an entry offers **Also remove unused dependencies**, checked by default, for the dependencies nothing else on the server needs.
+- If the platform cannot be reached, or CurseForge has no key, an entry is shown as typed with a note ("Details are not available right now" or a link to Settings) and update checks say they could not run: that is *unknown*, not *up to date*.
+- When you change the Minecraft version or the type, **Review and apply** lists the pinned entries that no longer fit, with **Update to compatible versions**. It is a warning, not a gate, and it also tells you if some entries could not be checked.
+
+### Modpacks
+
+On Modrinth and CurseForge modpack types the **Modpack** card shows the pack's icon, name, version, Minecraft version and loader. From it you can **Change version** (an *Update available* badge points at a newer one), **Switch modpack** or **Uninstall**. Installing a pack sets the server type, the pinned pack and the Minecraft version it brings. Uninstalling turns the server into a plain loader server (type, Minecraft version and, when known, loader version taken from the pack) so the world keeps loading.
+
+In every case the world is kept. The agent removes the files the outgoing pack installed before the container starts with the new definition; the world, `server.properties`, operators, whitelist and your own extra mods stay. If the server's data folder is outside the node's data root (some imported servers), the agent cannot delete them and raises an event instead. Extra mods on top of a pack are filtered by the pack's loader and Minecraft version.
+
+### Back up first
+
+When a change can break a world that exists (removing mods or plugins, switching or uninstalling a modpack, moving a pack to an older version), the **Review and apply** window offers **Back up first**, checked by default. The panel then runs a normal [backup](/docs/backups) job and applies the change only if the backup succeeds; the button reads **Back up and apply** and the job appears as *Apply after backup* in the server's history and in Jobs. If the backup fails, nothing is applied and your changes stay in the form. If the panel restarts meanwhile, the job fails instead of applying the change late.
 
 ## Configure a server
 

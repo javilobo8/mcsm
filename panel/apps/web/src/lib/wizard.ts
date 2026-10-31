@@ -1,4 +1,4 @@
-import type { TemplateSpec } from "@mcsm/shared";
+import type { PackInfoDto, TemplateSpec } from "@mcsm/shared";
 import { apiPath } from "./api";
 import type { EditableSpec } from "./spec-edit";
 import { typeLabel } from "./spec-catalog";
@@ -21,8 +21,8 @@ export function createRequest(source: { templateId: string } | { spec: EditableS
 
 const count = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
-/** Readable summary of a spec for the "Review" step. */
-export function summarizeSpec(spec: TemplateSpec | EditableSpec): { label: string; value: string }[] {
+/** Readable summary of a spec for the "Review" step. `pack`: the pack's details, when known, name it instead of its ids. */
+export function summarizeSpec(spec: TemplateSpec | EditableSpec, pack?: Pick<PackInfoDto, "name" | "versionLabel"> | null): { label: string; value: string }[] {
   const mods = spec.mods ? spec.mods.modrinthProjects.length + spec.mods.curseforgeFiles.length + spec.mods.urls.length : 0;
   const plugins = spec.plugins ? spec.plugins.modrinthProjects.length + spec.plugins.spigetResources.length + spec.plugins.urls.length : 0;
   const lines = [
@@ -33,7 +33,9 @@ export function summarizeSpec(spec: TemplateSpec | EditableSpec): { label: strin
     { label: "Java", value: spec.imageTag },
     { label: "Memory", value: spec.memory + (spec.resources.memLimit ? ` (limit ${spec.resources.memLimit})` : "") },
   ];
-  if (spec.modpack) lines.push({ label: "Modpack", value: spec.modpack.slugOrUrl + (spec.modpack.versionId ? ` @ ${spec.modpack.versionId}` : "") });
+  if (spec.modpack) {
+    lines.push({ label: "Modpack", value: pack ? `${pack.name} ${pack.versionLabel}` : spec.modpack.slugOrUrl + (spec.modpack.versionId ? ` @ ${spec.modpack.versionId}` : "") });
+  }
   if (mods) lines.push({ label: "Mods", value: count(mods, "mod", "mods") });
   if (plugins) lines.push({ label: "Plugins", value: count(plugins, "plugin", "plugins") });
   if (spec.whitelist) lines.push({ label: "Whitelist", value: spec.whitelist.enabled ? count(spec.whitelist.players.length, "player", "players") : "disabled" });
@@ -51,9 +53,13 @@ export function parseNewServerSearch(s: Record<string, unknown>): { template?: s
 }
 
 export const SCRATCH = "scratch";
+/** plan-11: "Start from a modpack" (the content browser fills the spec). */
+export const MODPACK = "modpack";
+/** Sources whose spec is edited in step 1 (not a template's). */
+const fromSpec = (source: string) => source === SCRATCH || source === MODPACK;
 
 export interface StepContext {
-  /** `"scratch"` or the id of the chosen template. */
+  /** `"scratch"`, `"modpack"` or the id of the chosen template. */
   source: string;
   /** The chosen template exists and is loaded (only matters if `source` is not scratch). */
   templateLoaded: boolean;
@@ -64,6 +70,8 @@ export interface StepContext {
   nodeId: string;
   name: string;
   port: string;
+  /** The step 1 spec (only its modpack matters: a modpack source needs one). */
+  spec?: { modpack?: unknown };
 }
 
 export function parsePort(text: string): number | undefined {
@@ -72,10 +80,11 @@ export function parsePort(text: string): number | undefined {
 
 /** Reason why step 1 or 2 cannot be left (null = it can). Shown with aria-describedby. */
 export function stepBlock(step: 1 | 2, c: StepContext): string | null {
-  const scratch = c.source === SCRATCH;
+  const scratch = fromSpec(c.source);
   if (!scratch && !c.templateLoaded) return "The chosen template is not available (was it deleted?)";
   if (step === 1) {
     if (!scratch) return null;
+    if (c.source === MODPACK && !c.spec?.modpack) return "Choose a modpack";
     const n = Object.keys(c.fieldErrors).length;
     if (n > 0) return `Fix ${n} ${n === 1 ? "field with an error" : "fields with errors"} before continuing`;
     return c.specError;
@@ -93,7 +102,7 @@ export function stepBlock(step: 1 | 2, c: StepContext): string | null {
  * default spec, which is not what the user reviewed.
  */
 export function creationSource(source: string, tpl: { id: string } | undefined, spec: EditableSpec): { templateId: string } | { spec: EditableSpec } | null {
-  if (source === SCRATCH) return { spec };
+  if (fromSpec(source)) return { spec };
   return tpl ? { templateId: tpl.id } : null;
 }
 

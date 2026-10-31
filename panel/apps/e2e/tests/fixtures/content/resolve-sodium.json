@@ -1,0 +1,28 @@
+{
+  "add": [
+    {
+      "list": "mods.modrinthProjects",
+      "projectId": "AANobbMI",
+      "versionId": "Pb3OQ6HN",
+      "entry": "AANobbMI:Pb3OQ6HN",
+      "name": "Sodium",
+      "selected": true,
+      "requiredBy": []
+    },
+    {
+      "list": "mods.modrinthProjects",
+      "projectId": "P7dR8mSH",
+      "versionId": "Ya5r1c1M",
+      "entry": "P7dR8mSH:Ya5r1c1M",
+      "name": "Fabric API",
+      "selected": false,
+      "requiredBy": [
+        "Sodium"
+      ]
+    }
+  ],
+  "optional": [],
+  "inPack": [],
+  "conflicts": [],
+  "unresolved": []
+}

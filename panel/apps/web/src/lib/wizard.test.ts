@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput, templateSpecSchema } from "@mcsm/shared";
-import { createErrorStep, createRequest, creationSource, parseNewServerSearch, stepBlock, summarizeSpec } from "./wizard";
+import { createErrorStep, createRequest, creationSource, MODPACK, parseNewServerSearch, SCRATCH, stepBlock, summarizeSpec } from "./wizard";
 
 describe("new server wizard", () => {
   it("from a template calls the template endpoint and only passes the port if given", () => {
@@ -96,5 +96,24 @@ describe("summarizeSpec: build (plan 10)", () => {
     const lines = summarizeSpec({ ...defaultSpecInput(), type: "PAPER", version: "1.20.1", build: "178" });
     expect(lines.slice(1, 3)).toEqual([{ label: "Minecraft version", value: "1.20.1" }, { label: "Paper build", value: "178" }]);
     expect(summarizeSpec({ ...defaultSpecInput(), type: "PAPER" }).map((l) => l.label)).not.toContain("Paper build");
+  });
+});
+
+describe("start from a modpack (plan 11)", () => {
+  const ctx = { source: SCRATCH, templateLoaded: false, specError: null, fieldErrors: {}, nodeId: "n", name: "S", port: "" };
+  const packSpec = {
+    ...defaultSpecInput(), type: "MODRINTH", version: "1.21.1",
+    modpack: { platform: "MODRINTH" as const, slugOrUrl: "P0000001", versionId: "V0000002", loader: "fabric" as const },
+  };
+  it("a modpack source needs a chosen pack", () => expect(stepBlock(1, { ...ctx, source: MODPACK, spec: defaultSpecInput() })).toBe("Choose a modpack"));
+  it("with a pack it validates like from scratch", () => {
+    expect(stepBlock(1, { ...ctx, source: MODPACK, spec: packSpec })).toBeNull();
+    expect(stepBlock(1, { ...ctx, source: MODPACK, spec: packSpec, specError: "bad" })).toBe("bad");
+    expect(stepBlock(2, { ...ctx, source: MODPACK, spec: packSpec })).toBeNull();
+  });
+  it("a modpack source creates from the edited spec", () => expect(creationSource(MODPACK, undefined, packSpec)).toEqual({ spec: packSpec }));
+  it("the summary names the pack when its details are known", () => {
+    expect(summarizeSpec(packSpec, { name: "Cobblemon", versionLabel: "1.6.1" })).toContainEqual({ label: "Modpack", value: "Cobblemon 1.6.1" });
+    expect(summarizeSpec(packSpec)).toContainEqual({ label: "Modpack", value: "P0000001 @ V0000002" });
   });
 });

@@ -24,6 +24,10 @@ func TestLimitsLists(t *testing.T) {
 		"mods.curseforgeFiles":    func(s *Spec, n int) { s.Mods = &ModSources{CurseforgeFiles: names(n)} },
 		"plugins.spigetResources": func(s *Spec, n int) { s.Plugins = &PluginSources{SpigetResources: digits(n)} },
 		"plugins.urls":            func(s *Spec, n int) { s.Plugins = &PluginSources{URLs: urls(n)} },
+		"plugins.curseforgeFiles": func(s *Spec, n int) { s.Plugins = &PluginSources{CurseforgeFiles: names(n)} },
+		"datapacks.modrinthProjects": func(s *Spec, n int) {
+			s.Datapacks = &DatapackSources{ModrinthProjects: names(n)}
+		},
 		"ports.extra": func(s *Spec, n int) {
 			s.Ports.Extra = make([]PortMapping, n)
 			for i := range s.Ports.Extra {
@@ -116,5 +120,14 @@ func TestLimitsGeneratedEnv(t *testing.T) {
 	s.Mods = &ModSources{URLs: big}
 	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), "96 KiB") {
 		t.Fatalf("huge mods: err = %v", err)
+	}
+}
+
+func TestLimitsDatapacksMessage(t *testing.T) {
+	s := loadFixture(t)
+	s.Datapacks = &DatapackSources{ModrinthProjects: names(1001)}
+	want := "the datapacks.modrinthProjects list has 1001 elements (max. 1000)"
+	if err := s.Validate(); err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want it to contain %q", err, want)
 	}
 }

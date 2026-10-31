@@ -1,0 +1,74 @@
+{
+  "versions": [
+    {
+      "platform": "modrinth",
+      "projectId": "AANobbMI",
+      "versionId": "Nn5AxNpJ",
+      "label": "mc1.21.1-0.6.1-fabric",
+      "type": "release",
+      "publishedAt": "2026-09-12T10:00:00Z",
+      "gameVersions": [
+        "1.21.1"
+      ],
+      "loaders": [
+        "fabric"
+      ],
+      "dependencies": [
+        {
+          "projectId": "P7dR8mSH",
+          "versionId": null,
+          "type": "required"
+        }
+      ],
+      "installable": true,
+      "reason": null
+    },
+    {
+      "platform": "modrinth",
+      "projectId": "AANobbMI",
+      "versionId": "Pb3OQ6HN",
+      "label": "mc1.21.1-0.6.0-fabric",
+      "type": "release",
+      "publishedAt": "2026-08-20T10:00:00Z",
+      "gameVersions": [
+        "1.21.1"
+      ],
+      "loaders": [
+        "fabric"
+      ],
+      "dependencies": [
+        {
+          "projectId": "P7dR8mSH",
+          "versionId": null,
+          "type": "required"
+        }
+      ],
+      "installable": true,
+      "reason": null
+    },
+    {
+      "platform": "modrinth",
+      "projectId": "AANobbMI",
+      "versionId": "yaoBL9D9",
+      "label": "mc1.21.1-0.5.11-fabric",
+      "type": "release",
+      "publishedAt": "2026-06-02T10:00:00Z",
+      "gameVersions": [
+        "1.21.1"
+      ],
+      "loaders": [
+        "fabric"
+      ],
+      "dependencies": [
+        {
+          "projectId": "P7dR8mSH",
+          "versionId": null,
+          "type": "required"
+        }
+      ],
+      "installable": true,
+      "reason": null
+    }
+  ],
+  "stale": false
+}

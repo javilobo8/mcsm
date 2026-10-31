@@ -11,3 +11,4 @@ coverage/
 panel/apps/e2e/screenshots/
 panel/apps/e2e/test-results/
 panel/apps/e2e/.auth/
+.superpowers/

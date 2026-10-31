@@ -64,6 +64,17 @@ describe("buildSpecPatch", () => {
   it("key order does not count as a change", () => {
     expect(buildSpecPatch({ properties: { a: "1", b: "2" } }, { properties: { b: "2", a: "1" } })).toEqual({});
   });
+  it("an old spec without datapacks produces an empty PATCH", () => {
+    const storedWithoutDatapacks = { ...defaultSpecInput(), type: "PAPER", plugins: { modrinthProjects: ["luckperms"], spigetResources: [], urls: [] } };
+    delete (storedWithoutDatapacks as { datapacks?: unknown }).datapacks;
+    const old = editableSpec(storedWithoutDatapacks) as EditableSpec;
+    expect(buildSpecPatch(old, { ...old })).toEqual({});
+  });
+  it("datapacks is an optional section: added, edited and removed with null", () => {
+    const base = { type: "PAPER", datapacks: { modrinthProjects: ["a"] } };
+    expect(buildSpecPatch({ type: "PAPER" }, base)).toEqual({ datapacks: { modrinthProjects: ["a"] } });
+    expect(buildSpecPatch(base, { type: "PAPER" })).toEqual({ datapacks: null });
+  });
 });
 
 describe("validateSpec", () => {

@@ -166,7 +166,10 @@ export const serverPatchSchema = z.object({
   name: z.string().trim().min(1).max(60).optional(),
   /** First-level merge over the stored spec (see mergeSpecPatch). */
   spec: specPatchSchema.optional(),
+  /** Take a backup before applying a change that restarts or recreates the container; answered 202 with a job. */
+  backupFirst: z.boolean().optional(),
 });
+export interface BackupFirstAccepted { jobId: string }
 export const powerActionSchema = z.object({ action: z.enum(["start", "stop", "restart", "kill"]) });
 export type PowerActionName = z.infer<typeof powerActionSchema>["action"];
 

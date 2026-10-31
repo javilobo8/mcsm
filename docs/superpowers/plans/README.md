@@ -22,6 +22,7 @@ conventions (English) are the ones in `CLAUDE.md`.
 | 8 | [mc-router](2026-10-12-08-mc-router.md) | §4 `router_deployments`, §7 `RouterService` | done (branch `feat/wave-b`) |
 | 9 | [UI tests and polish](2026-10-12-09-polish.md) | §11 (Playwright), §8 (Settings), §5.2–5.3, §9, §10 | done (branch `feat/plan-9-int`) |
 | 10 | [Version picker](2026-10-13-10-version-selector.md) | [own spec](../specs/2026-10-13-version-selector-design.md) | done (branch `feat/plan-10`) |
+| 11 | [Content browser](2026-10-30-11-content-browser.md): Modrinth/CurseForge browser, installed lists, modpack lifecycle | [own spec](../specs/2026-10-30-content-browser-design.md) | planned (branch `feat/content-browser`) |
 
 Execution in parallel waves: see [COORDINATION.md](COORDINATION.md).
 
@@ -106,3 +107,16 @@ backup and restore, migration between two agents on the same machine (two `DATA_
 page (password, public URL, CurseForge API key, port range). Node token rotation.
 Acceptance: the E2E suite passes on local CI in < 15 min; `pnpm test`, `go test ./...` and `buf breaking`
 green.
+
+## Plan 11 — Content browser
+
+Scope: browse Modrinth and CurseForge (mods, plugins, datapacks, modpacks) from a server's "Version and mods" tab with
+results filtered by the server's loader and Minecraft version; dependencies resolved by the panel and pinned as
+`<projectId>:<versionId>` entries in the same spec lists; installed lists with updates and removal of unused
+dependencies; new `datapacks` section (and `plugins.curseforgeFiles` if the itzg spike confirms it); modpack card
+(install, change version, switch, uninstall) with the agent deleting the outgoing pack's files; "Back up first" in the
+Save confirmation (panel-side chained backup → PATCH); "Start from a modpack" in the wizard.
+Acceptance: adding a Fabric mod from the browser adds its required dependencies and the server installs exactly those
+versions; uninstalling a pack keeps the world and removes the pack's mods; no existing server changes `mcsm.spec_hash`;
+the CurseForge key never reaches the browser.
+Protocol: no new messages; two new `Event` kinds (`pack_cleanup`, `pack_cleanup_skipped`) in the comment catalog.

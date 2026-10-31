@@ -259,6 +259,56 @@ body,
     line-height: 1.25rem;
   }
 
+  /* A project's description in the content browser (sanitised HTML from the panel's API). */
+  .content-description {
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--bone);
+    overflow-wrap: anywhere;
+  }
+  .content-description > * + * {
+    margin-top: 0.75em;
+  }
+  .content-description :is(h1, h2, h3, h4, h5, h6) {
+    margin-top: 1.25em;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .content-description h1 { font-size: 1.125rem; }
+  .content-description h2 { font-size: 1rem; }
+  .content-description :is(h3, h4, h5, h6) { font-size: 0.875rem; color: var(--fog); }
+  .content-description :is(ul, ol) { padding-left: 1.25rem; }
+  .content-description ul { list-style: square; }
+  .content-description ol { list-style: decimal; }
+  .content-description li + li { margin-top: 0.25em; }
+  .content-description a {
+    color: var(--grass-bright);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .content-description img {
+    display: inline-block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.25rem;
+  }
+  .content-description :is(code, pre) {
+    border-radius: 0.25rem;
+    background: var(--obsidian);
+    font-size: 0.8125rem;
+  }
+  .content-description code { padding: 0.0625rem 0.25rem; }
+  .content-description pre { padding: 0.5rem 0.75rem; overflow-x: auto; }
+  .content-description blockquote {
+    border-left: 2px solid var(--cobble-2);
+    padding-left: 0.75rem;
+    color: var(--fog);
+  }
+  .content-description table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+  .content-description :is(th, td) { border: 1px solid var(--cobble); padding: 0.25rem 0.5rem; text-align: left; }
+  .content-description hr { border-color: var(--cobble); }
+  .content-description center { text-align: center; }
+
   /* A square status LED, like the server lights of the website's hero. */
   .led {
     display: inline-block;

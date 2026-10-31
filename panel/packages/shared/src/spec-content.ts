@@ -57,6 +57,12 @@ export const pluginsSchema = z.object({
   modrinthProjects: list(entry).default([]),
   spigetResources: list(spigetId).default([]),
   urls: list(url).default([]),
+  /** CurseForge plugins (`projectId:fileId`). Optional with no default: old specs keep no key (no phantom diff). */
+  curseforgeFiles: list(entry).optional(),
+});
+
+export const datapacksSchema = z.object({
+  modrinthProjects: list(entry).default([]),
 });
 
 export const whitelistSchema = z.object({
@@ -69,6 +75,7 @@ export const contentFields = {
   modpack: modpackSchema.optional(),
   mods: modsSchema.optional(),
   plugins: pluginsSchema.optional(),
+  datapacks: datapacksSchema.optional(),
   whitelist: whitelistSchema.optional(),
   ops: list(player).optional(),
 };
@@ -139,6 +146,10 @@ export function contentCheck(s: ContentShape, ctx: z.RefinementCtx) {
 }
 
 /** Does the spec download anything from CurseForge? Only then does the panel send it CF_API_KEY. */
-export function usesCurseForge(s: { modpack?: { platform: string } | undefined; mods?: { curseforgeFiles: string[] } | undefined }): boolean {
-  return s.modpack?.platform === "AUTO_CURSEFORGE" || (s.mods?.curseforgeFiles.length ?? 0) > 0;
+export function usesCurseForge(s: {
+  modpack?: { platform: string } | undefined;
+  mods?: { curseforgeFiles: string[] } | undefined;
+  plugins?: { curseforgeFiles?: string[] | undefined } | undefined;
+}): boolean {
+  return s.modpack?.platform === "AUTO_CURSEFORGE" || (s.mods?.curseforgeFiles.length ?? 0) > 0 || (s.plugins?.curseforgeFiles?.length ?? 0) > 0;
 }

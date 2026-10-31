@@ -337,3 +337,20 @@ know.)
   tabs nested in a tab use `TabsList variant="pill"`. Fonts are bundled with
   `@fontsource-variable` (the panel works offline on the LAN). After changing the panel's look, refresh the website's
   screenshots (`website/public/screenshots/*.webp`, from the E2E PNGs) and `og-image.png` (`scripts/og-image.sh`).
+- Content browser (plan 11): the spec lists stay the source of truth; browser-added entries are pinned ids
+  (`<projectId>:<versionId>` Modrinth, `<modId>:<fileId>` CurseForge; CF packs keep the slug for `CF_SLUG`). The panel
+  stores no per-server provenance: "dependency of" is derived from the pinned versions' declared dependencies, and
+  `content_meta` is a global cache written with `putMany` (one transaction, never on cache hits). Upstream calls go
+  through `UpstreamClient` (allowlist, HTTPS, ≤ 8 in flight per host, api.modrinth.com budget 240/min) and are batched
+  (`/v2/projects?ids=`, `/v2/versions?ids=`, `POST /v2/version_files/update`, CF `POST /v1/mods` / `/v1/mods/files`):
+  never one request per project. A failed check is never "up to date": `UpdateDto.checked=false`,
+  `ContentEntryMetaDto.unavailable = "source" | "no_key"`. Descriptions are sanitised in the API and every image goes
+  through `/api/content/image` (CSP unchanged). Pack routes accept a Modrinth slug (pre-plan servers store slugs).
+- Pack cleanup (agent): itzg cleans a same-platform pack switch itself but leaves the outgoing pack's files on uninstall
+  or platform switch (spike note `docs/superpowers/notes/2026-10-30-itzg-content-spike.md`), so `Apply`/`StoreForce`
+  mark a `pack_cleanup` in bbolt and the reconcile deletes the manifest's files before Create, inside `os.Root`, never
+  under any world folder (`level-name` property, `env.LEVEL`, on-disk `server.properties`, CF `levelName`, `world`,
+  plus `_nether`/`_the_end`), and opening manifests non-blocking/regular-file only. `datapacks` emits
+  `datapack:<entry>` in `MODRINTH_PROJECTS` and `LEVEL=<level-name>`.
+- "Back up first" (`PATCH /api/servers/:id` with `backupFirst`): a `spec_apply` job waits for a normal backup and applies
+  through `serversService.patch` only if the spec version is unchanged; a panel restart fails it (never applied late).

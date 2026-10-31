@@ -125,6 +125,9 @@ type Spec struct {
 	// Build: build or loader version (PAPER_BUILD, FABRIC_LOADER_VERSION…). Empty = the latest:
 	// it does not go into the environment and the hash does not change.
 	Build string `json:"build,omitempty"`
+	// ── plan-11 ──
+	// Datapacks: Modrinth datapacks installed into the world folder. nil = absent (hash unchanged).
+	Datapacks *DatapackSources `json:"datapacks,omitempty"`
 }
 
 type Ports struct {
@@ -280,6 +283,8 @@ func (s Spec) Validate() error {
 	if err := s.validateBuild(); err != nil {
 		return err
 	}
+	// ── plan-11 ──
+	// datapacks and plugins.curseforgeFiles are validated with the other content lists (validateContent).
 	return nil
 }
 
@@ -413,6 +418,8 @@ func (s Spec) envList() []string {
 	// ── plan-9 ──
 	// ── plan-10 ──
 	s.buildEnvVars(m)
+	// ── plan-11 ──
+	s.datapacksEnv(m)
 	for k, v := range s.Env {
 		m[k] = v
 	}

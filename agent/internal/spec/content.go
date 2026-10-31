@@ -85,6 +85,25 @@ type PluginSources struct {
 	ModrinthProjects []string `json:"modrinthProjects"`
 	SpigetResources  []string `json:"spigetResources"`
 	URLs             []string `json:"urls"`
+	// CurseforgeFiles: Bukkit plugins from CurseForge (slug or projectId:fileId). Shares
+	// CURSEFORGE_FILES with mods; omitempty keeps the hash of specs without it.
+	CurseforgeFiles []string `json:"curseforgeFiles,omitempty"`
+}
+
+// DatapackSources: Modrinth datapacks. Each entry travels in MODRINTH_PROJECTS with the
+// "datapack:" prefix, which makes itzg install it into <level>/datapacks.
+type DatapackSources struct {
+	ModrinthProjects []string `json:"modrinthProjects"`
+}
+
+const datapackPrefix = "datapack:"
+
+// datapackEntry adds the "datapack:" prefix unless the entry already has it.
+func datapackEntry(e string) string {
+	if strings.HasPrefix(e, datapackPrefix) {
+		return e
+	}
+	return datapackPrefix + e
 }
 
 type Whitelist struct {
@@ -101,7 +120,8 @@ type listRule struct {
 // UsesCurseForge reports whether the spec downloads anything from CurseForge (and therefore receives CF_API_KEY).
 func (s Spec) UsesCurseForge() bool {
 	return (s.Modpack != nil && s.Modpack.Platform == PlatformAutoCurseForge) ||
-		(s.Mods != nil && len(s.Mods.CurseforgeFiles) > 0)
+		(s.Mods != nil && len(s.Mods.CurseforgeFiles) > 0) ||
+		(s.Plugins != nil && len(s.Plugins.CurseforgeFiles) > 0)
 }
 
 // levelNameErr: level-name is the world folder inside /data. No separators or "..": today it only
@@ -135,7 +155,11 @@ func (s Spec) validateContent() error {
 		rules = append(rules,
 			listRule{"plugins.modrinthProjects", s.Plugins.ModrinthProjects, listEntryRe},
 			listRule{"plugins.spigetResources", s.Plugins.SpigetResources, digitsRe},
-			listRule{"plugins.urls", s.Plugins.URLs, urlRe})
+			listRule{"plugins.urls", s.Plugins.URLs, urlRe},
+			listRule{"plugins.curseforgeFiles", s.Plugins.CurseforgeFiles, listEntryRe})
+	}
+	if s.Datapacks != nil {
+		rules = append(rules, listRule{"datapacks.modrinthProjects", s.Datapacks.ModrinthProjects, listEntryRe})
 	}
 	rules = append(rules, listRule{"ops", s.Ops, playerRe})
 	if s.Whitelist != nil {
@@ -217,20 +241,27 @@ func (s Spec) contentEnv(m map[string]string) {
 			setIf(m, "FTB_MODPACK_VERSION_ID", mp.VersionID)
 		}
 	}
-	if s.Mods != nil || s.Plugins != nil {
-		var mods, plugins []string
+	if s.Mods != nil || s.Plugins != nil || s.Datapacks != nil {
+		var mods, plugins, datapacks, cfMods, cfPlugins []string
 		if s.Mods != nil {
-			mods = s.Mods.ModrinthProjects
+			mods, cfMods = s.Mods.ModrinthProjects, s.Mods.CurseforgeFiles
 		}
 		if s.Plugins != nil {
-			plugins = s.Plugins.ModrinthProjects
+			plugins, cfPlugins = s.Plugins.ModrinthProjects, s.Plugins.CurseforgeFiles
+		}
+		if s.Datapacks != nil {
+			for _, e := range s.Datapacks.ModrinthProjects {
+				datapacks = append(datapacks, datapackEntry(e))
+			}
 		}
 		// With the section present it is emitted even if empty: itzg then deletes what it
 		// installed from Modrinth (removing the last mod in the UI removes it from the server).
-		m["MODRINTH_PROJECTS"] = joinList(mods, plugins)
+		m["MODRINTH_PROJECTS"] = joinList(mods, plugins, datapacks)
+		if s.Mods != nil || s.Plugins != nil {
+			setIf(m, "CURSEFORGE_FILES", joinList(cfMods, cfPlugins))
+		}
 	}
 	if s.Mods != nil {
-		setIf(m, "CURSEFORGE_FILES", joinList(s.Mods.CurseforgeFiles))
 		setIf(m, "MODS", joinList(s.Mods.URLs))
 	}
 	if s.Plugins != nil {
@@ -257,6 +288,14 @@ func (s Spec) contentEnv(m map[string]string) {
 	}
 	if s.CurseForgeAPIKey != "" && s.UsesCurseForge() {
 		m["CF_API_KEY"] = s.CurseForgeAPIKey
+	}
+}
+
+// datapacksEnv: with datapacks, itzg must know the world folder to install them into
+// (<level>/datapacks); LEVEL comes from the level-name property. The free-form env wins (applied after).
+func (s Spec) datapacksEnv(m map[string]string) {
+	if s.Datapacks != nil {
+		setIf(m, "LEVEL", s.Properties["level-name"])
 	}
 }
 

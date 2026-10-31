@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Search } from "lucide-react";
 import { defaultSpecInput, slugify } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,17 +10,19 @@ import { PAGE, PageHeader } from "@/components/page-header";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Field, ValidatedInput } from "@/components/spec-form/fields";
 import { VersionSection } from "@/components/spec-form/version-section";
+import { ContentBrowserDialog } from "@/components/content/browser-dialog";
 import { api, ApiError, type ServerDto } from "@/lib/api";
 import { applyError, type FormErrors } from "@/lib/form-errors";
 import { validateMemory, validateSpec, type EditableSpec } from "@/lib/spec-edit";
-import { createErrorStep, createRequest, creationSource, parsePort, SCRATCH, stepBlock, summarizeSpec } from "@/lib/wizard";
+import { createErrorStep, createRequest, creationSource, MODPACK, parsePort, SCRATCH, stepBlock, summarizeSpec } from "@/lib/wizard";
 import { typeLabel } from "@/lib/spec-catalog";
 import { cn } from "@/lib/utils";
 import { useNodes } from "@/hooks/use-nodes";
 import { useTemplates } from "@/hooks/use-templates";
+import { useInstalledPack } from "@/hooks/use-content";
 
 type Step = 1 | 2 | 3;
-const STEPS: { n: Step; label: string }[] = [{ n: 1, label: "Template or from scratch" }, { n: 2, label: "Node and name" }, { n: 3, label: "Review" }];
+const STEPS: { n: Step; label: string }[] = [{ n: 1, label: "Starting point" }, { n: 2, label: "Node and name" }, { n: 3, label: "Review" }];
 
 /** New server wizard in 3 steps (spec §8). `?template=<id>` opens it at step 2 with that template chosen. */
 export function NewServerPage() {
@@ -38,22 +40,25 @@ export function NewServerPage() {
   const [start, setStart] = useState(true);
   const [errors, setErrors] = useState<FormErrors>({});
   const [gone, setGone] = useState(false);
+  const [browsePacks, setBrowsePacks] = useState(false);
   const onError = useCallback((f: string, m: string | null) => setErrors((p) => applyError(p, f, m)), []);
 
-  const tpl = source === SCRATCH ? undefined : templates.data?.find((t) => t.id === source);
+  const fromSpec = source === SCRATCH || source === MODPACK;
+  const tpl = fromSpec ? undefined : templates.data?.find((t) => t.id === source);
+  const packInfo = useInstalledPack(spec.modpack).info.data ?? null;
 
   // A template from the link (or chosen) that no longer exists: warn and choose again.
   const templatesLoaded = templates.isSuccess;
   useEffect(() => {
-    if (templatesLoaded && source !== SCRATCH && !tpl) { setGone(true); setSource(SCRATCH); setStep(1); }
-  }, [templatesLoaded, source, tpl]);
+    if (templatesLoaded && !fromSpec && !tpl) { setGone(true); setSource(SCRATCH); setStep(1); }
+  }, [templatesLoaded, fromSpec, tpl]);
 
   const portNum = parsePort(port);
   const selectedNode = nodes.data?.find((n) => n.id === nodeId);
   const online = nodes.data?.filter((n) => n.status === "online") ?? [];
   const ctx = {
-    source, templateLoaded: tpl !== undefined, specError: source === SCRATCH ? validateSpec(spec, "server") : null,
-    fieldErrors: errors, nodeId, name, port,
+    source, templateLoaded: tpl !== undefined, specError: fromSpec ? validateSpec(spec, "server") : null,
+    fieldErrors: errors, nodeId, name, port, spec,
   };
   const blocked = step === 3 ? null : stepBlock(step, ctx);
 
@@ -80,11 +85,12 @@ export function NewServerPage() {
   const createMsg = create.error?.message ?? null;
   const conflict = create.error instanceof ApiError && create.error.status === 409;
   const portConflict = conflict && /\bports?\b/i.test(createMsg ?? "");
-  const summary = tpl ? summarizeSpec(tpl.spec) : source === SCRATCH ? summarizeSpec(spec) : [];
+  const summary = tpl ? summarizeSpec(tpl.spec) : fromSpec ? summarizeSpec(spec, packInfo) : [];
+  const pickModpack = () => { pick(MODPACK); if (!spec.modpack?.slugOrUrl) setBrowsePacks(true); };
 
   return (
     <div className={PAGE}>
-      <PageHeader title="New server" description="Start from a template or from scratch, pick the node it runs on, and review before creating it." />
+      <PageHeader title="New server" description="Start from a template, a modpack or from scratch, pick the node it runs on, and review before creating it." />
       <ol className="flex max-w-4xl flex-wrap items-center gap-x-3 gap-y-2 text-sm" aria-label="Steps">
         {STEPS.map((s, i) => (
           <li key={s.n} aria-current={s.n === step ? "step" : undefined} className="flex items-center gap-3">
@@ -107,6 +113,7 @@ export function NewServerPage() {
               {gone && <p role="status" className="text-sm text-warn">The link's template no longer exists. Choose another or create the server from scratch.</p>}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Source">
                 <SourceCard selected={source === SCRATCH} onSelect={() => pick(SCRATCH)} title="From scratch" subtitle="Choose type, version and mods. The rest is adjusted later in Configuration." />
+                <SourceCard selected={source === MODPACK} onSelect={pickModpack} title="Start from a modpack" subtitle="Browse Modrinth and CurseForge packs: the type, Minecraft version and loader come from the pack." />
                 {templates.data?.map((t) => (
                   <SourceCard key={t.id} selected={source === t.id} onSelect={() => pick(t.id)} title={t.name}
                     subtitle={`${typeLabel(t.spec.type)} ${t.spec.version} · ${t.spec.memory}${t.description ? ` · ${t.description}` : ""}`} />
@@ -114,9 +121,15 @@ export function NewServerPage() {
               </div>
               {templates.isPending && <p className="text-xs text-muted-foreground">Loading templates…</p>}
               {templates.isError && <p role="alert" className="text-xs text-bad">Could not load the templates: {templates.error.message}</p>}
-              {source === SCRATCH && (
+              {source === MODPACK && !spec.modpack?.slugOrUrl && (
+                <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4 text-sm text-muted-foreground">
+                  <span className="flex-1">Pick the pack the server runs. Its world starts fresh; you can add more mods later.</span>
+                  <Button type="button" onClick={() => setBrowsePacks(true)}><Search className="size-4" /> Choose a modpack</Button>
+                </div>
+              )}
+              {(source === SCRATCH || (source === MODPACK && !!spec.modpack?.slugOrUrl)) && (
                 <div className="flex flex-col gap-4 border-t border-border pt-4">
-                  <VersionSection spec={spec} onChange={setSpec} onError={onError} />
+                  <VersionSection spec={spec} onChange={setSpec} onError={onError} contentUi="browser" />
                   <div className="max-w-xs">
                     <ValidatedInput id="sf-memory" label="JVM memory" hint="E.g. 4G or 512M." value={spec.memory} onError={onError}
                       validate={validateMemory} onChange={(memory) => setSpec({ ...spec, memory })} />
@@ -152,7 +165,7 @@ export function NewServerPage() {
 
           {step === 3 && (
             <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm" data-testid="wizard-summary">
-              <Row label="Source" value={tpl ? `Template “${tpl.name}”` : "From scratch"} />
+              <Row label="Source" value={tpl ? `Template “${tpl.name}”` : source === MODPACK ? "Modpack" : "From scratch"} />
               {summary.map((l) => <Row key={l.label} label={l.label} value={l.value} />)}
               <Row label="Node" value={selectedNode?.name ?? "—"} />
               <Row label="Name" value={name.trim()} />
@@ -173,6 +186,7 @@ export function NewServerPage() {
           </div>
         </CardContent>
       </Card>
+      <ContentBrowserDialog open={browsePacks} onOpenChange={setBrowsePacks} spec={spec} pack={null} mode="new-server" onApply={(s) => { setSpec(s); if (create.isError) create.reset(); }} />
     </div>
   );
 }

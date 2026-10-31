@@ -46,6 +46,9 @@ func (s *Store) ForgetWithTombstone(id string, at time.Time) error {
 		if err := deleteSaveOn(tx, id); err != nil {
 			return err
 		}
+		if err := deletePackCleanup(tx, id); err != nil { // plan-11
+			return err
+		}
 		b, err := tx.CreateBucketIfNotExists(bTombstones)
 		if err != nil {
 			return err

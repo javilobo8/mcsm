@@ -389,3 +389,66 @@ func TestLevelNameIsAPlainFolder(t *testing.T) {
 		t.Fatalf("err = %v, want %q", err, want)
 	}
 }
+
+func TestDatapacksEnv(t *testing.T) {
+	s := loadFixture(t)
+	s.Datapacks = &DatapackSources{ModrinthProjects: []string{"8oi3bsk5:urbokcOc", "datapack:terralith"}}
+	env := buildEnv(t, s)
+	if got := env["MODRINTH_PROJECTS"]; got != "datapack:8oi3bsk5:urbokcOc,datapack:terralith" {
+		t.Fatalf("MODRINTH_PROJECTS = %q", got)
+	}
+	s.Mods = &ModSources{ModrinthProjects: []string{"lithium"}}
+	if got := buildEnv(t, s)["MODRINTH_PROJECTS"]; got != "datapack:8oi3bsk5:urbokcOc,datapack:terralith,lithium" {
+		t.Fatalf("mixed MODRINTH_PROJECTS = %q", got)
+	}
+}
+
+func TestDatapacksEmptySectionClearsInstalled(t *testing.T) {
+	s := loadFixture(t)
+	s.Datapacks = &DatapackSources{}
+	if v, ok := buildEnv(t, s)["MODRINTH_PROJECTS"]; !ok || v != "" {
+		t.Fatalf("MODRINTH_PROJECTS = %q (present=%v), want present and empty", v, ok)
+	}
+}
+
+func TestDatapacksLevelFromProperty(t *testing.T) { // [F7]
+	s := loadFixture(t)
+	s.Properties = map[string]string{"level-name": "myworld"}
+	if _, ok := buildEnv(t, s)["LEVEL"]; ok {
+		t.Fatal("LEVEL must not be emitted without a datapacks section")
+	}
+	s.Datapacks = &DatapackSources{ModrinthProjects: []string{"terralith"}}
+	if got := buildEnv(t, s)["LEVEL"]; got != "myworld" {
+		t.Fatalf("LEVEL = %q", got)
+	}
+	s.Env = map[string]string{"LEVEL": "other"}
+	if got := buildEnv(t, s)["LEVEL"]; got != "other" {
+		t.Fatalf("free env must win: %q", got)
+	}
+}
+
+func TestNewSectionsKeepGoldenHash(t *testing.T) {
+	s := loadFixture(t)
+	s.Plugins = &PluginSources{} // [F1] CurseforgeFiles nil
+	withPlugins := hashOfSpec(t, s)
+	s.Plugins = &PluginSources{CurseforgeFiles: []string{}} // [F1] present but empty
+	if hashOfSpec(t, s) != withPlugins {
+		t.Fatal("an empty plugins.curseforgeFiles must not change the hash")
+	}
+	s = loadFixture(t)
+	s.Datapacks = nil
+	if h := hashOfSpec(t, s); h != "09ff6e5490b40677" {
+		t.Fatalf("absent datapacks changed the golden hash: %s", h)
+	}
+}
+
+func TestPluginCurseForgeFilesEnv(t *testing.T) { // [F1]
+	s := loadFixture(t)
+	s.Type = "PAPER"
+	s.Plugins = &PluginSources{CurseforgeFiles: []string{"31043:5547789"}}
+	s.CurseForgeAPIKey = "k"
+	env := buildEnv(t, s)
+	if env["CURSEFORGE_FILES"] != "31043:5547789" || env["CF_API_KEY"] != "k" {
+		t.Fatalf("CURSEFORGE_FILES=%q CF_API_KEY=%q", env["CURSEFORGE_FILES"], env["CF_API_KEY"])
+	}
+}
