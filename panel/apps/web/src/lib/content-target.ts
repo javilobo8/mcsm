@@ -9,6 +9,7 @@ export type BrowserTab = { platform: ContentPlatform; kind: ContentKind };
 
 export const FLOATING_REASON = "Browsing needs a concrete Minecraft version: LATEST and SNAPSHOT change by themselves, and pinned content would stop matching.";
 export const PACK_WAITING_REASON = "Waiting for the modpack's details (loader and Minecraft version)";
+export const PACK_UNKNOWN_REASON = "The modpack does not say which loader and Minecraft version it runs: the browser cannot tell what fits";
 export const NO_VERSION_REASON = "Choose a Minecraft version to browse compatible content.";
 
 /** The CurseForge Plugins tab exists: the itzg spike (F1) confirmed CURSEFORGE_FILES installs Bukkit plugins. */
@@ -31,16 +32,19 @@ export function browserTabs(type: string, o: { curseforgePlugins: boolean }): Br
 export const isPackType = (type: string): boolean => PACK_TYPES.has(type);
 const concrete = (v: string) => !isFloatingVersion(v) && VERSION_QUERY_RE.test(v);
 
-export type BrowseTarget = { ok: true; target: ContentTarget } | { ok: false; reason: string; pinTo?: "release" };
+/** `waiting`: the reason goes away on its own (the pack's details are loading). */
+export type BrowseTarget = { ok: true; target: ContentTarget } | { ok: false; reason: string; pinTo?: "release"; waiting?: true };
 
 /**
  * What a search must match for `kind` content on this server: Minecraft version and loaders. Modpacks never need
- * a concrete version (they bring their own); everything else does. Modpack servers take both from the pack.
+ * a concrete version (they bring their own); everything else does. Modpack servers take both from the pack;
+ * `packError` says why its details will not come (see `packDetailsError`).
  */
-export function browseTarget(spec: EditableSpec, kind: ContentKind, pack: PackInfoDto | null): BrowseTarget {
+export function browseTarget(spec: EditableSpec, kind: ContentKind, pack: PackInfoDto | null, packError: string | null = null): BrowseTarget {
   if (kind === "modpack") return { ok: true, target: { gameVersion: concrete(spec.version) ? spec.version : "", loaders: [] } };
   if (isPackType(spec.type)) {
-    if (!pack?.minecraftVersion || (kind === "mod" && !pack.loader)) return { ok: false, reason: PACK_WAITING_REASON };
+    if (!pack) return packError ? { ok: false, reason: packError } : { ok: false, reason: PACK_WAITING_REASON, waiting: true };
+    if (!pack.minecraftVersion || (kind === "mod" && !pack.loader)) return { ok: false, reason: PACK_UNKNOWN_REASON };
     return { ok: true, target: { gameVersion: pack.minecraftVersion, loaders: modrinthLoadersFor(spec.type, kind, pack.loader) } };
   }
   if (isFloatingVersion(spec.version)) return { ok: false, reason: FLOATING_REASON, pinTo: "release" };

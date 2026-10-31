@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useReducer, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Download, ExternalLink, LoaderCircle, PackageSearch, Search, X } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, Download, ExternalLink, LoaderCircle, PackageSearch, Search, X } from "lucide-react";
 import {
   CONTENT_SORTS, listFor,
   type ContentHit, type ContentListKey, type ContentLoader, type ContentPlatform, type ContentSearchQuery, type ContentSort,
@@ -42,6 +42,8 @@ export interface ContentBrowserProps {
   spec: EditableSpec;
   /** The installed pack's details (modpack servers): its loader/version drive the search and its contents show "In modpack". */
   pack: PackInfoDto | null;
+  /** Why the pack's details will not come (`useInstalledPack().error`): shown instead of waiting for them. */
+  packError?: string | null;
   /** "new-server": only the Modpacks tabs, any Minecraft version by default. */
   mode: "server" | "new-server";
   initialTab?: BrowserTab;
@@ -71,7 +73,7 @@ export function ContentBrowserDialog(props: ContentBrowserProps) {
 
 type Review = { kind: "content"; result: ResolveResultDto; warnings: string[] } | { kind: "pack"; info: PackInfoDto };
 
-function Browser({ spec, pack, mode, initialTab, onApply, onOpenChange }: ContentBrowserProps) {
+function Browser({ spec, pack, packError = null, mode, initialTab, onApply, onOpenChange }: ContentBrowserProps) {
   const qc = useQueryClient();
   const tabs = mode === "new-server" ? NEW_SERVER_TABS : browserTabs(spec.type, { curseforgePlugins: CURSEFORGE_PLUGINS });
   const firstTab = (initialTab && tabs.find((t) => tabValue(t) === tabValue(initialTab))) ?? tabs[0]!;
@@ -88,7 +90,7 @@ function Browser({ spec, pack, mode, initialTab, onApply, onOpenChange }: Conten
   };
 
   const { platform, kind } = s.tab;
-  const bt = browseTarget(spec, kind, pack);
+  const bt = browseTarget(spec, kind, pack, packError);
   const target = bt.ok ? bt.target : null;
   const cfConfigured = useCurseForgeConfigured();
   const cfMissing = platform === "curseforge" && cfConfigured === false;
@@ -165,7 +167,7 @@ function Browser({ spec, pack, mode, initialTab, onApply, onOpenChange }: Conten
               <div className="mt-3 text-left"><CurseForgeKeyNotice /></div>
             </Blocked>
           ) : !bt.ok ? (
-            <NotBrowsable reason={bt.reason} pinTo={bt.pinTo} spec={spec} onApply={onApply} />
+            <NotBrowsable reason={bt.reason} pinTo={bt.pinTo} waiting={bt.waiting === true} spec={spec} onApply={onApply} />
           ) : (
             <ResultList key={JSON.stringify({ ...searchQuery(s, target), offset: 0 })} state={s} act={act} target={target!} installed={installed} inPack={inPack} clientOnly={clientOnly} />
           )}
@@ -648,11 +650,14 @@ function PackReview({ info, spec, mode }: { info: PackInfoDto; spec: EditableSpe
   );
 }
 
-function NotBrowsable({ reason, pinTo, spec, onApply }: { reason: string; pinTo?: "release"; spec: EditableSpec; onApply: (s: EditableSpec) => void }) {
+function NotBrowsable({ reason, pinTo, waiting, spec, onApply }: {
+  reason: string; pinTo?: "release"; waiting: boolean; spec: EditableSpec; onApply: (s: EditableSpec) => void;
+}) {
   const vanilla = useVersions("VANILLA", pinTo === "release");
   const release = vanilla.data?.versions.find((v) => v.stable)?.id ?? null;
+  const icon = pinTo ? <PackageSearch /> : waiting ? <LoaderCircle className="animate-spin" /> : <CircleAlert className="text-warn" />;
   return (
-    <Blocked icon={pinTo ? <PackageSearch /> : <LoaderCircle className="animate-spin" />} title={pinTo ? "Choose a Minecraft version" : "Not ready yet"}>
+    <Blocked icon={icon} title={pinTo ? "Choose a Minecraft version" : waiting ? "Not ready yet" : "Cannot browse for this modpack"}>
       <p>{reason}</p>
       {pinTo && (
         <Button type="button" size="sm" className="mt-3" disabled={!release} onClick={() => release && onApply(withVersion(spec, release).spec)}>

@@ -129,7 +129,7 @@ function BrowserContent({ spec, onChange, onError, showMods, showPlugins }: {
   const installed = useInstalledPack(spec.modpack);
   const pack = installed.info.data ?? null;
   const target = (k: "mod" | "plugin" | "datapack") => { const t = browseTarget(spec, k, pack); return t.ok ? t.target : null; };
-  const common = { spec, onChange, onError, pack };
+  const common = { spec, onChange, onError, pack, packError: installed.error };
   return (
     <>
       {spec.modpack && spec.modpack.platform !== "FTBA" && <PackCard spec={spec} onChange={onChange} />}

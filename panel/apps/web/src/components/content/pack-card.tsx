@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SectionTitle } from "@/components/page-header";
 import { StatusBadge } from "@/components/status";
 import { ModpackFields } from "@/components/spec-form/modpack-fields";
-import { ApiError } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { platformLabel } from "@/lib/content-browser";
 import { withPackInstalled, withPackUninstalled } from "@/lib/content-pack";
 import type { EditableSpec } from "@/lib/spec-edit";
@@ -61,8 +61,7 @@ export function PackCard({ spec, onChange }: { spec: EditableSpec; onChange: (s:
     else setError(r.error);
   };
 
-  const infoError = pack.info.error ?? pack.versions.error ?? pack.searchError;
-  const loading = !empty && !info && !infoError && !pack.slugNotFound && pack.ref !== null;
+  const loading = !empty && !info && pack.error === null;
   const details = info
     ? [`Minecraft ${info.minecraftVersion ?? "unknown"}`, info.loader ? `${info.loader}${info.loaderVersion ? ` ${info.loaderVersion}` : ""}` : null].filter(Boolean).join(" · ")
     : null;
@@ -102,9 +101,7 @@ export function PackCard({ spec, onChange }: { spec: EditableSpec; onChange: (s:
                   {details && <p className="text-xs text-muted-foreground">{details}</p>}
                 </>
               )}
-              {pack.slugNotFound && <p className="text-xs text-warn">“{pack.ref?.slug}” was not found on CurseForge: check it with Edit as text.</p>}
-              {infoError && <p className="text-xs text-muted-foreground">{infoError instanceof ApiError && infoError.status === 404 ? infoError.message : `Could not load the modpack's details: ${errorText(infoError)}`}</p>}
-              {pack.ref === null && <p className="text-xs text-muted-foreground">This pack is written in a way the browser cannot look up: use Edit as text.</p>}
+              {pack.error && <p className={cn("text-xs", pack.slugNotFound ? "text-warn" : "text-muted-foreground")}>{pack.error}.</p>}
               {info && !info.contentsKnown && info.reason && <p className="text-xs text-muted-foreground">{info.reason}.</p>}
             </div>
           </div>

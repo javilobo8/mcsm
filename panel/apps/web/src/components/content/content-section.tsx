@@ -70,9 +70,9 @@ const TONE_TEXT = { ok: "text-ok", warn: "text-warn", bad: "text-bad" } as const
  * One content section of "Version and mods" in browser mode: installed list, "Browse", "Edit as text", updates and
  * removal. Everything edits the unsaved form; Save applies it.
  */
-export function ContentSection({ spec, onChange, lists, title, kind, target, pack, onError }: {
+export function ContentSection({ spec, onChange, lists, title, kind, target, pack, packError = null, onError }: {
   spec: EditableSpec; onChange: (s: EditableSpec) => void; lists: ContentListKey[]; title: string; kind: ContentKind;
-  target: ContentTarget | null; pack: PackInfoDto | null; onError?: ReportError;
+  target: ContentTarget | null; pack: PackInfoDto | null; packError?: string | null; onError?: ReportError;
 }) {
   const [text, setText] = useState(false);
   const [browse, setBrowse] = useState(false);
@@ -164,7 +164,7 @@ export function ContentSection({ spec, onChange, lists, title, kind, target, pac
       {!text && updates.error && <p className="text-xs text-muted-foreground">Couldn't check for updates: {errorText(updates.error)}</p>}
       {notice && <p role={notice.tone === "bad" ? "alert" : "status"} className={`text-xs ${TONE_TEXT[notice.tone]}`}>{notice.text}</p>}
 
-      {tab && <ContentBrowserDialog open={browse} onOpenChange={setBrowse} spec={spec} pack={pack} mode="server" initialTab={tab} onApply={onChange} />}
+      {tab && <ContentBrowserDialog open={browse} onOpenChange={setBrowse} spec={spec} pack={pack} packError={packError} mode="server" initialTab={tab} onApply={onChange} />}
       <RemoveDialog key={removing ? `${removing.list}:${removing.raw}` : "none"} open={removing !== null} row={removing} unused={unused}
         onConfirm={remove} onCancel={() => setRemoving(null)} />
     </section>

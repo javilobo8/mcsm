@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput, type ContentVersionDto, type PackInfoDto } from "@mcsm/shared";
-import { packChange, packRefOf, packSlugOrUrl, withPackInstalled, withPackUninstalled } from "./content-pack";
+import { ApiError } from "./api";
+import { installedPackIds, packChange, packDetailsError, packRefOf, packSlugOrUrl, withPackInstalled, withPackUninstalled, type PackRef } from "./content-pack";
 import { buildSpecPatch, type EditableSpec } from "./spec-edit";
 
 const info: PackInfoDto = {
@@ -98,5 +99,57 @@ describe("packRefOf", () => {
     expect(packRefOf({ platform: "FTBA", slugOrUrl: "23", versionId: "", loader: "" })).toBeNull();
     expect(packRefOf(mp("", ""))).toBeNull();
     expect(packRefOf(mp("not a slug!", ""))).toBeNull();
+  });
+});
+
+describe("installedPackIds", () => {
+  const labelled = (versionId: string, label: string, type: ContentVersionDto["type"] = "release") => ({ ...ver(versionId), label, type });
+  const list = [labelled("V0000003", "1.7.0-beta", "beta"), labelled("V0000002", "1.6.1"), labelled("V0000001", "1.6.0")];
+  const ref = (projectId: string | null, versionId: string, platform: PackRef["platform"] = "modrinth"): PackRef => ({ platform, projectId, slug: null, versionId });
+
+  it("a Modrinth pack typed as a slug is asked about by that slug (the panel resolves it)", () => {
+    expect(installedPackIds(ref("cobblemon", "V0000002"), null, list)).toEqual({ projectId: "cobblemon", versionId: "V0000002" });
+    expect(installedPackIds(ref("cobblemon", "1.6.1"), null, list)).toEqual({ projectId: "cobblemon", versionId: "V0000002" });
+    expect(installedPackIds(ref("cobblemon", "V0000002"), null, undefined)).toEqual({ projectId: "cobblemon", versionId: "V0000002" });
+  });
+  it("matches the version by id or by a hand-typed label; empty means the newest release", () => {
+    expect(installedPackIds(ref("P0000001", "1.6.0"), null, list).versionId).toBe("V0000001");
+    expect(installedPackIds(ref("cobblemon", ""), null, list).versionId).toBe("V0000002");
+    expect(installedPackIds(ref("cobblemon", ""), null, undefined).versionId).toBeNull();
+  });
+  it("keeps a version id the list does not hold (it may be older); an unknown label is not a version", () => {
+    expect(installedPackIds(ref("cobblemon", "OldVer01"), null, list).versionId).toBe("OldVer01");
+    expect(installedPackIds(ref("cobblemon", "0.9.9"), null, list).versionId).toBeNull();
+    expect(installedPackIds(ref("925200", "5999999", "curseforge"), null, [{ ...ver("6000001"), platform: "curseforge", projectId: "925200" }]))
+      .toEqual({ projectId: "925200", versionId: "5999999" });
+  });
+  it("a CurseForge slug takes the id the search found", () => {
+    expect(installedPackIds({ platform: "curseforge", projectId: null, slug: "atm10", versionId: "" }, null, undefined)).toEqual({ projectId: null, versionId: null });
+    expect(installedPackIds({ platform: "curseforge", projectId: null, slug: "atm10", versionId: "6000001" }, "925200", undefined).projectId).toBe("925200");
+  });
+});
+
+describe("packDetailsError", () => {
+  const base = { modpack: mp("cobblemon", "V0000002"), ref: packRefOf(mp("cobblemon", "V0000002")), slugNotFound: false, error: null, versionsLoaded: false, versionId: null };
+
+  it("null while the details may still come, or once they did", () => {
+    expect(packDetailsError(base)).toBeNull();
+    expect(packDetailsError({ ...base, versionsLoaded: true, versionId: "V0000002" })).toBeNull();
+    expect(packDetailsError({ ...base, modpack: undefined, ref: null })).toBeNull();
+    expect(packDetailsError({ ...base, modpack: { platform: "FTBA", slugOrUrl: "23", versionId: "", loader: "" }, ref: null })).toBeNull();
+  });
+  it("says why they never will", () => {
+    expect(packDetailsError({ ...base, modpack: mp("", ""), ref: null })).toBe("No modpack chosen yet");
+    expect(packDetailsError({ ...base, modpack: mp("not a slug!", ""), ref: null })).toBe("The modpack is written in a way the browser cannot look up: use Edit as text");
+    const cf = mp("atm10", "", "AUTO_CURSEFORGE");
+    expect(packDetailsError({ ...base, modpack: cf, ref: packRefOf(cf), slugNotFound: true })).toBe("“atm10” was not found on CurseForge: check it with Edit as text");
+    expect(packDetailsError({ ...base, versionsLoaded: true, modpack: mp("cobblemon", "0.9.9"), ref: packRefOf(mp("cobblemon", "0.9.9")) }))
+      .toBe("Version “0.9.9” of the modpack was not found");
+    expect(packDetailsError({ ...base, versionsLoaded: true, modpack: mp("cobblemon", ""), ref: packRefOf(mp("cobblemon", "")) }))
+      .toBe("The modpack has no release to install");
+  });
+  it("shows a 404 as the panel says it, anything else as a failure to load", () => {
+    expect(packDetailsError({ ...base, error: new ApiError(404, "Version not found on Modrinth") })).toBe("Version not found on Modrinth");
+    expect(packDetailsError({ ...base, error: new ApiError(502, "Could not query Modrinth") })).toBe("Could not load the modpack's details: Could not query Modrinth");
   });
 });

@@ -1,13 +1,13 @@
 import { keepPreviousData, useQueries, useQuery, type QueryClient } from "@tanstack/react-query";
 import {
-  CONTENT_LISTS, MODRINTH_ID_RE, parseContentEntry, pickLatest,
+  CONTENT_LISTS, parseContentEntry,
   type ContentCategoryDto, type ContentEntryMetaDto, type ContentKind, type ContentListKey, type ContentPlatform, type ContentProjectDto, type ContentSearchDto,
   type ContentSearchQuery, type ContentVersionDto, type PackInfoDto, type ResolveRequest, type ResolveResultDto, type UpdateDto, type UpdatesRequest,
   type ContentLoader, type ContentTarget,
 } from "@mcsm/shared";
 import { api, apiPath } from "@/lib/api";
 import { listOf } from "@/lib/content-lists";
-import { packRefOf } from "@/lib/content-pack";
+import { installedPackIds, packDetailsError, packRefOf } from "@/lib/content-pack";
 import type { EditableSpec } from "@/lib/spec-edit";
 
 /**
@@ -137,22 +137,19 @@ export function useContentUpdates(spec: EditableSpec, lists: readonly ContentLis
 /**
  * The spec's pack as the panel knows it: project (a CurseForge slug is found by searching), its versions (newest
  * first) and the details of the pinned version (a Modrinth version number typed by hand is matched by label; an
- * empty version means the newest release, as itzg does).
+ * empty version means the newest release, as itzg does). `error` says why the details will not come.
  */
 export function useInstalledPack(modpack: EditableSpec["modpack"]) {
   const ref = packRefOf(modpack);
   const bySlug = ref?.platform === "curseforge" && ref.projectId === null ? ref.slug : null;
   const search = useContentSearch("curseforge", bySlug ? { kind: "modpack", q: bySlug, loaders: [], sort: "relevance", offset: 0 } : null);
-  const projectId = ref?.projectId ?? search.data?.hits.find((h) => h.slug === bySlug)?.projectId ?? null;
-  const versions = useContentVersions(ref?.platform ?? "modrinth", ref && projectId ? projectId : null, { kind: "modpack", loaders: [] });
-  const all = versions.data?.versions;
-  let versionId: string | null = null;
-  if (ref) {
-    const match = all?.find((v) => v.versionId === ref.versionId || v.label === ref.versionId);
-    if (match) versionId = match.versionId;
-    else if (ref.versionId === "") versionId = all ? (pickLatest(all, null)?.versionId ?? null) : null;
-    else if (ref.platform === "curseforge" || MODRINTH_ID_RE.test(ref.versionId)) versionId = ref.versionId;
-  }
+  const found = search.data?.hits.find((h) => h.slug === bySlug)?.projectId ?? null;
+  const versions = useContentVersions(ref?.platform ?? "modrinth", ref ? (ref.projectId ?? found) : null, { kind: "modpack", loaders: [] });
+  const { projectId, versionId } = ref ? installedPackIds(ref, found, versions.data?.versions) : { projectId: null, versionId: null };
   const info = usePackInfo(ref && projectId && versionId ? { platform: ref.platform, projectId, versionId } : null);
-  return { ref, projectId, versionId, versions, info, slugNotFound: bySlug !== null && search.isSuccess && projectId === null, searchError: search.error };
+  const slugNotFound = bySlug !== null && search.isSuccess && projectId === null;
+  const error = packDetailsError({
+    modpack, ref, slugNotFound, error: info.error ?? versions.error ?? search.error, versionsLoaded: versions.isSuccess, versionId,
+  });
+  return { ref, projectId, versionId, versions, info, slugNotFound, searchError: search.error, error };
 }

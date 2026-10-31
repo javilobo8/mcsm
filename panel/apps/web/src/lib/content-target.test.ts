@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultSpecInput, type PackInfoDto } from "@mcsm/shared";
-import { browserTabs, browseTarget, FLOATING_REASON } from "./content-target";
+import { browserTabs, browseTarget, FLOATING_REASON, PACK_UNKNOWN_REASON } from "./content-target";
 import type { EditableSpec } from "./spec-edit";
 
 const spec = (type: string, version: string): EditableSpec => ({ ...defaultSpecInput(), type, version });
@@ -48,9 +48,16 @@ describe("browseTarget", () => {
   });
   it("modpack types wait for the pack's loader and take its Minecraft version", () => {
     const mp = { ...spec("MODRINTH", "LATEST"), modpack: { platform: "MODRINTH" as const, slugOrUrl: "P0000001", versionId: "V0000001", loader: "" as const } };
-    expect(browseTarget(mp, "mod", null)).toEqual({ ok: false, reason: "Waiting for the modpack's details (loader and Minecraft version)" });
-    expect(browseTarget(mp, "mod", { ...pack, loader: null })).toEqual({ ok: false, reason: "Waiting for the modpack's details (loader and Minecraft version)" });
+    expect(browseTarget(mp, "mod", null)).toEqual({ ok: false, reason: "Waiting for the modpack's details (loader and Minecraft version)", waiting: true });
     expect(browseTarget(mp, "mod", pack)).toEqual({ ok: true, target: { gameVersion: "1.21.1", loaders: ["fabric"] } });
     expect(browseTarget(mp, "datapack", pack)).toEqual({ ok: true, target: { gameVersion: "1.21.1", loaders: ["datapack"] } });
+  });
+  it("modpack types stop waiting when the details failed or lack what the search needs", () => {
+    const mp = { ...spec("MODRINTH", "LATEST"), modpack: { platform: "MODRINTH" as const, slugOrUrl: "cobblemon", versionId: "V0000001", loader: "" as const } };
+    expect(browseTarget(mp, "mod", null, "Version not found on Modrinth")).toEqual({ ok: false, reason: "Version not found on Modrinth" });
+    expect(browseTarget(mp, "mod", { ...pack, loader: null })).toEqual({ ok: false, reason: PACK_UNKNOWN_REASON });
+    expect(browseTarget(mp, "datapack", { ...pack, loader: null })).toEqual({ ok: true, target: { gameVersion: "1.21.1", loaders: ["datapack"] } });
+    expect(browseTarget(mp, "datapack", { ...pack, minecraftVersion: null })).toEqual({ ok: false, reason: PACK_UNKNOWN_REASON });
+    expect(PACK_UNKNOWN_REASON).toBe("The modpack does not say which loader and Minecraft version it runs: the browser cannot tell what fits");
   });
 });

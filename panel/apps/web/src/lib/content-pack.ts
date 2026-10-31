@@ -1,4 +1,5 @@
-import { BUILD_RE, CF_ID_RE, type ContentPlatform, type ContentVersionDto, type PackInfoDto } from "@mcsm/shared";
+import { BUILD_RE, CF_ID_RE, MODRINTH_ID_RE, pickLatest, type ContentPlatform, type ContentVersionDto, type PackInfoDto } from "@mcsm/shared";
+import { ApiError } from "./api";
 import { withType, withVersion, type EditableSpec } from "./spec-edit";
 
 /** Modpack lifecycle in the form (install, change version, switch, uninstall). Pure: the Save confirmation applies it. */
@@ -67,4 +68,44 @@ export function packRefOf(mp: Modpack): PackRef | null {
   if (mp.platform === "MODRINTH") return slug ? { platform: "modrinth", projectId: slug, slug: null, versionId: mp.versionId } : null;
   if (CF_ID_RE.test(v)) return { platform: "curseforge", projectId: v, slug: null, versionId: mp.versionId };
   return slug ? { platform: "curseforge", projectId: null, slug, versionId: mp.versionId } : null;
+}
+
+/**
+ * The pack to ask the panel about: the project (a Modrinth slug as typed, the panel resolves it; a CurseForge slug
+ * through the id `found` by search) and the pinned version among `versions` (newest first): by id, by a hand-typed
+ * label, the newest release when empty. An id the list does not hold is kept (the list has only the newest
+ * versions); otherwise null while unknown.
+ */
+export function installedPackIds(ref: PackRef, found: string | null, versions: readonly ContentVersionDto[] | undefined): { projectId: string | null; versionId: string | null } {
+  const projectId = ref.projectId ?? found;
+  const match = versions?.find((v) => v.versionId === ref.versionId || v.label === ref.versionId);
+  if (match) return { projectId, versionId: match.versionId };
+  if (ref.versionId === "") return { projectId, versionId: versions ? (pickLatest(versions, null)?.versionId ?? null) : null };
+  return { projectId, versionId: ref.platform === "curseforge" || MODRINTH_ID_RE.test(ref.versionId) ? ref.versionId : null };
+}
+
+export interface PackDetailsState {
+  modpack: Modpack;
+  ref: PackRef | null;
+  slugNotFound: boolean;
+  /** The first failure among the slug search, the version list and the pack details. */
+  error: unknown;
+  versionsLoaded: boolean;
+  versionId: string | null;
+}
+
+/** Why the pack's details will not come (instead of waiting for them forever); null while they may still come, or did. */
+export function packDetailsError(s: PackDetailsState): string | null {
+  if (!s.modpack || s.modpack.platform === "FTBA") return null;
+  if (s.modpack.slugOrUrl === "") return "No modpack chosen yet";
+  if (!s.ref) return "The modpack is written in a way the browser cannot look up: use Edit as text";
+  if (s.slugNotFound) return `“${s.ref.slug}” was not found on CurseForge: check it with Edit as text`;
+  if (s.error) {
+    if (s.error instanceof ApiError && s.error.status === 404) return s.error.message;
+    return `Could not load the modpack's details: ${s.error instanceof Error ? s.error.message : "Unexpected error"}`;
+  }
+  if (s.versionsLoaded && s.versionId === null) {
+    return s.ref.versionId === "" ? "The modpack has no release to install" : `Version “${s.ref.versionId}” of the modpack was not found`;
+  }
+  return null;
 }
