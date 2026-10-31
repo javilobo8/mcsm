@@ -53,6 +53,26 @@ describe("applyResolved", () => {
     const spec: EditableSpec = { ...defaultSpecInput(), type: "FABRIC", mods: { modrinthProjects: ["AANobbMI:OLDVERS1", "lithium"], curseforgeFiles: [], urls: [] } };
     expect(listOf(applyResolved(spec, result([entry("AANobbMI", "Yp8wLY1P", true)])), "mods.modrinthProjects")).toEqual(["AANobbMI:Yp8wLY1P", "lithium"]);
   });
+  it("replaces a project typed as a slug, by the id its lookup resolved (never a second jar)", () => {
+    const spec: EditableSpec = { ...defaultSpecInput(), type: "FABRIC", mods: { modrinthProjects: ["sodium", "lithium", "fabric-api"], curseforgeFiles: [], urls: [] } };
+    const metas = [
+      meta({ raw: "sodium", projectId: "AANobbMI", versionId: null }),
+      meta({ raw: "lithium", projectId: "gvQqBUqZ", versionId: null }),
+      meta({ raw: "fabric-api", projectId: FAPI, versionId: null }),
+      meta({ raw: "fabric-api", list: "plugins.modrinthProjects", projectId: "OTHER001", versionId: null }), // another list: ignored
+    ];
+    // A selection, and a dependency the resolver pinned.
+    const next = applyResolved(spec, result([entry("AANobbMI", "Yp8wLY1P", true), entry(FAPI, "Q2bcdefg", false)]), metas);
+    expect(listOf(next, "mods.modrinthProjects")).toEqual(["AANobbMI:Yp8wLY1P", "lithium", `${FAPI}:Q2bcdefg`]);
+  });
+  it("collapses a project listed twice (slug and pinned id) into the resolved entry", () => {
+    const spec: EditableSpec = { ...defaultSpecInput(), type: "FABRIC", mods: { modrinthProjects: ["sodium", "lithium", "AANobbMI:OLDVERS1"], curseforgeFiles: [], urls: [] } };
+    const metas = [meta({ raw: "sodium", projectId: "AANobbMI", versionId: null }), meta({ raw: "AANobbMI:OLDVERS1" })];
+    expect(listOf(applyResolved(spec, result([entry("AANobbMI", "Yp8wLY1P", true)]), metas), "mods.modrinthProjects")).toEqual(["AANobbMI:Yp8wLY1P", "lithium"]);
+    // Already exactly there: the spec is left as it is.
+    const pinned: EditableSpec = { ...spec, mods: { ...spec.mods!, modrinthProjects: ["AANobbMI:Yp8wLY1P"] } };
+    expect(applyResolved(pinned, result([entry("AANobbMI", "Yp8wLY1P", true)]), metas)).toBe(pinned);
+  });
 });
 
 describe("addSummary", () => {

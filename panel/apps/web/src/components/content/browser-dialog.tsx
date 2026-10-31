@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, CircleAlert, Download, ExternalLink, LoaderCircle, PackageSearch, Search, X } from "lucide-react";
 import {
   CONTENT_SORTS, listFor,
-  type ContentHit, type ContentListKey, type ContentLoader, type ContentPlatform, type ContentSearchQuery, type ContentSort,
+  type ContentEntryMetaDto, type ContentHit, type ContentListKey, type ContentLoader, type ContentPlatform, type ContentSearchQuery, type ContentSort,
   type ContentTarget, type PackInfoDto, type ResolveResultDto,
 } from "@mcsm/shared";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ import { typeLabel } from "@/lib/spec-catalog";
 import { withVersion, type EditableSpec } from "@/lib/spec-edit";
 import { cn } from "@/lib/utils";
 import {
-  fetchContentVersions, packQuery, resolveContent, useContentCategories, useContentLookup, useContentProject, useContentSearch,
+  fetchContentLookup, fetchContentVersions, packQuery, resolveContent, useContentCategories, useContentLookup, useContentProject, useContentSearch,
   useContentVersions, useCurseForgeConfigured, type VersionFilter,
 } from "@/hooks/use-content";
 import { useVersions } from "@/hooks/use-versions";
@@ -71,7 +71,8 @@ export function ContentBrowserDialog(props: ContentBrowserProps) {
   );
 }
 
-type Review = { kind: "content"; result: ResolveResultDto; warnings: string[] } | { kind: "pack"; info: PackInfoDto };
+/** `present`: the lookup of the platform's entries, so a slug typed by hand is replaced, not duplicated, by its pinned entry. */
+type Review = { kind: "content"; result: ResolveResultDto; warnings: string[]; present: ContentEntryMetaDto[] } | { kind: "pack"; info: PackInfoDto };
 
 function Browser({ spec, pack, packError = null, mode, initialTab, onApply, onOpenChange }: ContentBrowserProps) {
   const qc = useQueryClient();
@@ -123,12 +124,13 @@ function Browser({ spec, pack, packError = null, mode, initialTab, onApply, onOp
         setReview({ kind: "pack", info });
       } else if (list && target) {
         const selections = await Promise.all(selected.map(async (it) => ({ projectId: it.projectId, versionId: await pickVersion(it) })));
-        const result = await resolveContent({
-          list, selections, present: presentFor(spec, platform),
+        const present = presentFor(spec, platform);
+        const [result, metas] = await Promise.all([resolveContent({
+          list, selections, present,
           target: { gameVersion: target.gameVersion, loaders: target.loaders as ContentLoader[] },
           pack: pack && pack.platform === platform ? { platform: pack.platform, projectId: pack.projectId, versionId: pack.versionId } : null,
-        });
-        setReview({ kind: "content", result, warnings: crossPlatformWarnings(selected, others.data ?? []) });
+        }), fetchContentLookup(qc, present)]);
+        setReview({ kind: "content", result, warnings: crossPlatformWarnings(selected, others.data ?? []), present: metas });
       }
     } catch (e) {
       setError(errorText(e));
@@ -139,7 +141,7 @@ function Browser({ spec, pack, packError = null, mode, initialTab, onApply, onOp
 
   const confirm = () => {
     if (!review) return;
-    onApply(review.kind === "pack" ? withPackInstalled(spec, review.info) : applyResolved(spec, review.result));
+    onApply(review.kind === "pack" ? withPackInstalled(spec, review.info) : applyResolved(spec, review.result, review.present));
     onOpenChange(false);
   };
 

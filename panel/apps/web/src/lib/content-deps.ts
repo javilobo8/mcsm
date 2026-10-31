@@ -34,15 +34,21 @@ export function unusedAfterRemoval(removed: readonly ContentEntryMetaDto[], rema
   }
 }
 
-/** Writes the resolver's pinned entries into their lists: a project already there with another version is replaced. */
-export function applyResolved(spec: EditableSpec, result: ResolveResultDto): EditableSpec {
+/**
+ * Writes the resolver's pinned entries into their lists. Whatever already names the same project is replaced (the
+ * first one keeps its place, the rest go): another pinned version, or a hand-typed slug that `metas` (the lookup of
+ * the list's entries) resolved to that project. Two entries of one project would install two jars of it.
+ */
+export function applyResolved(spec: EditableSpec, result: ResolveResultDto, metas: readonly ContentEntryMetaDto[] = []): EditableSpec {
   let next = spec;
   for (const r of result.add) {
     const { platform } = CONTENT_LISTS[r.list];
     const list = listOf(next, r.list);
-    if (list.includes(r.entry)) continue;
-    const i = list.findIndex((raw) => parseContentEntry(platform, raw).projectRef === r.projectId);
-    next = withList(next, r.list, i < 0 ? [...list, r.entry] : list.map((raw, j) => (j === i ? r.entry : raw)));
+    const same = (raw: string) => raw === r.entry || parseContentEntry(platform, raw).projectRef === r.projectId
+      || metas.some((m) => m.list === r.list && m.raw === raw && m.projectId === r.projectId);
+    const first = list.findIndex(same);
+    const items = first < 0 ? [...list, r.entry] : list.flatMap((raw, j) => (j === first ? [r.entry] : same(raw) ? [] : [raw]));
+    if (items.length !== list.length || items.some((x, j) => x !== list[j])) next = withList(next, r.list, items);
   }
   return next;
 }

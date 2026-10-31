@@ -108,7 +108,7 @@ export function ContentSection({ spec, onChange, lists, title, kind, target, pac
           });
           if (r.conflicts.length > 0) { setNotice({ tone: "bad", text: `Not updated: ${r.conflicts.join("; ")}` }); return; }
           warnings.push(...r.unresolved);
-          next = applyResolved(next, r);
+          next = applyResolved(next, r, metas);
         }
       }
       onChange(next);

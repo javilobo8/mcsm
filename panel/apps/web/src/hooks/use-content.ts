@@ -88,14 +88,22 @@ export function usePackInfo(modpack: { platform: ContentPlatform; projectId: str
   return useQuery({ ...packQuery(modpack ?? { platform: "modrinth", projectId: "", versionId: "" }), enabled: modpack !== null && modpack.versionId !== "" });
 }
 
+type LookupItems = readonly { list: ContentListKey; entry: string }[];
+
+const lookupQuery = (items: LookupItems) => ({
+  queryKey: ["content", "lookup", items],
+  queryFn: () => api.post<{ entries: ContentEntryMetaDto[] }>("/api/content/lookup", { entries: items }).then((r) => r.entries),
+  ...opts,
+});
+
 /** Names, icons, versions and dependencies of spec entries. Keeps the previous answer while a new list loads (no jumps). */
-export function useContentLookup(items: readonly { list: ContentListKey; entry: string }[]) {
-  return useQuery({
-    queryKey: ["content", "lookup", items],
-    queryFn: () => api.post<{ entries: ContentEntryMetaDto[] }>("/api/content/lookup", { entries: items }).then((r) => r.entries),
-    enabled: items.length > 0, placeholderData: keepPreviousData, ...opts,
-  });
+export function useContentLookup(items: LookupItems) {
+  return useQuery({ ...lookupQuery(items), enabled: items.length > 0, placeholderData: keepPreviousData });
 }
+
+/** The lookup of `items`, from the cache when fresh. */
+export const fetchContentLookup = (qc: QueryClient, items: LookupItems): Promise<ContentEntryMetaDto[]> =>
+  items.length === 0 ? Promise.resolve([]) : qc.fetchQuery(lookupQuery(items));
 
 export const resolveContent = (req: ResolveRequest) => api.post<ResolveResultDto>("/api/content/resolve", req);
 export const checkUpdates = (req: UpdatesRequest) => api.post<{ updates: UpdateDto[] }>("/api/content/updates", req).then((r) => r.updates);
